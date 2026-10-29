@@ -285,8 +285,8 @@ NODE_ENV=(CAPSULES_PEER_KEYS="$(jq -cn --arg p "$provider_id" --arg pk "$provide
   --arg r "$requester_id" --arg rk "$requester_key" '{($p): $pk, ($r): $rk}')")
 start_node corroborator "$CORROBORATOR_API" "$CORROBORATOR_CONSOLE" --client --join "$token"
 wait_for 300 "the corroborator has joined the mesh" lists_model "$CORROBORATOR_API"
-jq -c 'select(.model_attestation.compute_attestation["x-mesh-poc-v1"].role? == "requested")' \
-  "$(plugin_data requester)/ledger/capsules.jsonl" | head -n 1 > "$out/x-record.json"
+jq -cn 'first(inputs | select(.model_attestation.compute_attestation["x-mesh-poc-v1"].role? == "requested"))' \
+  "$(plugin_data requester)/ledger/capsules.jsonl" > "$out/x-record.json"
 # corroborate NAME Y_STATE: one historical reference, kept as NAME.json; it
 # passes when X's half was obtained and the provider's outcome is Y_STATE.
 corroborate() {
