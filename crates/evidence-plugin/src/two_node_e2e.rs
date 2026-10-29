@@ -9,6 +9,7 @@
 //!
 //! ```sh
 //! E2E_REQUESTER_DIR=<copy> E2E_PROVIDER_DIR=<copy> E2E_EXCHANGES=<n> \
+//!   E2E_JOIN_DIR=<out> E2E_CORROBORATOR_DIR=<copy> \
 //!   cargo test --locked --bin capsules -- --ignored --test-threads=1 two_node_e2e::
 //! ```
 //!
