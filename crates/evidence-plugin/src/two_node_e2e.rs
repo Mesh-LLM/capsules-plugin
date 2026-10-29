@@ -9,7 +9,8 @@
 //!
 //! ```sh
 //! E2E_REQUESTER_DIR=<copy> E2E_PROVIDER_DIR=<copy> E2E_EXCHANGES=<n> \
-//!   E2E_JOIN_DIR=<run dir> E2E_UNANSWERED_PEER=<id> CAPSULES_TEST_PERIOD_LENGTH_S=120 \
+//!   E2E_JOIN_DIR=<run dir> E2E_UNANSWERED_PEER=<id> E2E_CORROBORATOR_DIR=<copy> \
+//!   CAPSULES_TEST_PERIOD_LENGTH_S=120 \
 //!   cargo test --locked --bin capsules --features test-period-policy -- \
 //!   --ignored --test-threads=1 two_node_e2e::
 //! ```
