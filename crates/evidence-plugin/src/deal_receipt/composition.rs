@@ -21,8 +21,9 @@
 //! and is never a member. An absence's observer is this node, its only
 //! observer. A refusal is the peer's signed refusal as it came back, read
 //! from the kept reply (#198), observed by the peer's key; only one this
-//! node verified under the key the peer announced is a member. An artifact
-//! answer is not a member yet (#197).
+//! node verified under the key the peer announced is a member. So is an
+//! `evidence_bundle/1` answer (#197): the provider's bundle, with the
+//! envelope as received minus its artifact as the member's response.
 //!
 //! **The block** is set on the built bundle, as `capsulectl-deal deal
 //! compose` sets it: agent-action-capsule's producer reserves `composed/v1`
@@ -72,8 +73,12 @@ pub(crate) enum MemberRefusal {
     NotARequest(String),
     /// Recorded, with no outcome yet: a pending request is not a member.
     Pending(String),
-    /// Answered with an artifact: not a member yet (#197).
+    /// Answered with an artifact that is not an Evidence Bundle: only an
+    /// `evidence_bundle/1` answer is a member.
     Answered(String),
+    /// The bundle answer does not bind as D4 needs: its digest, or its
+    /// checkpoint key, is not what the response signs.
+    Unbound(String, String),
     /// Answered with a reply this node did not verify as the peer's refusal
     /// (nonconformant, or not checked under the peer's announced key).
     NotVerified(String, String),
@@ -101,9 +106,12 @@ impl MemberRefusal {
                 )
             }
             MemberRefusal::Answered(id) => format!(
-                "request {id} was answered with an artifact, which cannot be a member yet (it \
-                 is not an Evidence Bundle)"
+                "request {id} was answered with an artifact that is not an Evidence Bundle; ask \
+                 for the half with the evidence_bundle/1 derivation"
             ),
+            MemberRefusal::Unbound(id, why) => {
+                format!("the bundle answering request {id} does not bind: {why}")
+            }
             MemberRefusal::NotVerified(id, state) => format!(
                 "the reply to request {id} was not verified as the peer's refusal ({state}), so \
                  it is not a member"
@@ -247,9 +255,10 @@ pub(crate) fn member(
         return Err(MemberRefusal::Inconsistent(request_record.into()).into());
     }
     if record_type(outcome).as_deref() == Some(record_types::RESPONSE) {
-        return refusal_member(
+        return answer_member(
             ledger_dir,
             own,
+            request,
             request_record,
             &request_digest,
             outcome_id,
@@ -277,18 +286,18 @@ pub(crate) fn member(
     }))
 }
 
-/// The `refusal` member for an answered request: the signed refusal exactly
-/// as it came back, read from the kept reply (#198). Only a reply this node
-/// verified as the peer's refusal, under the key the peer announced
-/// (`verification.state` `refusal`), is a member, observed by that key.
-/// An answer that was a nonconformant refusal, or not checked, is refused
-/// by name rather than carried as theirs, as `capsulectl-deal` refuses a
-/// copy it recorded as failed.
-// TODO(#197): an `artifact` member from the kept bundle answer, with its
-// response without the artifact bytes (D4).
-fn refusal_member(
+/// The member for an answered request, from the reply exactly as it came
+/// back (the kept reply, #198). Only a reply this node verified under the
+/// key the peer announced is a member, observed by that key: a refusal
+/// (`verification.state` `refusal`), or an `evidence_bundle/1` answer
+/// (`artifact`, #197). Anything else, such as a nonconformant refusal, an
+/// unchecked reply or another artifact form, is refused by name rather
+/// than carried as theirs, as `capsulectl-deal` refuses a copy it recorded
+/// as failed.
+fn answer_member(
     ledger_dir: &Path,
     own: &str,
+    request: &Value,
     request_record: &str,
     request_digest: &str,
     response_record: &str,
@@ -299,11 +308,9 @@ fn refusal_member(
         .pointer("/verification/state")
         .and_then(Value::as_str)
         .unwrap_or("not recorded");
-    match outcome {
-        Some("refusal") if state == "refusal" => {}
-        Some("artifact") if state == "artifact" => {
-            return Err(MemberRefusal::Answered(request_record.into()).into())
-        }
+    let refused = match outcome {
+        Some("refusal") if state == "refusal" => true,
+        Some("artifact") if state == "artifact" => false,
         _ => {
             let what = format!(
                 "recorded {}, checked {state}",
@@ -311,12 +318,94 @@ fn refusal_member(
             );
             return Err(MemberRefusal::NotVerified(request_record.into(), what).into());
         }
+    };
+    if !refused
+        && request.get("derivation").and_then(Value::as_str) != Some(crate::bundle_answer::TOKEN)
+    {
+        return Err(MemberRefusal::Answered(request_record.into()).into());
     }
     let reply = crate::ask_book::kept_reply(ledger_dir, response_record)
         .map_err(|e| MemberRefusal::ReplyNotKept(request_record.into(), e.to_string()))?;
-    let refusal: Value = serde_json::from_slice(&reply).map_err(|e| {
+    let reply: Value = serde_json::from_slice(&reply).map_err(|e| {
         MemberRefusal::ReplyNotKept(request_record.into(), format!("not JSON: {e}"))
     })?;
+    if refused {
+        refusal_member(own, request_record, request_digest, reply)
+    } else {
+        artifact_member(own, request_record, request_digest, reply)
+    }
+}
+
+/// The `artifact` member: the provider's bundle, from the answer's artifact
+/// octets (its JCS, so its BundleDigest is the signed `artifact_digest`),
+/// with the evidence-interop envelope as received minus its `artifact` as
+/// the member's `response` (D4 as amended at evidencebook-deal c829087;
+/// capsule-cli's `evidence-interop-envelope` response profile). The witness
+/// receipts the reply carries beside the envelope are not part of it.
+/// Observed by the envelope's `responder`, which must have signed the
+/// bundle's checkpoint (D4: a node's checkpoint key is its signing key).
+fn artifact_member(
+    own: &str,
+    request_record: &str,
+    request_digest: &str,
+    reply: Value,
+) -> Result<Value, ComposeError> {
+    use base64::Engine as _;
+    let unbound = |why: &str| MemberRefusal::Unbound(request_record.into(), why.into());
+    let Value::Object(mut response) = reply else {
+        return Err(unbound("the reply is not an envelope").into());
+    };
+    let artifact = response
+        .remove("artifact")
+        .and_then(|a| a.as_str().map(str::to_string))
+        .and_then(|a| {
+            base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(a)
+                .ok()
+        })
+        .ok_or_else(|| unbound("the envelope carries no artifact"))?;
+    response.remove(crate::evidence_artifact::WITNESS_RECEIPTS);
+    let bundle: Value =
+        serde_json::from_slice(&artifact).map_err(|_| unbound("the artifact is not a bundle"))?;
+    let digest = agent_action_capsule::bundle::bundle_digest(&bundle)
+        .map_err(|_| unbound("the artifact is not a bundle"))?;
+    if response.get("artifact_digest").and_then(Value::as_str) != Some(digest.as_str()) {
+        return Err(unbound("its digest is not the artifact_digest the response signs").into());
+    }
+    if response.get("request_digest").and_then(Value::as_str) != Some(request_digest) {
+        return Err(MemberRefusal::Inconsistent(request_record.into()).into());
+    }
+    let key = response
+        .get("responder")
+        .and_then(Value::as_str)
+        .filter(|k| evidence_request::registry::is_digest(k))
+        .ok_or_else(|| unbound("the response names no responder"))?
+        .to_string();
+    if key == own {
+        return Err(MemberRefusal::OwnKey(request_record.into()).into());
+    }
+    if bundle.pointer("/checkpoint/key_id").and_then(Value::as_str) != Some(key.as_str()) {
+        return Err(unbound("its checkpoint is not signed by the responder").into());
+    }
+    Ok(json!({
+        "id": request_record,
+        "observer": key,
+        "request_digest": request_digest,
+        "outcome": "artifact",
+        "digest": digest,
+        "bundle": bundle,
+        "response": Value::Object(response),
+    }))
+}
+
+/// The `refusal` member: the signed refusal exactly as it came back,
+/// observed by its key.
+fn refusal_member(
+    own: &str,
+    request_record: &str,
+    request_digest: &str,
+    refusal: Value,
+) -> Result<Value, ComposeError> {
     if refusal.get("request_digest").and_then(Value::as_str) != Some(request_digest) {
         return Err(MemberRefusal::Inconsistent(request_record.into()).into());
     }
@@ -341,7 +430,7 @@ fn refusal_member(
 }
 
 /// The `composed/v1` block over `request_records`: this node (`own`)
-/// observes the absences, the refusing peer its refusals.
+/// observes the absences, the peer its refusals and its bundle answers.
 pub(crate) fn block(
     ledger_dir: &Path,
     own: &str,

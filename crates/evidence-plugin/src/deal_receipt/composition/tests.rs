@@ -99,6 +99,36 @@ impl Node {
         id
     }
 
+    /// The ask `provider.asked(nonce)` sends, recorded with `wire` as its
+    /// answer, verified.
+    fn answered_with_request(&self, provider: &Provider, nonce: &str, wire: &Value) -> String {
+        let (request, _) = provider.asked(nonce);
+        let id = crate::ask_book::record_request(
+            &self.state,
+            &request,
+            crate::evidence_request_parity::RESPONDER_NODE,
+            None,
+            ASKED_AT,
+        )
+        .unwrap()
+        .record_id;
+        let digest = evidence_request::digest::request_digest(
+            evidence_request::jcs::to_string(&request)
+                .unwrap()
+                .as_bytes(),
+        );
+        crate::ask_book::record_response(
+            &self.state,
+            &id,
+            &digest,
+            &serde_json::to_vec(wire).unwrap(),
+            &json!({"state": "artifact"}),
+            LATER,
+        )
+        .unwrap();
+        id
+    }
+
     /// An ask the provider refused, as this node verified it.
     fn refused(&self, nonce: &str) -> (String, Value) {
         let refusal = signed_refusal(nonce);
@@ -498,6 +528,186 @@ fn a_verified_refusal_is_a_member_observed_by_the_peers_key() {
     }
 }
 
+/// The provider: a node that served the payer an exchange half and cut a
+/// checkpoint over it, answering as `evidence_answer` does.
+struct Provider {
+    _dir: tempfile::TempDir,
+    state: CapsuleState,
+    half: String,
+}
+
+impl Provider {
+    fn new() -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        let state =
+            CapsuleState::open(dir.path(), crate::evidence_request_parity::RESPONDER_NODE).unwrap();
+        let half = state
+            .emit_for_exchange(&crate::capsule_emit::tests::sample_exchange("node-a"))
+            .unwrap()
+            .capsule_id;
+        cut(&state);
+        Provider {
+            _dir: dir,
+            state,
+            half,
+        }
+    }
+
+    fn key(&self) -> String {
+        hex::encode(self.state.signing_key().verifying_key().as_bytes())
+    }
+
+    /// The payer's ask for the half as an Evidence Bundle, signed as node-a
+    /// (the half's counterparty), and the provider's reply on the wire.
+    fn asked(&self, nonce: &str) -> (Value, Value) {
+        let mut request = json!({
+            "subject": {"record": self.half},
+            "coverage": {"min_freshness": 1},
+            "derivation": crate::bundle_answer::TOKEN,
+            "deadline": CLOSES,
+            "nonce": nonce,
+        });
+        crate::requester_auth::sign(
+            crate::requester_auth::Channel::EvidenceRequest,
+            &mut request,
+            &crate::evidence_request_parity::asker_key("node-a"),
+            chrono::DateTime::parse_from_rfc3339(ASKED_AT)
+                .unwrap()
+                .into(),
+            crate::evidence_request_parity::RESPONDER_NODE,
+        );
+        let sent = evidence_request::jcs::to_string(&request).unwrap();
+        let announced = crate::evidence_request_parity::announced_keys();
+        let outcome = crate::evidence_answer::answer(
+            sent.as_bytes(),
+            &crate::evidence_answer::Responder {
+                ledger_dir: self.state.ledger_dir(),
+                signing_key: self.state.signing_key(),
+                now: ASKED_AT,
+                history_segments: "counterparties",
+                share_standard_history: true,
+                share_exchange_corroboration: true,
+                keys: crate::requester_auth::Keys {
+                    announced: &announced,
+                    configured: None,
+                    own_key: None,
+                },
+                replay: &crate::requester_auth::ReplayCache::default(),
+                node_id: Some(crate::evidence_request_parity::RESPONDER_NODE),
+                policy_digest: None,
+            },
+        );
+        match outcome {
+            crate::evidence_answer::Outcome::Answered { wire, .. } => (request, wire),
+            other => panic!("answered, not {other:?}"),
+        }
+    }
+}
+
+impl Node {
+    /// The payer's ask of `provider`, recorded with the answer that came
+    /// back, as this node verified it.
+    fn asked_bundle(&self, provider: &Provider, nonce: &str) -> (String, Value) {
+        let (request, wire) = provider.asked(nonce);
+        let id = crate::ask_book::record_request(
+            &self.state,
+            &request,
+            crate::evidence_request_parity::RESPONDER_NODE,
+            None,
+            ASKED_AT,
+        )
+        .unwrap()
+        .record_id;
+        let digest = evidence_request::digest::request_digest(
+            evidence_request::jcs::to_string(&request)
+                .unwrap()
+                .as_bytes(),
+        );
+        crate::ask_book::record_response(
+            &self.state,
+            &id,
+            &digest,
+            &serde_json::to_vec(&wire).unwrap(),
+            &json!({"state": "artifact"}),
+            LATER,
+        )
+        .unwrap();
+        (id, wire)
+    }
+}
+
+#[test]
+fn a_bundle_answer_is_an_artifact_member_with_its_envelope_as_the_response() {
+    let node = node();
+    let provider = Provider::new();
+    let absent = node.absent("n-1");
+    let (asked, wire) = node.asked_bundle(&provider, "n-2");
+    let bundle = node.compose(&[absent, asked.clone()]);
+    let block = &bundle["extensions"][COMPOSED_KIND];
+    let member = block["members"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["id"] == json!(asked))
+        .unwrap();
+    assert_eq!(member["outcome"], "artifact");
+    assert_eq!(member["observer"], json!(provider.key()));
+    // Their bundle: rooted at their half, under their checkpoint.
+    assert_eq!(member["bundle"]["root"], json!(provider.half));
+    assert_eq!(
+        member["bundle"]["checkpoint"]["key_id"],
+        json!(provider.key())
+    );
+    assert_eq!(
+        member["digest"],
+        json!(agent_action_capsule::bundle::bundle_digest(&member["bundle"]).unwrap())
+    );
+    // The envelope as received, minus its artifact.
+    let mut response = wire.as_object().unwrap().clone();
+    response.remove("artifact");
+    response.remove(crate::evidence_artifact::WITNESS_RECEIPTS);
+    assert_eq!(member["response"], Value::Object(response));
+    assert_eq!(member["response"]["artifact_digest"], member["digest"]);
+    assert_eq!(
+        member["response"]["request_digest"],
+        member["request_digest"]
+    );
+    assert!(block["observers"].as_array().unwrap().contains(
+        &json!({"id": provider.key(), "role": "party", "custody_domain": provider.key()})
+    ));
+    // The member's bundle verifies interval-complete on its own.
+    let checked = agent_action_capsule::bundle::verify_bundle_strict(
+        &member["bundle"],
+        &agent_action_capsule::bundle::StrictOptions {
+            require_signature: true,
+            witness_directory: None,
+        },
+    );
+    assert!(checked
+        .claims
+        .iter()
+        .all(|(_, c)| c.status.as_str() == "pass" || c.status.as_str() == "withheld"));
+    assert_eq!(checked.claim("interval_coverage").unwrap().status, "pass");
+    if let Some(out) = std::env::var_os("DEAL_COMPOSITION_ARTIFACT_OUT") {
+        std::fs::write(out, serde_json::to_vec_pretty(&bundle).unwrap()).unwrap();
+    }
+}
+
+#[test]
+fn a_bundle_answer_that_does_not_bind_is_not_a_member() {
+    let node = node();
+    let provider = Provider::new();
+    let (_, mut wire) = provider.asked("n-1");
+    // Another artifact_digest than the bundle's: the response would not
+    // bind it.
+    wire["artifact_digest"] = json!("0".repeat(64));
+    let id = node.answered_with_request(&provider, "n-1", &wire);
+    assert!(matches!(
+        node.seal(&[id]),
+        Err(ComposeError::Member(MemberRefusal::Unbound(..)))
+    ));
+}
+
 #[test]
 fn an_answer_not_verified_as_their_refusal_is_not_a_member() {
     let node = node();
@@ -522,7 +732,7 @@ fn an_answer_not_verified_as_their_refusal_is_not_a_member() {
         json!({"state": "not_evidence", "why": "bad signature"}),
     );
     assert!(matches!(refusal_of(&[bad]), MemberRefusal::NotVerified(..)));
-    // An artifact: not a member until #197.
+    // An artifact of another form than an Evidence Bundle.
     let artifact = node.answered(
         "n-3",
         &json!({"artifact": "00", "request_digest": request_digest("n-3")}),
