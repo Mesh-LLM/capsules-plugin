@@ -39,9 +39,11 @@
 //! 8. the sharing-policy gate on each record the answer would carry, read
 //!    from the index → `not_authorized`, before they are counted, so an
 //!    asker they are refused to gets the same refusal however many match;
-//! 9. the number of those records (or of checkpoints), counted without
-//!    reading one → `capacity_exceeded` over [`MAX_ANSWER_RECORDS`] /
-//!    [`MAX_ANSWER_CHECKPOINTS`];
+//! 9. the number of those records, counted without reading one →
+//!    `capacity_exceeded` over [`MAX_ANSWER_RECORDS`]. An answer that
+//!    carries no record, which the gate has nothing to decide for, has its
+//!    checkpoints counted against [`MAX_ANSWER_CHECKPOINTS`] as it is
+//!    resolved, before step 8;
 //! 10. building and signing; an answer larger than [`MAX_ANSWER_BYTES`] on
 //!     the wire, or a fault building it → `capacity_exceeded`.
 //!

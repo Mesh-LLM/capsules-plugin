@@ -69,7 +69,8 @@ fn members_of(value: &Value) -> Vec<String> {
 }
 
 /// A ledger directory: the corpus with `records` in place of its leaves
-/// 3.., all under its first checkpoint, signed by `key`.
+/// 3.., signed by `key`. Its first checkpoint covers leaves 3..15 only; its
+/// newest, which `request_for` resolves to, covers up to leaf 299.
 fn node_with(records: &[Value], key: &SigningKey) -> tempfile::TempDir {
     let mut ledger = corpus_ledger();
     for (i, record) in records.iter().enumerate() {
