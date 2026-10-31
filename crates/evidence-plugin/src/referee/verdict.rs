@@ -41,12 +41,13 @@ pub const INCONCLUSIVE_SPLIT_MARGIN_UNAVAILABLE: &str = "split_margin_unavailabl
 /// Decided (#155): the least top-2 margin, in nats, at which a referee's
 /// word at the split names a twin. Below it, or with no margin, the ruling
 /// is `inconclusive`. A margin equal to it names the twin. It is at least
-/// twice the largest change in the top-2 gap seen between honest backends at
-/// positions whose gap is under it, where a change can flip the choice (2.37
-/// nats measured; `vectors/parity/referee/margin-measurement/README.md`, "The
-/// 2x rule"); a change is a CHANGELOG line. There is no operator setting: a lower value charges honest nodes
-/// more readily.
-pub const SPLIT_MARGIN_THRESHOLD_NATS: f64 = 3.0;
+/// twice the largest referee-side margin (read over the word window, as
+/// [`least_margin`] reads it) at any top-1 disagreement between honest
+/// backends measured, and no gap shrink seen between them at a gap of at
+/// least it reaches it (`vectors/parity/referee/margin-measurement/README.md`,
+/// "The rule"; Sherlock2 on #159). A change is a CHANGELOG line. There is no
+/// operator setting: a lower value charges honest nodes more readily.
+pub const SPLIT_MARGIN_THRESHOLD_NATS: f64 = 4.4;
 
 /// [`SPLIT_MARGIN_THRESHOLD_NATS`] in the micro-nats the rule compares.
 pub fn split_margin_threshold() -> i64 {
@@ -114,7 +115,12 @@ pub fn token_at(text: &str, index: usize) -> Option<&str> {
 /// first) and the first byte at which the two words differ (the word's
 /// start plus the bytes they share). The margin is read over `from..=at`
 /// (`margin::least_margin`). `None` when `text` has no word `index`.
-fn departure(text: &str, index: usize, other: &str, other_index: usize) -> Option<(usize, usize)> {
+pub(crate) fn departure(
+    text: &str,
+    index: usize,
+    other: &str,
+    other_index: usize,
+) -> Option<(usize, usize)> {
     let spans = word_spans(text);
     let (start, word) = *spans.get(index)?;
     let from = index

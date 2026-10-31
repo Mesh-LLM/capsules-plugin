@@ -31,7 +31,7 @@ settings) computes slightly different next-word scores, so where the top two
 are nearly tied, temperature 0 can choose differently on two honest twins. So
 the referee asks its own server for the top-2 logprobs of every token of its
 re-answer, and its word names a twin only when its own margin (top-1 minus
-top-2 logprob, in nats) is at least `SPLIT_MARGIN_THRESHOLD_NATS` (3.0 nats;
+top-2 logprob, in nats) is at least `SPLIT_MARGIN_THRESHOLD_NATS` (4.4 nats;
 `referee/verdict.rs`) at every token from the space before the word where it
 departs from the other twin through the token where they part: the other twin
 may cut the same text into other tokens, so any of them may be where it chose
@@ -46,10 +46,11 @@ one. Neither counts against anyone. Only the referee's margin decides: the
 twins' own margins, when their answers carry them, are sealed beside it
 (`split_margin`) and never change the ruling.
 
-The value is at least twice the largest change in the top-2 gap measured
-between honest backends at positions whose gap is under it, where a change
-can flip the choice (2.37 nats needed; see "The 2x rule" in
-`vectors/parity/referee/margin-measurement/README.md`). One split is one
+The value is at least twice the largest margin a referee read, the same way,
+at any top-1 disagreement between honest backends measured (CUDA, Metal and
+CPU), and no gap of at least the value was seen to shrink by as much between
+them (see "The rule" in `vectors/parity/referee/margin-measurement/README.md`).
+One split is one
 token, so a near-identical model (another quantization of the same weights)
 mostly comes out `inconclusive` here; telling those apart needs many tokens
 pooled (Mesh-LLM/mesh-llm#2548).
@@ -129,8 +130,8 @@ and no further call follows on its own.
   referee did (a non-canonical tokenization, which greedy decoding rarely
   produces) could have parted from the referee at a near-tie there, and that
   token is not read. Reading every token back to the start would leave almost
-  every split `inconclusive`: at 3.0 nats, about 41 % of tokens in the
-  measurement fall under the threshold. The twins' own tokens are not used to
+  every split `inconclusive`: at 4.4 nats, about 42 % of tokens in the
+  CUDA measurement fall under the threshold. The twins' own tokens are not used to
   find the point, since a judged twin could then choose where its referee is
   read.
 - This node records a verdict's time to the minute, so a bar can end up to

@@ -33,7 +33,9 @@
   departs from the other twin through the token where they part, and each twin's
   own margin when its answer carries logprobs (evidence only; it never changes the ruling).
   Values are exact decimal strings in nats. Below `SPLIT_MARGIN_THRESHOLD_NATS`
-  (3.0 nats, measured: `vectors/parity/referee/margin-measurement/`), the ruling is
+  (4.4 nats: twice the largest margin a referee read at an honest top-1 disagreement on CUDA,
+  Metal and CPU, measured in `vectors/parity/referee/margin-measurement/`; CUDA data by
+  Virgile-pct), the ruling is
   `inconclusive` with `inconclusive_because: split_within_margin`; with no margin to read (no
   logprobs, tokens that don't spell the answer, a split token that was not the top one), it is
   `inconclusive` with `split_margin_unavailable`. A server that refuses logprobs is asked once

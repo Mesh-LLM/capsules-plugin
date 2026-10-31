@@ -38,6 +38,8 @@ pub mod verdict;
 #[cfg(test)]
 mod margin_measurement;
 #[cfg(test)]
+mod margin_scored;
+#[cfg(test)]
 pub(crate) mod parity;
 #[cfg(test)]
 mod parity_margin;
