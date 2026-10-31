@@ -11,8 +11,8 @@
 //! builds it, over this node's read-only index (`evidence_log`, which is an
 //! evidencebook store), so it never opens the durable node store this
 //! plugin's checkpointer owns (evidencebook#35). This node's own
-//! derivations' values (`served_summary/1`, exchange corroboration's
-//! entries) are computed here and carried through its `Derive`. The
+//! derivations' values (exchange corroboration's entries) are computed
+//! here and carried through its `Derive`. The
 //! artifact forms, evidencebook's (and the Go responder's):
 //!
 //! - `record`, no derivation: the record's line in the ledger, proven by the
@@ -32,8 +32,6 @@
 //!   subject}`, each checkpoint its COSE statement in hex;
 //! - `history_card/1`: RFC 8785 of `{anchor, derivation, evidence_stream,
 //!   history, subject}`, each entry `{checkpoint, consistency_from_previous}`;
-//! - `served_summary/1` (this node's own derivation): RFC 8785 of `{anchor,
-//!   derivation, evidence_stream, served_summary, subject}`;
 //! - `exchange_corroboration/1` (this node's own, named by its definition
 //!   digest): RFC 8785 of `{anchor, derivation, entries, evidence_stream,
 //!   subject}`, each entry the derivation's members with `inclusion` the
@@ -53,8 +51,7 @@
 //!
 //! - for a record set, the anchor's `cll-checkpoint` and one
 //!   `cll-inclusion-proof` per record, in the artifact's order; for
-//!   `served_summary/1` and `exchange_corroboration/1`, the anchor's
-//!   `cll-checkpoint`. A profile verifier reports `anchor_inclusion`
+//!   `exchange_corroboration/1`, the anchor's `cll-checkpoint`. A profile verifier reports `anchor_inclusion`
 //!   `NOT_CHECKED` for these subjects before it reads any material
 //!   (§6.2.1 step 1), so the extra items change nothing for it;
 //! - the receipts its witnesses issued for the checkpoints the answer
@@ -85,7 +82,6 @@ use crate::evidence_log::{ChainCheckpoint, LogView};
 pub(crate) mod cll_proofs;
 
 use cll_proofs::{consistent, inclusion_leaf, proves};
-use evidencebook::served_summary::DERIVATION as SERVED_SUMMARY_DERIVATION_TOKEN;
 
 /// The reply member that carries witness receipts beside the envelope.
 pub const WITNESS_RECEIPTS: &str = "witness_receipts";
@@ -118,85 +114,6 @@ pub struct Build<'a> {
     pub records: &'a [u64],
     pub signing_key: &'a ed25519_dalek::SigningKey,
     pub issued_at: &'a str,
-}
-
-/// The labels this plugin publishes `served_summary/1` under
-/// (`mesh-served-summary/1`): its schema, the fold's definition digest
-/// (`mesh.served_summary_fold/1`, SHA-256 over the RFC 8785 bytes of the
-/// account definition, fixed while its reads and class are), and the fixed
-/// texts of the published form, as the Python sidecar wrote them.
-const SERVED_SUMMARY_LABELS: evidencebook::served_summary::Labels<'static> =
-    evidencebook::served_summary::Labels {
-        schema: "mesh-served-summary/1",
-        definition_digest: "6eb6f1870dbcee613573c60692b79ab979e2a6188a0f4c6191d4af65a7b773b8",
-        groups_member: "by_model",
-        digest_member: "weights_digest",
-        variants_member: "quantizations",
-        refused_note: "agent_action_capsule.contracts.EFFECT_STATUSES carries no distinct 'refused' value; a \
-             pre-dispatch policy refusal is coarsened to effect.status='failed' before this module sees \
-             it (mesh_record_emitter.py's policy_denied terminal state) -- refused is always 0 until a \
-             status value distinguishes it, never inferred from other fields",
-        digest_absent_note: "no capsule field named weights_digest exists in records this sidecar emits today \
-             (same absence self_accountability.rung_summary documents) -- never fabricated",
-        selection_note: "witnessed range only: entries appended after the latest witnessed \
-             checkpoint are excluded by design, same as account_capsule.py",
-        derivation_note: "counts + latency distribution per model, over the selected witnessed \
-             range; an ACCOUNT of what was served, not a score. The relying party \
-             computes its own predicate.",
-        coverage_note: "cross-check handle: recompute the fold from the node's ledger, check \
-             the ledger against this root, confirm the root was witnessed",
-        adjudications_note: "verdicts this node has received() into its own log about its served \
-             exchanges -- not this node's own judgment of itself. The counterparty-held \
-             references path is what carries weight in an adversarial reading; this \
-             count is never presented as a substitute for it.",
-        no_requester_identifiers: "this summary reads and reports no requester-identity field \
-             (cross_party.initiator_ref, serving_provenance.requesting_party/counterparty_ref) \
-             -- it answers WHAT was served, never WHO asked",
-        not_a_score: "An account of facts + a witness handle to verify them, not a score or routing \
-             recommendation.",
-    };
-
-/// The served summary at `served`, the first `covered` ledger lines folded
-/// (evidencebook's `served_summary`). Each witness receipt the checkpoint
-/// carries is checked against its COSE statement under the key
-/// `witness_keys` configures for its witness, matched as every other
-/// receipt check here matches it (`evidence_answer::configured_witness_key`);
-/// a receipt with no configured key reads `NOT_CHECKED`.
-fn served_summary(
-    index: &crate::evidence_log::LedgerIndex,
-    served: &ChainCheckpoint,
-    covered: u64,
-    witness_keys: &std::collections::BTreeMap<String, String>,
-) -> Value {
-    let facts: Vec<_> = index.leaves.iter().map(|l| &l.facts).collect();
-    let cp = &served.record;
-    let checkpoint = crate::evidence_log::book_checkpoint(cp);
-    // One directory row per carried witness this node has a key for, its
-    // endpoint the receipt's own URL, so the verifier's row lookup finds it.
-    let rows: Vec<Value> = cp
-        .witnesses
-        .iter()
-        .filter_map(|w| {
-            let key = crate::evidence_answer::configured_witness_key(witness_keys, &w.ts_url)?;
-            Some(json!({
-                "name": w.ts_url,
-                "endpoint": w.ts_url.trim_end_matches('/'),
-                "key_ids": [hex::encode(key.to_bytes())],
-            }))
-        })
-        .collect();
-    let directory = json!({ "witnesses": rows });
-    evidencebook::served_summary::summary_value(
-        &facts,
-        &evidencebook::served_summary::Coverage {
-            checkpoint: &checkpoint,
-            covered,
-            statement: &served.statement,
-            witness_directory: Some(&directory),
-        },
-        &|id| index.leaf_index_of(id),
-        &SERVED_SUMMARY_LABELS,
-    )
 }
 
 /// Build and sign the answer: the profile's flat reply, carried in a JSON
@@ -271,25 +188,8 @@ fn signed_envelope(
         }
         _ => None,
     };
-    let summary = match (&b.request.derivation, &b.request.subject) {
-        (Some(Derivation::Token(t)), Subject::FullHistory)
-            if t == SERVED_SUMMARY_DERIVATION_TOKEN =>
-        {
-            let covered =
-                leaf_count(served.record.mmr_size).map_err(|_| Reason::CoverageUnsatisfiable)?;
-            Some(served_summary(
-                view.index,
-                served,
-                covered,
-                &crate::checkpoint_cadence::active_witness_keys(),
-            ))
-        }
-        _ => None,
-    };
     let derive = |name: &str, _: &Subject, _: &evidencebook::substrate::StatedCheckpoint| {
-        if name == SERVED_SUMMARY_DERIVATION_TOKEN {
-            summary.clone().map(|v| ("served_summary".to_string(), v))
-        } else if name == crate::exchange_corroboration::DEFINITION_DIGEST {
+        if name == crate::exchange_corroboration::DEFINITION_DIGEST {
             corroboration.clone().map(|v| ("entries".to_string(), v))
         } else {
             None
@@ -584,11 +484,7 @@ pub fn check(
 
     let derivation = match &env.derivation {
         None => None,
-        Some(Derivation::Token(t))
-            if t == DERIVATION_HISTORY_CARD || t == SERVED_SUMMARY_DERIVATION_TOKEN =>
-        {
-            Some(t.as_str())
-        }
+        Some(Derivation::Token(t)) if t == DERIVATION_HISTORY_CARD => Some(t.as_str()),
         Some(Derivation::Digest(d))
             if d == crate::exchange_corroboration::DEFINITION_DIGEST
                 || d == crate::service_history::definition_digest() =>
@@ -676,19 +572,6 @@ pub fn check(
                 .map_err(CheckError::Answer)?,
             );
             (served, Vec::new(), listed)
-        }
-        (Some(t), Subject::FullHistory) if t == SERVED_SUMMARY_DERIVATION_TOKEN => {
-            // served_summary/1: a static export, answered only under a pin.
-            if !matches!(request.coverage, Coverage::ExpectedPin(_)) {
-                return fail("a served summary is answered only under an expected_pin");
-            }
-            let art = artifact_map(&env, derivation)?;
-            if !art.get("served_summary").is_some_and(Value::is_object) {
-                return fail("the artifact carries no served summary");
-            }
-            let served = anchor_checkpoint_only(&env, key)?;
-            check_names(&art, &served)?;
-            (served, Vec::new(), Vec::new())
         }
         (Some(d), Subject::Correlation(id))
             if d == crate::exchange_corroboration::DEFINITION_DIGEST =>
@@ -785,8 +668,8 @@ fn card_chain(
     check_chain(listed, card)
 }
 
-/// The material of an answer that carries only its anchor checkpoint (a
-/// served summary, an exchange corroboration), verified under `key`.
+/// The material of an answer that carries only its anchor checkpoint (an
+/// exchange corroboration), verified under `key`.
 fn anchor_checkpoint_only(env: &Envelope, key: &VerifyingKey) -> Result<Stated, CheckError> {
     match (
         env.verification.as_slice(),
@@ -1895,15 +1778,24 @@ mod tests {
         }
     }
 
-    /// A served summary is under the newest anchor, named in its material.
+    /// A `served_summary/1` answer, signed by the responder's own key, is
+    /// not checked here: this node neither answers nor reads the served
+    /// summary (Mesh-LLM/capsules-plugin#106), so an older peer's is refused
+    /// like any derivation it does not check.
     #[test]
-    fn a_served_summary_names_its_checkpoint() {
+    fn a_served_summary_is_a_derivation_this_node_does_not_check() {
         let node = node();
-        let (sent, reply) = node.ask(&json!({"subject": {"full_history": null}, "coverage": node.pin(1), "derivation": "served_summary/1"}));
-        let checked = check_reply(&sent, &reply).unwrap();
-        assert_eq!(checked.anchor, node.anchors[1]);
-        let bad = resigned(&sent, &reply, |p| p.verification.clear());
-        assert!(check_reply(&sent, &bad).is_err());
+        let (sent, reply) = node.ask(&json!({"subject": {"full_history": null}, "coverage": node.pin(1), "derivation": "history_card/1"}));
+        let mut asked: Value = serde_json::from_slice(&sent).unwrap();
+        asked["derivation"] = json!("served_summary/1");
+        let sent = serde_json::to_vec(&asked).unwrap();
+        let answer = resigned(&sent, &reply, |p| {
+            p.derivation = Some(Derivation::Token("served_summary/1".into()));
+        });
+        assert_eq!(
+            check_reply(&sent, &answer).unwrap_err(),
+            CheckError::Answer("the answer is for a derivation this node does not check".into())
+        );
     }
 
     /// A receipt is for one of the checkpoints the answer carries, by its
@@ -2139,7 +2031,9 @@ mod tests {
     /// `CAPSULES_WRITE_ANSWER_FIXTURE=1` rewrites the fixture instead. Only a
     /// change that means to alter an answer rewrites it, says so, and updates
     /// the SHA-256 pinned below, so the rewrite shows in review; a move of
-    /// code alone never does.
+    /// code alone never does. `served_summary` and `served_summary_first`
+    /// hold the `derivation_unsupported` refusals the retired served summary
+    /// gets (Mesh-LLM/capsules-plugin#106).
     #[test]
     fn every_answer_form_is_byte_for_byte_the_baseline() {
         const FIXTURE: &str = "tests/fixtures/evidence_answers_5d2d102.json";
@@ -2455,88 +2349,10 @@ mod tests {
             .mmr_size
     }
 
-    /// The served summary over a node whose checkpoints carry `witnesses`,
-    /// at its last checkpoint, under the witness keys `keys` configures.
-    fn summary_coverage(dir: &std::path::Path, keys: &[(&str, &SigningKey)]) -> Value {
-        let keys = keys
-            .iter()
-            .map(|(url, k)| (url.to_string(), hex::encode(k.verifying_key().to_bytes())))
-            .collect();
-        let key_id = hex::encode(key().verifying_key().to_bytes());
-        crate::evidence_log::with_index(dir, &key_id, |index| {
-            let served = index.chain.last().unwrap();
-            let covered = leaf_count(served.record.mmr_size).unwrap();
-            served_summary(index, served, covered, &keys)["coverage"].clone()
-        })
-        .unwrap()
-    }
-
-    /// A receipt counts only under the key this node configures for its
-    /// witness, matched as every other receipt check here matches a URL;
-    /// with no key it reads NOT_CHECKED, never a lower count; under another
-    /// key it fails.
-    #[test]
-    fn the_served_summary_checks_each_receipt_under_the_configured_witness_key() {
-        use crate::evidence_answer::tests::{witnessed_node, WITNESS};
-        let witness = SigningKey::from_bytes(&[0x33; 32]);
-        let dir = witnessed_node(&witness);
-        let receipts = |status: &str| json!([{"ts_url": WITNESS, "status": status}]);
-        for configured in [WITNESS, "HTTPS://WITNESS.example/"] {
-            let v = summary_coverage(dir.path(), &[(configured, &witness)]);
-            assert_eq!(v["witnessed"], json!(true), "{configured}");
-            assert_eq!(v["witnesses"], json!([WITNESS]), "{configured}");
-            assert_eq!(v["witness_check"], json!("PASS"), "{configured}");
-            assert_eq!(v["witness_receipts"], receipts("PASS"), "{configured}");
-        }
-        let v = summary_coverage(dir.path(), &[]);
-        assert_eq!(v["witnessed"], json!(false));
-        assert_eq!(v["witness_check"], json!("NOT_CHECKED"));
-        assert_eq!(v["witness_receipts"], receipts("NOT_CHECKED"));
-        let v = summary_coverage(
-            dir.path(),
-            &[(WITNESS, &SigningKey::from_bytes(&[0x44; 32]))],
-        );
-        assert_eq!(v["witnessed"], json!(false));
-        assert_eq!(v["witness_check"], json!("FAIL"));
-        assert_eq!(v["witness_receipts"], receipts("FAIL"));
-    }
-
-    /// Several receipts, each checked on its own: a keyed one beside an
-    /// unkeyed one witnesses the range with the other NOT_CHECKED; the same
-    /// witness under two spellings of its URL passes twice.
-    #[test]
-    fn each_carried_receipt_is_checked_on_its_own() {
-        use crate::evidence_answer::tests::{mint_receipt, node_with_witnesses, WITNESS};
-        let witness = SigningKey::from_bytes(&[0x33; 32]);
-        let receipt = |url: &str, entry: &[u8; 32]| {
-            json!({"ts_url": url, "entry_hash": hex::encode(entry),
-                   "receipt_b64": mint_receipt(entry, &witness), "leaf_index": 0, "tree_size": 1})
-        };
-        let other = "https://other.example";
-        let dir = node_with_witnesses(|e| json!([receipt(WITNESS, e), receipt(other, e)]));
-        let v = summary_coverage(dir.path(), &[(WITNESS, &witness)]);
-        assert_eq!(v["witnessed"], json!(true));
-        assert_eq!(v["witnesses"], json!([WITNESS]));
-        assert_eq!(v["witness_check"], json!("PASS"));
-        assert_eq!(
-            v["witness_receipts"],
-            json!([{"ts_url": WITNESS, "status": "PASS"}, {"ts_url": other, "status": "NOT_CHECKED"}])
-        );
-        let shouted = "HTTPS://WITNESS.example/";
-        let dir = node_with_witnesses(|e| json!([receipt(WITNESS, e), receipt(shouted, e)]));
-        let v = summary_coverage(dir.path(), &[(WITNESS, &witness)]);
-        assert_eq!(v["witness_check"], json!("PASS"));
-        assert_eq!(
-            v["witness_receipts"],
-            json!([{"ts_url": WITNESS, "status": "PASS"}, {"ts_url": shouted, "status": "PASS"}])
-        );
-    }
-
     /// A checkpoint line whose witness entry is not a receipt (no `ts_url`)
-    /// never reaches the served summary: the line does not read as a
-    /// checkpoint, so nothing is served under it.
+    /// does not read as a checkpoint, so nothing is served under it.
     #[test]
-    fn a_malformed_witness_entry_never_reaches_the_served_summary() {
+    fn a_malformed_witness_entry_is_not_read_as_a_checkpoint() {
         let dir =
             crate::evidence_answer::tests::node_with_witnesses(|_| json!([{"entry_hash": "ab"}]));
         let key_id = hex::encode(key().verifying_key().to_bytes());

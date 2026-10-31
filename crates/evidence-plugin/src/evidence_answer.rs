@@ -63,7 +63,7 @@
 //! them and this node has none (the evidencebook#114 ruling, as the Go
 //! responder applies it). An answer is served whole or refused whole (`not_authorized`): an
 //! artifact is the same for every requester (§5), so it is never filtered
-//! per asker. Checkpoints, the history card and the served summary carry no
+//! per asker. Checkpoints, the history card and the Service History carry no
 //! record bodies and are not gated by it.
 //!
 //! **Who asks** is the node a signed request proved it came from: the
@@ -87,7 +87,7 @@
 //! exchange's end time.
 //!
 //! **Standard History** is every other answer that carries no record bodies:
-//! `served_summary/1` and any other derivation but `exchange_corroboration/1`,
+//! `service_history/1` and any other derivation but `exchange_corroboration/1`,
 //! which has a setting of its own. It shows what this node serves, so with
 //! `share_standard_history` off (the default) it goes only to a requester
 //! that has proven it is a node some record of this one names as the other
@@ -123,7 +123,7 @@ use ed25519_dalek::SigningKey;
 use evidence_request::digest::request_digest;
 use evidence_request::refusal;
 use evidence_request::registry::{Reason, DERIVATION_HISTORY_CARD};
-use evidence_request::request::{self, Coverage, Derivation, Request, Subject};
+use evidence_request::request::{self, Derivation, Request, Subject};
 use evidence_request::resolve::{self, Resolution, ResolvedAnchor};
 use evidence_request::time::parse_utc;
 use evidencebook::received::{self, Appended, ReceivedLog, MAX_RECEIVED_LOG_BYTES};
@@ -133,7 +133,6 @@ use std::path::Path;
 use crate::evidence_artifact::{self, Build, CheckError, ReceiptStatus};
 use crate::evidence_log::{self, LedgerIndex, LogView};
 use crate::requester_auth::{self, Form, Principal};
-use evidencebook::served_summary::DERIVATION as SERVED_SUMMARY_DERIVATION_TOKEN;
 
 /// The largest request answered. A -00 request is a few hundred bytes; this
 /// turns a large one away before it is parsed.
@@ -639,20 +638,6 @@ fn answer_from(
     if service_history && definition.declines_anchor(&index.chain[at].record.timestamp) {
         return Err(Reason::PolicyDeclined);
     }
-    let served_summary = matches!(&req.derivation,
-        Some(Derivation::Token(t)) if t == SERVED_SUMMARY_DERIVATION_TOKEN);
-    if served_summary {
-        // A static export, answered only under an `expected_pin` naming
-        // this node's latest anchor (the Python reference's rule). A
-        // `min_freshness` request asks for an on-demand export, which this
-        // node declines.
-        if !matches!(req.coverage, Coverage::ExpectedPin(_)) {
-            return Err(Reason::PolicyDeclined);
-        }
-        if at + 1 != index.chain.len() {
-            return Err(Reason::CoverageUnsatisfiable);
-        }
-    }
 
     // 8. Size, from the index.
     let covered =
@@ -689,12 +674,10 @@ fn answer_from(
             return Err(Reason::NoSuchSubject);
         }
         records
-    } else if !served_summary {
+    } else {
         if at as u64 + 1 > MAX_ANSWER_CHECKPOINTS {
             return Err(Reason::CapacityExceeded);
         }
-        Vec::new()
-    } else {
         Vec::new()
     };
 
@@ -1883,18 +1866,27 @@ pub(crate) mod tests {
         )
     }
 
-    /// The three requests that carry no record, each pinned to the corpus's
-    /// newest checkpoint: the two stranger-safe ones, then the served
-    /// summary.
+    /// The three requests that carry no record: the two stranger-safe ones,
+    /// pinned to the corpus's newest checkpoint, then the Service History,
+    /// pinned to its first, which is on a period boundary.
     fn standard_history_requests() -> Vec<Value> {
         let ledger = corpus_ledger();
-        let pin = corpus_checkpoints(&ledger, &key())[1].anchor();
-        let coverage = json!({"expected_pin": pin});
+        let cps = corpus_checkpoints(&ledger, &key());
+        let coverage = json!({"expected_pin": cps[1].anchor()});
         vec![
             json!({"subject": {"checkpoints": null}, "coverage": coverage}),
             json!({"subject": {"full_history": null}, "coverage": coverage, "derivation": "history_card/1"}),
-            json!({"subject": {"full_history": null}, "coverage": coverage, "derivation": "served_summary/1"}),
+            json!({"subject": {"full_history": null}, "coverage": {"expected_pin": cps[0].anchor()},
+                   "derivation": crate::service_history::definition_digest()}),
         ]
+    }
+
+    /// `served_summary/1`, pinned where it used to be answered: the
+    /// corpus's newest checkpoint.
+    fn served_summary_request() -> Value {
+        let mut request = standard_history_requests()[1].clone();
+        request["derivation"] = json!("served_summary/1");
+        request
     }
 
     /// `checkpoints` and `history_card/1` (R-8).
@@ -1903,12 +1895,16 @@ pub(crate) mod tests {
     }
 
     /// What a stranger is refused by default though it carries no record:
-    /// the served summary, and a derivation this node does not have.
+    /// the Service History, the retired served summary, and a derivation
+    /// this node does not have.
     fn withheld_requests() -> Vec<Value> {
-        let served_summary = standard_history_requests()[2].clone();
-        let mut unknown = served_summary.clone();
+        let mut unknown = served_summary_request();
         unknown["derivation"] = json!("unregistered_fold/1");
-        vec![served_summary, unknown]
+        vec![
+            standard_history_requests()[2].clone(),
+            served_summary_request(),
+            unknown,
+        ]
     }
 
     /// The refusal of exactly these bytes, now: nothing else goes into it.
@@ -1919,7 +1915,7 @@ pub(crate) mod tests {
         serde_json::to_vec(&wire).unwrap()
     }
 
-    /// PRD T7, the default half (R-8): `served_summary/1` or any other
+    /// PRD T7, the default half (R-8): `service_history/1` or any other
     /// derivation but `history_card/1`, asked by anyone who has not proven
     /// it is a counterparty, is refused `policy_declined`, signed, and the
     /// refusal is
@@ -2026,6 +2022,46 @@ pub(crate) mod tests {
                 Some(refusal_of(&bytes, Reason::DerivationUnsupported)),
                 "share_standard_history={share}: {outcome:?}"
             );
+        }
+    }
+
+    /// `served_summary/1` is retired (Mesh-LLM/capsules-plugin#106): beside
+    /// the weekly Service History cells, the summary less those cells
+    /// would give a suppressed week's count. Asked where it used to be
+    /// answered, it is refused `derivation_unsupported`, as any derivation
+    /// this node does not serve, to a counterparty and, with Standard
+    /// History shared, to anyone. With it not shared, any other requester
+    /// gets the gate's `policy_declined`, the one refusal a non-counterparty
+    /// gets for every such derivation, so it learns nothing of which ones
+    /// this node serves. It is not listed.
+    #[test]
+    fn served_summary_1_is_refused_to_every_requester() {
+        assert!(!crate::commitment::DERIVATIONS.contains(&"served_summary/1"));
+        let dir = node(&corpus_ledger());
+        let request = served_summary_request();
+        for share in [true, false] {
+            for (asker, bytes) in [
+                ("node-a", signed_by("node-a", &request)),
+                ("node-z", signed_by("node-z", &request)),
+                ("unsigned", serde_json::to_vec(&request).unwrap()),
+            ] {
+                let reason = if share || asker == "node-a" {
+                    Reason::DerivationUnsupported
+                } else {
+                    Reason::PolicyDeclined
+                };
+                let outcome = ask_with(
+                    dir.path(),
+                    &bytes,
+                    crate::share_policy::history_segments_for(None),
+                    share,
+                );
+                assert_eq!(
+                    outcome.wire_bytes(),
+                    Some(refusal_of(&bytes, reason)),
+                    "{asker}, share_standard_history={share}: {outcome:?}"
+                );
+            }
         }
     }
 
@@ -2781,7 +2817,7 @@ pub(crate) mod tests {
             ),
             (
                 "derivation",
-                json!("served_summary/1"),
+                json!(crate::service_history::definition_digest()),
                 Reason::PolicyDeclined,
             ),
             ("derivation", json!("history_card/1"), Reason::NotAuthorized),
@@ -2943,8 +2979,8 @@ pub(crate) mod tests {
             node_id: Some(RESPONDER),
             policy_digest: None,
         };
-        let summary = signed_with(&stranger, &standard_history_requests()[2]);
-        let outcome = answer_and_log(&summary, false, &responder, Some(log.path()));
+        let history = signed_with(&stranger, &standard_history_requests()[2]);
+        let outcome = answer_and_log(&history, false, &responder, Some(log.path()));
         assert!(matches!(outcome, Outcome::Answered { .. }));
         let text = std::fs::read_to_string(log.path().join(received::RECEIVED_LOG_FILE)).unwrap();
         let line: Value = serde_json::from_str(text.lines().next().unwrap()).unwrap();
@@ -2957,7 +2993,7 @@ pub(crate) mod tests {
 
     /// The unbound pool full of live nonces (ruling u290 §2): a validly
     /// signed request under a key no host announced is answered as an
-    /// unsigned one would be (here the served summary, shared), not refused, and logged `unbound` with
+    /// unsigned one would be (here the Service History, shared), not refused, and logged `unbound` with
     /// `replay` `unchecked`. A replay the pool still holds is refused, and a
     /// bound key's replay is refused whatever that pool holds.
     #[test]
@@ -2966,10 +3002,10 @@ pub(crate) mod tests {
         let dir = node(&ledger);
         let stranger = SigningKey::from_bytes(&[0x77; 32]);
         let record = node_a_record(&ledger);
-        // Where no identity is needed: the served summary, shared.
-        let summary = standard_history_requests()[2].clone();
-        let unsigned = serde_json::to_vec(&summary).unwrap();
-        let held = signed_with(&stranger, &summary);
+        // Where no identity is needed: the Service History, shared.
+        let history = standard_history_requests()[2].clone();
+        let unsigned = serde_json::to_vec(&history).unwrap();
+        let held = signed_with(&stranger, &history);
         let bound = signed_by("node-a", &record);
         let (key, announced, replay) = (key(), announced(), ReplayCache::default());
         let ask = |bytes: &[u8], shared: bool, log: Option<&Path>| {
@@ -3007,7 +3043,7 @@ pub(crate) mod tests {
         }
 
         let log = tempfile::tempdir().unwrap();
-        let fresh = signed_with(&stranger, &summary);
+        let fresh = signed_with(&stranger, &history);
         assert_eq!(
             artifact(ask(&fresh, true, Some(log.path()))),
             expected,
@@ -3205,7 +3241,7 @@ pub(crate) mod tests {
     fn a_failed_request_is_never_answered_as_unsigned() {
         let ledger = corpus_ledger();
         let dir = node(&ledger);
-        // Where an unsigned request is answered: the served summary, shared.
+        // Where an unsigned request is answered: the Service History, shared.
         let request = standard_history_requests()[2].clone();
         let stranger = SigningKey::from_bytes(&[0x77; 32]);
         for key in [asker_key("node-z"), stranger] {

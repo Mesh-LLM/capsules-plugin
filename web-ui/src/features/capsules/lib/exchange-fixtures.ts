@@ -1,9 +1,10 @@
 // Harness fixtures for the Exchanges view -- so
 // `pnpm dev`/`pnpm preview` (harness data mode) renders the
 // balance/coverage header and the exchanges table without a live sidecar.
-// Field shapes mirror `capsule_accountability_tab.build_served_summary_
-// block`/`served_summary.ServedSummary.to_value` and `capsule_exchange_tab.
-// build_exchange_list_payload` verbatim -- see `sidecarTypes.ts`.
+// Field shapes mirror `capsule_exchange_tab.build_exchange_list_payload`
+// verbatim -- see `sidecarTypes.ts`. The card is empty: the node no longer
+// answers a served summary (Mesh-LLM/capsules-plugin#106), and no card
+// reader looked for the one the harness carried.
 import type { PaneAJson } from '@/features/capsules/api/sidecarTypes'
 import type { PaneCListJson, PaneCRow } from '@/features/capsules/api/sidecarTypes'
 
@@ -11,50 +12,7 @@ export const HARNESS_PANE_A_PAYLOAD: PaneAJson = {
   operator: null,
   witness_checkpoint_supplied: true,
   rows: [],
-  card: {
-    served_summary: {
-      state: 'verified',
-      text: 'llama-2-7b: 24 served',
-      source: 'self_derived',
-      served_summary: {
-        schema: 'mesh-served-summary/1',
-        node_id: 'node:aa11bb22cc33dd44',
-        selection: { from_entry: 1, to_entry: 40, covered_entries: 40, note: 'witnessed range only' },
-        derivation: {
-          kind: 'served_summary_fold',
-          definition_digest: 'sha256:harness-definition-digest',
-          by_model: {
-            'llama-2-7b': {
-              served: 24,
-              completed: 22,
-              failed: 2,
-              refused: 0,
-              refused_note: null,
-              latency_p50_ms: '812.500',
-              latency_p95_ms: '1420.000',
-              latency_max_ms: '1980.000',
-              weights_digest: { present: 0, absent: 24, note: 'no capsule field named weights_digest exists' },
-              quantizations: ['q4_0'],
-              floor_applied: false
-            }
-          },
-          note: 'counts + latency distribution per model, over the selected witnessed range'
-        },
-        coverage: {
-          checkpoint_root: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
-          mmr_size: 64,
-          log_id: 'harness-log',
-          timestamp: '2026-09-08T16:58:05Z',
-          witnesses: ['https://witness-a.example', 'https://witness-b.example'],
-          witnessed: true,
-          note: 'cross-check handle'
-        },
-        adjudications_received: { value: 8, source: 'self_held', note: 'verdicts received about served exchanges' },
-        no_requester_identifiers: 'this summary reads and reports no requester-identity field',
-        not_a_score: 'An account of facts, with a witness handle to verify them.'
-      }
-    }
-  }
+  card: {}
 }
 
 const CLEAN_EXCHANGE_PROPERTIES = {

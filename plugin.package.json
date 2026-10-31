@@ -48,7 +48,7 @@
         "visibility": "user",
         "description": "Answer a node you've never dealt with when it asks what you serve. No records are included. Checkpoints and the history card go to anyone who asks, whatever this is set to.",
         "presentation": {
-          "label": "Served summary to strangers",
+          "label": "Service history to strangers",
           "category_id": "show",
           "category_label": "What you show others",
           "category_summary": "What this node answers when a peer asks about you. Peers can only admit you on what you let them see.",

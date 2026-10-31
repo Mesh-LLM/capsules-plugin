@@ -11,7 +11,7 @@
 //!   conformant ones.
 //! - **This node's own rules**, which no vector states: who may have which
 //!   records (the sharing policy), who asks (`requester_auth`), Standard
-//!   History, the served summary and the limits. The corpus below is a
+//!   History and the limits. The corpus below is a
 //!   ledger and the requests made of it; [`EXPECTED`] states each one's
 //!   answer and what the "asked of you" log records. Each answer is also
 //!   checked as a requester would check it.
@@ -755,30 +755,11 @@ fn corpus_cases(ledger: &[Value], cps: &[CorpusCheckpoint]) -> Vec<Value> {
         ),
         shared(
             "served_summary",
-            "served_summary/1 pinned to the newest checkpoint",
+            "served_summary/1 is retired (#106): refused as a derivation this node does not derive, \
+             pinned where it used to be answered",
             "off",
             with(
                 req(json!({"full_history": null}), &latest),
-                "derivation",
-                json!("served_summary/1"),
-            ),
-        ),
-        shared(
-            "served_summary_older_pin",
-            "served_summary/1 is a static export of the newest checkpoint only",
-            "peers",
-            with(
-                req(json!({"full_history": null}), &first),
-                "derivation",
-                json!("served_summary/1"),
-            ),
-        ),
-        shared(
-            "served_summary_on_demand",
-            "served_summary/1 under min_freshness asks for an on-demand export",
-            "peers",
-            with(
-                req(json!({"full_history": null}), &fresh),
                 "derivation",
                 json!("served_summary/1"),
             ),
@@ -844,7 +825,7 @@ fn corpus_cases(ledger: &[Value], cps: &[CorpusCheckpoint]) -> Vec<Value> {
             ),
         ),
     ];
-    cases.extend(standard_history_cases(&latest, &id(0)));
+    cases.extend(standard_history_cases(&latest, &first, &id(0)));
     cases.push(
         json!({"name": "not_json", "covers": "bytes that are not JSON", "history_segments": "peers",
                       "request_text": "{\"subject\": "}),
@@ -861,10 +842,12 @@ fn corpus_cases(ledger: &[Value], cps: &[CorpusCheckpoint]) -> Vec<Value> {
 }
 
 /// PRD T7's default half: checkpoints and `history_card/1` are stranger-safe
-/// and go to anyone (R-8); the rest of Standard History (`served_summary/1`,
+/// and go to anyone (R-8); the rest of Standard History (`service_history/1`,
 /// any other derivation) goes to a counterparty, and every other requester
-/// is refused `policy_declined` before the subject is looked up.
-fn standard_history_cases(latest: &Value, record: &str) -> Vec<Value> {
+/// is refused `policy_declined` before the subject is looked up. `first`
+/// is the corpus's checkpoint on a period boundary, where a Service History
+/// is answered.
+fn standard_history_cases(latest: &Value, first: &Value, record: &str) -> Vec<Value> {
     let with_asker = |subject: Value, derivation: Option<&str>, asker: Option<&str>| {
         let mut r = json!({"subject": subject, "coverage": latest});
         if let Some(d) = derivation {
@@ -876,6 +859,15 @@ fn standard_history_cases(latest: &Value, record: &str) -> Vec<Value> {
         r
     };
     let full = || json!({"full_history": null});
+    let service_history = |asker: Option<&str>| {
+        let mut r = with_asker(
+            full(),
+            Some(crate::service_history::definition_digest()),
+            asker,
+        );
+        r["coverage"] = first.clone();
+        r
+    };
     // A case asked by `asker`: signed by it, so it is that node.
     let by = |name: &str, covers: &str, segments: &str, request: Value| match request
         .get("requester_id")
@@ -922,14 +914,26 @@ fn standard_history_cases(latest: &Value, record: &str) -> Vec<Value> {
             with_asker(full(), Some("history_card/1"), Some("node-b")),
         ),
         by(
+            "service_history_to_a_non_counterparty",
+            "service_history/1 is not shared with a node this one never exchanged with",
+            "counterparties",
+            service_history(Some("node-z")),
+        ),
+        by(
+            "service_history_to_a_counterparty",
+            "a counterparty is answered service_history/1",
+            "counterparties",
+            service_history(Some("node-a")),
+        ),
+        by(
             "served_summary_to_a_non_counterparty",
-            "served_summary/1 is not shared with a node this one never exchanged with",
+            "the retired served_summary/1 gets a non-counterparty the gate's refusal, as any derivation does",
             "counterparties",
             with_asker(full(), Some("served_summary/1"), Some("node-z")),
         ),
         by(
             "served_summary_to_a_counterparty",
-            "a counterparty is answered served_summary/1",
+            "served_summary/1 is retired (#106): a counterparty is refused it as a derivation this node does not derive",
             "counterparties",
             with_asker(full(), Some("served_summary/1"), Some("node-a")),
         ),
@@ -943,7 +947,7 @@ fn standard_history_cases(latest: &Value, record: &str) -> Vec<Value> {
             "standard_history_unknown_pin_to_a_non_counterparty",
             "the refusal comes before the anchor is resolved: it says nothing about what this node holds",
             "counterparties",
-            json!({"subject": {"full_history": null}, "coverage": {"expected_pin": "d".repeat(64)}, "derivation": "served_summary/1", "requester_id": "node-z"}),
+            json!({"subject": {"full_history": null}, "coverage": {"expected_pin": "d".repeat(64)}, "derivation": crate::service_history::definition_digest(), "requester_id": "node-z"}),
         ),
         by(
             "checkpoints_unknown_pin_to_a_non_counterparty",
@@ -1032,21 +1036,7 @@ fn summarize(
                 let at = cps.iter().position(|cp| cp.anchor() == anchor);
                 verification["anchor"] = json!(at.map(|i| format!("checkpoints[{i}]")));
             }
-            let mut reply = json!({"answered": subject_kind, "verification": verification});
-            let artifact: Value = wire["artifact"]
-                .as_str()
-                .and_then(|a| {
-                    use base64::Engine as _;
-                    base64::engine::general_purpose::URL_SAFE_NO_PAD
-                        .decode(a)
-                        .ok()
-                })
-                .and_then(|a| serde_json::from_slice(&a).ok())
-                .unwrap_or(Value::Null);
-            if artifact.get("served_summary").is_some_and(Value::is_object) {
-                reply["served_summary"] = json!(true);
-            }
-            reply
+            json!({"answered": subject_kind, "verification": verification})
         }
         Outcome::Unanswerable(why) => json!({"unanswerable": why}),
     }
@@ -1608,15 +1598,7 @@ const EXPECTED: &[(&str, &str)] = &[
     ),
     (
         "served_summary",
-        r#"{"log":{"subject_kind":"full_history"},"reply":{"answered":"full_history","served_summary":true,"verification":{"anchor":"checkpoints[1]","checkpoints":0,"records":[],"state":"artifact"}}}"#,
-    ),
-    (
-        "served_summary_older_pin",
-        r#"{"log":{"subject_kind":"full_history"},"reply":{"refused":"coverage_unsatisfiable"}}"#,
-    ),
-    (
-        "served_summary_on_demand",
-        r#"{"log":{"subject_kind":"full_history"},"reply":{"refused":"policy_declined"}}"#,
+        r#"{"log":{"subject_kind":"full_history"},"reply":{"refused":"derivation_unsupported"}}"#,
     ),
     (
         "coverage_unknown_pin",
@@ -1671,12 +1653,20 @@ const EXPECTED: &[(&str, &str)] = &[
         r#"{"log":{"audience":"node-r","principal_binding":"bound","principal_key_id":"86f14770b6f56d58727d65f274104d73ecf947c2e0ed1330d09818fad8b8fa05","principal_node_id":"node-b","replay":"checked","requester_id":"node-b","subject_kind":"full_history"},"reply":{"answered":"full_history","verification":{"anchor":"checkpoints[1]","checkpoints":2,"records":[],"state":"artifact"}}}"#,
     ),
     (
+        "service_history_to_a_non_counterparty",
+        r#"{"log":{"audience":"node-r","principal_binding":"bound","principal_key_id":"7808d43d8cf3775d0d679359fd0771ff3090bc1d23aecc650170af8a0c5bca2d","principal_node_id":"node-z","replay":"checked","requester_id":"node-z","subject_kind":"full_history"},"reply":{"refused":"policy_declined"}}"#,
+    ),
+    (
+        "service_history_to_a_counterparty",
+        r#"{"log":{"audience":"node-r","principal_binding":"bound","principal_key_id":"3e7d04d3813a4c90546bf2dec79da711152dbdc5f927f152485c6555887f2dde","principal_node_id":"node-a","replay":"checked","requester_id":"node-a","subject_kind":"full_history"},"reply":{"answered":"full_history","verification":{"anchor":"checkpoints[0]","checkpoints":1,"lines":["Every count is this node's own statement (self_reported). Checkpoint continuity, witness receipts and signatures never show what was computed.","Coverage: every record of this node's stream up to the anchor (stream_interval, all_records); completeness is not established, since the counts were not checked against records.","Periods of 7 days; a count under 5 is withheld.","2026-09-21T00:00:00Z to 2026-09-28T00:00:00Z: exchanges served, model model-x (as the provider states it): withheld (under 5) (self_reported)","2026-09-21T00:00:00Z to 2026-09-28T00:00:00Z: exchanges served, model model-y (as the provider states it): withheld (under 5) (self_reported)","2026-09-21T00:00:00Z to 2026-09-28T00:00:00Z: exchanges served, model model-z (as the provider states it): withheld (under 5) (self_reported)","2026-09-21T00:00:00Z to 2026-09-28T00:00:00Z: exchanges served, model unknown (as the provider states it): withheld (under 5) (self_reported)","2026-09-21T00:00:00Z to 2026-09-28T00:00:00Z: exchanges served, all models: 7 (self_reported)","1 checkpoints of this node's own log","witness receipts: no witness named","Not checked: anchor_inclusion, coverage_declaration_population, coverage_declaration_commitment, and period_fixed (one History held).","Limits: the history card shows each checkpoint's exact log size, which the periods do not cover."],"records":[],"state":"artifact"}}}"#,
+    ),
+    (
         "served_summary_to_a_non_counterparty",
         r#"{"log":{"audience":"node-r","principal_binding":"bound","principal_key_id":"7808d43d8cf3775d0d679359fd0771ff3090bc1d23aecc650170af8a0c5bca2d","principal_node_id":"node-z","replay":"checked","requester_id":"node-z","subject_kind":"full_history"},"reply":{"refused":"policy_declined"}}"#,
     ),
     (
         "served_summary_to_a_counterparty",
-        r#"{"log":{"audience":"node-r","principal_binding":"bound","principal_key_id":"3e7d04d3813a4c90546bf2dec79da711152dbdc5f927f152485c6555887f2dde","principal_node_id":"node-a","replay":"checked","requester_id":"node-a","subject_kind":"full_history"},"reply":{"answered":"full_history","served_summary":true,"verification":{"anchor":"checkpoints[1]","checkpoints":0,"records":[],"state":"artifact"}}}"#,
+        r#"{"log":{"audience":"node-r","principal_binding":"bound","principal_key_id":"3e7d04d3813a4c90546bf2dec79da711152dbdc5f927f152485c6555887f2dde","principal_node_id":"node-a","replay":"checked","requester_id":"node-a","subject_kind":"full_history"},"reply":{"refused":"derivation_unsupported"}}"#,
     ),
     (
         "derivation_unknown_to_a_non_counterparty",

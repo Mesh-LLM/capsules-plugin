@@ -29,7 +29,7 @@ pub const RECORD_AT_COMPLETION_KEY: &str = "share_record_at_completion";
 pub const HISTORY_SEGMENTS_KEY: &str = "share_history_segments";
 pub const ADJUDICATIONS_KEY: &str = "share_adjudications";
 pub const WITNESS_KEY: &str = "witness";
-/// The rest of Standard Service History (`served_summary/1` and other
+/// The rest of Standard Service History (`service_history/1` and other
 /// derivations) to a requester that is not this node's counterparty.
 /// Checkpoints and `history_card/1` are stranger-safe and not gated by it.
 pub const STANDARD_HISTORY_KEY: &str = "share_standard_history";
@@ -277,7 +277,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                      records are included. Checkpoints and the history card go to anyone who \
                      asks, whatever this is set to.",
                 )
-                .label("Served summary to strangers")
+                .label("Service history to strangers")
                 .category(SHOW_CATEGORY_ID, SHOW_CATEGORY_LABEL, SHOW_CATEGORY_SUMMARY, 0)
                 .order(1),
         )
@@ -467,7 +467,7 @@ mod tests {
                 ),
                 row(
                     "What you show others",
-                    "Served summary to strangers",
+                    "Service history to strangers",
                     STANDARD_HISTORY_KEY
                 ),
                 row(

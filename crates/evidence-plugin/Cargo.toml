@@ -159,11 +159,10 @@ cll = { package = "checkpointed-local-log", version = "0.3.1" }
 # Pinned exactly: a new release may change what verifies.
 evidence-request = { version = "=0.3.0", features = ["cll", "receipt", "acceptance"] }
 # The "asked of you" log (`evidence_answer::log_received`) is evidencebook's
-# `received` and the `served_summary/1` fold is its `served_summary`
-# (evidencebook#35); which directory the log may write, how a ledger line is
-# read (`evidence_log::leaf_facts`), the summary's labels and the witness
-# keys its receipts are checked under are this plugin's
-# (`evidence_artifact::served_summary`). Every answer is built by its
+# `received` (evidencebook#35), and a ledger line is read into its
+# `served_summary` facts (`evidence_log::leaf_facts`), whose model Service
+# History counts; which directory the log may write is this plugin's. This
+# node no longer answers `served_summary/1` (#106). Every answer is built by its
 # `answer::build` over this plugin's index (`evidence_log`, a store of the
 # crate's); 0.0.10 carries a derivation of this node's own named by its
 # digest (exchange corroboration). Receipts are checked with

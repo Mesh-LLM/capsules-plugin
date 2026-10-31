@@ -60,9 +60,7 @@ use evidence_request::resolve::{Anchor, Responder};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use evidencebook::served_summary::{
-    latency, LeafFacts, Outcome, ServedFacts, DERIVATION as SERVED_SUMMARY_DERIVATION_TOKEN,
-};
+use evidencebook::served_summary::{latency, LeafFacts, Outcome, ServedFacts};
 
 pub const CAPSULES_FILE: &str = "capsules.jsonl";
 pub const CHECKPOINTS_FILE: &str = "checkpoints.jsonl";
@@ -862,9 +860,6 @@ impl Responder for LogView<'_> {
             Derivation::Token(t) if t == DERIVATION_HISTORY_CARD => {
                 Some(vec![SubjectForm::FullHistory, SubjectForm::Checkpoints])
             }
-            Derivation::Token(t) if t == SERVED_SUMMARY_DERIVATION_TOKEN => {
-                Some(vec![SubjectForm::FullHistory])
-            }
             d if crate::service_history::is_derivation(Some(d)) => {
                 Some(vec![SubjectForm::FullHistory])
             }
@@ -1175,13 +1170,16 @@ mod tests {
     }
 }
 
-/// What the served summary (evidencebook's `served_summary`) reads from one
-/// ledger line, in this plugin's record shape: a served record's model,
-/// quantization, outcome, latency and whether it states a weights digest,
-/// and an adjudication verdict's two halves. Padding reads as nothing.
-/// Never a requester-identity field (`cross_party.initiator_ref`,
-/// `serving_provenance.requesting_party`/`counterparty_ref`): the summary
-/// answers what was served, never who asked.
+/// What one ledger line states, in evidencebook's `served_summary` shape
+/// and this plugin's record shape: a served record's model, quantization,
+/// outcome, latency and whether it states a weights digest, and an
+/// adjudication verdict's two halves. Padding reads as nothing. Service
+/// History's period counts read the model (`service_history::period_counts`);
+/// this node no longer answers the served summary itself
+/// (Mesh-LLM/capsules-plugin#106). Never a requester-identity field
+/// (`cross_party.initiator_ref`,
+/// `serving_provenance.requesting_party`/`counterparty_ref`): what is read is
+/// what was served, never who asked.
 pub fn leaf_facts(record: &Value) -> LeafFacts {
     if crate::producer::padding::is_padding(record) {
         return LeafFacts::default();

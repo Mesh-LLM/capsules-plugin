@@ -7,6 +7,15 @@ each exchange, and whether this node's log still verifies. It installs and
 runs on an unmodified mesh-llm release (0.77 or newer). No other runtime is
 needed.
 
+## Not yet released
+
+- **`served_summary/1` is no longer answered.** Beside the weekly Service History cells, the
+  summary less those cells would give a withheld week's count. Every requester is refused it:
+  `derivation_unsupported`, or the `policy_declined` any other derivation gets while
+  `share_standard_history` is off and the requester is not a counterparty. The commitment lists
+  `service_history/1` in its place, and `share_standard_history` now covers `service_history/1`.
+  A 0.1.6 or older peer's `served_summary/1` answer is no longer checked here.
+
 ## What's new in 0.1.7
 
 **Upgrading from 0.1.6 needs nothing on the other node.**
@@ -175,6 +184,7 @@ exchanges ended; the record itself goes only to the counterparty:
 | Asking a referee when two twins of a client-marked pair answered differently. **This sends the twins' request (the prompt's `messages`) and both twins' answers to the referee peer**, which answers the request with its own inference | one eligible peer | **off** | `adjudicate_differing_twins = "on"` |
 | Stopping routing to a peer after N contradictions | (a request to your own host) | **off** | set `stop_routing_after_contradictions`, and `allow_peer_blocks = true` for this plugin in mesh-llm's config |
 | One of this node's records, when a peer asks for it by id | the peer that record names as the other side | on: an answer, never a push | `share_history_segments = "off"` |
+| This node's Service History (`service_history/1`: exchanges served per model and week, a count under 5 withheld), when a node asks | a counterparty always; any other node | **off** for any other node | `share_standard_history = "on"` |
 | A signed checkpoint of the log | the witness services you name | **off**: none by default | add witnesses under **Witnesses** |
 
 The value this node is acting on is written to `sharing-effective.json` in

@@ -126,12 +126,12 @@ fn the_digest_is_of_the_signed_policy_file_and_does_not_change_between_signings(
 #[test]
 fn the_answers_lists_are_pinned_and_follow_the_settings() {
     assert_eq!(
-        DERIVATIONS,
+        *DERIVATIONS,
         [
             "checkpoints",
             "history_card/1",
-            "served_summary/1",
             crate::exchange_corroboration::DEFINITION_DIGEST,
+            crate::service_history::DEFINITION_DIGEST,
         ]
     );
     assert_eq!(
@@ -155,7 +155,7 @@ fn the_answers_lists_are_pinned_and_follow_the_settings() {
     );
     assert_eq!(
         signed.commitment["answers"]["derivations"],
-        json!(DERIVATIONS)
+        json!(*DERIVATIONS)
     );
 }
 
@@ -424,18 +424,18 @@ fn a_refusal_names_the_digest_of_the_policy_it_was_refused_under() {
         node_id: Some(NODE),
         policy_digest: Some(&digest),
     };
-    let served_summary = json!({
+    let service_history = json!({
         "subject": {"full_history": null},
         "coverage": {"min_freshness": 1},
-        "derivation": "served_summary/1",
+        "derivation": crate::service_history::definition_digest(),
     });
-    let bytes = serde_json::to_vec(&served_summary).unwrap();
+    let bytes = serde_json::to_vec(&service_history).unwrap();
     for outcome in [
         evidence_answer::answer(&bytes, &responder),
         evidence_answer::decline_busy(&bytes, &responder),
     ] {
         let Outcome::Refused { wire, .. } = outcome else {
-            panic!("a stranger is refused served_summary/1 by default");
+            panic!("a stranger is refused service_history/1 by default");
         };
         assert_eq!(wire["policy_digest"], digest);
         // The member is beside the signed ones: the refusal still checks.

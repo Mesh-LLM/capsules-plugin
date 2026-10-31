@@ -138,12 +138,6 @@ export type AskedOfYouEntry = {
  *  `history`. */
 export type PaneBServedCell = PaneState & {
   source?: string
-  served_summary?: {
-    n_served?: number | string
-    n_completed?: number | string
-    n_failed?: number | string
-    [key: string]: unknown
-  }
   mine_for_reference?: unknown
 }
 

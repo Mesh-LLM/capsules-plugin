@@ -58,10 +58,11 @@ Each member is separately declared and separately verifiable:
 
 - the embedded `history_card/1` artifact, byte-identical to what the responder
   serves for that subject and anchor;
-- optionally `served_summary/1` (**built**: per-model served counts and latency
-  over the checkpointed range, "fewer than 5" below a floor of 5,
-  evidencebook's `served_summary` fold under this plugin's labels,
-  `crates/evidence-plugin/src/evidence_artifact.rs`; not in -00's registry);
+- optionally `served_summary/1` (**retired**: per-model served counts and
+  latency over the checkpointed range, built as evidencebook's
+  `served_summary` fold and no longer answered once `service_history/1`
+  shipped, since the summary less the weekly cells gives a withheld week's
+  count, Mesh-LLM/capsules-plugin#106; not in -00's registry);
 - witness receipt status;
 - peer-confirmed exchange halves;
 - referee verdicts;
@@ -153,7 +154,7 @@ separate operator settings. Each is its own switch; none implies another.
 | Setting (working names) | What it governs | Default |
 | --- | --- | --- |
 | `advertise_evidence_requests` | Whether the node advertises that it answers evidence requests at all (mesh capability, A2A Agent Card extension) | **off**: operator opt-in |
-| `share_standard_history` | The rest of Standard Service History (`served_summary/1` and other derivations but `exchange_corroboration/1`, which has its own setting) to a requester with no prior exchange with this node; checkpoints and `history_card/1` are stranger-safe (R-8) | **off** until the operator enables it |
+| `share_standard_history` | The rest of Standard Service History (`service_history/1` and other derivations but `exchange_corroboration/1`, which has its own setting) to a requester with no prior exchange with this node; checkpoints and `history_card/1` are stranger-safe (R-8) | **off** until the operator enables it |
 | Protected exchange records (§5.3) | Any subject carrying record bodies | Authenticated **and** authorized requesters only; never on a stated id alone |
 | `public_summary_policy` | A broad, public-safe summary any requester may read | **none**; only under an explicit policy with bounded periods and anti-differencing controls (R-9) |
 
@@ -177,7 +178,7 @@ policy, and every evidence refusal names the digest it was refused under
   checkpoint cadence on, each push cuts a checkpoint, so a checkpoint's time
   can be one exchange's end time. With `share_standard_history` off, a
   requester that is not an authenticated counterparty of this node receives
-  a signed `policy_declined` for `served_summary/1` and every other
+  a signed `policy_declined` for `service_history/1` and every other
   derivation (`exchange_corroboration/1` has its own setting), uniformly
   (the same answer for every such requester, so the refusal itself
   discloses nothing per asker).
@@ -533,8 +534,9 @@ interoperability (M1–M5).
    complementary suppression for R-9; whether to drop latency figures from
    public summaries entirely.
 5. **Name and registration** of the Service History projection, and whether
-   `served_summary/1` is registered in a -01 derivation registry (it is served
-   today but not in -00's IANA table).
+   `served_summary/1` is registered in a -01 derivation registry (it was
+   served, though not in -00's IANA table, until Mesh-LLM/capsules-plugin#106
+   retired it).
 6. **Wire encoding** of `evidence-request/1`: plugin-internal JSON vs -00's
    deterministic CBOR peer binding under the same identifier (R-23).
 7. **Minimal-disclosure corroboration.** A derivation returning only a half's

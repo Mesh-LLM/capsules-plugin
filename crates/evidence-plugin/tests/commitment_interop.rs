@@ -315,11 +315,12 @@ async fn a_second_node_fetches_the_commitment_and_a_refusal_names_its_policy_dig
     assert_eq!(fetched["policy"], own["policy"]);
     assert_eq!(*commitment, own["commitment"]);
 
-    // A stranger asking A for its served summary is refused, and the
+    // A stranger asking A for its Service History (named by its definition
+    // digest, `derivations/service-history-1.json`) is refused, and the
     // refusal names the digest A's signed commitment advertises.
     let (mut read, mut write) = a.open_stream(None).await.into_split();
     write
-        .write_all(br#"{"subject":{"full_history":null},"coverage":{"min_freshness":1},"derivation":"served_summary/1"}"#)
+        .write_all(br#"{"subject":{"full_history":null},"coverage":{"min_freshness":1},"derivation":"cbc96d800ad206791db7e0793b80a2720c1908468ba99692b739aa8e74aab2d8"}"#)
         .await
         .unwrap();
     write.shutdown().await.unwrap();
