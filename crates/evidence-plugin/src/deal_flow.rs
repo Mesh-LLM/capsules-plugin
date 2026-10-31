@@ -245,6 +245,19 @@ impl Deals {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    /// The node that served the exchange record `exchange_capsule_id`, as the
+    /// deal for it recorded it; `None` when this node holds no such deal (or
+    /// no longer: the state keeps the latest [`MAX_DEALS`]).
+    pub fn provider_of(&self, sealer: &dyn Sealer, exchange_capsule_id: &str) -> Option<String> {
+        let mut inner = self.lock();
+        self.load(&mut inner, sealer);
+        inner
+            .entries
+            .values()
+            .find(|e| e.exchange_capsule_id.as_deref() == Some(exchange_capsule_id))
+            .and_then(|e| e.peer.clone())
+    }
+
     /// An invoice for `exchange_id` was issued (the first makes the deal) and this
     /// node sealed its terms leg `leg`, for `amount_msat`.
     pub fn on_invoice(

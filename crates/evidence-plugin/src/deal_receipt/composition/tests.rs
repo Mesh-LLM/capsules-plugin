@@ -6,7 +6,8 @@ use std::path::Path;
 const ASKED_AT: &str = "2026-10-29T12:00:00Z";
 const CLOSES: &str = "2026-10-29T12:01:00Z";
 const LATER: &str = "2026-10-29T12:02:00Z";
-const PEER: &str = "9c1f0a2be45d7388a6b0c1d2e3f40516273849a5b6c7d8e9f00112233445566a";
+/// The node that served the exchange, as the deal recorded it.
+const PEER: &str = crate::deal_receipt::tests::PEER;
 
 fn request(nonce: &str) -> Value {
     json!({
@@ -72,7 +73,12 @@ impl Node {
 
     /// An ask of the provider recorded now, with no outcome.
     fn ask(&self, nonce: &str) -> String {
-        crate::ask_book::record_request(&self.state, &request(nonce), PEER, None, ASKED_AT)
+        self.ask_of(nonce, PEER)
+    }
+
+    /// An ask of `responder` recorded now, with no outcome.
+    fn ask_of(&self, nonce: &str, responder: &str) -> String {
+        crate::ask_book::record_request(&self.state, &request(nonce), responder, None, ASKED_AT)
             .unwrap()
             .record_id
     }
@@ -103,15 +109,9 @@ impl Node {
     /// answer, verified.
     fn answered_with_request(&self, provider: &Provider, nonce: &str, wire: &Value) -> String {
         let (request, _) = provider.asked(nonce);
-        let id = crate::ask_book::record_request(
-            &self.state,
-            &request,
-            crate::evidence_request_parity::RESPONDER_NODE,
-            None,
-            ASKED_AT,
-        )
-        .unwrap()
-        .record_id;
+        let id = crate::ask_book::record_request(&self.state, &request, PEER, None, ASKED_AT)
+            .unwrap()
+            .record_id;
         let digest = evidence_request::digest::request_digest(
             evidence_request::jcs::to_string(&request)
                 .unwrap()
@@ -608,31 +608,8 @@ impl Node {
     /// The payer's ask of `provider`, recorded with the answer that came
     /// back, as this node verified it.
     fn asked_bundle(&self, provider: &Provider, nonce: &str) -> (String, Value) {
-        let (request, wire) = provider.asked(nonce);
-        let id = crate::ask_book::record_request(
-            &self.state,
-            &request,
-            crate::evidence_request_parity::RESPONDER_NODE,
-            None,
-            ASKED_AT,
-        )
-        .unwrap()
-        .record_id;
-        let digest = evidence_request::digest::request_digest(
-            evidence_request::jcs::to_string(&request)
-                .unwrap()
-                .as_bytes(),
-        );
-        crate::ask_book::record_response(
-            &self.state,
-            &id,
-            &digest,
-            &serde_json::to_vec(&wire).unwrap(),
-            &json!({"state": "artifact"}),
-            LATER,
-        )
-        .unwrap();
-        (id, wire)
+        let (_, wire) = provider.asked(nonce);
+        (self.answered_with_request(provider, nonce, &wire), wire)
     }
 }
 
@@ -778,6 +755,48 @@ fn a_refusal_whose_kept_reply_was_altered_is_not_a_member() {
 }
 
 #[test]
+fn an_ask_of_another_node_than_the_provider_is_not_a_member() {
+    let node = node();
+    // A verified refusal from a node this deal never dealt with.
+    let id = node.ask_of("n-1", "some-other-node");
+    crate::ask_book::record_response(
+        &node.state,
+        &id,
+        &request_digest("n-1"),
+        &serde_json::to_vec(&signed_refusal("n-1")).unwrap(),
+        &json!({"state": "refusal", "reason": "not_authorized"}),
+        LATER,
+    )
+    .unwrap();
+    assert!(matches!(
+        node.seal(&[id]),
+        Err(ComposeError::Member(MemberRefusal::NotTheProvider(_)))
+    ));
+    // And no absence of theirs either.
+    let other = node.ask_of("n-2", "some-other-node");
+    crate::ask_book::record_absence(&node.state, &other, CLOSES, LATER).unwrap();
+    assert!(matches!(
+        node.seal(&[other]),
+        Err(ComposeError::Member(MemberRefusal::NotTheProvider(_)))
+    ));
+}
+
+/// The deal state keeps the latest deals only; one it dropped still has
+/// its records, but no longer says who served the exchange.
+#[test]
+fn a_deal_that_no_longer_names_its_provider_composes_nothing() {
+    let node = node();
+    let absent = node.absent("n-1");
+    let dir = node.state.ledger_dir().parent().unwrap().to_path_buf();
+    std::fs::remove_file(node.state.ledger_dir().join("deals.json")).unwrap();
+    let reopened = CapsuleState::open(&dir, "deal-composition-test").unwrap();
+    assert!(matches!(
+        seal(&reopened, &node.exchange, &[absent], 1_790_000_100),
+        Err(ComposeError::NoProvider)
+    ));
+}
+
+#[test]
 fn refusals_from_two_peers_are_not_one_deal() {
     let node = node();
     let (a, _) = node.refused("n-1");
@@ -890,7 +909,7 @@ fn an_absence_with_no_window_is_named_as_such() {
         (
             "a".repeat(64),
             header(
-                json!({"record_type": "evidence_request", "statement": {"request": request("n-1")}}),
+                json!({"record_type": "evidence_request", "statement": {"request": request("n-1"), "responder_ref": PEER}}),
             ),
         ),
         (
@@ -907,6 +926,7 @@ fn an_absence_with_no_window_is_named_as_such() {
             Path::new("/nonexistent"),
             &entries,
             &"f".repeat(64),
+            PEER,
             &"a".repeat(64)
         ),
         Err(ComposeError::Member(MemberRefusal::NoWindow(_)))

@@ -501,7 +501,7 @@ pub(crate) mod tests {
     use crate::producer::checkpoint::{CheckpointCadenceConfig, CheckpointState};
 
     const EXCHANGE_ID: &str = "exchange-1";
-    const PEER: &str = "peer-node-with-a-distinct-name";
+    pub(crate) const PEER: &str = "peer-node-with-a-distinct-name";
 
     fn hex64(c: char) -> String {
         c.to_string().repeat(64)

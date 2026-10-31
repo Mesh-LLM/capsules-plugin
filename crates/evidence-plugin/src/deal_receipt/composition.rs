@@ -88,6 +88,8 @@ pub(crate) enum MemberRefusal {
     OwnKey(String),
     /// The outcome names another request than the one it cites.
     Inconsistent(String),
+    /// The request was not asked of the node that served the exchange.
+    NotTheProvider(String),
     /// The absence states no window.
     NoWindow(String),
     /// Named twice.
@@ -125,6 +127,9 @@ impl MemberRefusal {
             MemberRefusal::Inconsistent(id) => {
                 format!("the outcome recorded for request {id} names another request digest")
             }
+            MemberRefusal::NotTheProvider(id) => {
+                format!("request {id} was not asked of the node that served this exchange")
+            }
             MemberRefusal::NoWindow(id) => {
                 format!("the absence recorded for request {id} states no window")
             }
@@ -144,6 +149,8 @@ pub enum ComposeError {
     NoMembers,
     /// The members' peers are more than the deal's one other party.
     TwoParties,
+    /// The deal no longer says which node served the exchange.
+    NoProvider,
 }
 
 impl From<Error> for ComposeError {
@@ -216,12 +223,14 @@ pub(crate) fn composed_digest(members: &[Value], observers: &[Value]) -> Result<
 
 /// The member for the request recorded as `request_record`, from its
 /// recorded outcome, with its observer: this node (`own`) for an absence,
-/// only it observed; the refusing peer's key for a refusal (D4: a node's
-/// checkpoint key is its signing key, so it is also the custody domain).
+/// only it observed; the peer's key for a refusal or a bundle answer (D4: a
+/// node's checkpoint key is its signing key, so it is also the custody
+/// domain). Only an ask of the deal's `provider` is a member.
 pub(crate) fn member(
     ledger_dir: &Path,
     entries: &[(String, Map<String, Value>)],
     own: &str,
+    provider: &str,
     request_record: &str,
 ) -> Result<Value, ComposeError> {
     let record_type = |e: &Map<String, Value>| {
@@ -229,12 +238,20 @@ pub(crate) fn member(
             .and_then(Value::as_str)
             .map(str::to_string)
     };
-    let request = entries
+    let asked = entries
         .iter()
         .find(|(id, e)| {
             id == request_record && record_type(e).as_deref() == Some(record_types::REQUEST)
         })
-        .and_then(|(_, e)| e.get("statement")?.get("request"))
+        .and_then(|(_, e)| e.get("statement"))
+        .ok_or_else(|| MemberRefusal::NotARequest(request_record.into()))?;
+    // Asked of the deal's provider: an answer or an absence from anyone else
+    // is not the other party's, however it verified.
+    if asked.get("responder_ref").and_then(Value::as_str) != Some(provider) {
+        return Err(MemberRefusal::NotTheProvider(request_record.into()).into());
+    }
+    let request = asked
+        .get("request")
         .ok_or_else(|| MemberRefusal::NotARequest(request_record.into()))?;
     // The digest of the bytes on the wire: the record holds the request as
     // transmitted, which went as its JCS bytes (`ask_book::check_request`).
@@ -262,7 +279,7 @@ pub(crate) fn member(
             request_record,
             &request_digest,
             outcome_id,
-            &statement,
+            outcome,
         );
     }
     let window = |name: &str| statement.pointer(&format!("/window/{name}")).cloned();
@@ -301,8 +318,9 @@ fn answer_member(
     request_record: &str,
     request_digest: &str,
     response_record: &str,
-    statement: &Value,
+    response: &Map<String, Value>,
 ) -> Result<Value, ComposeError> {
+    let statement = response.get("statement").unwrap_or(&Value::Null);
     let outcome = statement.get("outcome").and_then(Value::as_str);
     let state = statement
         .pointer("/verification/state")
@@ -324,7 +342,7 @@ fn answer_member(
     {
         return Err(MemberRefusal::Answered(request_record.into()).into());
     }
-    let reply = crate::ask_book::kept_reply(ledger_dir, response_record)
+    let reply = crate::ask_book::kept_reply_of(ledger_dir, response_record, response)
         .map_err(|e| MemberRefusal::ReplyNotKept(request_record.into(), e.to_string()))?;
     let reply: Value = serde_json::from_slice(&reply).map_err(|e| {
         MemberRefusal::ReplyNotKept(request_record.into(), format!("not JSON: {e}"))
@@ -434,6 +452,7 @@ fn refusal_member(
 pub(crate) fn block(
     ledger_dir: &Path,
     own: &str,
+    provider: &str,
     request_records: &[String],
 ) -> Result<Value, ComposeError> {
     if request_records.is_empty() {
@@ -445,7 +464,7 @@ pub(crate) fn block(
         if request_records[..i].contains(id) {
             return Err(MemberRefusal::Duplicate(id.clone()).into());
         }
-        members.push(member(ledger_dir, &entries, own, id)?);
+        members.push(member(ledger_dir, &entries, own, provider, id)?);
     }
     members.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
     // One observer per key, its custody domain the same key (D4). A deal has
@@ -602,9 +621,13 @@ pub(crate) fn seal(
     let ledger_dir = capsules.ledger_dir();
     let own = crate::commitment::key_id(capsules.signing_key());
     let (_, deal_id) = deal_of(ledger_dir, &own, exchange)?;
+    let provider = capsules
+        .deals()
+        .provider_of(capsules, exchange)
+        .ok_or(ComposeError::NoProvider)?;
     let mut records = request_records.to_vec();
     records.sort_unstable();
-    let block = block(ledger_dir, &own, &records)?;
+    let block = block(ledger_dir, &own, &provider, &records)?;
     let digest = block["composed_digest"]
         .as_str()
         .unwrap_or_default()
@@ -752,6 +775,11 @@ fn refused(error: ComposeError) -> Result<Value, String> {
         ComposeError::Member(r) => r.why(),
         ComposeError::NotCited => "the deal's report does not cite that exchange record".into(),
         ComposeError::NoMembers => "name at least one request record".into(),
+        ComposeError::NoProvider => {
+            "this node no longer holds which node served that exchange, so no ask can be matched \
+             to it"
+                .into()
+        }
         ComposeError::TwoParties => {
             "the members were answered by more than one peer; a deal has one other party".into()
         }
