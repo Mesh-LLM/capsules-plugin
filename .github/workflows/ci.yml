@@ -43,7 +43,9 @@ jobs:
           - name: macos-arm64
             os: macos-15
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # The referee mutants rebuild the crate once each: ten of them run past
+    # 30 minutes on macos-15 (#159's run 41170845628 was cut off at the tenth).
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: crates/evidence-plugin
