@@ -171,6 +171,7 @@
     "split_margin/multi_token_word_near_tie_at_the_departure",
     "split_margin/multi_token_word_near_tie_before_the_departing_byte",
     "split_margin/referee_answer_without_logprobs",
+    "split_margin/referee_stops_where_the_other_twin_goes_on",
     "split_margin/split_inside_a_character",
     "split_margin/tokens_do_not_spell_the_answer"
    ],

@@ -636,6 +636,69 @@
       "rule": "split_margin (#155)"
     },
     {
+      "covers": "\"deep\" against \"deeper\" at the end: the referee's choice was to stop, which logprobs do not carry, so there is no margin and no charge",
+      "name": "referee_stops_where_the_other_twin_goes_on",
+      "node": {
+        "files": {
+          "capsules.jsonl": [
+            {
+              "action_id": "serve_exchange/contradicts_b-c",
+              "action_type": "decide",
+              "assurance": {
+                "attestation_mode": "self_attested",
+                "effect_mode": "confirmed",
+                "ledger_mode": "standalone"
+              },
+              "canonicalization_id": "jcs",
+              "capsule_id": "02440d6ee7a633c179b596077c95f6ea8d545aff71697d62b0b83c1e323777df",
+              "developer": "",
+              "disposition": {
+                "approver": "policy",
+                "decision": "accept",
+                "human_disposed": false,
+                "verdict_class": "confirmed"
+              },
+              "effect": {
+                "effect_attestation": "runtime_claimed",
+                "request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+                "response_digest": "b0cdb14844eb90b60a1c881d5f38ab12657cd4ac1a955d753c0163210a51be1e",
+                "status": "confirmed",
+                "type": "inference_completion"
+              },
+              "format_version": "4",
+              "key_id": "4f2991a6211a840ca54ee63f8496c167105506377f728353a9bb9d19565126d2",
+              "model_attestation": {
+                "compute_attestation": {
+                  "x-mesh-poc-v1": {
+                    "role": "served",
+                    "serving_provenance": {
+                      "model": {
+                        "identity_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+                        "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc"
+                      },
+                      "served_by_node_id": "node-c"
+                    }
+                  }
+                }
+              },
+              "operator": "",
+              "signature": "d284584ca301270378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458204f2991a6211a840ca54ee63f8496c167105506377f728353a9bb9d19565126d2a0582002440d6ee7a633c179b596077c95f6ea8d545aff71697d62b0b83c1e323777df5840f5d1bd2ef65bcf70a2b2bb198888effbfd4439a61146c90e9dd46e4a001a4e00bb356d43bfa911cf79f2116fc753e3db099856fdc7c0034b4335743413ea580b",
+              "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+              "timestamp": "2026-09-28T12:00:00Z"
+            }
+          ]
+        },
+        "id": "node-c",
+        "peer_keys_env": "{\"node-a\": \"63b7736f37706be7bf8fe5f47f3b0e79696c269f6182e134b8e8cf9e55465f43\", \"node-b\": \"dbbd8e664ba27dcf5a752a707d76ca456a95b32faf2ae274216106ff6389ee6f\", \"node-c\": \"4f2991a6211a840ca54ee63f8496c167105506377f728353a9bb9d19565126d2\", \"node-d\": \"6f0f26228d9ea7632be704a2c3b893c65278fb13b61243b02e19575a29274471\", \"node-q\": \"f6964688a554a323797fae3b0222f5742474e9625837d589aa07df81e7e33157\", \"node-x\": \"314fb435d782661264c6c2b179fea5d0b951288fca2439d1605c4729371650bc\"}"
+      },
+      "requests": [
+        {
+          "body": "{\"subject\":{\"kind\":\"adjudicate\"},\"halves\":[{\"capsule\":{\"spec_version\":\"draft-mih-scitt-agent-action-capsule-05\",\"format_version\":\"4\",\"capsule_id\":\"0c2dc684318bf382cbdfc9ab4988261656e328b6cb561b2883ccf3d92472bcb5\",\"action_id\":\"serve_exchange/contradicts_b-a\",\"action_type\":\"decide\",\"operator\":\"\",\"developer\":\"\",\"timestamp\":\"2026-09-28T12:00:00Z\",\"canonicalization_id\":\"jcs\",\"model_attestation\":{\"compute_attestation\":{\"x-mesh-poc-v1\":{\"role\":\"served\",\"serving_provenance\":{\"model\":{\"identity_hash\":\"b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da\",\"weights_digest\":\"ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc\"},\"served_by_node_id\":\"node-a\"}}}},\"effect\":{\"status\":\"confirmed\",\"type\":\"inference_completion\",\"request_digest\":\"c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a\",\"response_digest\":\"8a00935a893011ad14cc059a17965ea9bf4ccf7ec97dd591f217e2bb2755a060\",\"effect_attestation\":\"runtime_claimed\"},\"assurance\":{\"attestation_mode\":\"self_attested\",\"effect_mode\":\"confirmed\",\"ledger_mode\":\"standalone\"},\"disposition\":{\"decision\":\"accept\",\"approver\":\"policy\",\"human_disposed\":false,\"verdict_class\":\"confirmed\"},\"signature\":\"d284584ca301270378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d696404582063b7736f37706be7bf8fe5f47f3b0e79696c269f6182e134b8e8cf9e55465f43a058200c2dc684318bf382cbdfc9ab4988261656e328b6cb561b2883ccf3d92472bcb55840e8616658f6572f5f816c38aca4b85cc8f1bf1607d23bdc517dbae5aa0a633c0ab0dfaf3f3a198272a30175dd466257fd200b0e266a25e5720353d9c64e03d004\",\"key_id\":\"63b7736f37706be7bf8fe5f47f3b0e79696c269f6182e134b8e8cf9e55465f43\"},\"request_body\":{\"messages\":[{\"role\":\"user\",\"content\":\"List the first five counting numbers.\"}]},\"response_body\":{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"the deep\"}}]}},{\"capsule\":{\"spec_version\":\"draft-mih-scitt-agent-action-capsule-05\",\"format_version\":\"4\",\"capsule_id\":\"4bcdc2877bbf58fb962d27781bd8eebbbc3857658509a436af136b5e570c8a3a\",\"action_id\":\"serve_exchange/contradicts_b-b\",\"action_type\":\"decide\",\"operator\":\"\",\"developer\":\"\",\"timestamp\":\"2026-09-28T12:00:00Z\",\"canonicalization_id\":\"jcs\",\"model_attestation\":{\"compute_attestation\":{\"x-mesh-poc-v1\":{\"role\":\"served\",\"serving_provenance\":{\"model\":{\"identity_hash\":\"b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da\",\"weights_digest\":\"ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc\"},\"served_by_node_id\":\"node-b\"}}}},\"effect\":{\"status\":\"confirmed\",\"type\":\"inference_completion\",\"request_digest\":\"c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a\",\"response_digest\":\"797e629c34f2f1340c52f2c53a5ab6e31e0a143c828ef76f45bf6890357e3e64\",\"effect_attestation\":\"runtime_claimed\"},\"assurance\":{\"attestation_mode\":\"self_attested\",\"effect_mode\":\"confirmed\",\"ledger_mode\":\"standalone\"},\"disposition\":{\"decision\":\"accept\",\"approver\":\"policy\",\"human_disposed\":false,\"verdict_class\":\"confirmed\"},\"signature\":\"d284584ca301270378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d6964045820dbbd8e664ba27dcf5a752a707d76ca456a95b32faf2ae274216106ff6389ee6fa058204bcdc2877bbf58fb962d27781bd8eebbbc3857658509a436af136b5e570c8a3a5840a63149dd3c2afe560002de5ddd12560099af3a453e1cfab3d0af8a69ae602e993287961c7ddb24cc33928057dbddfa246e3af7a827915b3f65f3ef60052d3701\",\"key_id\":\"dbbd8e664ba27dcf5a752a707d76ca456a95b32faf2ae274216106ff6389ee6f\"},\"request_body\":{\"messages\":[{\"role\":\"user\",\"content\":\"List the first five counting numbers.\"}]},\"response_body\":{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"the deeper\"}}]}}],\"twin_bracket_id\":\"bracket-1\",\"selection_tier\":1,\"referee_answer\":{\"request_body\":{\"messages\":[{\"role\":\"user\",\"content\":\"List the first five counting numbers.\"}]},\"response_body\":{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"the deep\"},\"logprobs\":{\"content\":[{\"token\":\"the\",\"logprob\":-0.05,\"bytes\":[116,104,101],\"top_logprobs\":[{\"token\":\"the\",\"logprob\":-0.05,\"bytes\":[116,104,101]},{\"token\":\"‖\",\"logprob\":-30.05,\"bytes\":[226,128,150]}]},{\"token\":\" deep\",\"logprob\":-0.05,\"bytes\":[32,100,101,101,112],\"top_logprobs\":[{\"token\":\" deep\",\"logprob\":-0.05,\"bytes\":[32,100,101,101,112]},{\"token\":\"‖\",\"logprob\":-30.05,\"bytes\":[226,128,150]}]}],\"refusal\":null}}]}}}"
+        }
+      ],
+      "rule": "split_margin (#155)"
+    },
+    {
       "covers": "logprobs whose tokens do not spell the answer's text (here a reasoning prefix) give no margin",
       "name": "tokens_do_not_spell_the_answer",
       "node": {

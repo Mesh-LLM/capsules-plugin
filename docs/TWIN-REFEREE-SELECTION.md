@@ -123,6 +123,16 @@ and no further call follows on its own.
 
 ## Known limits
 
+- The referee's margin is read from the space before the word where the twins
+  part through the token where they part, not further back. An honest twin
+  that cut the shared text before that word into other tokens than the
+  referee did (a non-canonical tokenization, which greedy decoding rarely
+  produces) could have parted from the referee at a near-tie there, and that
+  token is not read. Reading every token back to the start would leave almost
+  every split `inconclusive`: at 3.0 nats, about 41 % of tokens in the
+  measurement fall under the threshold. The twins' own tokens are not used to
+  find the point, since a judged twin could then choose where its referee is
+  read.
 - This node records a verdict's time to the minute, so a bar can end up to
   59 seconds before exactly `t + D`.
 - A contradiction that names no model hash bars nothing: a bar is per model,

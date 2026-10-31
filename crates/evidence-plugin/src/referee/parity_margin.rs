@@ -283,6 +283,20 @@ fn specs() -> Vec<Spec> {
             )
         },
         Spec {
+            a_text: "the deep",
+            b_text: "the deeper",
+            referee_text: "the deep",
+            referee_logprobs: Some(logprobs(&[("the", DECISIVE_NATS), (" deep", DECISIVE_NATS)])),
+            ..base(
+                "referee_stops_where_the_other_twin_goes_on",
+                "\"deep\" against \"deeper\" at the end: the referee's choice was to stop, which logprobs do not carry, so there is no margin and no charge",
+                None,
+                "inconclusive",
+                Some(INCONCLUSIVE_SPLIT_MARGIN_UNAVAILABLE),
+                None,
+            )
+        },
+        Spec {
             referee_logprobs: Some(logprobs(&[
                 ("<think>", DECISIVE_NATS),
                 ("1", DECISIVE_NATS),
