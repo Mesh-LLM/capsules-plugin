@@ -69,7 +69,8 @@ fn members_of(value: &Value) -> Vec<String> {
 }
 
 /// A ledger directory: the corpus with `records` in place of its leaves
-/// 3.., all under its first checkpoint, signed by `key`.
+/// 3.., signed by `key`. Its first checkpoint covers leaves 3..15 only; its
+/// newest, which `request_for` resolves to, covers up to leaf 299.
 fn node_with(records: &[Value], key: &SigningKey) -> tempfile::TempDir {
     let mut ledger = corpus_ledger();
     for (i, record) in records.iter().enumerate() {
@@ -394,6 +395,60 @@ fn a_counterparty_is_refused_whole_when_one_half_names_another_node() {
         1,
         "a party gets its own exchange"
     );
+}
+
+/// A counterparty no matching half names gets `not_authorized` however many
+/// halves match: the gate runs before `MAX_ANSWER_RECORDS`, so the refusal
+/// says nothing of the count (Mesh-LLM/capsules-plugin#203). The party
+/// itself still meets the limit.
+#[test]
+fn a_non_party_is_not_authorized_at_any_half_count() {
+    let limit = crate::evidence_answer::MAX_ANSWER_RECORDS as usize;
+    for count in [1, limit, limit + 1] {
+        // node-a's halves, each its own response; node-b is named by corpus
+        // record 1, so it reaches the gate.
+        let halves: Vec<Value> = (0..count)
+            .map(|i| {
+                half(
+                    "served",
+                    Some(NONCE),
+                    "client_supplied",
+                    &req_digest(),
+                    &digest_of(&i.to_string()),
+                    "node-a",
+                )
+            })
+            .collect();
+        let dir = node_with(&halves, &node_key());
+        // Under evidence-interop/1, where a limit reads `capacity_exceeded`,
+        // not /0's `policy_declined`.
+        let asked_by = |node: &str| {
+            let mut request = request_for(&digest_of(NONCE));
+            request["profile"] = json!("evidence-interop/1");
+            crate::requester_auth::sign(
+                crate::requester_auth::Channel::EvidenceRequest,
+                &mut request,
+                &asker_key(node),
+                now(),
+                RESPONDER_NODE,
+            );
+            ask(dir.path(), &serde_json::to_vec(&request).unwrap(), false)
+        };
+        assert_eq!(
+            refused(&asked_by("node-b")),
+            Some(Reason::NotAuthorized),
+            "node-b, {count} halves"
+        );
+        let party = asked_by("node-a");
+        if count > limit {
+            assert_eq!(refused(&party), Some(Reason::CapacityExceeded));
+        } else {
+            assert!(
+                matches!(party, Answer::Answered { .. }),
+                "node-a, {count} halves: {party:?}"
+            );
+        }
+    }
 }
 
 #[test]
