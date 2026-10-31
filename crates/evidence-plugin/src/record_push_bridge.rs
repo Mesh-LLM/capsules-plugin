@@ -1186,6 +1186,37 @@ pub(crate) mod tests {
         assert_eq!(pushed_half(&both), &half);
     }
 
+    /// A settlement leg goes out as a bundle (a binding rides only in one)
+    /// holding this node's own applying binding, as a chat half does
+    /// (Mesh-LLM/capsules-plugin#189); a node with no binding sends none.
+    #[test]
+    fn a_settlement_leg_bundle_carries_this_nodes_own_binding() {
+        let dir = tempfile::tempdir().unwrap();
+        let capsules = CapsuleState::open(dir.path(), "rust-node").unwrap();
+        let coverage = sample_coverage();
+        let leg =
+            serde_json::json!({"capsule_id": "a".repeat(64), "signature": "s", "key_id": "k"});
+        let member = crate::record_push_receive::CONTROLLER_BINDING;
+        let unbound = carrying_bundle_body(&leg, &coverage, &[], own_binding(&capsules).as_ref());
+        assert!(unbound.get(member).is_none());
+        let operator = k256::schnorr::SigningKey::from_bytes(&[7; 32]).unwrap();
+        let now = crate::producer::timestamp::utc_now_iso8601();
+        let at = evidence_request::time::parse_utc(&now).unwrap();
+        let until = chrono::Utc::now() + chrono::Duration::days(1);
+        let binding = crate::controller_binding::bind_to_nostr_for_test(
+            capsules.signing_key(),
+            &operator,
+            "0123456789abcdef0123456789abcdef",
+            "2026-01-01T00:00:00Z",
+            &until.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        );
+        let own = hex::encode(capsules.signing_key().verifying_key().to_bytes());
+        crate::controller_binding::store_held(dir.path(), &binding, &own, at).unwrap();
+        let bound = carrying_bundle_body(&leg, &coverage, &[], own_binding(&capsules).as_ref());
+        assert_eq!(bound[member], binding);
+        assert_eq!(pushed_half(&bound), &leg);
+    }
+
     /// What a push carries is the node's own binding while it applies,
     /// never another node's.
     #[test]

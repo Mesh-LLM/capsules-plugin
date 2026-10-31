@@ -433,6 +433,7 @@ async fn settlement_legs_on_lifecycle(
     context: &mut mesh_llm_plugin::PluginContext<'_>,
     event: &settlement_channel::PaymentLifecycleEvent,
     capsules: &Arc<CapsuleState>,
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
     self_peer: &self_peer::SelfPeer,
 ) {
     let (capsules, event) = (capsules.clone(), event.clone());
@@ -447,7 +448,7 @@ async fn settlement_legs_on_lifecycle(
     })
     .await;
     if let Ok((capsules, pushes)) = pushes {
-        push_settlement_legs(context, &capsules, pushes, self_peer).await;
+        push_settlement_legs(context, &capsules, pushes, checkpoints, self_peer).await;
     }
 }
 
@@ -509,6 +510,7 @@ async fn settlement_legs_on_exchange(
     context: &mut mesh_llm_plugin::PluginContext<'_>,
     body: &[u8],
     capsules: &Arc<CapsuleState>,
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
     self_peer: &self_peer::SelfPeer,
 ) {
     let Ok(envelope) = serde_json::from_slice::<OpenAiExchangeEnvelope>(body) else {
@@ -617,7 +619,7 @@ async fn settlement_legs_on_exchange(
     })
     .await;
     if let Ok((capsules, pushes)) = pushes {
-        push_settlement_legs(context, &capsules, pushes, self_peer).await;
+        push_settlement_legs(context, &capsules, pushes, checkpoints, self_peer).await;
         // A session with this provider for the model it states, when the
         // operator set session terms and none holds now: this exchange is
         // outside it, later ones cite it (R11). It runs in its own task, so
@@ -687,6 +689,7 @@ async fn push_settlement_legs(
     context: &mut mesh_llm_plugin::PluginContext<'_>,
     capsules: &CapsuleState,
     pushes: Vec<settlement_legs::Push>,
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
     self_peer: &self_peer::SelfPeer,
 ) {
     if pushes.is_empty() {
@@ -713,17 +716,7 @@ async fn push_settlement_legs(
     }
     let self_id = self_id.unwrap_or_default();
     for push in pushes {
-        match record_push_bridge::push_capsule_to_peer(
-            context,
-            &push.peer,
-            &self_id,
-            &push.capsule,
-            None,
-            &[],
-            None,
-        )
-        .await
-        {
+        match push_leg(context, capsules, &push, &self_id, checkpoints).await {
             Ok(()) => tracing::debug!(peer = %push.peer, "pushed settlement terms leg"),
             Err(error) => {
                 tracing::warn!(%error, peer = %push.peer, "settlement terms leg push failed; held for retry");
@@ -731,6 +724,53 @@ async fn push_settlement_legs(
             }
         }
     }
+}
+
+/// The checkpoint coverage for a half about to be pushed to `peer_id`; none
+/// when the cadence is off or no coverage can be had, and the bare record
+/// goes (a half is never held back for want of a proof).
+async fn coverage_for_push(
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
+    capsule: &Value,
+    peer_id: &str,
+) -> Option<producer::checkpoint::Coverage> {
+    let (Some(handle), Some(capsule_id)) = (
+        checkpoints,
+        capsule.get("capsule_id").and_then(Value::as_str),
+    ) else {
+        return None;
+    };
+    match handle.coverage_for(capsule_id).await {
+        Ok(coverage) => Some(coverage),
+        Err(error) => {
+            tracing::warn!(%error, %peer_id, "no checkpoint covering the pushed half -- pushing the bare record");
+            None
+        }
+    }
+}
+
+/// One settlement leg to its counterparty, as a chat half goes: in a bundle
+/// with its checkpoint coverage and this node's own controller binding, which
+/// only a bundle carries (Mesh-LLM/capsules-plugin#189). The binding goes to
+/// `push.peer` alone, the peer that already receives the leg.
+async fn push_leg(
+    context: &mut mesh_llm_plugin::PluginContext<'_>,
+    capsules: &CapsuleState,
+    push: &settlement_legs::Push,
+    self_id: &str,
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
+) -> anyhow::Result<()> {
+    let coverage = coverage_for_push(checkpoints, &push.capsule, &push.peer).await;
+    record_push_bridge::push_capsule_to_peer(
+        context,
+        &push.peer,
+        self_id,
+        &push.capsule,
+        coverage.as_ref(),
+        &[],
+        record_push_bridge::own_binding(capsules).as_ref(),
+    )
+    .await
 }
 
 /// Seam A1 -- push `capsule_json` (this
@@ -772,19 +812,7 @@ async fn push_at_completion_if_configured(
     else {
         return;
     };
-    let coverage = match (
-        checkpoints,
-        capsule_json.get("capsule_id").and_then(Value::as_str),
-    ) {
-        (Some(handle), Some(capsule_id)) => match handle.coverage_for(capsule_id).await {
-            Ok(coverage) => Some(coverage),
-            Err(error) => {
-                tracing::warn!(%error, %peer_id, "no checkpoint covering the pushed half -- pushing the bare record");
-                None
-            }
-        },
-        _ => None,
-    };
+    let coverage = coverage_for_push(checkpoints, &capsule_json, peer_id).await;
     match record_push_bridge::push_capsule_to_peer(
         context,
         peer_id,
@@ -1757,7 +1785,7 @@ async fn main() -> anyhow::Result<()> {
                     return Ok(());
                 }
                 if message.channel == OPENAI_EXCHANGE_CHANNEL {
-                    settlement_legs_on_exchange(context, &message.body, &capsules, &self_peer).await;
+                    settlement_legs_on_exchange(context, &message.body, &capsules, checkpoints.as_ref(), &self_peer).await;
                     if let Some((envelope, capsule_json)) = observe_exchange_event(
                         &message.body,
                         exchange_text::enabled(),
@@ -1846,7 +1874,7 @@ async fn main() -> anyhow::Result<()> {
                                     tracing::warn!(%join_error, "settlement seal task did not complete");
                                 }
                             }
-                            settlement_legs_on_lifecycle(context, &legs_event, &capsules, &self_peer).await;
+                            settlement_legs_on_lifecycle(context, &legs_event, &capsules, checkpoints.as_ref(), &self_peer).await;
                         }
                         Err(error) => {
                             tracing::warn!(%error, "refused payment.lifecycle.v1 event; not sealed");
