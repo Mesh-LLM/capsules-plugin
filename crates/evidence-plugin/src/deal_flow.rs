@@ -884,7 +884,10 @@ pub(crate) fn append_line(path: &Path, line: &Value) -> std::io::Result<()> {
 
 /// The report's lines. `audience`, `did`, `money`, `lifecycle`, `steps`,
 /// `told` and `scope` are the members the receipt reads
-/// (capsule-viewer `receipt/model.py`). Money lines are msat text. A close
+/// (capsule-viewer `receipt/model.py`). `asked_step` names the deal's
+/// baseline, the opening step deal-view requires of a keep report; the
+/// asked words stay closed (no `asked_opening`), so its page says they could
+/// not be checked. Money lines are msat text. A close
 /// `open` says what this node saw: payment seen with no delivery, or no
 /// payment seen, never "not delivered".
 fn report_body(
@@ -943,6 +946,9 @@ fn report_body(
         json!({"state": state, "text": text, "as_of": records::at(now), "later": []}),
     );
     body.insert("steps".into(), Value::Array(steps));
+    if let Some(baseline) = entry.step(deal::TYPE_BASELINE) {
+        body.insert("asked_step".into(), json!(baseline.capsule_id));
+    }
     body
 }
 

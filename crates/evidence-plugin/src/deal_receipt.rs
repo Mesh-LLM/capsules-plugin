@@ -614,6 +614,14 @@ pub(crate) mod tests {
         assert!(carried.contains(&report));
         let report_payload = &bundle["disclosures"][report]["agent_input"];
         assert_eq!(report_payload["type"], "deal_report");
+        // deal-view's opening-step rule for a keep report: `asked_step` names
+        // a disclosed record whose block says `baseline`.
+        let asked = report_payload["report"]["asked_step"].as_str().unwrap();
+        assert!(carried.contains(&asked));
+        assert_eq!(
+            bundle["disclosures"][asked]["agent_input"]["x-deal-v0"]["record_type"],
+            "baseline"
+        );
 
         // Every claim passes but the interval: the bundle is producer-selected,
         // so what the log holds besides these records is not shown.
