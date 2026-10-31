@@ -4,11 +4,15 @@
 # plugin. The provider serves the model; the requester serves nothing, joins
 # the provider's mesh, and sends it chat completions over the mesh. Once both
 # nodes have stopped, the scenario checks (crates/evidence-plugin/src/
-# two_node_e2e.rs) run over what each node wrote.
+# two_node_e2e.rs) run over what each node wrote, and the History pages built
+# from what each node's history-page route served are opened offline
+# (web-ui/src/features/capsules/lib/history-page.e2e.test.ts).
 #
 # Usage: scripts/e2e-two-node.sh MESH_LLM_BIN PLUGIN_BIN MODEL_GGUF OUT_DIR
 #
-# Run from the repository root, on a machine that may load the model. The node
+# Run from the repository root, on a machine that may load the model, with
+# web-ui's dependencies installed (`pnpm install` in web-ui): the History
+# pages the nodes served are opened by web-ui's own test runner. The node
 # logs go to OUT_DIR/logs with the mesh's invite token removed. The nodes'
 # homes (their keys and the plugin's data) stay under OUT_DIR/nodes and are
 # never printed.
@@ -140,6 +144,13 @@ tool() {
   curl -fsS -X POST -H 'content-type: application/json' -d "$3" \
     "http://127.0.0.1:$1/api/plugins/capsules/tools/$2"
 }
+# history_page CONSOLE NAME: save what the node's history-page route serves,
+# the body the Evidence page builds its saved History page from, as
+# history-page-NAME.json.
+history_page() {
+  curl -fsS "http://127.0.0.1:$1/api/plugins/capsules/http/history-page" > "$out/history-page-$2.json"
+}
+history_page_answered() { history_page "$1" "$2" && jq -e '.outcome == "answered"' "$out/history-page-$2.json"; }
 joined() { tool "$REQUESTER_CONSOLE" join '{}' > "$out/join-after.json" && jq -e '.joined == true' "$out/join-after.json"; }
 # holds KIND: the provider, as the reporter, keeps the requester's record.
 holds() { [ -f "$(plugin_data provider)/joins/$requester_id.$1.json" ]; }
@@ -210,6 +221,13 @@ wait_for 300 "the requester can route to the provider's model" lists_model "$REQ
 requester_id=$(curl -fsS "http://127.0.0.1:$REQUESTER_CONSOLE/api/diagnostics/network" | jq -er '.node_id')
 echo "requester node id: $requester_id"
 setting requester 'join_network = "on"'
+
+# --- the History page of a node with no checkpoint: its signed refusal ------
+# Saved before anything is exchanged, so the requester has no checkpoint yet
+# (join, next, checks the same). Checked once the run is over, with the
+# History pages saved below, by two_node_e2e.rs and by web-ui's
+# history-page.e2e.test.ts, which builds each page and opens it offline.
+wait_for 60 "the requester's history-page route answers" history_page "$REQUESTER_CONSOLE" fresh
 
 # --- join on a fresh node: the first checkpoint is still missing ------------
 tool "$REQUESTER_CONSOLE" join '{}' > "$out/join-before.json"
@@ -346,6 +364,14 @@ print("T6: the Service History embeds the direct history card, and lists",
       len(history["period_counts"]["periods"]), "closed period(s)")
 PY
 
+# --- the History page of each node, once it has checkpoints ---------------
+# The requester shares only its card; the provider, which shares Standard
+# History and now has a checkpoint on a period boundary, its Service History.
+requester_checkpointed() { [ -s "$(plugin_data requester)/ledger/checkpoints.jsonl" ]; }
+wait_for 120 "the requester has cut a checkpoint" requester_checkpointed
+wait_for 30 "the requester's history-page route serves its card" history_page_answered "$REQUESTER_CONSOLE" requester
+wait_for 30 "the provider's history-page route serves its history" history_page_answered "$PROVIDER_CONSOLE" provider
+
 # --- the ask, recorded: one that nobody answers ends in a sealed absence ----
 # Each ask above was sealed as evidence_request before it was sent. Now the
 # requester asks a node that is not on the mesh. With its deadline already
@@ -429,7 +455,13 @@ stop_nodes
 mkdir -p "$out/data"
 cp -a "$(plugin_data requester)" "$out/data/requester"
 cp -a "$(plugin_data provider)" "$out/data/provider"
+# Built with test-period-policy (CAPSULES_TEST_PERIOD_LENGTH_S is exported
+# above), so the checks know the Service History definition the nodes ran.
 cd "$repo/crates/evidence-plugin"
 E2E_REQUESTER_DIR=$out/data/requester E2E_PROVIDER_DIR=$out/data/provider E2E_EXCHANGES=$EXCHANGES \
   E2E_JOIN_DIR=$out E2E_UNANSWERED_PEER=$unanswered_peer \
-  cargo test --locked --bin capsules -- --ignored --test-threads=1 two_node_e2e::
+  cargo test --locked --bin capsules --features test-period-policy -- --ignored --test-threads=1 two_node_e2e::
+
+# --- the History pages the live nodes served, built and opened offline ------
+cd "$repo/web-ui"
+E2E_HISTORY_PAGES=$out pnpm exec vitest run src/features/capsules/lib/history-page.e2e.test.ts

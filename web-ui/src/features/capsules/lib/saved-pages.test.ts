@@ -1,36 +1,8 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { webcrypto } from 'node:crypto'
-import { JSDOM } from 'jsdom'
 import { describe, expect, it } from 'vitest'
-import { BUNDLE_ELEMENT_ID, SETTLEMENT_REFUSAL_WORDS, historyPage, settlementPage } from '@/features/capsules/lib/saved-pages'
-
-// The page as a person opens it: no server, no network. jsdom runs the page's
-// own scripts; the only thing given to it is the platform (`crypto`, text
-// codecs) a browser has and jsdom lacks.
-async function open(html: string) {
-  const requested: string[] = []
-  const dom = new JSDOM(html, {
-    runScripts: 'dangerously',
-    url: 'file:///saved/page.html',
-    beforeParse(window) {
-      const w = window as unknown as Record<string, unknown>
-      Object.defineProperty(w, 'crypto', { value: webcrypto, configurable: true })
-      w.TextEncoder = TextEncoder
-      w.TextDecoder = TextDecoder
-      w.fetch = (url: string) => {
-        requested.push(String(url))
-        return Promise.reject(new Error('offline'))
-      }
-      w.XMLHttpRequest = function () {
-        requested.push('xhr')
-      }
-    }
-  })
-  // The page checks its bundle asynchronously.
-  for (let i = 0; i < 200 && !dom.window.document.querySelector('#result')?.childElementCount; i++) await new Promise((r) => setTimeout(r, 10))
-  return { dom, requested, text: dom.window.document.querySelector('main')?.textContent ?? '' }
-}
+import { SETTLEMENT_REFUSAL_WORDS, historyPage, settlementPage } from '@/features/capsules/lib/saved-pages'
+import { embeddedBundle as embedded, openSavedPage as open, savedBytes } from '@/lib/test/open-saved-page'
 
 const fixture = JSON.parse(
   readFileSync(path.resolve(process.cwd(), '../crates/evidence-plugin/tests/fixtures/evidence_answers_5d2d102.json'), 'utf8')
@@ -38,11 +10,6 @@ const fixture = JSON.parse(
 // The bytes a node served: the reply as the node wrote it.
 const served = `${JSON.stringify(fixture.history_card)}\n`
 const SAVED = '2026-10-29T18:00:00Z'
-
-const embedded = (html: string): Uint8Array => {
-  const match = new RegExp(`id="${BUNDLE_ELEMENT_ID}"[^>]*>([^<]*)<`).exec(html)
-  return Uint8Array.from(atob(match![1]), (c) => c.charCodeAt(0))
-}
 
 describe('the History page, opened offline', () => {
   it('verifies the embedded answer itself and hands back the JSON byte for byte', async () => {
@@ -64,14 +31,7 @@ describe('the History page, opened offline', () => {
     expect(text).toContain('Not checked: Witness receipts')
     expect(requested).toEqual([])
 
-    let saved: Blob | undefined
-    dom.window.URL.createObjectURL = (blob: Blob | MediaSource) => {
-      saved = blob as Blob
-      return 'blob:x'
-    }
-    dom.window.URL.revokeObjectURL = () => {}
-    ;(dom.window.document.getElementById('save-json') as HTMLButtonElement).click()
-    expect(Buffer.from(await saved!.arrayBuffer()).equals(Buffer.from(served, 'utf8'))).toBe(true)
+    expect((await savedBytes(dom)).equals(Buffer.from(served, 'utf8'))).toBe(true)
   })
 
   it('refers to nothing outside itself', () => {
@@ -194,14 +154,7 @@ describe('the Settlement page, opened offline', () => {
     expect(text).toContain('It is not from the node')
     expect(requested).toEqual([])
 
-    let saved: Blob | undefined
-    dom.window.URL.createObjectURL = (blob: Blob | MediaSource) => {
-      saved = blob as Blob
-      return 'blob:x'
-    }
-    dom.window.URL.revokeObjectURL = () => {}
-    ;(dom.window.document.getElementById('save-json') as HTMLButtonElement).click()
-    expect(Buffer.from(await saved!.arrayBuffer()).equals(Buffer.from(embedded(html)))).toBe(true)
+    expect((await savedBytes(dom)).equals(Buffer.from(embedded(html)))).toBe(true)
   })
 
   it('shows nothing from a note that is not the one it writes', async () => {

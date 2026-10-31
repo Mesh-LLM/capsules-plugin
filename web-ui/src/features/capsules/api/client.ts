@@ -68,10 +68,18 @@ export async function fetchDisclosurePreimage(capsuleId: string): Promise<Disclo
   }
 }
 
+export type ServedHistory = { replyText: string; outcome: 'answered' | 'refused'; form: 'history_card' | 'service_history' }
+
 /** What this node answers a stranger who asks for its history: the reply's
  *  bytes as text, unchanged, for the History page (`saved-pages.ts`). */
-export async function fetchServedHistory(): Promise<{ replyText: string; outcome: 'answered' | 'refused'; form: 'history_card' | 'service_history' }> {
-  const body = await getPluginJson<{ reply?: unknown; outcome?: unknown; node_key_id?: unknown; form?: unknown }>(PLUGIN_ROUTES.historyPage)
+export async function fetchServedHistory(): Promise<ServedHistory> {
+  return servedHistoryFrom(await getPluginJson<unknown>(PLUGIN_ROUTES.historyPage))
+}
+
+/** The `history-page` route's body as the History page takes it. Throws for
+ *  a body that is not a history, or a card signed under another key. */
+export function servedHistoryFrom(raw: unknown): ServedHistory {
+  const body = (isRecord(raw) ? raw : {}) as { reply?: unknown; outcome?: unknown; node_key_id?: unknown; form?: unknown }
   if (typeof body.reply !== 'string' || (body.outcome !== 'answered' && body.outcome !== 'refused')) {
     throw new Error('this node did not give its history')
   }
