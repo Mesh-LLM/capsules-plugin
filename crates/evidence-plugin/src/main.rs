@@ -726,6 +726,29 @@ async fn push_settlement_legs(
     }
 }
 
+/// The checkpoint coverage for a half about to be pushed to `peer_id`; none
+/// when the cadence is off or no coverage can be had, and the bare record
+/// goes (a half is never held back for want of a proof).
+async fn coverage_for_push(
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
+    capsule: &Value,
+    peer_id: &str,
+) -> Option<record_push_bridge::Coverage> {
+    let (Some(handle), Some(capsule_id)) = (
+        checkpoints,
+        capsule.get("capsule_id").and_then(Value::as_str),
+    ) else {
+        return None;
+    };
+    match handle.coverage_for(capsule_id).await {
+        Ok(coverage) => Some(coverage),
+        Err(error) => {
+            tracing::warn!(%error, %peer_id, "no checkpoint covering the pushed half -- pushing the bare record");
+            None
+        }
+    }
+}
+
 /// One settlement leg to its counterparty, as a chat half goes: in a bundle
 /// with its checkpoint coverage and this node's own controller binding, which
 /// only a bundle carries (Mesh-LLM/capsules-plugin#189). The binding goes to
@@ -737,19 +760,7 @@ async fn push_leg(
     self_id: &str,
     checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
 ) -> anyhow::Result<()> {
-    let coverage = match (
-        checkpoints,
-        push.capsule.get("capsule_id").and_then(Value::as_str),
-    ) {
-        (Some(handle), Some(capsule_id)) => match handle.coverage_for(capsule_id).await {
-            Ok(coverage) => Some(coverage),
-            Err(error) => {
-                tracing::warn!(%error, peer = %push.peer, "no checkpoint covering the settlement leg -- pushing the bare record");
-                None
-            }
-        },
-        _ => None,
-    };
+    let coverage = coverage_for_push(checkpoints, &push.capsule, &push.peer).await;
     record_push_bridge::push_capsule_to_peer(
         context,
         &push.peer,
@@ -801,19 +812,7 @@ async fn push_at_completion_if_configured(
     else {
         return;
     };
-    let coverage = match (
-        checkpoints,
-        capsule_json.get("capsule_id").and_then(Value::as_str),
-    ) {
-        (Some(handle), Some(capsule_id)) => match handle.coverage_for(capsule_id).await {
-            Ok(coverage) => Some(coverage),
-            Err(error) => {
-                tracing::warn!(%error, %peer_id, "no checkpoint covering the pushed half -- pushing the bare record");
-                None
-            }
-        },
-        _ => None,
-    };
+    let coverage = coverage_for_push(checkpoints, &capsule_json, peer_id).await;
     match record_push_bridge::push_capsule_to_peer(
         context,
         peer_id,
