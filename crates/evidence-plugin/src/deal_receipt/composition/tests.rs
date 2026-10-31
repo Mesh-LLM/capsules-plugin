@@ -416,6 +416,30 @@ fn a_pending_unknown_or_repeated_request_is_not_a_member() {
     assert!(matches!(node.seal(&[]), Err(ComposeError::NoMembers)));
 }
 
+/// The checkpoint cadence pads checkpoints by default. A padding record is
+/// not a Capsule, so the interval cannot be carried until
+/// agent-action-capsule#339 ships: the owner hears why, not a host error.
+#[test]
+fn an_interval_over_padding_is_refused_by_name() {
+    let node = node();
+    let records = vec![node.absent("n-1")];
+    let composition = node.sealed(&records);
+    node.state.pad_one().unwrap();
+    cut(&node.state);
+    let answer = answer(
+        node.state.ledger_dir(),
+        &node.key(),
+        &node.exchange,
+        Ok(composition),
+    )
+    .unwrap();
+    assert_eq!(answer["state"], "refused");
+    assert!(answer["why"]
+        .as_str()
+        .unwrap()
+        .contains("agent-action-capsule#339"));
+}
+
 #[test]
 fn a_verified_refusal_is_a_member_observed_by_the_peers_key() {
     let node = node();
