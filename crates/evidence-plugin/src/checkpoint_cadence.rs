@@ -26,8 +26,18 @@
 //! and the first push through cuts one checkpoint covering the whole burst.
 //! Push cuts are local only -- the interval tick offers the latest one to the
 //! witnesses, once per window (`CheckpointState::tick`).
+//!
+//! **A served half, sealed with its checkpoint.** An exchange half is sealed
+//! and its checkpoint cut under one hold of the ledger
+//! ([`CheckpointHandle::seal_and_cover`]), never paced: the ledger is padded
+//! ahead so the half ends on the padding bucket, and no other record lands
+//! before the cut, so the checkpoint ends at the half and an answer about it
+//! (`[half, tip]`) holds the half alone. The cost, accepted under
+//! capsules-plugin#202 option (A): this node's checkpoint list counts its
+//! exchange halves exactly. A checkpoint's time is only ever the minute it was
+//! cut, so the list does not time each exchange closer than that.
 
-use crate::capsule_emit::CapsuleState;
+use crate::capsule_emit::{CapsuleState, EmittedCapsule};
 use crate::producer::anchor::AnchorClient;
 use crate::producer::checkpoint::{
     CheckpointCadenceConfig, CheckpointRecord, CheckpointState, Coverage, PaddingSink,
@@ -287,6 +297,9 @@ pub struct CheckpointHandle {
     anchor: Arc<AnchorClient>,
     latest_head: LatestHead,
     last_push_cut: Arc<Mutex<Option<Instant>>>,
+    /// `checkpoint_pad_bucket`, as the state pads with: a served half is
+    /// padded ahead to it ([`Self::seal_and_cover`]).
+    pad_bucket: u64,
 }
 
 /// One pass of the pacing loop in [`CheckpointHandle::coverage_for`].
@@ -312,6 +325,7 @@ impl CheckpointHandle {
             anchor: Arc::new(anchor_for()),
             latest_head: LatestHead::default(),
             last_push_cut: Arc::new(Mutex::new(None)),
+            pad_bucket: CheckpointCadenceConfig::default().pad_bucket,
         }
     }
 
@@ -371,6 +385,74 @@ impl CheckpointHandle {
         *last_cut = Some(Instant::now());
         self.latest_head.set(coverage.checkpoint.clone());
         Ok(PushStep::Covered(Box::new(coverage)))
+    }
+
+    /// Seal one exchange half with `seal` and cut a checkpoint ending at it,
+    /// under one hold of the ledger (`CapsuleState::hold_appends`). The
+    /// ledger is padded first (`CapsuleState::pad_ahead_of`), so the half,
+    /// the last of the `records` records `seal` writes, ends on the padding
+    /// bucket and the cut adds nothing after it. No other record lands
+    /// before the cut either, so an answer about the half covers the half
+    /// alone: it never refuses for a neighbouring record, and holds no
+    /// padding (capsules-plugin#202). Should `records` be wrong, the cut pads
+    /// after the half as any cut does. Each served half gets its own
+    /// checkpoint, unpaced; its time is the minute it was cut, as every
+    /// checkpoint's is (`timestamp::utc_now_minute`).
+    ///
+    /// Blocking: call it off the async workers. Lock order is the checkpoint
+    /// state, then the ledger's append turn, as the cadence task's cuts take
+    /// them (their padding re-enters the turn on this thread). A failed cut
+    /// keeps the sealed half: it is returned with no coverage, and its push
+    /// asks for coverage as any record does.
+    ///
+    /// Waits for the checkpoint state like a push does: while the interval
+    /// tick holds it to offer a checkpoint to a configured witness (each
+    /// witness call times out after 10 s), the half waits too. Sealing it
+    /// without the state would let a neighbour land before its cut, so the
+    /// wait is kept; with no witness configured (the default) the tick holds
+    /// the state only for a local cut.
+    pub fn seal_and_cover(
+        &self,
+        capsules: &CapsuleState,
+        records: u64,
+        seal: impl FnOnce(&CapsuleState) -> anyhow::Result<EmittedCapsule>,
+    ) -> anyhow::Result<(EmittedCapsule, Option<Coverage>)> {
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        let _turn = capsules.hold_appends();
+        // Padding that fails never keeps the half from being sealed: the cut
+        // then pads after it instead.
+        if let Err(error) = capsules.pad_ahead_of(records, self.pad_bucket) {
+            tracing::warn!(%error, "padding ahead of a served half failed");
+        }
+        let emitted = seal(capsules)?;
+        match state.checkpoint_covering(&emitted.capsule_id, &self.signer, &self.anchor) {
+            // Not a push cut: the push window stays as pushes left it, so a
+            // stream of served halves never keeps a push waiting.
+            Ok(coverage) => {
+                self.latest_head.set(coverage.checkpoint.clone());
+                Ok((emitted, Some(coverage)))
+            }
+            Err(error) => {
+                tracing::warn!(%error, capsule_id = %emitted.capsule_id, "no checkpoint cut with the sealed half");
+                Ok((emitted, None))
+            }
+        }
+    }
+}
+
+/// Seal one exchange half, the last of the `records` records `seal` writes:
+/// with the checkpoint cadence on, under one hold with its own checkpoint
+/// ([`CheckpointHandle::seal_and_cover`]); with it off, as any record is
+/// sealed.
+pub fn seal_half(
+    checkpoints: Option<&CheckpointHandle>,
+    capsules: &CapsuleState,
+    records: u64,
+    seal: impl FnOnce(&CapsuleState) -> anyhow::Result<EmittedCapsule>,
+) -> anyhow::Result<EmittedCapsule> {
+    match checkpoints {
+        Some(handle) => Ok(handle.seal_and_cover(capsules, records, seal)?.0),
+        None => seal(capsules),
     }
 }
 
@@ -436,7 +518,8 @@ pub fn spawn(
         "checkpoint cadence task starting"
     );
 
-    let handle = CheckpointHandle::new(state, signer);
+    let mut handle = CheckpointHandle::new(state, signer);
+    handle.pad_bucket = pad_bucket;
     let task = handle.clone();
 
     tokio::spawn(async move {
@@ -826,6 +909,133 @@ mod tests {
         let again = handle.coverage_for(&a).await.unwrap();
         assert!(!again.cut_new);
         assert_eq!(checkpoint_lines(dir.path()), 2);
+    }
+
+    /// capsules-plugin#202: halves sealed with their checkpoints while other
+    /// threads keep sealing records and cutting checkpoints for them (taking
+    /// the locks from the cadence's side: the state, then padding through the
+    /// ledger). Each half's own checkpoint is the first to cover it and ends
+    /// at it, so `[half, tip]` is the half alone, and its time is a whole
+    /// minute.
+    #[test]
+    fn a_served_half_and_its_checkpoint_hold_no_neighbouring_record() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let dir = tempfile::tempdir().unwrap();
+        let capsules = Arc::new(CapsuleState::open(dir.path(), "node-under-test").unwrap());
+        let handle = CheckpointHandle::for_tests(capsules.clone(), "test-log");
+        let stop = Arc::new(AtomicBool::new(false));
+        let neighbours: Vec<_> = (0..2)
+            .map(|_| {
+                let (capsules, handle, stop) = (capsules.clone(), handle.clone(), stop.clone());
+                std::thread::spawn(move || {
+                    while !stop.load(Ordering::Relaxed) {
+                        let id = capsules
+                            .emit_for_exchange(&crate::capsule_emit::tests::sample_exchange(
+                                "someone-else",
+                            ))
+                            .unwrap()
+                            .capsule_id;
+                        handle.step(&id).unwrap();
+                    }
+                })
+            })
+            .collect();
+        let servers: Vec<_> = (0..4)
+            .map(|_| {
+                let (capsules, handle) = (capsules.clone(), handle.clone());
+                std::thread::spawn(move || {
+                    (0..5)
+                        .map(|_| {
+                            let (half, coverage) = handle
+                                .seal_and_cover(&capsules, 1, |c| {
+                                    c.emit_for_exchange(
+                                        &crate::capsule_emit::tests::sample_exchange("node-a"),
+                                    )
+                                })
+                                .unwrap();
+                            (
+                                half.capsule_id,
+                                coverage.expect("a checkpoint cut with the half"),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        let halves: Vec<_> = servers
+            .into_iter()
+            .flat_map(|t| t.join().unwrap())
+            .collect();
+        stop.store(true, Ordering::Relaxed);
+        for t in neighbours {
+            t.join().unwrap();
+        }
+
+        let ledger = capsules.ledger_dir();
+        let records: Vec<serde_json::Value> =
+            std::fs::read_to_string(ledger.join("capsules.jsonl"))
+                .unwrap()
+                .lines()
+                .map(|l| serde_json::from_str(l).unwrap())
+                .collect();
+        let checkpoints: Vec<CheckpointRecord> =
+            std::fs::read_to_string(ledger.join("checkpoints.jsonl"))
+                .unwrap()
+                .lines()
+                .map(|l| serde_json::from_str(l).unwrap())
+                .collect();
+        let neighbours = records
+            .iter()
+            .filter(|r| !crate::producer::padding::is_padding(r))
+            .count()
+            - halves.len();
+        assert!(neighbours > 0, "the neighbours wrote records meanwhile");
+        for (id, coverage) in &halves {
+            let at = coverage.leaf_index as usize;
+            assert_eq!(records[at]["capsule_id"], *id);
+            let first = checkpoints
+                .iter()
+                .find(|cp| leaf_count_of(cp) > at as u64)
+                .unwrap();
+            assert_eq!(first.mmr_size, coverage.checkpoint.mmr_size);
+            assert_eq!(
+                leaf_count_of(&coverage.checkpoint) as usize,
+                at + 1,
+                "the checkpoint ends at the half {id}: [half, tip] is the half alone"
+            );
+            assert!(crate::producer::timestamp::is_minute_granular(
+                &coverage.checkpoint.timestamp
+            ));
+        }
+    }
+
+    /// A cut that fails keeps the sealed half, returned with no coverage.
+    #[test]
+    fn a_failed_cut_keeps_the_sealed_half() {
+        struct Refuses;
+        impl PaddingSink for Refuses {
+            fn pad_to_bucket(&self, _bucket: u64) -> Result<u64, String> {
+                Err("refused".into())
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let capsules = CapsuleState::open(dir.path(), "node-under-test").unwrap();
+        let (mut state, _) = CheckpointState::load(
+            capsules.ledger_dir(),
+            "test-log",
+            CheckpointCadenceConfig::default(),
+        )
+        .unwrap();
+        state.set_padding_sink(Box::new(Refuses));
+        let handle = CheckpointHandle::new(state, capsules.signing_key().clone());
+        let (half, coverage) = handle
+            .seal_and_cover(&capsules, 1, |c| {
+                c.emit_for_exchange(&crate::capsule_emit::tests::sample_exchange("node-a"))
+            })
+            .unwrap();
+        assert!(coverage.is_none());
+        assert!(capsules.lookup(&half.capsule_id).unwrap().is_some());
+        assert_eq!(checkpoint_lines(capsules.ledger_dir()), 0);
     }
 
     #[test]

@@ -734,6 +734,7 @@ dependencies = [
  "libc",
  "mesh-llm-plugin",
  "p256",
+ "parking_lot",
  "prost",
  "reqwest",
  "rmcp",
