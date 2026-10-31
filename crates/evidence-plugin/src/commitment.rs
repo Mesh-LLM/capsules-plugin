@@ -69,15 +69,19 @@ pub const ANSWERS_WITHIN: &str = "PT1M";
 
 /// The derivations this node answers, each as an ask names it:
 /// `checkpoints` (the subject, which needs none), the registered tokens, and
-/// `exchange_corroboration/1` by the digest of its definition document, its
-/// name on the wire. A counterparty is answered each of them under every
-/// setting; who else gets one is the policy's to say.
-pub const DERIVATIONS: [&str; 4] = [
-    "checkpoints",
-    evidence_request::registry::DERIVATION_HISTORY_CARD,
-    evidencebook::served_summary::DERIVATION,
-    crate::exchange_corroboration::DEFINITION_DIGEST,
-];
+/// `exchange_corroboration/1` and `service_history/1` by the digest of each
+/// one's definition document, its name on the wire. Service History's is the
+/// definition this node serves (`service_history::definition_digest`), so it
+/// is read once at run time. A counterparty is answered each of them under
+/// every setting; who else gets one is the policy's to say.
+pub static DERIVATIONS: std::sync::LazyLock<[&str; 4]> = std::sync::LazyLock::new(|| {
+    [
+        "checkpoints",
+        evidence_request::registry::DERIVATION_HISTORY_CARD,
+        crate::exchange_corroboration::DEFINITION_DIGEST,
+        crate::service_history::definition_digest(),
+    ]
+});
 
 /// Answered to anyone, signed or not (PRD R-8).
 pub const STRANGER_SAFE: [&str; 2] = ["checkpoints", "history_card/1"];
@@ -332,7 +336,7 @@ pub fn build(
         "spki": b64(&spki(&key.verifying_key())),
         "issued_at": responder.now,
         "ask": {"endpoint": format!("mesh:{node_id}"), "bindings": [ASK_BINDING]},
-        "answers": {"subjects": policy.subjects(), "derivations": DERIVATIONS},
+        "answers": {"subjects": policy.subjects(), "derivations": *DERIVATIONS},
         "lcap": {
             "policy_digest": sha(&policy_bytes),
             "policy_uri": format!("policies/{node_id}.json"),

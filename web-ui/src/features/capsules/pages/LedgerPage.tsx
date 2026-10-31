@@ -433,7 +433,7 @@ function ExchangesSection({
   // suffix there) — this one's queryFn branches on harness mode, and a
   // shared key with a non-branching queryFn would race for cache ownership.
   const paneAQuery = useQuery({
-    queryKey: ['ledger', 'pane-a', 'served-summary', mode],
+    queryKey: ['ledger', 'pane-a', 'harness-aware', mode],
     queryFn: () => (harnessMode ? Promise.resolve(HARNESS_PANE_A_PAYLOAD) : fetchPaneA()),
     refetchInterval: 15_000,
     retry: false

@@ -106,9 +106,10 @@ A node that serves Service History serves no `standard_history/1` card under its
 item 8): that card counts over a window ending at any anchor, with no floor, so two of its cards at
 consecutive checkpoints could be subtracted to isolate one exchange these weeks protect. This node
 refuses a request naming `standard_history/1` `derivation_unsupported` (`policy_declined` to a
-requester it does not answer Standard History), and its commitment does not list it. The bound
-covers only Service History's answers: `served_summary/1` is a separate answer, and whether it stays is
-tracked in Mesh-LLM/capsules-plugin#106.
+requester it does not answer Standard History), and its commitment does not list it. For the same
+reason it no longer answers `served_summary/1` (Mesh-LLM/capsules-plugin#106): that summary, less
+the published weekly cells, would give the sum of a model's withheld weeks, and so one withheld
+week's count. It is refused as `standard_history/1` is, and not listed.
 
 ## Checking a Service History
 

@@ -63,11 +63,7 @@ const CLEAN_PEER_ROW: PaneBRow = {
     fetch_source: 'peer_evidence_client',
     history_summary: { verified_bundles: 5, checkpoint_count: 41 }
   },
-  served: {
-    state: 'NOT_CHECKED',
-    text: "this node cannot fetch the peer's OWN served summary yet",
-    source: 'self_derived'
-  },
+  served: { state: 'NOT_CHECKED' },
   pair: {
     state: 'verified',
     text: '16 pair(s) reconciled, 0 missing',
@@ -140,11 +136,7 @@ const ALARMED_PEER_ROW: PaneBRow = {
       witnessed: { state: 'absent', text: 'not witnessed', witnesses: [] }
     }
   },
-  served: {
-    state: 'NOT_CHECKED',
-    text: "this node cannot fetch the peer's OWN served summary yet",
-    source: 'self_derived'
-  },
+  served: { state: 'NOT_CHECKED' },
   pair: {
     state: 'failed',
     text: '1 pair(s) digest-mismatched, 9 reconciled',

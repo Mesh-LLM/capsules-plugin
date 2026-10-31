@@ -31,10 +31,11 @@ signed, chained, checkpointed record and answers
 - the only requester identity on the evidence path is the request's own
   `requester_id`, which SHARING-POLICY calls "a scope filter against casual
   reads, not access control";
-- the record-free answers (checkpoint list, `history_card/1`,
-  `served_summary/1`) are answered under every sharing tier, including `off`,
-  so a node discloses cadence, model use and volume to anyone who asks
-  (SHARING-POLICY, "Reading records back");
+- the record-free answers (checkpoint list, `history_card/1`, and
+  `served_summary/1` until it was retired, Mesh-LLM/capsules-plugin#106) were
+  answered under every sharing tier, including `off`, so a node disclosed
+  cadence, model use and volume to anyone who asked (SHARING-POLICY,
+  "Reading records back");
 - a node's weights digest is a claim copied from the host, not measured by the
   plugin (VERIFICATION-CHAIN, "What the whole chain still does not prove"), so
   two nodes can claim the same weights and answer the same temperature-0
@@ -58,10 +59,11 @@ Each member is separately declared and separately verifiable:
 
 - the embedded `history_card/1` artifact, byte-identical to what the responder
   serves for that subject and anchor;
-- optionally `served_summary/1` (**built**: per-model served counts and latency
-  over the checkpointed range, "fewer than 5" below a floor of 5,
-  evidencebook's `served_summary` fold under this plugin's labels,
-  `crates/evidence-plugin/src/evidence_artifact.rs`; not in -00's registry);
+- optionally `served_summary/1` (**retired**: per-model served counts and
+  latency over the checkpointed range, built as evidencebook's
+  `served_summary` fold and no longer answered once `service_history/1`
+  shipped, since the summary less the weekly cells gives a withheld week's
+  count, Mesh-LLM/capsules-plugin#106; not in -00's registry);
 - witness receipt status;
 - peer-confirmed exchange halves;
 - referee verdicts;
@@ -133,18 +135,23 @@ network: payment legs record observations, they do not move money.
 
 ### 5.2 Privacy defaults and disclosure classes
 
-Today the checkpoint list, `history_card/1` and `served_summary/1` are
-answered under every `share_history_segments` value, including `off`
-(SHARING-POLICY; parity cases in `evidence_request_parity.rs`). They
-carry no record bodies, but they are not harmless:
+When this document was drafted, the checkpoint list, `history_card/1` and
+`served_summary/1` were answered under every `share_history_segments` value,
+including `off` (SHARING-POLICY; parity cases in
+`evidence_request_parity.rs`). They carry no record bodies, but they are not
+harmless:
 
 - checkpoint `log_size` and `issued_at` over time give the node's **cadence
   and volume**;
-- `served_summary/1` gives **model-use patterns** per model;
-- the floor of 5 in `served_summary/1` protects a single answer, not a
+- `served_summary/1` gave **model-use patterns** per model;
+- the floor of 5 in `served_summary/1` protected a single answer, not a
   sequence of answers: two summaries over overlapping ranges (for example the
-  range at checkpoint *n* and at *n + 1*) can be subtracted, and the
-  difference can be a single exchange's model and latency.
+  range at checkpoint *n* and at *n + 1*) could be subtracted, and the
+  difference could be a single exchange's model and latency.
+
+That differencing is why `served_summary/1` is retired
+(Mesh-LLM/capsules-plugin#106): beside the weekly `service_history/1` cells,
+the summary less those cells would give a withheld week's count.
 
 Draft -00's own Privacy section notes that history cards leak cadence and
 volume. This document therefore replaces "answered under every tier" with four
@@ -153,7 +160,7 @@ separate operator settings. Each is its own switch; none implies another.
 | Setting (working names) | What it governs | Default |
 | --- | --- | --- |
 | `advertise_evidence_requests` | Whether the node advertises that it answers evidence requests at all (mesh capability, A2A Agent Card extension) | **off**: operator opt-in |
-| `share_standard_history` | The rest of Standard Service History (`served_summary/1` and other derivations but `exchange_corroboration/1`, which has its own setting) to a requester with no prior exchange with this node; checkpoints and `history_card/1` are stranger-safe (R-8) | **off** until the operator enables it |
+| `share_standard_history` | The rest of Standard Service History (`service_history/1` and other derivations but `exchange_corroboration/1`, which has its own setting) to a requester with no prior exchange with this node; checkpoints and `history_card/1` are stranger-safe (R-8) | **off** until the operator enables it |
 | Protected exchange records (§5.3) | Any subject carrying record bodies | Authenticated **and** authorized requesters only; never on a stated id alone |
 | `public_summary_policy` | A broad, public-safe summary any requester may read | **none**; only under an explicit policy with bounded periods and anti-differencing controls (R-9) |
 
@@ -177,7 +184,7 @@ policy, and every evidence refusal names the digest it was refused under
   checkpoint cadence on, each push cuts a checkpoint, so a checkpoint's time
   can be one exchange's end time. With `share_standard_history` off, a
   requester that is not an authenticated counterparty of this node receives
-  a signed `policy_declined` for `served_summary/1` and every other
+  a signed `policy_declined` for `service_history/1` and every other
   derivation (`exchange_corroboration/1` has its own setting), uniformly
   (the same answer for every such requester, so the refusal itself
   discloses nothing per asker).
@@ -478,7 +485,7 @@ interoperability (M1–M5).
   and anchor, and a requester that knows only -00 can verify it.
 - **T7 — Privacy defaults.** On a node with default settings: no evidence
   capability is advertised; checkpoints and `history_card/1` are answered
-  to a non-counterparty, signed or not; `served_summary/1` to a
+  to a non-counterparty, signed or not; `service_history/1` to a
   non-counterparty is refused `policy_declined`, identically for every such
   asker. With a public summary policy on: a request for a non-aligned or
   overlapping interval is refused, and the summaries for two adjacent
@@ -533,8 +540,9 @@ interoperability (M1–M5).
    complementary suppression for R-9; whether to drop latency figures from
    public summaries entirely.
 5. **Name and registration** of the Service History projection, and whether
-   `served_summary/1` is registered in a -01 derivation registry (it is served
-   today but not in -00's IANA table).
+   `served_summary/1` is registered in a -01 derivation registry (it was
+   served, though not in -00's IANA table, until Mesh-LLM/capsules-plugin#106
+   retired it).
 6. **Wire encoding** of `evidence-request/1`: plugin-internal JSON vs -00's
    deterministic CBOR peer binding under the same identifier (R-23).
 7. **Minimal-disclosure corroboration.** A derivation returning only a half's

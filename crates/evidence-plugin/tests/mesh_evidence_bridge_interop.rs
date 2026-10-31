@@ -29,6 +29,19 @@ const PLUGIN_BIN: &str = env!("CARGO_BIN_EXE_capsules");
 const TEST_TIMEOUT: Duration = Duration::from_secs(10);
 const EVIDENCE_REQUEST_CHANNEL: &str = "evidence-request/1";
 
+/// `service_history/1`'s name on the wire: the SHA-256 of the RFC 8785
+/// bytes of `derivations/service-history-1.json`, computed here so a
+/// changed definition cannot leave a stale name behind (the policy gate
+/// refuses a stranger before it looks the derivation up).
+fn service_history_digest() -> String {
+    use sha2::Digest as _;
+    let document: serde_json::Value =
+        serde_json::from_str(include_str!("../../../derivations/service-history-1.json"))
+            .expect("the definition file is JSON");
+    let text = evidence_request::jcs::to_string(&document).expect("canonicalizable");
+    hex::encode(sha2::Sha256::digest(text.as_bytes()))
+}
+
 struct Harness {
     child: tokio::process::Child,
     stream: LocalStream,
@@ -368,8 +381,8 @@ async fn responder_answers_an_evidence_request_in_process() {
 }
 
 /// PRD T7, the default half, on the plugin binary: with the default
-/// settings, two nodes this one never exchanged with ask for its served
-/// summary and each gets a signed `policy_declined` (on a fresh node, so it
+/// settings, two nodes this one never exchanged with ask for its Service
+/// History and each gets a signed `policy_declined` (on a fresh node, so it
 /// comes before coverage, which would refuse `coverage_unsatisfiable`).
 /// Checkpoints and `history_card/1` are stranger-safe and not refused so. Each
 /// carries exactly the -00 refusal's members, none naming the asker, and the
@@ -384,7 +397,7 @@ async fn standard_history_is_one_signed_refusal_to_every_non_counterparty_by_def
         let request = serde_json::json!({
             "subject": {"full_history": null},
             "coverage": {"min_freshness": 1},
-            "derivation": "served_summary/1",
+            "derivation": service_history_digest(),
             "requester_id": asker,
         })
         .to_string();

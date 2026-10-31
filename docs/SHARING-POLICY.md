@@ -213,7 +213,7 @@ node it was proven to come from (or `unbound`), the audience it named, and
 `replay`: `checked`, or `unchecked` when a key no host announced found the
 pool full.
 
-The checkpoint list, the `history_card/1` derivation and the `served_summary/1`
+The checkpoint list, the `history_card/1` derivation and the `service_history/1`
 derivation carry no record bodies: `share_history_segments` does not govern
 them. The checkpoint list and `history_card/1` go to anyone, and
 `share_standard_history` governs the rest (below). The cases and their
@@ -224,7 +224,7 @@ expected answers are in the plugin's evidence-request parity run
 
 Off by default. Standard History is what an evidence request can get that
 carries no record bodies: the checkpoint list, `history_card/1` and
-`served_summary/1` (and any other derivation but `exchange_corroboration/1`,
+`service_history/1` (and any other derivation but `exchange_corroboration/1`,
 below).
 
 **The checkpoint list and `history_card/1` go to anyone who asks**, whatever
@@ -239,11 +239,14 @@ on and the checkpoint cadence on (the default), each push cuts a checkpoint
 (at most one per 100 ms), so a checkpoint's time can be the time one exchange
 ended.
 
-The rest (`served_summary/1`, the Service History `service_history/1`
+The rest (the Service History `service_history/1`
 ([SERVICE-HISTORY.md](SERVICE-HISTORY.md)) and any other derivation) shows
 what this node serves, so with this switch off it goes only to a
 counterparty: a node that some record of this node names as the other side
-of an exchange. Any other node is refused `policy_declined`.
+of an exchange. Any other node is refused `policy_declined`. This node no
+longer answers `served_summary/1` (Mesh-LLM/capsules-plugin#106): a
+counterparty, and with this switch on anyone, is refused it
+`derivation_unsupported`, as any derivation this node does not serve.
 
 The refusal carries nothing about who asked. It is decided before the subject
 is resolved, so it is the same whether or not what was asked for exists, and
@@ -393,8 +396,8 @@ change with it.
   from the switches it is answering under; nobody writes it down.
 - **What else the commitment says.** The ask goes to `mesh:<node_id>` over
   this plugin's evidence-request channel. The node answers `checkpoints`,
-  `history_card/1`, `served_summary/1` and `exchange_corroboration/1` (by
-  its definition digest), each to a counterparty under every setting; the
+  `history_card/1`, and `exchange_corroboration/1` and `service_history/1`
+  (each by its definition digest), each to a counterparty under every setting; the
   policy says who else gets them. It answers the subjects `checkpoints` and
   `full_history` (`full_history` only through a derivation), plus `record`,
   `exchange` and `correlation` unless `share_history_segments` is `off`.
