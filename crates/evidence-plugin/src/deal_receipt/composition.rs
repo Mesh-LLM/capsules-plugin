@@ -60,6 +60,35 @@ pub const COMPOSITION_TYPE: &str = "deal_composition";
 pub const COMPOSED_KIND: &str = "composed/v1";
 /// Every observer's role: each is a party to the deal.
 const OBSERVER_ROLE: &str = "party";
+/// The members of a refusal the composition carries: those its signature
+/// covers, and the signature (evidence-request's JSON binding). Anything else
+/// the peer put beside them, signed by nothing, stays out of the owner's file
+/// and of the composed digest (Sherlock2, #207).
+const REFUSAL_MEMBERS: [&str; 5] = ["issued_at", "reason", "request_digest", "key_id", "sig"];
+/// The members of an evidence-interop envelope the member's `response`
+/// carries: the signed members, the signature and the verification items
+/// whose digests it signs (`Envelope::encode`), without the artifact.
+const ENVELOPE_MEMBERS: [&str; 11] = [
+    "profile",
+    "request_digest",
+    "subject",
+    "derivation",
+    "anchor",
+    "artifact_digest",
+    "verification",
+    "responder",
+    "issued_at",
+    "sig",
+    "verification_content",
+];
+
+/// `object`'s members named in `names`, as they came.
+fn only(object: Map<String, Value>, names: &[&str]) -> Map<String, Value> {
+    object
+        .into_iter()
+        .filter(|(k, _)| names.contains(&k.as_str()))
+        .collect()
+}
 
 /// Whether a ledger record is a composition record.
 pub fn is_composition(record: &Value) -> bool {
@@ -73,9 +102,6 @@ pub(crate) enum MemberRefusal {
     NotARequest(String),
     /// Recorded, with no outcome yet: a pending request is not a member.
     Pending(String),
-    /// Answered with an artifact that is not an Evidence Bundle: only an
-    /// `evidence_bundle/1` answer is a member.
-    Answered(String),
     /// The bundle answer does not bind as D4 needs: its digest, or its
     /// checkpoint key, is not what the response signs.
     Unbound(String, String),
@@ -90,6 +116,8 @@ pub(crate) enum MemberRefusal {
     Inconsistent(String),
     /// The request was not asked of the node that served the exchange.
     NotTheProvider(String),
+    /// The request was not an ask for the provider's half of the exchange.
+    NotTheHalf(String),
     /// The absence states no window.
     NoWindow(String),
     /// Named twice.
@@ -107,10 +135,6 @@ impl MemberRefusal {
                     "request {id} has no recorded outcome yet: a pending request is not a member"
                 )
             }
-            MemberRefusal::Answered(id) => format!(
-                "request {id} was answered with an artifact that is not an Evidence Bundle; ask \
-                 for the half with the evidence_bundle/1 derivation"
-            ),
             MemberRefusal::Unbound(id, why) => {
                 format!("the bundle answering request {id} does not bind: {why}")
             }
@@ -130,6 +154,10 @@ impl MemberRefusal {
             MemberRefusal::NotTheProvider(id) => {
                 format!("request {id} was not asked of the node that served this exchange")
             }
+            MemberRefusal::NotTheHalf(id) => format!(
+                "request {id} did not ask for the provider's half of this exchange (an \
+                 evidence_bundle/1 request for that record)"
+            ),
             MemberRefusal::NoWindow(id) => {
                 format!("the absence recorded for request {id} states no window")
             }
@@ -231,6 +259,7 @@ pub(crate) fn member(
     entries: &[(String, Map<String, Value>)],
     own: &str,
     provider: &str,
+    half: Option<&str>,
     request_record: &str,
 ) -> Result<Value, ComposeError> {
     let record_type = |e: &Map<String, Value>| {
@@ -253,6 +282,17 @@ pub(crate) fn member(
     let request = asked
         .get("request")
         .ok_or_else(|| MemberRefusal::NotARequest(request_record.into()))?;
+    // An ask for the provider's half (#197): an `evidence_bundle/1` request
+    // for a record, the half the exchange record names when it names one
+    // (`serving_provenance.peer_capsule_id`, the provider's own assertion).
+    let subject = request.pointer("/subject/record").and_then(Value::as_str);
+    let for_the_half = request.get("derivation").and_then(Value::as_str)
+        == Some(crate::bundle_answer::TOKEN)
+        && subject.is_some()
+        && half.is_none_or(|h| subject == Some(h));
+    if !for_the_half {
+        return Err(MemberRefusal::NotTheHalf(request_record.into()).into());
+    }
     // The digest of the bytes on the wire: the record holds the request as
     // transmitted, which went as its JCS bytes (`ask_book::check_request`).
     let request_digest = evidence_request::jcs::to_string(request)
@@ -275,7 +315,6 @@ pub(crate) fn member(
         return answer_member(
             ledger_dir,
             own,
-            request,
             request_record,
             &request_digest,
             outcome_id,
@@ -307,14 +346,13 @@ pub(crate) fn member(
 /// back (the kept reply, #198). Only a reply this node verified under the
 /// key the peer announced is a member, observed by that key: a refusal
 /// (`verification.state` `refusal`), or an `evidence_bundle/1` answer
-/// (`artifact`, #197). Anything else, such as a nonconformant refusal, an
-/// unchecked reply or another artifact form, is refused by name rather
+/// (`artifact`, #197). Anything else, such as a nonconformant refusal or an
+/// unchecked reply, is refused by name rather
 /// than carried as theirs, as `capsulectl-deal` refuses a copy it recorded
 /// as failed.
 fn answer_member(
     ledger_dir: &Path,
     own: &str,
-    request: &Value,
     request_record: &str,
     request_digest: &str,
     response_record: &str,
@@ -337,11 +375,6 @@ fn answer_member(
             return Err(MemberRefusal::NotVerified(request_record.into(), what).into());
         }
     };
-    if !refused
-        && request.get("derivation").and_then(Value::as_str) != Some(crate::bundle_answer::TOKEN)
-    {
-        return Err(MemberRefusal::Answered(request_record.into()).into());
-    }
     let reply = crate::ask_book::kept_reply_of(ledger_dir, response_record, response)
         .map_err(|e| MemberRefusal::ReplyNotKept(request_record.into(), e.to_string()))?;
     let reply: Value = serde_json::from_slice(&reply).map_err(|e| {
@@ -370,19 +403,22 @@ fn artifact_member(
 ) -> Result<Value, ComposeError> {
     use base64::Engine as _;
     let unbound = |why: &str| MemberRefusal::Unbound(request_record.into(), why.into());
-    let Value::Object(mut response) = reply else {
+    let Value::Object(reply) = reply else {
         return Err(unbound("the reply is not an envelope").into());
     };
-    let artifact = response
-        .remove("artifact")
-        .and_then(|a| a.as_str().map(str::to_string))
+    let artifact = reply
+        .get("artifact")
+        .and_then(Value::as_str)
         .and_then(|a| {
             base64::engine::general_purpose::URL_SAFE_NO_PAD
                 .decode(a)
                 .ok()
         })
         .ok_or_else(|| unbound("the envelope carries no artifact"))?;
-    response.remove(crate::evidence_artifact::WITNESS_RECEIPTS);
+    // The envelope as received, minus its artifact: its signed members, its
+    // signature and its verification items, and nothing a peer added beside
+    // them (the witness receipts, or any other unsigned member).
+    let response = only(reply, &ENVELOPE_MEMBERS);
     let bundle: Value =
         serde_json::from_slice(&artifact).map_err(|_| unbound("the artifact is not a bundle"))?;
     let digest = agent_action_capsule::bundle::bundle_digest(&bundle)
@@ -416,14 +452,21 @@ fn artifact_member(
     }))
 }
 
-/// The `refusal` member: the signed refusal exactly as it came back,
-/// observed by its key.
+/// The `refusal` member: the signed refusal as it came back, its signed
+/// members and signature only, verified again as carried and observed by
+/// its key.
 fn refusal_member(
     own: &str,
     request_record: &str,
     request_digest: &str,
     refusal: Value,
 ) -> Result<Value, ComposeError> {
+    let Value::Object(refusal) = refusal else {
+        return Err(
+            MemberRefusal::NotVerified(request_record.into(), "not a refusal".into()).into(),
+        );
+    };
+    let refusal = Value::Object(only(refusal, &REFUSAL_MEMBERS));
     if refusal.get("request_digest").and_then(Value::as_str) != Some(request_digest) {
         return Err(MemberRefusal::Inconsistent(request_record.into()).into());
     }
@@ -436,6 +479,18 @@ fn refusal_member(
         })?;
     if key == own {
         return Err(MemberRefusal::OwnKey(request_record.into()).into());
+    }
+    // Checked again as carried: signed under its own key, for this request.
+    let verifying = hex::decode(key)
+        .ok()
+        .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
+        .and_then(|b| ed25519_dalek::VerifyingKey::from_bytes(&b).ok());
+    let verified = verifying.is_some_and(|k| {
+        evidence_request::refusal::verify_for(&refusal, &k, request_digest).is_ok()
+    });
+    if !verified {
+        let why = "its signature does not verify as carried".to_string();
+        return Err(MemberRefusal::NotVerified(request_record.into(), why).into());
     }
     Ok(json!({
         "id": request_record,
@@ -453,6 +508,7 @@ pub(crate) fn block(
     ledger_dir: &Path,
     own: &str,
     provider: &str,
+    half: Option<&str>,
     request_records: &[String],
 ) -> Result<Value, ComposeError> {
     if request_records.is_empty() {
@@ -464,7 +520,7 @@ pub(crate) fn block(
         if request_records[..i].contains(id) {
             return Err(MemberRefusal::Duplicate(id.clone()).into());
         }
-        members.push(member(ledger_dir, &entries, own, provider, id)?);
+        members.push(member(ledger_dir, &entries, own, provider, half, id)?);
     }
     members.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
     // One observer per key, its custody domain the same key (D4). A deal has
@@ -489,6 +545,21 @@ pub(crate) fn block(
         "joins": [],
         "composed_digest": digest,
     }))
+}
+
+/// The provider's half, as the exchange record names it: the capsule id the
+/// provider asserted (`peer_asserted`), or `None` when it names none.
+fn provider_half(capsules: &crate::capsule_emit::CapsuleState, exchange: &str) -> Option<String> {
+    let record = capsules.lookup(exchange).ok()??.capsule;
+    let sp = record
+        .pointer("/model_attestation/compute_attestation/x-mesh-poc-v1/serving_provenance")?;
+    if sp.get("peer_capsule_id_provenance").and_then(Value::as_str) != Some("peer_asserted") {
+        return None;
+    }
+    sp.get("peer_capsule_id")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .map(str::to_string)
 }
 
 /// The composition payload, as `capsulectl-deal` seals it, in JCS.
@@ -627,7 +698,8 @@ pub(crate) fn seal(
         .ok_or(ComposeError::NoProvider)?;
     let mut records = request_records.to_vec();
     records.sort_unstable();
-    let block = block(ledger_dir, &own, &provider, &records)?;
+    let half = provider_half(capsules, exchange);
+    let block = block(ledger_dir, &own, &provider, half.as_deref(), &records)?;
     let digest = block["composed_digest"]
         .as_str()
         .unwrap_or_default()

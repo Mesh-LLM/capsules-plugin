@@ -9,11 +9,16 @@ const LATER: &str = "2026-10-29T12:02:00Z";
 /// The node that served the exchange, as the deal recorded it.
 const PEER: &str = crate::deal_receipt::tests::PEER;
 
+/// The provider's half the payer asks for (test data: the fixture's exchange
+/// record names none, so any record is the ask for it).
+const THEIR_HALF: &str = "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3";
+
+/// The payer's ask for the provider's half as an Evidence Bundle (#197).
 fn request(nonce: &str) -> Value {
     json!({
-        "subject": {"full_history": null},
+        "subject": {"record": THEIR_HALF},
         "coverage": {"min_freshness": 1},
-        "derivation": "history_card/1",
+        "derivation": crate::bundle_answer::TOKEN,
         "audience": PEER,
         "nonce": nonce,
     })
@@ -679,10 +684,36 @@ fn a_bundle_answer_that_does_not_bind_is_not_a_member() {
     // bind it.
     wire["artifact_digest"] = json!("0".repeat(64));
     let id = node.answered_with_request(&provider, "n-1", &wire);
-    assert!(matches!(
-        node.seal(&[id]),
-        Err(ComposeError::Member(MemberRefusal::Unbound(..)))
-    ));
+    let unbound = |id: String, why: &str| match node.seal(&[id]) {
+        Err(ComposeError::Member(MemberRefusal::Unbound(_, got))) => {
+            assert!(got.contains(why), "{got}")
+        }
+        other => panic!("{other:?}"),
+    };
+    unbound(id, "artifact_digest");
+
+    // No responder to observe it.
+    let (_, mut wire) = provider.asked("n-2");
+    wire.as_object_mut().unwrap().remove("responder");
+    unbound(
+        node.answered_with_request(&provider, "n-2", &wire),
+        "names no responder",
+    );
+
+    // A bundle whose checkpoint names another key than the responder, with
+    // the artifact and its digest made consistent, so only that check fails.
+    use base64::Engine as _;
+    let b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    let (_, mut wire) = provider.asked("n-3");
+    let mut bundle: Value =
+        serde_json::from_slice(&b64.decode(wire["artifact"].as_str().unwrap()).unwrap()).unwrap();
+    bundle["checkpoint"]["key_id"] = json!("8".repeat(64));
+    wire["artifact"] = json!(b64.encode(agent_action_capsule::canonical::jcs(&bundle).unwrap()));
+    wire["artifact_digest"] = json!(agent_action_capsule::bundle::bundle_digest(&bundle).unwrap());
+    unbound(
+        node.answered_with_request(&provider, "n-3", &wire),
+        "not signed by the responder",
+    );
 }
 
 #[test]
@@ -709,7 +740,7 @@ fn an_answer_not_verified_as_their_refusal_is_not_a_member() {
         json!({"state": "not_evidence", "why": "bad signature"}),
     );
     assert!(matches!(refusal_of(&[bad]), MemberRefusal::NotVerified(..)));
-    // An artifact of another form than an Evidence Bundle.
+    // An artifact that is no bundle.
     let artifact = node.answered(
         "n-3",
         &json!({"artifact": "00", "request_digest": request_digest("n-3")}),
@@ -717,7 +748,28 @@ fn an_answer_not_verified_as_their_refusal_is_not_a_member() {
     );
     assert!(matches!(
         refusal_of(&[artifact]),
-        MemberRefusal::Answered(_)
+        MemberRefusal::Unbound(..)
+    ));
+    // An ask for something else than their half: their history.
+    let mut history = request("n-7");
+    history["subject"] = json!({"full_history": null});
+    history["derivation"] = json!("history_card/1");
+    let other = crate::ask_book::record_request(&node.state, &history, PEER, None, ASKED_AT)
+        .unwrap()
+        .record_id;
+    crate::ask_book::record_absence(&node.state, &other, CLOSES, LATER).unwrap();
+    assert!(matches!(refusal_of(&[other]), MemberRefusal::NotTheHalf(_)));
+    // A refusal whose carried reason is not what was signed.
+    let mut altered = signed_refusal("n-8");
+    altered["reason"] = json!("policy_declined");
+    let altered = node.answered(
+        "n-8",
+        &altered,
+        json!({"state": "refusal", "reason": "not_authorized"}),
+    );
+    assert!(matches!(
+        refusal_of(&[altered]),
+        MemberRefusal::NotVerified(..)
     ));
     // Signed under this node's own key.
     let own = node.answered(
@@ -796,13 +848,112 @@ fn a_deal_that_no_longer_names_its_provider_composes_nothing() {
     ));
 }
 
+/// What a peer adds beside the signed members, signed by nothing, stays out
+/// of the owner's file (Sherlock2, #207).
+#[test]
+fn unsigned_members_a_peer_adds_are_not_carried() {
+    let node = node();
+    let mut refusal = signed_refusal("n-1");
+    refusal["detail"] = json!("anything the peer likes");
+    refusal["policy_digest"] = json!("9".repeat(64));
+    let refused = node.answered(
+        "n-1",
+        &refusal,
+        json!({"state": "refusal", "reason": "not_authorized"}),
+    );
+    let provider = Provider::new();
+    let (_, mut wire) = provider.asked("n-2");
+    wire["note"] = json!("unsigned");
+    wire[crate::evidence_artifact::WITNESS_RECEIPTS] = json!([{"checkpoint": "x", "witness": {}}]);
+    let answered = node.answered_with_request(&provider, "n-2", &wire);
+    // One peer per composition: the refusal's, then the provider's.
+    let member_of = |id: &String| {
+        let bundle = node.compose(std::slice::from_ref(id));
+        bundle["extensions"][COMPOSED_KIND]["members"][0].clone()
+    };
+    assert_eq!(member_of(&refused)["refusal"], signed_refusal("n-1"));
+    let answered = member_of(&answered);
+    let response = answered["response"].as_object().unwrap();
+    let mut keys: Vec<&str> = response.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    let mut want: Vec<&str> = wire
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .filter(|k| {
+            ![
+                "artifact",
+                "note",
+                crate::evidence_artifact::WITNESS_RECEIPTS,
+            ]
+            .contains(k)
+        })
+        .collect();
+    want.sort_unstable();
+    assert_eq!(keys, want);
+}
+
+#[test]
+fn a_bundle_answer_from_this_node_or_of_another_request_is_not_a_member() {
+    let node = node();
+    let provider = Provider::new();
+    let (_, mut wire) = provider.asked("n-1");
+    wire["responder"] = json!(node.key());
+    let own = node.answered_with_request(&provider, "n-1", &wire);
+    assert!(matches!(
+        node.seal(&[own]),
+        Err(ComposeError::Member(MemberRefusal::OwnKey(_)))
+    ));
+    let (_, mut wire) = provider.asked("n-2");
+    wire["request_digest"] = json!("7".repeat(64));
+    let other = node.answered_with_request(&provider, "n-2", &wire);
+    assert!(matches!(
+        node.seal(&[other]),
+        Err(ComposeError::Member(MemberRefusal::Inconsistent(_)))
+    ));
+}
+
+#[test]
+fn an_ask_for_another_record_than_the_half_the_exchange_names_is_not_a_member() {
+    let digest = request_digest("n-1");
+    let header = |v: Value| v.as_object().unwrap().clone();
+    let entries = vec![(
+        "a".repeat(64),
+        header(
+            json!({"record_type": "evidence_request", "statement": {"request": request("n-1"), "responder_ref": PEER}}),
+        ),
+    )];
+    let _ = digest;
+    assert!(matches!(
+        member(
+            Path::new("/nonexistent"),
+            &entries,
+            &"f".repeat(64),
+            PEER,
+            Some(&"d".repeat(64)),
+            &"a".repeat(64)
+        ),
+        Err(ComposeError::Member(MemberRefusal::NotTheHalf(_)))
+    ));
+}
+
 #[test]
 fn refusals_from_two_peers_are_not_one_deal() {
     let node = node();
     let (a, _) = node.refused("n-1");
+    let other = ed25519_dalek::SigningKey::from_bytes(&[8; 32]);
+    let refusal = evidence_request::refusal::sign(
+        &request_digest("n-2"),
+        evidence_request::registry::Reason::NotAuthorized,
+        LATER,
+        &other,
+    )
+    .unwrap()
+    .to_json();
     let b = node.answered(
         "n-2",
-        &refusal("n-2", &"8".repeat(64)),
+        &refusal,
         json!({"state": "refusal", "reason": "not_authorized"}),
     );
     assert!(matches!(node.seal(&[a, b]), Err(ComposeError::TwoParties)));
@@ -927,6 +1078,7 @@ fn an_absence_with_no_window_is_named_as_such() {
             &entries,
             &"f".repeat(64),
             PEER,
+            None,
             &"a".repeat(64)
         ),
         Err(ComposeError::Member(MemberRefusal::NoWindow(_)))
