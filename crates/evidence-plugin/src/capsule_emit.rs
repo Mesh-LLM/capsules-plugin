@@ -383,7 +383,15 @@ const REPAIRS_FILE: &str = "repairs.jsonl";
 
 pub struct CapsuleState {
     keys: KeyPair,
+    /// Taken only through [`Self::ledger`], after `append_turn`.
     ledger: Mutex<Ledger>,
+    /// Whose turn it is to write the ledger. Every ledger use takes it first
+    /// ([`Self::ledger`]); it is re-entrant, so a caller that holds it across
+    /// several writes ([`Self::hold_appends`]) still writes through the usual
+    /// paths while every other thread waits. Lock order: the checkpoint state
+    /// (`checkpoint_cadence`), then this, then `ledger`, then
+    /// `sequence_counters`.
+    append_turn: parking_lot::ReentrantMutex<()>,
     /// Where `ledger` lives, kept so an owner cleanup can re-open it
     /// (`rebuild_index`) without a second writer ever existing.
     ledger_dir: PathBuf,
@@ -411,6 +419,30 @@ pub struct CapsuleState {
     /// Where a TDX quote for a record comes from (`producer::tee_attest`).
     quote_source: Box<dyn crate::producer::tee_attest::QuoteSource>,
 }
+
+/// The ledger, held: the append turn, then the ledger mutex (dropped in the
+/// reverse order, as the fields are declared).
+struct LedgerGuard<'a> {
+    ledger: std::sync::MutexGuard<'a, Ledger>,
+    _turn: parking_lot::ReentrantMutexGuard<'a, ()>,
+}
+
+impl std::ops::Deref for LedgerGuard<'_> {
+    type Target = Ledger;
+    fn deref(&self) -> &Ledger {
+        &self.ledger
+    }
+}
+
+impl std::ops::DerefMut for LedgerGuard<'_> {
+    fn deref_mut(&mut self) -> &mut Ledger {
+        &mut self.ledger
+    }
+}
+
+/// This thread's turn to write the ledger, held across several writes
+/// ([`CapsuleState::hold_appends`]). No other thread appends while it lives.
+pub struct AppendTurn<'a>(#[allow(dead_code)] parking_lot::ReentrantMutexGuard<'a, ()>);
 
 pub struct EmittedCapsule {
     pub capsule_id: String,
@@ -508,6 +540,7 @@ impl CapsuleState {
         Ok(Self {
             keys,
             ledger: Mutex::new(ledger),
+            append_turn: parking_lot::ReentrantMutex::new(()),
             ledger_dir,
             node_id: node_id.into(),
             sequence_counters: Mutex::new(sequence_counters),
@@ -613,15 +646,32 @@ impl CapsuleState {
         self.keys.signing_key.verifying_key().to_bytes()
     }
 
+    /// The ledger, under this thread's append turn (see `append_turn`).
+    fn ledger(&self) -> LedgerGuard<'_> {
+        let turn = self.append_turn.lock();
+        LedgerGuard {
+            ledger: self
+                .ledger
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            _turn: turn,
+        }
+    }
+
+    /// Hold the ledger for this thread until the turn is dropped: this
+    /// thread's own seals and padding go through as usual, and no other
+    /// thread's record lands in between. A served half is sealed and its
+    /// checkpoint cut under one turn (`CheckpointHandle::seal_and_cover`).
+    pub fn hold_appends(&self) -> AppendTurn<'_> {
+        AppendTurn(self.append_turn.lock())
+    }
+
     /// Pad the ledger to a multiple of `bucket` lines under the SAME writer
     /// lock every seal takes, so a real record never lands between two
     /// padding records (Evidence Layer -00 §12.1; see
     /// `crate::producer::padding`). Returns the padded line count.
     pub fn pad_ledger_to_bucket(&self, bucket: u64) -> anyhow::Result<u64> {
-        let mut ledger = self
-            .ledger
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut ledger = self.ledger();
         Ok(ledger.pad_to_bucket(bucket, &self.keys.signing_key, &self.node_id)?)
     }
 
@@ -630,10 +680,7 @@ impl CapsuleState {
     /// every other (the Service History's boundary checkpoint,
     /// `crate::checkpoint_cadence`). Returns the line count.
     pub fn pad_one(&self) -> anyhow::Result<u64> {
-        let mut ledger = self
-            .ledger
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut ledger = self.ledger();
         // A bucket one past the count is short exactly one line.
         let bucket = ledger.entries() + 1;
         Ok(ledger.pad_to_bucket(bucket, &self.keys.signing_key, &self.node_id)?)
@@ -644,19 +691,11 @@ impl CapsuleState {
     /// lookup` returns (or doesn't) is exactly what goes out, nothing
     /// re-derived or fabricated here.
     pub fn lookup(&self, capsule_id: &str) -> anyhow::Result<Option<LedgerEntry>> {
-        Ok(self
-            .ledger
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .lookup(capsule_id)?)
+        Ok(self.ledger().lookup(capsule_id)?)
     }
 
     pub fn chain_head(&self) -> Option<String> {
-        self.ledger
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .chain_head()
-            .map(str::to_string)
+        self.ledger().chain_head().map(str::to_string)
     }
 
     /// Seal, sign, chain, and ledger one admitted exchange this plugin's own
@@ -708,10 +747,7 @@ impl CapsuleState {
         // model emitted none). Real digests over the real served response.
         let (tool_calls_digest, reasoning_digest) = output_sub_digests(response_bytes);
 
-        let mut ledger = self
-            .ledger
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut ledger = self.ledger();
         let chain = ledger.chain_head().map(|parent| ChainLink {
             parent_capsule_id: parent.to_string(),
             relation: "follows".to_string(),
@@ -1085,10 +1121,7 @@ impl CapsuleState {
         &self,
         block: &crate::producer::stage::StageBlock,
     ) -> anyhow::Result<EmittedCapsule> {
-        let mut ledger = self
-            .ledger
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut ledger = self.ledger();
         self.append_stage_record(&mut ledger, block, None)
     }
 
@@ -1269,10 +1302,7 @@ impl CapsuleState {
             "host_forwarded_nonce",
         );
 
-        let mut ledger = self
-            .ledger
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut ledger = self.ledger();
         // A split's stage-exchange records go on the chain first, so the main
         // record below chains after them and can cite them.
         let split = match split {
@@ -1523,10 +1553,7 @@ impl CapsuleState {
         &self,
         action: &OwnerMaintenance,
     ) -> anyhow::Result<EmittedCapsule> {
-        let mut ledger = self
-            .ledger
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut ledger = self.ledger();
         let capsule =
             seal_owner_maintenance_record(action, ledger.chain_head(), &self.keys.signing_key)?;
         let capsule_id = capsule["capsule_id"]
@@ -1552,10 +1579,7 @@ impl CapsuleState {
 
     /// Every record's `capsule_id`, in chain order.
     pub fn capsule_ids_in_order(&self) -> Vec<String> {
-        self.ledger
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .capsule_ids_in_order()
+        self.ledger().capsule_ids_in_order()
     }
 
     pub fn ledger_dir(&self) -> &Path {
@@ -1568,10 +1592,7 @@ impl CapsuleState {
     /// holds; a mismatch means something other than this process changed the
     /// file, and that is reported, never papered over.
     pub fn rebuild_index(&self) -> anyhow::Result<IndexRebuild> {
-        let mut ledger = self
-            .ledger
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut ledger = self.ledger();
         let (rebuilt, report) = crate::producer::index::open_ledger(&self.ledger_dir)?;
         if rebuilt.chain_head() != ledger.chain_head() {
             anyhow::bail!(
@@ -1638,10 +1659,7 @@ impl CapsuleState {
         prov: &ReceivedHalfProvenance,
         still_tied: impl FnOnce(&str) -> bool,
     ) -> anyhow::Result<Option<EmittedCapsule>> {
-        let mut ledger = self
-            .ledger
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut ledger = self.ledger();
         if ledger.cites_counterparty_half(prov.foreign_capsule_id) {
             return Ok(None);
         }
@@ -1691,10 +1709,7 @@ impl CapsuleState {
         &self,
         citation: &InclusionCitation,
     ) -> anyhow::Result<Option<EmittedCapsule>> {
-        let mut ledger = self
-            .ledger
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut ledger = self.ledger();
         if ledger.cites_counterparty_inclusion(citation.half_capsule_id) {
             return Ok(None);
         }
@@ -1812,10 +1827,7 @@ impl CapsuleState {
             &ed25519_dalek::SigningKey,
         ) -> Result<Value, crate::producer::capsule::SealError>,
     ) -> anyhow::Result<Option<EmittedCapsule>> {
-        let mut ledger = self
-            .ledger
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut ledger = self.ledger();
         if ledger.has_index_key(&crate::producer::index::adjudication_key(block, key)) {
             return Ok(None);
         }
@@ -1860,10 +1872,7 @@ impl CapsuleState {
             until,
             rule,
         };
-        let mut ledger = self
-            .ledger
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut ledger = self.ledger();
         let capsule = crate::producer::capsule::seal_local_routing_choice(
             &choice,
             ledger.chain_head(),
@@ -1928,10 +1937,7 @@ impl CapsuleState {
         block_name: &str,
         block: serde_json::Map<String, Value>,
     ) -> anyhow::Result<EmittedCapsule> {
-        let mut ledger = self
-            .ledger
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut ledger = self.ledger();
         let chain = ledger
             .chain_head()
             .map(|parent| crate::producer::capsule::ChainLink {
@@ -1993,10 +1999,7 @@ impl CapsuleState {
         &self,
         ev: &crate::producer::capsule::SettlementObservation,
     ) -> anyhow::Result<Option<EmittedCapsule>> {
-        let mut ledger = self
-            .ledger
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut ledger = self.ledger();
         if ledger.has_index_key(&crate::producer::index::settlement_event_key(ev.event_ref)) {
             return Ok(None);
         }
@@ -2041,10 +2044,7 @@ impl CapsuleState {
             crate::producer::index::settlement_leg_subject(&member).ok_or_else(|| {
                 anyhow::anyhow!("settlement leg has no payment hash or delivery subject")
             })?;
-        let mut ledger = self
-            .ledger
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut ledger = self.ledger();
         if ledger.has_index_key(&crate::producer::index::settlement_leg_key(&leg, &subject)) {
             return Ok(None);
         }
@@ -2096,10 +2096,7 @@ impl crate::deal_flow::Sealer for CapsuleState {
         >,
         before: &dyn Fn(&str) -> std::io::Result<()>,
     ) -> anyhow::Result<String> {
-        let mut ledger = self
-            .ledger
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut ledger = self.ledger();
         let built = build(ledger.chain_head())?;
         let mut capsule = Value::Object(built.value);
         crate::producer::capsule::attach_producer_envelope(&mut capsule, &self.keys.signing_key)?;

@@ -189,6 +189,9 @@ struct AppState {
     /// or hasn't produced a checkpoint since startup.
     #[allow(dead_code)]
     checkpoint_head: Option<checkpoint_cadence::LatestHead>,
+    /// The checkpoint cadence, when on: each served half is sealed with its
+    /// own checkpoint (`checkpoint_cadence::seal_half`).
+    checkpoints: Option<checkpoint_cadence::CheckpointHandle>,
 }
 
 /// Adapt the lifecycle-channel's mirror of the host `serving_provenance` block
@@ -253,6 +256,7 @@ async fn observe_exchange_event(
     body: &[u8],
     keeping_text: bool,
     capsules: &Arc<CapsuleState>,
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
     splits: &Splits,
     lifecycle_events: &ObservedLifecycleEvents,
 ) -> Option<(OpenAiExchangeEnvelope, Value)> {
@@ -288,8 +292,18 @@ async fn observe_exchange_event(
     // across two `sync_all()`s, which must not stall this tokio worker (the
     // envelope moves into the closure and back out).
     let capsules_for_seal = capsules.clone();
+    // Only a half this node served is sealed with its own checkpoint
+    // (capsules-plugin#202 decided it for served halves); the requester's own
+    // half is sealed as any record is.
+    let checkpoints_for_seal = checkpoints
+        .filter(|_| ObservedLifecycleEvents::is_sealable_host_served(&envelope))
+        .cloned();
     match tokio::task::spawn_blocking(move || {
-        let sealed = seal_observed_host_exchange(&capsules_for_seal, &envelope);
+        let sealed = seal_observed_host_exchange(
+            &capsules_for_seal,
+            checkpoints_for_seal.as_ref(),
+            &envelope,
+        );
         (envelope, sealed)
     })
     .await
@@ -322,9 +336,10 @@ async fn observe_exchange_event(
 /// so returning the value here is additive, not a behavior change for them.
 fn seal_observed_host_exchange(
     capsules: &CapsuleState,
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
     envelope: &OpenAiExchangeEnvelope,
 ) -> Option<Value> {
-    seal_observed(capsules, envelope, None)
+    seal_observed(capsules, checkpoints, envelope, None)
 }
 
 /// [`seal_observed_host_exchange`] for the coordinator's main record of a
@@ -332,14 +347,18 @@ fn seal_observed_host_exchange(
 /// sealed first and cited from it.
 fn seal_observed_split_exchange(
     capsules: &CapsuleState,
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
     envelope: &OpenAiExchangeEnvelope,
     plan: &split_stage::SplitPlan,
 ) -> Option<Value> {
-    seal_observed(capsules, envelope, Some(plan))
+    seal_observed(capsules, checkpoints, envelope, Some(plan))
 }
 
+/// The half is sealed with its own checkpoint when the cadence is on
+/// (`checkpoint_cadence::seal_half`).
 fn seal_observed(
     capsules: &CapsuleState,
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
     envelope: &OpenAiExchangeEnvelope,
     split: Option<&split_stage::SplitPlan>,
 ) -> Option<Value> {
@@ -371,10 +390,10 @@ fn seal_observed(
         twin_bracket_id: envelope.twin_bracket_id.as_deref(),
         response_text_digest: envelope.response_text_digest.as_deref(),
     };
-    let emitted = match split {
+    let emitted = checkpoint_cadence::seal_half(checkpoints, capsules, |capsules| match split {
         Some(plan) => capsules.emit_for_observed_split_exchange(&observed, plan),
         None => capsules.emit_for_observed_host_exchange(&observed),
-    };
+    });
     match emitted {
         Ok(emitted) => {
             tracing::info!(
@@ -974,6 +993,7 @@ impl Splits {
 /// record, so the requester's exchange is never left unsealed.
 fn seal_released_splits(
     capsules: &CapsuleState,
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
     splits: &Splits,
     lifecycle_events: &ObservedLifecycleEvents,
 ) {
@@ -984,13 +1004,13 @@ fn seal_released_splits(
     {
         let (sealed, carried) = match split_stage::plan_split(&ready, deadline_ms) {
             Ok(plan) => (
-                seal_observed_split_exchange(capsules, &ready.envelope, &plan),
+                seal_observed_split_exchange(capsules, checkpoints, &ready.envelope, &plan),
                 plan.carried,
             ),
             Err(error) => {
                 tracing::warn!(%error, "split plan refused -- sealing the ordinary exchange record");
                 (
-                    seal_observed_host_exchange(capsules, &ready.envelope),
+                    seal_observed_host_exchange(capsules, checkpoints, &ready.envelope),
                     Vec::new(),
                 )
             }
@@ -1015,15 +1035,22 @@ fn seal_released_splits(
 /// whether or not keeping is still on (`exchange_text`).
 fn start_background_tasks(
     capsules: &Arc<CapsuleState>,
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
     splits: &Splits,
     lifecycle_events: &Arc<ObservedLifecycleEvents>,
 ) {
-    spawn_split_tick(capsules.clone(), splits.clone(), lifecycle_events.clone());
+    spawn_split_tick(
+        capsules.clone(),
+        checkpoints.cloned(),
+        splits.clone(),
+        lifecycle_events.clone(),
+    );
     exchange_text::spawn_retention(capsules.ledger_dir().to_path_buf());
 }
 
 fn spawn_split_tick(
     capsules: Arc<CapsuleState>,
+    checkpoints: Option<checkpoint_cadence::CheckpointHandle>,
     splits: Splits,
     lifecycle_events: Arc<ObservedLifecycleEvents>,
 ) {
@@ -1031,10 +1058,14 @@ fn spawn_split_tick(
         let mut tick = tokio::time::interval(std::time::Duration::from_millis(200));
         loop {
             tick.tick().await;
-            let (capsules, splits, lifecycle_events) =
-                (capsules.clone(), splits.clone(), lifecycle_events.clone());
+            let (capsules, checkpoints, splits, lifecycle_events) = (
+                capsules.clone(),
+                checkpoints.clone(),
+                splits.clone(),
+                lifecycle_events.clone(),
+            );
             if let Err(join_error) = tokio::task::spawn_blocking(move || {
-                seal_released_splits(&capsules, &splits, &lifecycle_events);
+                seal_released_splits(&capsules, checkpoints.as_ref(), &splits, &lifecycle_events);
             })
             .await
             {
@@ -1200,22 +1231,25 @@ async fn chat_completions(
             // sync-fn-holds-lock design is sound); only the CALL moves onto
             // the blocking pool.
             let capsules = state.capsules.clone();
+            let checkpoints = state.checkpoints.clone();
             let model_for_seal = model.clone();
             let exchange_id_for_seal = exchange_id.clone();
             let body_for_seal = body.clone();
             let emit_result = tokio::task::spawn_blocking(move || {
-                capsules.emit_for_exchange(&capsule_emit::ExchangeRecord {
-                    model: &model_for_seal,
-                    client_nonce: client_nonce.as_deref(),
-                    request_bytes: &body_for_seal,
-                    response_bytes: &response_bytes,
-                    latency_ms,
-                    exchange_id: Some(&exchange_id_for_seal),
-                    // The requesting party beyond the client nonce is not
-                    // carried on this direct-serve path — recorded as
-                    // "unknown", not invented.
-                    requesting_party: None,
-                    host_provenance,
+                checkpoint_cadence::seal_half(checkpoints.as_ref(), &capsules, |capsules| {
+                    capsules.emit_for_exchange(&capsule_emit::ExchangeRecord {
+                        model: &model_for_seal,
+                        client_nonce: client_nonce.as_deref(),
+                        request_bytes: &body_for_seal,
+                        response_bytes: &response_bytes,
+                        latency_ms,
+                        exchange_id: Some(&exchange_id_for_seal),
+                        // The requesting party beyond the client nonce is not
+                        // carried on this direct-serve path — recorded as
+                        // "unknown", not invented.
+                        requesting_party: None,
+                        host_provenance,
+                    })
                 })
             })
             .await;
@@ -1822,6 +1856,7 @@ async fn main() -> anyhow::Result<()> {
                 capsules,
                 lifecycle_events: lifecycle_events.clone(),
                 checkpoint_head,
+                checkpoints: checkpoints.clone(),
             };
             tokio::spawn(serve_admission_http(listener, app_state));
             Some(address)
@@ -1831,7 +1866,12 @@ async fn main() -> anyhow::Result<()> {
 
     let lifecycle_events_for_handler = lifecycle_events.clone();
     let splits = Splits::new();
-    start_background_tasks(&capsules_for_handler, &splits, &lifecycle_events);
+    start_background_tasks(
+        &capsules_for_handler,
+        checkpoints.as_ref(),
+        &splits,
+        &lifecycle_events,
+    );
     let splits_for_handler = splits.clone();
     let splits_for_stream = splits.clone();
 
@@ -1912,6 +1952,7 @@ async fn main() -> anyhow::Result<()> {
                         &message.body,
                         exchange_text::enabled(),
                         &capsules,
+                        checkpoints.as_ref(),
                         &splits,
                         &lifecycle_events,
                     )
@@ -2508,6 +2549,67 @@ mod push_eligibility_tests {
         );
     }
 
+    /// capsules-plugin#202, through the channel handler's own path: a half
+    /// this node served is sealed with its own checkpoint; the requester's
+    /// half is sealed as any record is, with no checkpoint cut for it.
+    #[tokio::test]
+    async fn only_a_served_half_is_sealed_with_its_own_checkpoint() {
+        let dir = tempfile::tempdir().unwrap();
+        let capsules = Arc::new(CapsuleState::open(dir.path(), "node-under-test").unwrap());
+        let handle = checkpoint_cadence::CheckpointHandle::for_tests(capsules.clone(), "test-log");
+        let store = ObservedLifecycleEvents::open(dir.path()).unwrap();
+        let observe = |body: &'static str| {
+            let (capsules, handle, store) = (capsules.clone(), handle.clone(), &store);
+            async move {
+                observe_exchange_event(
+                    body.as_bytes(),
+                    false,
+                    &capsules,
+                    Some(&handle),
+                    &Splits::new(),
+                    store,
+                )
+                .await
+                .expect("sealed")
+                .1["capsule_id"]
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            }
+        };
+        let covered = |id: &str| {
+            let at = capsules
+                .capsule_ids_in_order()
+                .iter()
+                .position(|c| c == id)
+                .unwrap() as u64;
+            handle
+                .latest_head()
+                .get()
+                .is_some_and(|cp| cll::mmr::leaf_count(cp.mmr_size).unwrap() > at)
+        };
+
+        let requester = observe(
+            r#"{"dispatch_path":"remote_mesh","phase":"terminal","model":"m","status":200,
+                "serving_provenance":{"served_by_node_id":"peer-node-b"}}"#,
+        )
+        .await;
+        assert!(
+            !covered(&requester),
+            "no checkpoint cut for the requester's half"
+        );
+        let served = observe(
+            r#"{"dispatch_path":"raw_proxy","phase":"terminal","model":"m","status":200,
+                "serving_provenance":{"served_by_node_id":"self-node-a",
+                  "weights_digest":"sha256:loaded-weights","requested_by_node_id":"peer-node-b"}}"#,
+        )
+        .await;
+        assert!(
+            covered(&served),
+            "the served half is cut with its checkpoint"
+        );
+    }
+
     /// evidencebook#69 finding 1, through the real adapter: a host-served
     /// terminal naming the node that asked seals that node as the record's
     /// requesting party (`host_provenance_from` once dropped it).
@@ -2518,6 +2620,7 @@ mod push_eligibility_tests {
         let party = |requested_by: Option<&str>| {
             let capsule = seal_observed_host_exchange(
                 &capsules,
+                None,
                 &tunneled_host_served_envelope(requested_by),
             )
             .expect("sealed");
@@ -2638,6 +2741,7 @@ mod exchange_text_wiring_tests {
             EVENT_WITH_BODIES.as_bytes(),
             keeping,
             &capsules,
+            None,
             &Splits::new(),
             &store,
         )
@@ -2693,7 +2797,7 @@ mod exchange_text_wiring_tests {
             .unwrap();
         let store = Arc::new(ObservedLifecycleEvents::open(dir.path()).unwrap());
 
-        start_background_tasks(&capsules, &Splits::new(), &store);
+        start_background_tasks(&capsules, None, &Splits::new(), &store);
 
         for _ in 0..100 {
             if !stale.exists() {
