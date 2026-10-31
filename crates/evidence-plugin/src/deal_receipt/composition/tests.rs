@@ -37,7 +37,27 @@ fn refusal(nonce: &str, key: &str) -> Value {
     })
 }
 
-const PEER_KEY: &str = "7c2f0a2be45d7388a6b0c1d2e3f40516273849a5b6c7d8e9f00112233445566b";
+/// The provider's signing key: its refusals are signed for real, so the
+/// samples verify under `capsulectl verify`'s refusal profile too.
+fn peer() -> ed25519_dalek::SigningKey {
+    ed25519_dalek::SigningKey::from_bytes(&[9; 32])
+}
+
+fn peer_key() -> String {
+    hex::encode(peer().verifying_key().as_bytes())
+}
+
+/// The provider's refusal of the ask with `nonce`, signed.
+fn signed_refusal(nonce: &str) -> Value {
+    evidence_request::refusal::sign(
+        &request_digest(nonce),
+        evidence_request::registry::Reason::NotAuthorized,
+        LATER,
+        &peer(),
+    )
+    .unwrap()
+    .to_json()
+}
 
 struct Node {
     _dir: tempfile::TempDir,
@@ -79,9 +99,9 @@ impl Node {
         id
     }
 
-    /// An ask the peer refused, signed under `key`, as this node verified it.
-    fn refused(&self, nonce: &str, key: &str) -> (String, Value) {
-        let refusal = refusal(nonce, key);
+    /// An ask the provider refused, as this node verified it.
+    fn refused(&self, nonce: &str) -> (String, Value) {
+        let refusal = signed_refusal(nonce);
         let id = self.answered(
             nonce,
             &refusal,
@@ -444,7 +464,7 @@ fn an_interval_over_padding_is_refused_by_name() {
 fn a_verified_refusal_is_a_member_observed_by_the_peers_key() {
     let node = node();
     let absent = node.absent("n-1");
-    let (refused, refusal) = node.refused("n-2", PEER_KEY);
+    let (refused, refusal) = node.refused("n-2");
     let bundle = node.compose(&[absent.clone(), refused.clone()]);
     let block = &bundle["extensions"][COMPOSED_KIND];
     let member = block["members"]
@@ -454,14 +474,14 @@ fn a_verified_refusal_is_a_member_observed_by_the_peers_key() {
         .find(|m| m["id"] == json!(refused))
         .unwrap();
     assert_eq!(member["outcome"], "refusal");
-    assert_eq!(member["observer"], PEER_KEY);
+    assert_eq!(member["observer"], json!(peer_key()));
     assert_eq!(member["request_digest"], json!(request_digest("n-2")));
     // The refusal exactly as it came back, under its own digest.
     assert_eq!(member["refusal"], refusal);
     assert_eq!(member["digest"], json!(jcs_digest(&refusal).unwrap()));
     let mut want = vec![
         json!({"id": node.key(), "role": "party", "custody_domain": node.key()}),
-        json!({"id": PEER_KEY, "role": "party", "custody_domain": PEER_KEY}),
+        json!({"id": peer_key(), "role": "party", "custody_domain": peer_key()}),
     ];
     want.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
     assert_eq!(block["observers"], json!(want));
@@ -488,7 +508,7 @@ fn an_answer_not_verified_as_their_refusal_is_not_a_member() {
     // Not checked under an announced key.
     let unchecked = node.answered(
         "n-1",
-        &refusal("n-1", PEER_KEY),
+        &signed_refusal("n-1"),
         json!({"state": "no_announced_key"}),
     );
     assert!(matches!(
@@ -498,7 +518,7 @@ fn an_answer_not_verified_as_their_refusal_is_not_a_member() {
     // A refusal that did not verify.
     let bad = node.answered(
         "n-2",
-        &refusal("n-2", PEER_KEY),
+        &signed_refusal("n-2"),
         json!({"state": "not_evidence", "why": "bad signature"}),
     );
     assert!(matches!(refusal_of(&[bad]), MemberRefusal::NotVerified(..)));
@@ -513,12 +533,16 @@ fn an_answer_not_verified_as_their_refusal_is_not_a_member() {
         MemberRefusal::Answered(_)
     ));
     // Signed under this node's own key.
-    let (own, _) = node.refused("n-4", &node.key());
+    let own = node.answered(
+        "n-4",
+        &refusal("n-4", &node.key()),
+        json!({"state": "refusal", "reason": "not_authorized"}),
+    );
     assert!(matches!(refusal_of(&[own]), MemberRefusal::OwnKey(_)));
     // A refusal of another request.
     let other = node.answered(
         "n-5",
-        &refusal("n-6", PEER_KEY),
+        &signed_refusal("n-6"),
         json!({"state": "refusal", "reason": "not_authorized"}),
     );
     assert!(matches!(
@@ -530,7 +554,7 @@ fn an_answer_not_verified_as_their_refusal_is_not_a_member() {
 #[test]
 fn a_refusal_whose_kept_reply_was_altered_is_not_a_member() {
     let node = node();
-    let (refused, refusal) = node.refused("n-1", PEER_KEY);
+    let (refused, refusal) = node.refused("n-1");
     let kept = node
         .state
         .ledger_dir()
@@ -546,8 +570,12 @@ fn a_refusal_whose_kept_reply_was_altered_is_not_a_member() {
 #[test]
 fn refusals_from_two_peers_are_not_one_deal() {
     let node = node();
-    let (a, _) = node.refused("n-1", PEER_KEY);
-    let (b, _) = node.refused("n-2", &"8".repeat(64));
+    let (a, _) = node.refused("n-1");
+    let b = node.answered(
+        "n-2",
+        &refusal("n-2", &"8".repeat(64)),
+        json!({"state": "refusal", "reason": "not_authorized"}),
+    );
     assert!(matches!(node.seal(&[a, b]), Err(ComposeError::TwoParties)));
 }
 
