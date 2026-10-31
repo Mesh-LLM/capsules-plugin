@@ -246,6 +246,7 @@ fn the_composition_is_an_interval_complete_bundle_rooted_at_its_record() {
         &agent_action_capsule::bundle::StrictOptions {
             require_signature: true,
             witness_directory: None,
+            ..Default::default()
         },
     );
     let statuses: Vec<_> = checked
@@ -342,6 +343,7 @@ fn the_interval_starts_at_the_exchange_half_in_the_deal_flows_order() {
         &agent_action_capsule::bundle::StrictOptions {
             require_signature: true,
             witness_directory: None,
+            ..Default::default()
         },
     );
     assert!(checked
@@ -473,7 +475,8 @@ fn a_pending_unknown_or_repeated_request_is_not_a_member() {
 
 /// The checkpoint cadence pads checkpoints by default. A padding record is
 /// not a Capsule, so the interval cannot be carried until
-/// agent-action-capsule#339 ships: the owner hears why, not a host error.
+/// non_record_leaves emission is enabled (Steven's rollout gate): the owner
+/// hears why, not a host error.
 #[test]
 fn an_interval_over_padding_is_refused_by_name() {
     let node = node();
@@ -492,7 +495,7 @@ fn an_interval_over_padding_is_refused_by_name() {
     assert!(answer["why"]
         .as_str()
         .unwrap()
-        .contains("agent-action-capsule#339"));
+        .contains("non_record_leaves emission is enabled"));
 }
 
 #[test]
@@ -663,6 +666,7 @@ fn a_bundle_answer_is_an_artifact_member_with_its_envelope_as_the_response() {
         &agent_action_capsule::bundle::StrictOptions {
             require_signature: true,
             witness_directory: None,
+            ..Default::default()
         },
     );
     assert!(checked

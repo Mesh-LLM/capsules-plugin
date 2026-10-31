@@ -219,6 +219,7 @@ fn a_counterparty_gets_the_half_to_the_earliest_covering_checkpoint_as_a_bundle(
         &StrictOptions {
             require_signature: false,
             witness_directory: None,
+            ..Default::default()
         },
     );
     assert!(strict.ok(), "{:?}", strict.claims);

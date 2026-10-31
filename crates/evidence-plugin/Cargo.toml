@@ -184,7 +184,7 @@ evidencebook = { version = "0.0.11", features = ["deal"] }
 # merge commit.
 capsule-engine = { git = "https://github.com/action-state-group/capsule-engine", rev = "c7701385b87b68c631803e5d0adeee4d617ff5d4" }
 # Class 1 verification of a received half (capsule-emit main moved it here).
-agent-action-capsule = { version = "0.4.1", features = ["strict"] }
+agent-action-capsule = { version = "0.7.0", features = ["strict"] }
 # The witness's own record of this log (`witness_status`): one blocking GET,
 # no redirects, a capped body. Already in the tree through capsule-emit.
 ureq = { version = "2", features = ["json"] }

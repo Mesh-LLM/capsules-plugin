@@ -230,6 +230,7 @@ pub(crate) fn check_artifact(
         &StrictOptions {
             require_signature: false,
             witness_directory: None,
+            ..Default::default()
         },
     );
     let passed = |claim: &str| checked.claim(claim).is_some_and(|c| c.status == "pass");
