@@ -1451,6 +1451,127 @@
         }
       }
     ],
+    "referee_stops_where_the_other_twin_goes_on": [
+      {
+        "reply": {
+          "adjudication_verdict": 1,
+          "verdict": "inconclusive",
+          "twin_bracket_id": "bracket-1",
+          "half_node_ids": [
+            "node-a",
+            "node-b"
+          ],
+          "referee_node_id": "node-c",
+          "referee_capsule_id": "02440d6ee7a633c179b596077c95f6ea8d545aff71697d62b0b83c1e323777df",
+          "halves": [
+            "0c2dc684318bf382cbdfc9ab4988261656e328b6cb561b2883ccf3d92472bcb5",
+            "4bcdc2877bbf58fb962d27781bd8eebbbc3857658509a436af136b5e570c8a3a"
+          ],
+          "verdict_capsule_id": "verdict-1",
+          "verdict_capsule_id_is_the_records": true,
+          "verdict_capsule": {
+            "block": {
+              "schema": "capsule-emit-mesh/adjudication/v1",
+              "source": "twin_comparison",
+              "capture_method": "deterministic_replay",
+              "verdict": "inconclusive",
+              "status": "UNKNOWN",
+              "divergence_index": 1,
+              "prefix_digest": "ffcadd7ce87fa9812037a0aa3b1d04f4d138ec64d2ee6d13ed4a08e6d2b7a171",
+              "twin_owner_distinct": true,
+              "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+              "half_a_capsule_id": "0c2dc684318bf382cbdfc9ab4988261656e328b6cb561b2883ccf3d92472bcb5",
+              "half_b_capsule_id": "4bcdc2877bbf58fb962d27781bd8eebbbc3857658509a436af136b5e570c8a3a",
+              "referee_capsule_id": "02440d6ee7a633c179b596077c95f6ea8d545aff71697d62b0b83c1e323777df",
+              "referee_id": "node-c",
+              "selection_tier": 1,
+              "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+              "referee_node_id": "node-c",
+              "half_a_node_id": "node-a",
+              "half_b_node_id": "node-b",
+              "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+              "referee_prompt": "requester_attested",
+              "referee_answer_digest": "b0cdb14844eb90b60a1c881d5f38ab12657cd4ac1a955d753c0163210a51be1e",
+              "inconclusive_because": "split_margin_unavailable",
+              "split_margin": {
+                "unit": "nats",
+                "threshold": "3.000000",
+                "referee": null
+              },
+              "twin_bracket_id": "bracket-1"
+            },
+            "epistemic_type": "adjudication",
+            "chain": {
+              "parent_capsule_id": "0c2dc684318bf382cbdfc9ab4988261656e328b6cb561b2883ccf3d92472bcb5",
+              "relation": "confirms"
+            },
+            "provenance": "referee",
+            "signed_by_node": true
+          },
+          "issued_at_is_now": true
+        },
+        "appended": {
+          "issued-adjudications.jsonl": [
+            {
+              "verdict": "inconclusive",
+              "twin_bracket_id": "bracket-1",
+              "half_node_ids": [
+                "node-a",
+                "node-b"
+              ],
+              "referee_node_id": "node-c",
+              "referee_capsule_id": "02440d6ee7a633c179b596077c95f6ea8d545aff71697d62b0b83c1e323777df",
+              "halves": [
+                "0c2dc684318bf382cbdfc9ab4988261656e328b6cb561b2883ccf3d92472bcb5",
+                "4bcdc2877bbf58fb962d27781bd8eebbbc3857658509a436af136b5e570c8a3a"
+              ],
+              "verdict_capsule_id": "verdict-1",
+              "verdict_capsule_id_is_the_records": true,
+              "verdict_capsule": {
+                "block": {
+                  "schema": "capsule-emit-mesh/adjudication/v1",
+                  "source": "twin_comparison",
+                  "capture_method": "deterministic_replay",
+                  "verdict": "inconclusive",
+                  "status": "UNKNOWN",
+                  "divergence_index": 1,
+                  "prefix_digest": "ffcadd7ce87fa9812037a0aa3b1d04f4d138ec64d2ee6d13ed4a08e6d2b7a171",
+                  "twin_owner_distinct": true,
+                  "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+                  "half_a_capsule_id": "0c2dc684318bf382cbdfc9ab4988261656e328b6cb561b2883ccf3d92472bcb5",
+                  "half_b_capsule_id": "4bcdc2877bbf58fb962d27781bd8eebbbc3857658509a436af136b5e570c8a3a",
+                  "referee_capsule_id": "02440d6ee7a633c179b596077c95f6ea8d545aff71697d62b0b83c1e323777df",
+                  "referee_id": "node-c",
+                  "selection_tier": 1,
+                  "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+                  "referee_node_id": "node-c",
+                  "half_a_node_id": "node-a",
+                  "half_b_node_id": "node-b",
+                  "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+                  "referee_prompt": "requester_attested",
+                  "referee_answer_digest": "b0cdb14844eb90b60a1c881d5f38ab12657cd4ac1a955d753c0163210a51be1e",
+                  "inconclusive_because": "split_margin_unavailable",
+                  "split_margin": {
+                    "unit": "nats",
+                    "threshold": "3.000000",
+                    "referee": null
+                  },
+                  "twin_bracket_id": "bracket-1"
+                },
+                "epistemic_type": "adjudication",
+                "chain": {
+                  "parent_capsule_id": "0c2dc684318bf382cbdfc9ab4988261656e328b6cb561b2883ccf3d92472bcb5",
+                  "relation": "confirms"
+                },
+                "provenance": "referee",
+                "signed_by_node": true
+              },
+              "issued_at_is_now": true
+            }
+          ]
+        }
+      }
+    ],
     "tokens_do_not_spell_the_answer": [
       {
         "reply": {
