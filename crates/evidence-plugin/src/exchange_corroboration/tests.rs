@@ -314,6 +314,47 @@ fn with_the_setting_on_no_match_is_no_such_subject_never_an_empty_artifact() {
     );
 }
 
+/// A half that never leaves this node is in no answer's matched set
+/// (evidencebook#206 row 4, Mesh-LLM/capsules-plugin#161): beside it, the
+/// answer is the one a node without it gives, and alone it is the same
+/// `no_such_subject` as no half at all, never a refusal that says one is
+/// withheld under the nonce.
+#[test]
+fn a_half_that_never_leaves_changes_no_answer() {
+    let mut kept = served_half();
+    kept["model_attestation"]["compute_attestation"]
+        [crate::producer::capsule::OWNER_MAINTENANCE_BLOCK] = json!({"kind": "test"});
+    let kept = resealed(kept);
+    assert!(crate::evidence_log::never_leaves(&kept));
+    let key = digest_of(NONCE);
+    let halves = |records: &[Value]| {
+        let dir = node_with(records, &node_key());
+        let sent = signed_by("node-a", &key);
+        let wire = wire_of(ask(dir.path(), &sent, true));
+        match verify(
+            &sent,
+            &wire,
+            &node_key().verifying_key(),
+            &Default::default(),
+        ) {
+            Verified::Halves { halves, .. } => halves,
+            other => panic!("{other:?}"),
+        }
+    };
+    assert_eq!(
+        halves(&[served_half(), kept.clone()]),
+        halves(&[served_half()])
+    );
+    for (what, records) in [("alone", vec![kept]), ("none", vec![])] {
+        let dir = node_with(&records, &node_key());
+        assert_eq!(
+            refused(&ask(dir.path(), &signed_by("node-a", &key), true)),
+            Some(Reason::NoSuchSubject),
+            "{what}"
+        );
+    }
+}
+
 #[test]
 fn a_counterparty_is_refused_whole_when_one_half_names_another_node() {
     let for_b = half(

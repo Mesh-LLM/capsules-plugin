@@ -69,6 +69,16 @@
       "must_print": { "failed_test": "an_exchange_goes_to_the_node_that_sent_the_half_it_asks_about" }
     },
     {
+      "feature": "mutant-answer-matches-never-leaves",
+      "tests": "evidence_answer::",
+      "must_print": { "failed_test": "a_record_that_never_leaves_changes_no_keyed_answer" }
+    },
+    {
+      "feature": "mutant-answer-matches-never-leaves",
+      "tests": "exchange_corroboration::",
+      "must_print": { "failed_test": "a_half_that_never_leaves_changes_no_answer" }
+    },
+    {
       "feature": "mutant-corroboration-joins-by-binding",
       "tests": "exchange_corroboration::",
       "must_print": { "failed_test": "a_pair_with_no_shared_nonce_is_not_joinable_and_no_one_is_asked" }

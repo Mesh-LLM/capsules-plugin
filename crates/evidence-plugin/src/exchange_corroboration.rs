@@ -98,7 +98,7 @@ impl resolve::Responder for NonceView<'_, '_> {
         self.0.holds_record(digest)
     }
     fn holds_correlation(&self, id: &str) -> bool {
-        !self.0.index.by_client_nonce(id).is_empty()
+        self.0.index.any_leaving(self.0.index.by_client_nonce(id))
     }
     fn cites_exchange(&self, half_digest: &str) -> bool {
         self.0.cites_exchange(half_digest)
@@ -126,9 +126,8 @@ pub(crate) fn matching_records(
     };
     let covered = leaf_count(anchor.mmr_size).unwrap_or(0);
     view.index
-        .by_client_nonce(id)
-        .iter()
-        .copied()
+        .leaving(view.index.by_client_nonce(id))
+        .into_iter()
         .filter(|&i| i < covered)
         .collect()
 }

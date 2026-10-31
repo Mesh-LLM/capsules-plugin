@@ -614,6 +614,34 @@ impl LedgerIndex {
         self.client_nonces.get(digest).map_or(&[], Vec::as_slice)
     }
 
+    /// `found` without the records that never leave this node
+    /// ([`Leaf::never_leaves`]). An answer to another node reads its
+    /// correlation, cited-half and bound-client-nonce matches through it, so
+    /// such a record is in no `correlation`, `exchange` or
+    /// `exchange_corroboration/1` matched set: the answer, its size and its
+    /// refusal are the same whether or not one sits under the key
+    /// (evidencebook#206 row 4, Mesh-LLM/capsules-plugin#161). A `record`
+    /// request by exact digest does not come through here.
+    pub fn leaving(&self, found: &[u64]) -> Vec<u64> {
+        found
+            .iter()
+            .copied()
+            .filter(|&i| self.leaves_node(i))
+            .collect()
+    }
+
+    /// Whether any of `found` may leave this node ([`LedgerIndex::leaving`]).
+    pub fn any_leaving(&self, found: &[u64]) -> bool {
+        found.iter().any(|&i| self.leaves_node(i))
+    }
+
+    fn leaves_node(&self, i: u64) -> bool {
+        if cfg!(feature = "mutant-answer-matches-never-leaves") {
+            return true;
+        }
+        self.leaves.get(i as usize).is_some_and(|l| !l.never_leaves)
+    }
+
     /// A view that reads record bodies from the ledger file.
     pub fn view(&self) -> std::io::Result<LogView<'_>> {
         Ok(LogView {
@@ -765,10 +793,10 @@ impl evidencebook::store::RecordSource for LogView<'_> {
         self.index.leaf_index_of(digest)
     }
     fn correlation(&self, id: &str) -> Vec<u64> {
-        self.index.correlated(id).to_vec()
+        self.index.leaving(self.index.correlated(id))
     }
     fn citing(&self, half_digest: &str) -> Vec<u64> {
-        self.index.citing(half_digest).to_vec()
+        self.index.leaving(self.index.citing(half_digest))
     }
     /// The `capsule_id` the line states, as [`LogView::record_at`] checks a
     /// line against the one indexed; `None` for octets that are no JSON
@@ -836,10 +864,10 @@ impl Responder for LogView<'_> {
         self.index.leaf_index_of(digest).is_some()
     }
     fn holds_correlation(&self, id: &str) -> bool {
-        !self.index.correlated(id).is_empty()
+        self.index.any_leaving(self.index.correlated(id))
     }
     fn cites_exchange(&self, half_digest: &str) -> bool {
-        !self.index.citing(half_digest).is_empty()
+        self.index.any_leaving(self.index.citing(half_digest))
     }
     fn positional_ordering(&self) -> bool {
         true

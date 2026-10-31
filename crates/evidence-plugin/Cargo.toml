@@ -77,6 +77,10 @@ mutant-corroboration-role-equality = []
 # Names no counterparty for a citing record (`received_half`), so an exchange
 # request is refused to the node that sent the half (#172).
 mutant-citing-record-names-no-counterparty = []
+# Matches the records that never leave this node in a keyed answer again
+# (correlation, exchange, exchange_corroboration/1), so a refusal or a moved
+# checkpoint says one sits under the key (#161).
+mutant-answer-matches-never-leaves = []
 # The Service History's mutants: each builds it with one fault, and CI
 # requires the named test to FAIL (gates/mutants.json).
 # Embeds a card rebuilt without its consistency proofs, not the direct card.
