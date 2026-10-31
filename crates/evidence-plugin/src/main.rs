@@ -390,10 +390,13 @@ fn seal_observed(
         twin_bracket_id: envelope.twin_bracket_id.as_deref(),
         response_text_digest: envelope.response_text_digest.as_deref(),
     };
-    let emitted = checkpoint_cadence::seal_half(checkpoints, capsules, |capsules| match split {
-        Some(plan) => capsules.emit_for_observed_split_exchange(&observed, plan),
-        None => capsules.emit_for_observed_host_exchange(&observed),
-    });
+    // A split's stage-exchange records are sealed just before its main record.
+    let records = split.map_or(1, |plan| plan.exchanges.len() as u64 + 1);
+    let emitted =
+        checkpoint_cadence::seal_half(checkpoints, capsules, records, |capsules| match split {
+            Some(plan) => capsules.emit_for_observed_split_exchange(&observed, plan),
+            None => capsules.emit_for_observed_host_exchange(&observed),
+        });
     match emitted {
         Ok(emitted) => {
             tracing::info!(
@@ -1236,7 +1239,7 @@ async fn chat_completions(
             let exchange_id_for_seal = exchange_id.clone();
             let body_for_seal = body.clone();
             let emit_result = tokio::task::spawn_blocking(move || {
-                checkpoint_cadence::seal_half(checkpoints.as_ref(), &capsules, |capsules| {
+                checkpoint_cadence::seal_half(checkpoints.as_ref(), &capsules, 1, |capsules| {
                     capsules.emit_for_exchange(&capsule_emit::ExchangeRecord {
                         model: &model_for_seal,
                         client_nonce: client_nonce.as_deref(),
@@ -2549,6 +2552,16 @@ mod push_eligibility_tests {
         );
     }
 
+    /// Where record `id` sits in the ledger, padding lines counted, as a
+    /// checkpoint counts leaves.
+    fn leaf_of(capsules: &CapsuleState, id: &str) -> u64 {
+        std::fs::read_to_string(capsules.ledger_dir().join("capsules.jsonl"))
+            .unwrap()
+            .lines()
+            .position(|l| serde_json::from_str::<Value>(l).unwrap()["capsule_id"] == id)
+            .unwrap() as u64
+    }
+
     /// capsules-plugin#202, through the channel handler's own path: a half
     /// this node served is sealed with its own checkpoint; the requester's
     /// half is sealed as any record is, with no checkpoint cut for it.
@@ -2578,11 +2591,7 @@ mod push_eligibility_tests {
             }
         };
         let covered = |id: &str| {
-            let at = capsules
-                .capsule_ids_in_order()
-                .iter()
-                .position(|c| c == id)
-                .unwrap() as u64;
+            let at = leaf_of(&capsules, id);
             handle
                 .latest_head()
                 .get()
@@ -2644,24 +2653,11 @@ mod push_eligibility_tests {
             .pop()
             .expect("the split was sealed")
             .main;
-        let at = capsules
-            .capsule_ids_in_order()
-            .iter()
-            .position(|c| c == main["capsule_id"].as_str().unwrap())
-            .unwrap() as u64;
+        let at = leaf_of(&capsules, main["capsule_id"].as_str().unwrap());
         let head = handle.latest_head().get().expect("a checkpoint was cut");
-        let tip = cll::mmr::leaf_count(head.mmr_size).unwrap();
-        assert!(tip > at);
-        // The stage records were sealed before it; after it, padding alone.
-        let records: Vec<Value> =
-            std::fs::read_to_string(capsules.ledger_dir().join("capsules.jsonl"))
-                .unwrap()
-                .lines()
-                .map(|l| serde_json::from_str(l).unwrap())
-                .collect();
-        assert!(records[at as usize + 1..tip as usize]
-            .iter()
-            .all(crate::producer::padding::is_padding));
+        // Its stage records were sealed before it, and the checkpoint ends
+        // at it.
+        assert_eq!(cll::mmr::leaf_count(head.mmr_size).unwrap(), at + 1);
     }
 
     /// evidencebook#69 finding 1, through the real adapter: a host-served

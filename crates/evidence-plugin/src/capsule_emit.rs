@@ -675,6 +675,50 @@ impl CapsuleState {
         Ok(ledger.pad_to_bucket(bucket, &self.keys.signing_key, &self.node_id)?)
     }
 
+    /// Pad the ledger so that `records` more records end it on a multiple of
+    /// `bucket` (`0`: no padding), under the same writer lock: a served half
+    /// sealed next, as the last of those records, is then where a checkpoint
+    /// is cut with no padding after it (`CheckpointHandle::seal_and_cover`).
+    /// Returns the line count.
+    pub fn pad_ahead_of(&self, records: u64, bucket: u64) -> anyhow::Result<u64> {
+        let mut ledger = self.ledger();
+        let entries = ledger.entries();
+        if bucket == 0 {
+            return Ok(entries);
+        }
+        let short = (bucket - (entries + records) % bucket) % bucket;
+        if short == 0 {
+            return Ok(entries);
+        }
+        if entries == 0 {
+            // `pad_to_bucket` counts an empty ledger as on every bucket, so
+            // its first padding record is written here, as `pad_to_bucket`
+            // writes each one.
+            let mut record = crate::producer::padding::build_padding_record()?;
+            crate::producer::capsule::attach_producer_envelope(
+                &mut record,
+                &self.keys.signing_key,
+            )?;
+            let capsule_id = record["capsule_id"]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("a padding record has no capsule_id"))?
+                .to_string();
+            let statement = build_signed_statement(
+                &SignedStatementInput {
+                    payload: &crate::producer::capsule::payload_bytes(&record),
+                    issuer: &self.node_id,
+                    subject: &capsule_id,
+                    content_type: crate::producer::padding::PADDING_CONTENT_TYPE,
+                },
+                &self.keys.signing_key,
+            );
+            ledger.append_padding(&record, &statement)?;
+        }
+        // A bucket of the target count itself pads to exactly it, as
+        // `pad_one` does.
+        Ok(ledger.pad_to_bucket(entries + short, &self.keys.signing_key, &self.node_id)?)
+    }
+
     /// Append exactly one padding record under the same writer lock, so the
     /// next checkpoint has a record to cover even when the last one covers
     /// every other (the Service History's boundary checkpoint,
