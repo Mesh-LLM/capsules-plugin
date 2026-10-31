@@ -453,7 +453,6 @@ fn keep_reply(ledger_dir: &Path, digest: &str, reply: &[u8]) -> std::io::Result<
 /// and so has no digest (`Invalid`), or when the kept bytes are missing or
 /// are not the ones sealed (`Corrupt`). The payer's composition (#196)
 /// is its first caller.
-#[cfg_attr(not(test), allow(dead_code))]
 pub fn kept_reply(ledger_dir: &Path, response_record_id: &str) -> Result<Vec<u8>, AskError> {
     let header = crate::evidence_panes::read_capsule_records(ledger_dir)
         .into_iter()

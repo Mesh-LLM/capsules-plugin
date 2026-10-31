@@ -1,6 +1,7 @@
 use super::*;
 use crate::capsule_emit::CapsuleState;
 use crate::deal_receipt::tests::{cut, seal_deal};
+use std::path::Path;
 
 const ASKED_AT: &str = "2026-10-29T12:00:00Z";
 const CLOSES: &str = "2026-10-29T12:01:00Z";
@@ -16,6 +17,27 @@ fn request(nonce: &str) -> Value {
         "nonce": nonce,
     })
 }
+
+fn request_digest(nonce: &str) -> String {
+    evidence_request::digest::request_digest(
+        evidence_request::jcs::to_string(&request(nonce))
+            .unwrap()
+            .as_bytes(),
+    )
+}
+
+/// A refusal of the ask with `nonce`, in the evidence-request JSON binding.
+fn refusal(nonce: &str, key: &str) -> Value {
+    json!({
+        "request_digest": request_digest(nonce),
+        "reason": "not_authorized",
+        "issued_at": LATER,
+        "key_id": key,
+        "sig": "5".repeat(128),
+    })
+}
+
+const PEER_KEY: &str = "7c2f0a2be45d7388a6b0c1d2e3f40516273849a5b6c7d8e9f00112233445566b";
 
 struct Node {
     _dir: tempfile::TempDir,
@@ -40,6 +62,32 @@ impl Node {
         let id = self.ask(nonce);
         crate::ask_book::record_absence(&self.state, &id, CLOSES, LATER).unwrap();
         id
+    }
+
+    /// An ask answered with `reply` (bytes as read), checked as `verification`.
+    fn answered(&self, nonce: &str, reply: &Value, verification: Value) -> String {
+        let id = self.ask(nonce);
+        crate::ask_book::record_response(
+            &self.state,
+            &id,
+            &request_digest(nonce),
+            &serde_json::to_vec(reply).unwrap(),
+            &verification,
+            LATER,
+        )
+        .unwrap();
+        id
+    }
+
+    /// An ask the peer refused, signed under `key`, as this node verified it.
+    fn refused(&self, nonce: &str, key: &str) -> (String, Value) {
+        let refusal = refusal(nonce, key);
+        let id = self.answered(
+            nonce,
+            &refusal,
+            json!({"state": "refusal", "reason": "not_authorized"}),
+        );
+        (id, refusal)
     }
 
     fn seal(&self, records: &[String]) -> Result<Composition, ComposeError> {
@@ -369,27 +417,114 @@ fn a_pending_unknown_or_repeated_request_is_not_a_member() {
 }
 
 #[test]
-fn an_answered_request_is_refused_until_its_reply_can_be_a_member() {
+fn a_verified_refusal_is_a_member_observed_by_the_peers_key() {
     let node = node();
-    let id = node.ask("n-1");
-    let digest = evidence_request::digest::request_digest(
-        evidence_request::jcs::to_string(&request("n-1"))
-            .unwrap()
-            .as_bytes(),
+    let absent = node.absent("n-1");
+    let (refused, refusal) = node.refused("n-2", PEER_KEY);
+    let bundle = node.compose(&[absent.clone(), refused.clone()]);
+    let block = &bundle["extensions"][COMPOSED_KIND];
+    let member = block["members"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["id"] == json!(refused))
+        .unwrap();
+    assert_eq!(member["outcome"], "refusal");
+    assert_eq!(member["observer"], PEER_KEY);
+    assert_eq!(member["request_digest"], json!(request_digest("n-2")));
+    // The refusal exactly as it came back, under its own digest.
+    assert_eq!(member["refusal"], refusal);
+    assert_eq!(member["digest"], json!(jcs_digest(&refusal).unwrap()));
+    let mut want = vec![
+        json!({"id": node.key(), "role": "party", "custody_domain": node.key()}),
+        json!({"id": PEER_KEY, "role": "party", "custody_domain": PEER_KEY}),
+    ];
+    want.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
+    assert_eq!(block["observers"], json!(want));
+    assert_eq!(
+        block["composed_digest"],
+        json!(composed_digest(
+            block["members"].as_array().unwrap(),
+            block["observers"].as_array().unwrap()
+        )
+        .unwrap())
     );
-    crate::ask_book::record_response(
-        &node.state,
-        &id,
-        &digest,
-        br#"{"reason":"policy_denied"}"#,
-        &json!({"state": "unchecked"}),
-        LATER,
-    )
-    .unwrap();
+    if let Some(out) = std::env::var_os("DEAL_COMPOSITION_REFUSAL_OUT") {
+        std::fs::write(out, serde_json::to_vec_pretty(&bundle).unwrap()).unwrap();
+    }
+}
+
+#[test]
+fn an_answer_not_verified_as_their_refusal_is_not_a_member() {
+    let node = node();
+    let refusal_of = |records: &[String]| match node.seal(records) {
+        Err(ComposeError::Member(r)) => r,
+        other => panic!("{other:?}"),
+    };
+    // Not checked under an announced key.
+    let unchecked = node.answered(
+        "n-1",
+        &refusal("n-1", PEER_KEY),
+        json!({"state": "no_announced_key"}),
+    );
     assert!(matches!(
-        node.seal(std::slice::from_ref(&id)),
-        Err(ComposeError::Member(MemberRefusal::Answered(_)))
+        refusal_of(&[unchecked]),
+        MemberRefusal::NotVerified(..)
     ));
+    // A refusal that did not verify.
+    let bad = node.answered(
+        "n-2",
+        &refusal("n-2", PEER_KEY),
+        json!({"state": "not_evidence", "why": "bad signature"}),
+    );
+    assert!(matches!(refusal_of(&[bad]), MemberRefusal::NotVerified(..)));
+    // An artifact: not a member until #197.
+    let artifact = node.answered(
+        "n-3",
+        &json!({"artifact": "00", "request_digest": request_digest("n-3")}),
+        json!({"state": "artifact"}),
+    );
+    assert!(matches!(
+        refusal_of(&[artifact]),
+        MemberRefusal::Answered(_)
+    ));
+    // Signed under this node's own key.
+    let (own, _) = node.refused("n-4", &node.key());
+    assert!(matches!(refusal_of(&[own]), MemberRefusal::OwnKey(_)));
+    // A refusal of another request.
+    let other = node.answered(
+        "n-5",
+        &refusal("n-6", PEER_KEY),
+        json!({"state": "refusal", "reason": "not_authorized"}),
+    );
+    assert!(matches!(
+        refusal_of(&[other]),
+        MemberRefusal::Inconsistent(_)
+    ));
+}
+
+#[test]
+fn a_refusal_whose_kept_reply_was_altered_is_not_a_member() {
+    let node = node();
+    let (refused, refusal) = node.refused("n-1", PEER_KEY);
+    let kept = node
+        .state
+        .ledger_dir()
+        .join(crate::ask_book::REPLIES_DIR)
+        .join(sha256_hex(&serde_json::to_vec(&refusal).unwrap()));
+    std::fs::write(&kept, b"{}").unwrap();
+    assert!(matches!(
+        node.seal(&[refused]),
+        Err(ComposeError::Member(MemberRefusal::ReplyNotKept(..)))
+    ));
+}
+
+#[test]
+fn refusals_from_two_peers_are_not_one_deal() {
+    let node = node();
+    let (a, _) = node.refused("n-1", PEER_KEY);
+    let (b, _) = node.refused("n-2", &"8".repeat(64));
+    assert!(matches!(node.seal(&[a, b]), Err(ComposeError::TwoParties)));
 }
 
 #[test]
@@ -506,7 +641,12 @@ fn an_absence_with_no_window_is_named_as_such() {
         ),
     ];
     assert!(matches!(
-        member(&entries, &"a".repeat(64)),
+        member(
+            Path::new("/nonexistent"),
+            &entries,
+            &"f".repeat(64),
+            &"a".repeat(64)
+        ),
         Err(ComposeError::Member(MemberRefusal::NoWindow(_)))
     ));
 }

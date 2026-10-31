@@ -19,9 +19,10 @@
 //! ([`crate::ask_book`]): one per request record the owner names, with the
 //! outcome recorded for it. A half received by push has no request behind it
 //! and is never a member. An absence's observer is this node, its only
-//! observer. An answered request is refused for now: the reply's bytes are
-//! not kept (#198), and an evidence-interop answer is not an Evidence Bundle
-//! (#197), so no answer can be an `artifact` or `refusal` member yet.
+//! observer. A refusal is the peer's signed refusal as it came back, read
+//! from the kept reply (#198), observed by the peer's key; only one this
+//! node verified under the key the peer announced is a member. An artifact
+//! answer is not a member yet (#197).
 //!
 //! **The block** is set on the built bundle, as `capsulectl-deal deal
 //! compose` sets it: agent-action-capsule's producer reserves `composed/v1`
@@ -71,9 +72,16 @@ pub(crate) enum MemberRefusal {
     NotARequest(String),
     /// Recorded, with no outcome yet: a pending request is not a member.
     Pending(String),
-    /// Answered: no answer can be a member yet (see the module doc).
+    /// Answered with an artifact: not a member yet (#197).
     Answered(String),
-    /// The absence names another request than the one it cites.
+    /// Answered with a reply this node did not verify as the peer's refusal
+    /// (nonconformant, or not checked under the peer's announced key).
+    NotVerified(String, String),
+    /// The reply recorded for the request is not kept intact (#198).
+    ReplyNotKept(String, String),
+    /// The refusal is signed under this node's own key.
+    OwnKey(String),
+    /// The outcome names another request than the one it cites.
     Inconsistent(String),
     /// The absence states no window.
     NoWindow(String),
@@ -93,11 +101,21 @@ impl MemberRefusal {
                 )
             }
             MemberRefusal::Answered(id) => format!(
-                "request {id} was answered; an answer cannot be a member yet (its reply is not \
-                 kept, and is not an Evidence Bundle)"
+                "request {id} was answered with an artifact, which cannot be a member yet (it \
+                 is not an Evidence Bundle)"
             ),
+            MemberRefusal::NotVerified(id, state) => format!(
+                "the reply to request {id} was not verified as the peer's refusal ({state}), so \
+                 it is not a member"
+            ),
+            MemberRefusal::ReplyNotKept(id, why) => {
+                format!("the reply to request {id} cannot be read back: {why}")
+            }
+            MemberRefusal::OwnKey(id) => {
+                format!("the refusal to request {id} is signed under this node's own key")
+            }
             MemberRefusal::Inconsistent(id) => {
-                format!("the absence recorded for request {id} names another request digest")
+                format!("the outcome recorded for request {id} names another request digest")
             }
             MemberRefusal::NoWindow(id) => {
                 format!("the absence recorded for request {id} states no window")
@@ -116,6 +134,8 @@ pub enum ComposeError {
     NotCited,
     /// No member was named.
     NoMembers,
+    /// The members' peers are more than the deal's one other party.
+    TwoParties,
 }
 
 impl From<Error> for ComposeError {
@@ -187,9 +207,13 @@ pub(crate) fn composed_digest(members: &[Value], observers: &[Value]) -> Result<
 }
 
 /// The member for the request recorded as `request_record`, from its
-/// recorded outcome; the caller sets its observer.
+/// recorded outcome, with its observer: this node (`own`) for an absence,
+/// only it observed; the refusing peer's key for a refusal (D4: a node's
+/// checkpoint key is its signing key, so it is also the custody domain).
 pub(crate) fn member(
+    ledger_dir: &Path,
     entries: &[(String, Map<String, Value>)],
+    own: &str,
     request_record: &str,
 ) -> Result<Value, ComposeError> {
     let record_type = |e: &Map<String, Value>| {
@@ -209,7 +233,7 @@ pub(crate) fn member(
     let request_digest = evidence_request::jcs::to_string(request)
         .map(|text| evidence_request::digest::request_digest(text.as_bytes()))
         .map_err(|e| Error::Failed(format!("request {request_record}: {e}")))?;
-    let outcome = entries
+    let (outcome_id, outcome) = entries
         .iter()
         .find(|(_, e)| {
             matches!(
@@ -217,18 +241,20 @@ pub(crate) fn member(
                 Some(record_types::RESPONSE | record_types::RECORDED_ABSENCE)
             ) && crate::ask_book::cites(e, request_record)
         })
-        .map(|(_, e)| e)
         .ok_or_else(|| MemberRefusal::Pending(request_record.into()))?;
-    // TODO(#197, #198): an answer becomes a `refusal` member from its kept
-    // reply (#198), and an `artifact` member from the kept bundle answer and
-    // its response without the artifact bytes (#197), observed by the
-    // responder's key with its checkpoint key as custody domain (D4).
-    if record_type(outcome).as_deref() != Some(record_types::RECORDED_ABSENCE) {
-        return Err(MemberRefusal::Answered(request_record.into()).into());
-    }
     let statement = outcome.get("statement").cloned().unwrap_or(Value::Null);
     if statement.get("request_digest").and_then(Value::as_str) != Some(request_digest.as_str()) {
         return Err(MemberRefusal::Inconsistent(request_record.into()).into());
+    }
+    if record_type(outcome).as_deref() == Some(record_types::RESPONSE) {
+        return refusal_member(
+            ledger_dir,
+            own,
+            request_record,
+            &request_digest,
+            outcome_id,
+            &statement,
+        );
     }
     let window = |name: &str| statement.pointer(&format!("/window/{name}")).cloned();
     let (Some(from), Some(to)) = (window("opened"), window("closed")) else {
@@ -243,6 +269,7 @@ pub(crate) fn member(
     let absence = Value::Object(absence);
     Ok(json!({
         "id": request_record,
+        "observer": own,
         "request_digest": request_digest,
         "outcome": "absence",
         "digest": jcs_digest(&absence)?,
@@ -250,8 +277,71 @@ pub(crate) fn member(
     }))
 }
 
-/// The `composed/v1` block over `request_records`, observed by `own` (its
-/// checkpoint key is the same key: D4 "Observers").
+/// The `refusal` member for an answered request: the signed refusal exactly
+/// as it came back, read from the kept reply (#198). Only a reply this node
+/// verified as the peer's refusal, under the key the peer announced
+/// (`verification.state` `refusal`), is a member, observed by that key.
+/// An answer that was a nonconformant refusal, or not checked, is refused
+/// by name rather than carried as theirs, as `capsulectl-deal` refuses a
+/// copy it recorded as failed.
+// TODO(#197): an `artifact` member from the kept bundle answer, with its
+// response without the artifact bytes (D4).
+fn refusal_member(
+    ledger_dir: &Path,
+    own: &str,
+    request_record: &str,
+    request_digest: &str,
+    response_record: &str,
+    statement: &Value,
+) -> Result<Value, ComposeError> {
+    let outcome = statement.get("outcome").and_then(Value::as_str);
+    let state = statement
+        .pointer("/verification/state")
+        .and_then(Value::as_str)
+        .unwrap_or("not recorded");
+    match outcome {
+        Some("refusal") if state == "refusal" => {}
+        Some("artifact") if state == "artifact" => {
+            return Err(MemberRefusal::Answered(request_record.into()).into())
+        }
+        _ => {
+            let what = format!(
+                "recorded {}, checked {state}",
+                outcome.unwrap_or("no outcome")
+            );
+            return Err(MemberRefusal::NotVerified(request_record.into(), what).into());
+        }
+    }
+    let reply = crate::ask_book::kept_reply(ledger_dir, response_record)
+        .map_err(|e| MemberRefusal::ReplyNotKept(request_record.into(), e.to_string()))?;
+    let refusal: Value = serde_json::from_slice(&reply).map_err(|e| {
+        MemberRefusal::ReplyNotKept(request_record.into(), format!("not JSON: {e}"))
+    })?;
+    if refusal.get("request_digest").and_then(Value::as_str) != Some(request_digest) {
+        return Err(MemberRefusal::Inconsistent(request_record.into()).into());
+    }
+    let key = refusal
+        .get("key_id")
+        .and_then(Value::as_str)
+        .filter(|k| evidence_request::registry::is_digest(k))
+        .ok_or_else(|| {
+            MemberRefusal::NotVerified(request_record.into(), "the refusal names no key".into())
+        })?;
+    if key == own {
+        return Err(MemberRefusal::OwnKey(request_record.into()).into());
+    }
+    Ok(json!({
+        "id": request_record,
+        "observer": key,
+        "request_digest": request_digest,
+        "outcome": "refusal",
+        "digest": jcs_digest(&refusal)?,
+        "refusal": refusal,
+    }))
+}
+
+/// The `composed/v1` block over `request_records`: this node (`own`)
+/// observes the absences, the refusing peer its refusals.
 pub(crate) fn block(
     ledger_dir: &Path,
     own: &str,
@@ -266,13 +356,24 @@ pub(crate) fn block(
         if request_records[..i].contains(id) {
             return Err(MemberRefusal::Duplicate(id.clone()).into());
         }
-        let mut m = member(&entries, id)?;
-        // Every member built here is an absence, observed by this node.
-        m["observer"] = json!(own);
-        members.push(m);
+        members.push(member(ledger_dir, &entries, own, id)?);
     }
     members.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
-    let observers = vec![json!({"id": own, "role": OBSERVER_ROLE, "custody_domain": own})];
+    // One observer per key, its custody domain the same key (D4). A deal has
+    // one other party: a second peer key is refused.
+    let mut keys: Vec<&str> = members
+        .iter()
+        .filter_map(|m| m["observer"].as_str())
+        .collect();
+    keys.sort_unstable();
+    keys.dedup();
+    if keys.iter().filter(|k| **k != own).count() > 1 {
+        return Err(ComposeError::TwoParties);
+    }
+    let observers: Vec<Value> = keys
+        .iter()
+        .map(|k| json!({"id": k, "role": OBSERVER_ROLE, "custody_domain": k}))
+        .collect();
     let digest = composed_digest(&members, &observers)?;
     Ok(json!({
         "members": members,
@@ -562,6 +663,9 @@ fn refused(error: ComposeError) -> Result<Value, String> {
         ComposeError::Member(r) => r.why(),
         ComposeError::NotCited => "the deal's report does not cite that exchange record".into(),
         ComposeError::NoMembers => "name at least one request record".into(),
+        ComposeError::TwoParties => {
+            "the members were answered by more than one peer; a deal has one other party".into()
+        }
     };
     Ok(json!({"state": "refused", "why": why}))
 }
