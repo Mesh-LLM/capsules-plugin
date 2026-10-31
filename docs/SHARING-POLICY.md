@@ -143,6 +143,21 @@ never a prefix or a pattern. An answer is served whole or refused
 `not_authorized` whole, never filtered per asker, because an artifact is the
 same for every requester.
 
+A `record` subject with the `evidence_bundle/1` derivation names one of this
+node's exchange halves and asks for it as an Evidence Bundle: every record from
+the half to the checkpoint it is served under, each as sealed with its payload
+withheld, under a range proof. That is the earliest checkpoint covering the
+half that the request's coverage allows. The rule above applies to every
+record in that interval: one record the asker may not have refuses the whole
+answer `not_authorized`, and so does a record that never leaves this node
+(an ask, a routing choice, owner maintenance, a deal's report), whatever the
+switch says. Padding names no one and is not held against the asker, but an
+Evidence Bundle cannot carry it yet
+([agent-action-capsule#339](https://github.com/action-state-group/agent-action-capsule/issues/339)),
+so an interval with padding in it is declined as a limit of this node's own.
+This derivation is not in the commitment's `answers.derivations`, which lists
+only what every counterparty gets under every setting.
+
 `range` and `full_history` with no derivation reach records no single
 requester is party to. They are refused `not_authorized` under every setting
 and to every asker, a counterparty that every record in the range names

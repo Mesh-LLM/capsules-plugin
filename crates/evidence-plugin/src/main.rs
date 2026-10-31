@@ -3,6 +3,7 @@ mod admission;
 mod agreement;
 mod agreement_bridge;
 mod ask_book;
+mod bundle_answer;
 // Library-shaped: the split-stage verifier, the frame fold and a few record
 // kinds are exercised by their own tests and the split-stage fixtures, not
 // yet by a live path of this binary.

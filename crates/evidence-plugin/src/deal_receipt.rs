@@ -141,11 +141,26 @@ fn read_deal(ledger_dir: &Path, ids: Vec<String>) -> Result<Deal, Error> {
 
 /// The proofs and records of one consistent snapshot of this node's log, at
 /// the checkpoint the bundle is proven against.
-struct LogSource<'a> {
+pub(crate) struct LogSource<'a> {
     index: &'a LedgerIndex,
     view: LogView<'a>,
     statement: Vec<u8>,
     size: u64,
+}
+
+impl<'a> LogSource<'a> {
+    /// The log as `checkpoint`, one of `index`'s, states it.
+    pub(crate) fn at(
+        index: &'a LedgerIndex,
+        checkpoint: &evidence_log::ChainCheckpoint,
+    ) -> std::io::Result<Self> {
+        Ok(LogSource {
+            index,
+            view: index.view()?,
+            statement: checkpoint.statement.clone(),
+            size: checkpoint.record.mmr_size,
+        })
+    }
 }
 
 fn failed(message: impl Into<String>) -> BuildError {

@@ -64,7 +64,9 @@
 //! responder applies it). An answer is served whole or refused whole (`not_authorized`): an
 //! artifact is the same for every requester (§5), so it is never filtered
 //! per asker. Checkpoints, the history card and the Service History carry no
-//! record bodies and are not gated by it.
+//! record bodies and are not gated by it. An `evidence_bundle/1` answer
+//! carries every record of its interval as sealed, so it is gated as record
+//! bodies are, over the whole interval ([`bundle_answer`]).
 //!
 //! **Who asks** is the node a signed request proved it came from: the
 //! `requester_auth` signature verifies under a key a host announced for that
@@ -387,9 +389,11 @@ fn answer_inner(request_bytes: &[u8], responder: &Responder<'_>, asker: &mut Ask
     }
 }
 
-/// Whether the answer to `req` carries record bodies.
+/// Whether the answer to `req` carries record bodies. An evidence bundle
+/// carries every record of its interval, as sealed, so it does.
 fn carries_records(req: &Request) -> bool {
-    req.derivation.is_none() && !matches!(req.subject, Subject::Checkpoints)
+    (req.derivation.is_none() && !matches!(req.subject, Subject::Checkpoints))
+        || crate::bundle_answer::is_derivation(req.derivation.as_ref())
 }
 
 /// Whether `req` asks for a stranger-safe answer (PRD R-8): `checkpoints`
@@ -628,6 +632,16 @@ fn answer_from(
     if crate::exchange_corroboration::is_derivation(req.derivation.as_ref()) {
         return corroboration_answer(req, request_bytes, principal, responder, view);
     }
+    if crate::bundle_answer::is_derivation(req.derivation.as_ref()) {
+        return bundle_answer(
+            req,
+            request_bytes,
+            principal,
+            principal_key,
+            responder,
+            view,
+        );
+    }
     // A Service History is a run of whole closed periods at one pinned
     // anchor: any other subject or coverage is `policy_declined`, the same
     // for every requester, before anything is resolved (ISH §6.1 item 5).
@@ -757,6 +771,77 @@ fn corroboration_answer(
             return Err(Reason::NotAuthorized);
         }
     }
+    evidence_artifact::build(
+        &Build {
+            request: req,
+            request_bytes,
+            resolved: &anchor,
+            at,
+            records: &records,
+            signing_key: responder.signing_key,
+            issued_at: responder.now,
+        },
+        view,
+    )
+}
+
+/// Steps 7 to 10 for `evidence_bundle/1` (`crate::bundle_answer`): the
+/// half the subject names, then every record from it to the serving
+/// checkpoint's tip, answered whole or refused whole. Each of those records
+/// must be one the requester may have under `history_segments`, except
+/// padding, which names no one; a record that never leaves this node refuses
+/// the answer under every setting.
+fn bundle_answer(
+    req: &Request,
+    request_bytes: &[u8],
+    principal: &[String],
+    principal_key: Option<&str>,
+    responder: &Responder<'_>,
+    view: &LogView<'_>,
+) -> Result<Value, Reason> {
+    use crate::bundle_answer as bundle;
+    let index = view.index;
+    if let Resolution::Refuse(reason) = resolve::resolve(req, &bundle::BundleView(view)) {
+        return Err(reason);
+    }
+    let Subject::Record(half) = &req.subject else {
+        return Err(Reason::NoSuchSubject);
+    };
+    let first = index
+        .leaf_index_of(half)
+        .filter(|&leaf| bundle::is_exchange_half(view, leaf))
+        .ok_or(Reason::NoSuchSubject)?;
+    let at = bundle::serving_position(index, &req.coverage, first)?;
+    let covered =
+        leaf_count(index.chain[at].record.mmr_size).map_err(|_| Reason::CoverageUnsatisfiable)?;
+    if covered - first > MAX_ANSWER_RECORDS {
+        return Err(Reason::CapacityExceeded);
+    }
+    let records: Vec<u64> = (first..covered).collect();
+    if policy_gate_applies() {
+        let leaves = &index.leaves;
+        if records
+            .iter()
+            .any(|&i| leaves.get(i as usize).is_none_or(|l| l.never_leaves))
+        {
+            return Err(Reason::NotAuthorized);
+        }
+        let named: Vec<u64> = records
+            .iter()
+            .copied()
+            .filter(|&i| !leaves[i as usize].padding)
+            .collect();
+        if !may_serve_all_to(
+            index,
+            &named,
+            principal,
+            principal_key,
+            responder.history_segments,
+        ) {
+            return Err(Reason::NotAuthorized);
+        }
+    }
+    let anchor = ResolvedAnchor::Anchor(bundle::anchor_of(&index.chain[at])?);
     evidence_artifact::build(
         &Build {
             request: req,
