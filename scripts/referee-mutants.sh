@@ -14,6 +14,8 @@ if [ ${#features[@]} -eq 0 ]; then
   while IFS= read -r f; do features+=("$f"); done < <(python3 -c 'import json,sys; [print(m["feature"]) for m in json.load(open(sys.argv[1]))["mutants"]]' "$mutants")
 fi
 
+run_output=$(mktemp)
+trap 'rm -f "$run_output"' EXIT
 status=0
 for feature in "${features[@]}"; do
   cargo test --locked --bin capsules --features "$feature" --no-run -q
@@ -22,10 +24,13 @@ for feature in "${features[@]}"; do
     status=1
     continue
   fi
-  missing=$(RUN_OUTPUT="$out" python3 - "$mutants" "$feature" <<'EOF'
-import json, os, re, sys
+  # The run's output goes through a file: it can exceed the size of one
+  # environment variable or argument (128 KiB on Linux).
+  printf '%s\n' "$out" > "$run_output"
+  missing=$(python3 - "$mutants" "$feature" "$run_output" <<'EOF'
+import json, re, sys
 mutant = next(m for m in json.load(open(sys.argv[1]))["mutants"] if m["feature"] == sys.argv[2])
-reported = set(re.findall(r"^differs: (\S+)$", os.environ["RUN_OUTPUT"], re.M))
+reported = set(re.findall(r"^differs: (\S+)$", open(sys.argv[3]).read(), re.M))
 print(" ".join(sorted(set(mutant["must_fail"]) - reported)))
 EOF
 )
