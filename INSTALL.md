@@ -15,7 +15,7 @@ needed.
   `share_standard_history` is off and the requester is not a counterparty. The commitment lists
   `service_history/1` in its place, and `share_standard_history` covers `service_history/1` and no
   longer `served_summary/1`.
-  A 0.1.6 or older peer's `served_summary/1` answer is no longer checked here.
+  A 0.1.7 or older peer's `served_summary/1` answer is no longer checked here.
 
 ## What's new in 0.1.7
 
