@@ -36,10 +36,12 @@
 //! 6. an answer only a counterparty may have, to a node no record of this
 //!    one names → refused, before the subject is looked up;
 //! 7. resolution against the index → the crate's reason;
-//! 8. the number of records (or checkpoints) the answer would carry, counted
-//!    from the index without reading one → `capacity_exceeded` over
-//!    [`MAX_ANSWER_RECORDS`] / [`MAX_ANSWER_CHECKPOINTS`];
-//! 9. the sharing-policy gate on each of those records → `not_authorized`;
+//! 8. the sharing-policy gate on each record the answer would carry, read
+//!    from the index → `not_authorized`, before they are counted, so an
+//!    asker they are refused to gets the same refusal however many match;
+//! 9. the number of those records (or of checkpoints), counted without
+//!    reading one → `capacity_exceeded` over [`MAX_ANSWER_RECORDS`] /
+//!    [`MAX_ANSWER_CHECKPOINTS`];
 //! 10. building and signing; an answer larger than [`MAX_ANSWER_BYTES`] on
 //!     the wire, or a fault building it → `capacity_exceeded`.
 //!
@@ -647,7 +649,6 @@ fn answer_from(
         return Err(Reason::PolicyDeclined);
     }
 
-    // 8. Size, from the index.
     let covered =
         leaf_count(index.chain[at].record.mmr_size).map_err(|_| Reason::CoverageUnsatisfiable)?;
     let records: Vec<u64> = if carries_records(req) {
@@ -657,14 +658,14 @@ fn answer_from(
             Subject::Exchange(half) => index.leaving(index.citing(half)),
             _ => Vec::new(),
         };
-        let count = match &req.subject {
-            Subject::Range(a, b) => b.saturating_sub(*a).saturating_add(1),
-            Subject::FullHistory => covered,
-            Subject::Record(_) => 1,
-            Subject::Correlation(_) | Subject::Exchange(_) => keyed.len() as u64,
-            Subject::Checkpoints => 0,
+        // A span is refused at step 4 wherever the gate applies, so only an
+        // ungated responder gets here with one: never list it past the cap.
+        let span = match &req.subject {
+            Subject::Range(a, b) => Some(b.saturating_sub(*a).saturating_add(1)),
+            Subject::FullHistory => Some(covered),
+            _ => None,
         };
-        if count > MAX_ANSWER_RECORDS {
+        if span.is_some_and(|count| count > MAX_ANSWER_RECORDS) {
             return Err(Reason::CapacityExceeded);
         }
         let records: Vec<u64> = match &req.subject {
@@ -693,7 +694,9 @@ fn answer_from(
         Vec::new()
     };
 
-    // 9. Who may have these records.
+    // 8. Who may have these records. The gate reads the index only, so it
+    // runs before the size limit: an asker the records are refused to learns
+    // nothing of how many there are.
     if policy_gate_applies()
         && !may_serve_all_to(
             index,
@@ -704,6 +707,10 @@ fn answer_from(
         )
     {
         return Err(Reason::NotAuthorized);
+    }
+    // 9. Size.
+    if records.len() as u64 > MAX_ANSWER_RECORDS {
+        return Err(Reason::CapacityExceeded);
     }
 
     // 10. Build and sign.
@@ -742,9 +749,8 @@ fn corroboration_answer(
     let at = serving_position(view, &anchor)?;
     #[allow(unused_mut)]
     let mut records = corroboration::matching_records(req, &index.chain[at].record, view);
-    if records.len() as u64 > MAX_ANSWER_RECORDS {
-        return Err(Reason::CapacityExceeded);
-    }
+    // Who may have them, then how many: an asker refused the half learns
+    // nothing of how many records match it.
     if needs_requester(req, responder) && policy_gate_applies() {
         if cfg!(feature = "mutant-corroboration-filters-per-asker") {
             records.retain(|&i| {
@@ -756,6 +762,9 @@ fn corroboration_answer(
         } else if !may_serve_all(index, &records, principal, "counterparties") {
             return Err(Reason::NotAuthorized);
         }
+    }
+    if records.len() as u64 > MAX_ANSWER_RECORDS {
+        return Err(Reason::CapacityExceeded);
     }
     evidence_artifact::build(
         &Build {
@@ -2541,6 +2550,52 @@ pub(crate) mod tests {
             true,
         );
         assert_eq!(refused(&outcome), Some(Reason::NotAuthorized));
+    }
+
+    /// A node a record names, asking for records it is not party to, gets
+    /// `not_authorized` however many match: the sharing gate runs before
+    /// [`MAX_ANSWER_RECORDS`], so the refusal says nothing of the count
+    /// (#203). The party itself still meets the limit.
+    #[test]
+    fn a_non_party_is_not_authorized_at_any_record_count() {
+        let over = MAX_ANSWER_RECORDS as usize + 1;
+        for count in [1, MAX_ANSWER_RECORDS as usize, over] {
+            // Records 16.. of the corpus, all under its newest checkpoint,
+            // all node-a's and all correlated by one nonce. node-b is named
+            // by record 1, so it reaches the gate.
+            let mut ledger = corpus_ledger();
+            for i in 0..count {
+                ledger[16 + i] = served(
+                    "node-a",
+                    "model-x",
+                    "confirmed",
+                    &format!("{i}.000"),
+                    json!({"nonce": "n-many"}),
+                );
+            }
+            let dir = node(&ledger);
+            // Under evidence-interop/1, where a limit reads
+            // `capacity_exceeded`, not /0's `policy_declined`.
+            let request = json!({
+                "profile": "evidence-interop/1",
+                "subject": {"correlation": "n-many"},
+                "coverage": {"expected_pin": corpus_checkpoints(&ledger, &key())[1].anchor()},
+            });
+            assert_eq!(
+                refused(&ask_by_default(dir.path(), &signed_by("node-b", &request))),
+                Some(Reason::NotAuthorized),
+                "node-b, {count} records"
+            );
+            let party = ask_by_default(dir.path(), &signed_by("node-a", &request));
+            if count == over {
+                assert_eq!(refused(&party), Some(Reason::CapacityExceeded));
+            } else {
+                assert!(
+                    matches!(party, Outcome::Answered { .. }),
+                    "node-a, {count} records: {party:?}"
+                );
+            }
+        }
     }
 
     /// A request for record `i` of `ledger`, pinned to its newest checkpoint.

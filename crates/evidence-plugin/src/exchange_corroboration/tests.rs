@@ -396,6 +396,60 @@ fn a_counterparty_is_refused_whole_when_one_half_names_another_node() {
     );
 }
 
+/// A counterparty no matching half names gets `not_authorized` however many
+/// halves match: the gate runs before `MAX_ANSWER_RECORDS`, so the refusal
+/// says nothing of the count (Mesh-LLM/capsules-plugin#203). The party
+/// itself still meets the limit.
+#[test]
+fn a_non_party_is_not_authorized_at_any_half_count() {
+    let limit = crate::evidence_answer::MAX_ANSWER_RECORDS as usize;
+    for count in [1, limit, limit + 1] {
+        // node-a's halves, each its own response; node-b is named by corpus
+        // record 1, so it reaches the gate.
+        let halves: Vec<Value> = (0..count)
+            .map(|i| {
+                half(
+                    "served",
+                    Some(NONCE),
+                    "client_supplied",
+                    &req_digest(),
+                    &digest_of(&i.to_string()),
+                    "node-a",
+                )
+            })
+            .collect();
+        let dir = node_with(&halves, &node_key());
+        // Under evidence-interop/1, where a limit reads `capacity_exceeded`,
+        // not /0's `policy_declined`.
+        let asked_by = |node: &str| {
+            let mut request = request_for(&digest_of(NONCE));
+            request["profile"] = json!("evidence-interop/1");
+            crate::requester_auth::sign(
+                crate::requester_auth::Channel::EvidenceRequest,
+                &mut request,
+                &asker_key(node),
+                now(),
+                RESPONDER_NODE,
+            );
+            ask(dir.path(), &serde_json::to_vec(&request).unwrap(), false)
+        };
+        assert_eq!(
+            refused(&asked_by("node-b")),
+            Some(Reason::NotAuthorized),
+            "node-b, {count} halves"
+        );
+        let party = asked_by("node-a");
+        if count > limit {
+            assert_eq!(refused(&party), Some(Reason::CapacityExceeded));
+        } else {
+            assert!(
+                matches!(party, Answer::Answered { .. }),
+                "node-a, {count} halves: {party:?}"
+            );
+        }
+    }
+}
+
 #[test]
 fn the_artifact_names_no_requester_counterparty_exchange_id_or_body() {
     let mut record = served_half();
