@@ -22,11 +22,11 @@ The question it answers: on honest nodes serving the same weights, how far can a
 | Qwen2.5-0.5B-Instruct Q4_K_M | Hugging Face `Qwen/Qwen2.5-0.5B-Instruct-GGUF` | Mac Metal, Mac CPU |
 | Qwen3.5-9B Q4_K_M | Hugging Face `unsloth/Qwen3.5-9B-GGUF` | Mac Metal, Mac CPU |
 
-To reproduce, run `measure.sh` once per model, then the plugin's analysis:
+To reproduce, from the repository root, run `measure.sh` once per model, then the plugin's analysis:
 
 ```
 vectors/parity/referee/margin-measurement/measure.sh <llama-server> <gguf> <label> raw <max-tokens> metal=-ngl,99 cpu-t6=-dev,none,-ngl,0,-t,6 ...
-SPLIT_MARGIN_RAW=raw cargo test --bin capsules writes_the_margin_measurement_results -- --ignored
+SPLIT_MARGIN_RAW="$PWD/raw" cargo test --manifest-path crates/evidence-plugin/Cargo.toml --bin capsules writes_the_margin_measurement_results -- --ignored
 ```
 
 The analysis is `crates/evidence-plugin/src/referee/margin_measurement.rs`. It writes `results.json` here. The raw runs (about 1.6 MB per configuration) are not committed. `results.json` is their analysis, every split included.
