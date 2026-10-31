@@ -44,8 +44,10 @@ jobs:
             os: macos-15
     runs-on: ${{ matrix.os }}
     # linux-x86_64 took 25 minutes on capsules-plugin#227, up from 21 before
-    # the shelf (#213); see capsules-plugin#226.
-    timeout-minutes: 40
+    # the shelf (#213); see capsules-plugin#226. The referee mutants rebuild
+    # the crate once each: ten of them run past 30 minutes on macos-15
+    # (#159's run 41170845628 was cut off at the tenth).
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: crates/evidence-plugin
