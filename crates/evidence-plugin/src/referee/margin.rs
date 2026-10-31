@@ -8,11 +8,18 @@
 //!
 //! The margin is read from the answer's OpenAI `logprobs` (`choices[0].
 //! logprobs.content[]`: each sampled token with its `logprob` and
-//! `top_logprobs`), at the token that holds the byte where the answer first
-//! departs. It is `None`, never a guess, when that cannot be read: no
-//! logprobs, tokens that do not spell the answer's text, fewer than two
-//! alternatives, or a chosen token that is not the top one (something other
-//! than greedy decoding chose it).
+//! `top_logprobs`). Which token the other answer chose differently is not
+//! known from text alone (it may cut the same text into other tokens), so
+//! the margin is the least one among this answer's tokens from the space
+//! before the departing word through the token that holds the byte where the
+//! answer departs ([`least_margin`]): an honest backend could have chosen
+//! differently at any of them. It is `None`, never a guess, when any of them
+//! cannot be read: no logprobs, tokens that do not spell the answer's text,
+//! fewer than two alternatives, a logprob outside `[-MAX_NATS, 0]`, or a
+//! chosen token that is not the top one (something other than greedy
+//! decoding chose it). The other answer's own tokens are never used to pick
+//! the token: a twin that is judged would then choose where its referee is
+//! read.
 //!
 //! Numbers are kept as whole micro-nats and sealed as exact decimal strings,
 //! since a signed record carries no floats (spec §5.1); the rule compares
@@ -22,6 +29,10 @@ use serde_json::{json, Value};
 
 /// Micro-nats in one nat.
 const MICRO: f64 = 1_000_000.0;
+/// The most negative logprob read, in nats; anything beyond it is not a
+/// logprob a server computes (a softmax over any vocabulary is far above
+/// it) and is unreadable.
+pub const MAX_NATS: f64 = 1_000_000.0;
 
 /// `nats`, rounded to the nearest micro-nat.
 pub fn micro(nats: f64) -> i64 {
@@ -67,7 +78,10 @@ impl Margin {
 }
 
 fn candidate(entry: &Value) -> Option<Candidate> {
-    let logprob = entry.get("logprob")?.as_f64().filter(|l| l.is_finite())?;
+    let logprob = entry
+        .get("logprob")?
+        .as_f64()
+        .filter(|l| (-MAX_NATS..=0.0).contains(l))?;
     Some(Candidate {
         token: entry.get("token")?.as_str()?.to_string(),
         logprob: micro(logprob),
@@ -87,26 +101,8 @@ fn token_bytes(entry: &Value) -> Option<Vec<u8>> {
     }
 }
 
-/// The margin at the token of `body` that holds byte `at` of `text`, the
-/// answer's own text. The tokens must spell `text` from its first byte; they
-/// may run past its end (a stop sequence is cut from the text, not from the
-/// tokens).
-pub fn margin_at(body: &Value, text: &str, at: usize) -> Option<Margin> {
-    if at >= text.len() {
-        return None;
-    }
-    let entries = body.pointer("/choices/0/logprobs/content")?.as_array()?;
-    let mut spelled = Vec::new();
-    let mut ends = Vec::with_capacity(entries.len());
-    for entry in entries {
-        spelled.extend(token_bytes(entry)?);
-        ends.push(spelled.len());
-    }
-    if !spelled.starts_with(text.as_bytes()) {
-        return None;
-    }
-    let token_index = ends.iter().position(|&end| end > at)?;
-    let entry = &entries[token_index];
+/// The top-2 margin of one sampled token, when it can be read.
+fn token_margin(entry: &Value, token_index: usize) -> Option<Margin> {
     let top = entry.get("top_logprobs")?.as_array()?;
     let (top1, top2) = (candidate(top.first()?)?, candidate(top.get(1)?)?);
     if candidate(entry)? != top1 || top2.logprob > top1.logprob {
@@ -114,10 +110,43 @@ pub fn margin_at(body: &Value, text: &str, at: usize) -> Option<Margin> {
     }
     Some(Margin {
         token_index,
-        margin: top1.logprob - top2.logprob,
+        margin: top1.logprob.checked_sub(top2.logprob)?,
         top1,
         top2,
     })
+}
+
+/// The least margin among the tokens of `body` that hold any byte of
+/// `from..=at` of `text`, the answer's own text; `None` when any of them
+/// cannot be read. The tokens must spell `text` from its first byte; they
+/// may run past its end (a stop sequence is cut from the text, not from the
+/// tokens).
+pub fn least_margin(body: &Value, text: &str, from: usize, at: usize) -> Option<Margin> {
+    if at >= text.len() || from > at {
+        return None;
+    }
+    let entries = body.pointer("/choices/0/logprobs/content")?.as_array()?;
+    let mut spelled = Vec::new();
+    let mut spans = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let start = spelled.len();
+        spelled.extend(token_bytes(entry)?);
+        spans.push((start, spelled.len()));
+    }
+    if !spelled.starts_with(text.as_bytes()) {
+        return None;
+    }
+    let mut least: Option<Margin> = None;
+    for (index, (start, end)) in spans.into_iter().enumerate() {
+        if end <= from || start > at || start == end {
+            continue;
+        }
+        let margin = token_margin(&entries[index], index)?;
+        if least.as_ref().is_none_or(|l| margin.margin < l.margin) {
+            least = Some(margin);
+        }
+    }
+    least
 }
 
 #[cfg(test)]
@@ -161,14 +190,16 @@ mod tests {
             ],
         );
         // Byte 7 ("p" of "deep") is in the third token.
-        let margin = margin_at(&answer, "the deep sea", 7).expect("a margin");
+        let margin = least_margin(&answer, "the deep sea", 7, 7).expect("a margin");
         assert_eq!(margin.token_index, 2);
         assert_eq!(margin.margin, 710_000);
         assert_eq!(margin.to_json()["margin"], "0.710000");
         assert_eq!(margin.to_json()["top2"]["token"], "er");
         // Byte 4 (the "d") is in the second.
         assert_eq!(
-            margin_at(&answer, "the deep sea", 4).unwrap().token_index,
+            least_margin(&answer, "the deep sea", 4, 4)
+                .unwrap()
+                .token_index,
             1
         );
     }
@@ -180,35 +211,82 @@ mod tests {
             token(" two", -0.2, &[(" two", -0.2), (" too", -0.9)]),
         ];
         let text = "one two";
-        assert!(margin_at(&body(text, good.clone()), text, 4).is_some());
+        assert!(least_margin(&body(text, good.clone()), text, 4, 4).is_some());
         // No logprobs at all.
         assert_eq!(
-            margin_at(
+            least_margin(
                 &json!({"choices": [{"message": {"content": text}}]}),
                 text,
+                4,
                 4
             ),
             None
         );
         // Tokens that spell something else (a reasoning prefix, a rewrite).
-        assert_eq!(margin_at(&body(text, good.clone()), "one tw0", 4), None);
+        assert_eq!(
+            least_margin(&body(text, good.clone()), "one tw0", 4, 4),
+            None
+        );
         // Past the text's end.
-        assert_eq!(margin_at(&body(text, good.clone()), text, 7), None);
+        assert_eq!(least_margin(&body(text, good.clone()), text, 7, 7), None);
         // One alternative only.
         let one = vec![good[0].clone(), token(" two", -0.2, &[(" two", -0.2)])];
-        assert_eq!(margin_at(&body(text, one), text, 4), None);
+        assert_eq!(least_margin(&body(text, one), text, 4, 4), None);
         // The chosen token is not the top one: not greedy at that token.
         let penalised = vec![
             good[0].clone(),
             token(" two", -0.9, &[(" too", -0.2), (" two", -0.9)]),
         ];
-        assert_eq!(margin_at(&body(text, penalised), text, 4), None);
+        assert_eq!(least_margin(&body(text, penalised), text, 4, 4), None);
         // An unreadable logprob.
         let unreadable = vec![
             good[0].clone(),
             json!({"token": " two", "logprob": null, "top_logprobs": []}),
         ];
-        assert_eq!(margin_at(&body(text, unreadable), text, 4), None);
+        assert_eq!(least_margin(&body(text, unreadable), text, 4, 4), None);
+    }
+
+    #[test]
+    fn the_least_margin_from_the_window_start_through_the_departure() {
+        let text = "the deep sea";
+        let answer = body(
+            text,
+            vec![
+                token("the", -0.01, &[("the", -0.01), ("a", -9.0)]),
+                token(" de", -0.3, &[(" de", -0.3), (" deer", -0.5)]),
+                token("ep", -0.41, &[("ep", -0.41), ("er", -5.0)]),
+                token(" sea", -0.1, &[(" sea", -0.1), (" lake", -0.2)]),
+            ],
+        );
+        // From the space before "deep" (byte 3) through "p" (byte 7): " de"
+        // and "ep"; the near-tie at " de" is the least, though the bytes
+        // part only at "ep" (another tokenizer could have chosen " deer").
+        let least = least_margin(&answer, text, 3, 7).unwrap();
+        assert_eq!((least.token_index, least.margin), (1, 200_000));
+        // " sea", after the departure, is never read.
+        assert_eq!(least_margin(&answer, text, 7, 7).unwrap().token_index, 2);
+        // One unreadable token in the window makes it unreadable.
+        let mut broken = answer.clone();
+        broken["choices"][0]["logprobs"]["content"][1]["top_logprobs"] = json!([]);
+        assert_eq!(least_margin(&broken, text, 3, 7), None);
+        assert!(least_margin(&broken, text, 7, 7).is_some());
+    }
+
+    #[test]
+    fn logprobs_out_of_range_are_unreadable() {
+        let text = "ab";
+        for (top1, top2) in [(0.0, -1e20), (0.5, -1.0), (0.0, -2e6)] {
+            let answer = body(text, vec![token("ab", top1, &[("ab", top1), ("x", top2)])]);
+            assert_eq!(least_margin(&answer, text, 0, 0), None, "{top1} {top2}");
+        }
+        let edge = body(
+            text,
+            vec![token("ab", 0.0, &[("ab", 0.0), ("x", -MAX_NATS)])],
+        );
+        assert_eq!(
+            least_margin(&edge, text, 0, 0).unwrap().margin,
+            micro(MAX_NATS)
+        );
     }
 
     #[test]
@@ -222,7 +300,7 @@ mod tests {
                 token("STOP", -0.01, &[("STOP", -0.01), ("x", -5.0)]),
             ],
         );
-        assert_eq!(margin_at(&answer, text, 1).unwrap().token_index, 0);
+        assert_eq!(least_margin(&answer, text, 1, 1).unwrap().token_index, 0);
         // "é" spelled by two tokens of one byte each.
         let split = json!({"choices": [{"logprobs": {"content": [
             {"token": "", "bytes": [0xc3], "logprob": -0.1,
@@ -230,7 +308,7 @@ mod tests {
             {"token": "", "bytes": [0xa9], "logprob": -0.01,
              "top_logprobs": [{"token": "", "bytes": [0xa9], "logprob": -0.01}, {"token": "x", "logprob": -6.0}]}
         ]}}]});
-        assert_eq!(margin_at(&split, "é", 1).unwrap().token_index, 1);
-        assert_eq!(margin_at(&split, "é", 0).unwrap().margin, 2_400_000);
+        assert_eq!(least_margin(&split, "é", 1, 1).unwrap().token_index, 1);
+        assert_eq!(least_margin(&split, "é", 0, 0).unwrap().margin, 2_400_000);
     }
 }

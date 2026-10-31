@@ -38,6 +38,19 @@ fn token(text: &str, margin: f64, alt: &str) -> Value {
     })
 }
 
+/// A token of one byte that is not a whole character, `margin` nats ahead.
+fn byte_token(byte: u8, margin: f64) -> Value {
+    json!({
+        "token": "",
+        "logprob": CHOSEN,
+        "bytes": [byte],
+        "top_logprobs": [
+            {"token": "", "logprob": CHOSEN, "bytes": [byte]},
+            {"token": "\u{2016}", "logprob": CHOSEN - margin, "bytes": "\u{2016}".as_bytes()},
+        ],
+    })
+}
+
 /// `logprobs.content` for `tokens`, each `(text, margin)`.
 fn logprobs(tokens: &[(&str, f64)]) -> Value {
     json!({
@@ -194,18 +207,38 @@ fn specs() -> Vec<Spec> {
             referee_text: "the deep sea",
             referee_logprobs: Some(logprobs(&[
                 ("the", DECISIVE_NATS),
+                (" de", 2.0 * t),
+                ("ep", 3.0 * t),
+                (" sea", t / 10.0),
+            ])),
+            referee_token_index: Some(1),
+            ..base(
+                "multi_token_word_least_margin_counts",
+                "\"deep\" against \"deer\": the referee's margin is the least over \" de\" and \"ep\" (\"deer\" may be one token, chosen against \" de\"); the near-tie at \" sea\", after the split, is not read",
+                None,
+                "contradicted:node-b",
+                None,
+                Some(2.0 * t),
+            )
+        },
+        Spec {
+            a_text: "the deep sea",
+            b_text: "the deer sea",
+            referee_text: "the deep sea",
+            referee_logprobs: Some(logprobs(&[
+                ("the", DECISIVE_NATS),
                 (" de", t / 10.0),
                 ("ep", 3.0 * t),
                 (" sea", DECISIVE_NATS),
             ])),
-            referee_token_index: Some(2),
+            referee_token_index: Some(1),
             ..base(
-                "multi_token_word_departing_token_counts",
-                "\"deep\" against \"deer\": the margin is read at \"ep\", where the referee departs, not at the word's first token \" de\" (a near-tie there both twins passed)",
+                "multi_token_word_near_tie_before_the_departing_byte",
+                "a near-tie at \" de\", though the bytes part only at \"ep\": the twin may have chosen \" deer\" against \" de\" there, so no twin is named",
                 None,
-                "contradicted:node-b",
-                None,
-                Some(3.0 * t),
+                "inconclusive",
+                Some(INCONCLUSIVE_SPLIT_WITHIN_MARGIN),
+                Some(t / 10.0),
             )
         },
         Spec {
@@ -222,6 +255,27 @@ fn specs() -> Vec<Spec> {
             ..base(
                 "multi_token_word_near_tie_at_the_departure",
                 "a wide margin at the word's first token does not hide a near-tie at the token where the referee departs",
+                None,
+                "inconclusive",
+                Some(INCONCLUSIVE_SPLIT_WITHIN_MARGIN),
+                Some(t / 10.0),
+            )
+        },
+        Spec {
+            a_text: "the caf\u{e9} ok",
+            b_text: "the caf\u{ea} ok",
+            referee_text: "the caf\u{e9} ok",
+            referee_logprobs: Some(json!({"content": [
+                token("the", DECISIVE_NATS, "\u{2016}"),
+                token(" caf", 3.0 * t, "\u{2016}"),
+                byte_token(0xc3, 3.0 * t),
+                byte_token(0xa9, t / 10.0),
+                token(" ok", DECISIVE_NATS, "\u{2016}"),
+            ], "refusal": null})),
+            referee_token_index: Some(3),
+            ..base(
+                "split_inside_a_character",
+                "\"caf\u{e9}\" against \"caf\u{ea}\": the bytes part at the second byte of the character, so its token, a near-tie, is read",
                 None,
                 "inconclusive",
                 Some(INCONCLUSIVE_SPLIT_WITHIN_MARGIN),

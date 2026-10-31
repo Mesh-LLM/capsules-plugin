@@ -13,7 +13,7 @@
 use serde_json::{json, Map, Value};
 
 use super::half::{Half, HalfError};
-use super::margin::{self, margin_at, Margin};
+use super::margin::{self, least_margin, Margin};
 
 pub const VERDICT_CORROBORATED: &str = "corroborated";
 pub const VERDICT_INCONCLUSIVE: &str = "inconclusive";
@@ -41,9 +41,10 @@ pub const INCONCLUSIVE_SPLIT_MARGIN_UNAVAILABLE: &str = "split_margin_unavailabl
 /// Decided (#155): the least top-2 margin, in nats, at which a referee's
 /// word at the split names a twin. Below it, or with no margin, the ruling
 /// is `inconclusive`. A margin equal to it names the twin. It is at least
-/// twice the largest change in the top-2 gap seen between honest backends
-/// (`vectors/parity/referee/margin-measurement/`); a change is a CHANGELOG
-/// line. There is no operator setting: a lower value charges honest nodes
+/// twice the largest change in the top-2 gap seen between honest backends at
+/// positions whose gap is under it, where a change can flip the choice (2.37
+/// nats measured; `vectors/parity/referee/margin-measurement/README.md`, "The
+/// 2x rule"); a change is a CHANGELOG line. There is no operator setting: a lower value charges honest nodes
 /// more readily.
 pub const SPLIT_MARGIN_THRESHOLD_NATS: f64 = 3.0;
 
@@ -103,24 +104,30 @@ fn word_spans(text: &str) -> Vec<(usize, &str)> {
     spans
 }
 
-/// The byte of `text` where its word `index` first departs from `other`'s
-/// word `other_index`: the word's start plus the bytes the two words share.
-/// `None` when `text` has no word `index`.
-fn departure(text: &str, index: usize, other: &str, other_index: usize) -> Option<usize> {
-    let (start, word) = *word_spans(text).get(index)?;
-    let theirs = token_at(other, other_index).unwrap_or_default();
-    let shared: usize = word
-        .chars()
-        .zip(theirs.chars())
-        .take_while(|(x, y)| x == y)
-        .map(|(c, _)| c.len_utf8())
-        .sum();
-    Some(start + shared)
-}
-
 /// The word at `index` of `text`, `None` past its end.
 pub fn token_at(text: &str, index: usize) -> Option<&str> {
     words(text).get(index).copied()
+}
+
+/// Where `text`'s word `index` departs from `other`'s word `other_index`:
+/// `(from, at)`, the first byte after `text`'s previous word (0 for its
+/// first) and the first byte at which the two words differ (the word's
+/// start plus the bytes they share). The margin is read over `from..=at`
+/// (`margin::least_margin`). `None` when `text` has no word `index`.
+fn departure(text: &str, index: usize, other: &str, other_index: usize) -> Option<(usize, usize)> {
+    let spans = word_spans(text);
+    let (start, word) = *spans.get(index)?;
+    let from = index
+        .checked_sub(1)
+        .and_then(|before| spans.get(before))
+        .map_or(0, |(s, w)| s + w.len());
+    let theirs = token_at(other, other_index).unwrap_or_default();
+    let shared = word
+        .bytes()
+        .zip(theirs.bytes())
+        .take_while(|(x, y)| x == y)
+        .count();
+    Some((from, start + shared))
 }
 
 /// Where two answers first differ, and the digest of the words they share
@@ -215,11 +222,12 @@ pub fn referee_verdict(
     let Some(node) = named.node_id.as_deref().filter(|n| !n.is_empty()) else {
         return Ruling::inconclusive();
     };
-    // The referee's margin at the token where it departs from the twin it
-    // did not agree with: the choice an honest backend could have flipped.
+    // The referee's least margin from the space before its word through the
+    // token where it departs from the twin it did not agree with: a choice
+    // there is what an honest backend could have flipped.
     let referee_margin = departure(referee_text, referee_index, other.text(), at)
         .zip(referee_body)
-        .and_then(|(split, body)| margin_at(body, referee_text, split));
+        .and_then(|((from, split), body)| least_margin(body, referee_text, from, split));
     let because = match &referee_margin {
         None => Some(INCONCLUSIVE_SPLIT_MARGIN_UNAVAILABLE),
         Some(m) if m.margin < split_margin_threshold() => Some(INCONCLUSIVE_SPLIT_WITHIN_MARGIN),
@@ -238,7 +246,8 @@ pub fn referee_verdict(
 
 /// The sealed `split_margin` block: the threshold, the referee's margin
 /// (`null` when it had none), and each twin's own margin where its answer
-/// departs from the other's, when that twin's answer carries logprobs.
+/// departs from the other's, read the same way, when that twin's answer
+/// carries logprobs.
 fn split_margin_block(referee: Option<&Margin>, a: &Half, b: &Half, at: usize) -> Value {
     let mut block = Map::new();
     block.insert("unit".into(), json!("nats"));
@@ -252,8 +261,8 @@ fn split_margin_block(referee: Option<&Margin>, a: &Half, b: &Half, at: usize) -
     );
     let twin = |own: &Half, other: &Half| {
         let body = own.response_body.as_ref()?;
-        let split = departure(own.text(), at, other.text(), at)?;
-        margin_at(body, own.text(), split)
+        let (from, split) = departure(own.text(), at, other.text(), at)?;
+        least_margin(body, own.text(), from, split)
     };
     for (key, own, other) in [("twin_a", a, b), ("twin_b", b, a)] {
         if let Some(m) = twin(own, other) {
