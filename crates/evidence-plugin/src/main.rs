@@ -8,6 +8,7 @@ mod bundle_answer;
 // kinds are exercised by their own tests and the split-stage fixtures, not
 // yet by a live path of this binary.
 mod capsule_emit;
+mod chain_store;
 mod checkpoint_cadence;
 mod commitment;
 mod commitment_bridge;
@@ -1701,6 +1702,12 @@ async fn main() -> anyhow::Result<()> {
         let args: Vec<String> = std::env::args().skip(2).collect();
         std::process::exit(ledger_checkpoints::cli(&args));
     }
+    // The chain's lines in the `capsules.jsonl` line format, read from the
+    // chain's stores without their writer lock (`chain_store::cli`).
+    if std::env::args().nth(1).as_deref() == Some("chain-lines") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        std::process::exit(chain_store::cli(&args));
+    }
     // The join quickstart INSTALL.md carries, from the tools' own constants.
     if std::env::args().nth(1).as_deref() == Some("--print-join-quickstart") {
         print!("{}", doctor::quickstart(PLUGIN_ID));
@@ -2555,7 +2562,7 @@ mod push_eligibility_tests {
     /// Where record `id` sits in the ledger, padding lines counted, as a
     /// checkpoint counts leaves.
     fn leaf_of(capsules: &CapsuleState, id: &str) -> u64 {
-        std::fs::read_to_string(capsules.ledger_dir().join("capsules.jsonl"))
+        crate::chain_store::read_chain_string(capsules.ledger_dir())
             .unwrap()
             .lines()
             .position(|l| serde_json::from_str::<Value>(l).unwrap()["capsule_id"] == id)
@@ -2952,7 +2959,7 @@ mod paid_push_tests {
         let (a, b) = settlement_legs::tests::dirs();
         settlement_legs::tests::two_nodes(a.path(), b.path(), settlement_legs::tests::WALLET);
         let ledger = a.path().join("ledger");
-        let lines: Vec<Value> = std::fs::read_to_string(ledger.join("capsules.jsonl"))
+        let lines: Vec<Value> = crate::chain_store::read_chain_string(&ledger)
             .unwrap()
             .lines()
             .map(|l| serde_json::from_str(l).unwrap())
@@ -2963,12 +2970,7 @@ mod paid_push_tests {
             .enumerate()
             .find(|(_, c)| c["settlement"]["leg"] == "terms")
             .expect("the payer's terms leg");
-        let (state, _) = producer::checkpoint::CheckpointState::load(
-            &ledger,
-            "payer-log",
-            producer::checkpoint::CheckpointCadenceConfig::default(),
-        )
-        .unwrap();
+        let (state, _) = crate::chain_store::test_load(&ledger, "payer-log").unwrap();
         let handle = checkpoint_cadence::CheckpointHandle::new(
             state,
             ed25519_dalek::SigningKey::from_bytes(&[9u8; 32]),

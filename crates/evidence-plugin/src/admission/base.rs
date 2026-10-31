@@ -549,9 +549,16 @@ pub fn local_facts(ledger_dir: &Path) -> Option<Facts> {
             .all(|line| serde_json::from_str::<Value>(line).is_ok_and(|v| line_reads(&v))),
         Err(error) => error.kind() == std::io::ErrorKind::NotFound,
     };
-    if !whole("capsules.jsonl", &|_| true)
-        || !whole(crate::verdict_counts::REQUESTED_FILENAME, &request_line)
-    {
+    let chain_whole = crate::chain_store::chain_text(ledger_dir).is_ok_and(|text| {
+        text.is_none_or(|text| {
+            String::from_utf8_lossy(&text)
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .all(|line| serde_json::from_str::<Value>(line).is_ok())
+        })
+    });
+    if !chain_whole || !whole(crate::verdict_counts::REQUESTED_FILENAME, &request_line) {
         return None;
     }
     let records = crate::evidence_panes::read_capsule_records(ledger_dir);

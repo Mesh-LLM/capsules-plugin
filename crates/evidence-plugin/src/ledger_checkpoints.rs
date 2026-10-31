@@ -4,9 +4,10 @@
 //! **Nothing here is a new proof format.** Each file is a Checkpointed Local
 //! Log MMR; a checkpoint is cll's `CheckpointRecord` and its `cll-checkpoint`
 //! COSE statement, signed with the node key; a range proof is cll's CLL #13
-//! range proof. The chain (`capsules.jsonl`) keeps its own checkpoints
-//! (`checkpoints.jsonl`, cut by the cadence, which a chain ask has cut one
-//! over the tip); only its range proof is built here. Every other file in [`CHECKPOINTED_FILES`] is checkpointed here, into
+//! range proof. The chain (asked for by its file name `capsules.jsonl`, read
+//! from the chain's stores, `chain_store::chain_text`) keeps its own
+//! checkpoints (in the chain log, cut by the cadence, which a chain ask has
+//! cut one over the tip); only its range proof is built here. Every other file in [`CHECKPOINTED_FILES`] is checkpointed here, into
 //! [`FILE_CHECKPOINTS`].
 //!
 //! **What a leaf is.** Every complete (newline-ended) line, in file order,
@@ -160,8 +161,21 @@ impl Tree {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
             Err(e) => return Err(e),
         };
+        Self::from_bytes(&bytes, rule)
+    }
+
+    /// The chain's MMR, from its lines as `chain_store::chain_text` gives them.
+    fn of_chain(ledger_dir: &Path) -> std::io::Result<Self> {
+        let text = crate::chain_store::chain_text(ledger_dir)?;
+        Self::from_bytes(
+            text.as_deref().map_or(&[][..], Vec::as_slice),
+            LeafRule::CapsuleId,
+        )
+    }
+
+    fn from_bytes(bytes: &[u8], rule: LeafRule) -> std::io::Result<Self> {
         let mut nodes = MemoryNodeStore::new();
-        for (index, line) in complete_lines(&bytes).0.into_iter().enumerate() {
+        for (index, line) in complete_lines(bytes).0.into_iter().enumerate() {
             let Ok(digest) = node_body_digest(rule, index, line) else {
                 break;
             };
@@ -396,8 +410,11 @@ pub fn reply(
                 .ok_or_else(|| ReplyError::NotYet("no checkpoint covers the chain yet".into()))?
         }
     };
-    let tree =
-        Tree::build(&ledger_dir.join(file), rule).map_err(|e| ReplyError::Node(e.to_string()))?;
+    let tree = match rule {
+        LeafRule::CapsuleId => Tree::of_chain(ledger_dir),
+        LeafRule::Sha256Line => Tree::build(&ledger_dir.join(file), rule),
+    }
+    .map_err(|e| ReplyError::Node(e.to_string()))?;
     if cp.mmr_size > tree.size() || tree.root(cp.mmr_size).map_err(ReplyError::Node)? != cp.root {
         return Err(ReplyError::Node(format!(
             "{file} no longer holds what its checkpoint committed"
@@ -948,7 +965,10 @@ mod tests {
         assert_eq!(reply["leaf_digest"], LEAF_CAPSULE_ID);
         assert_eq!(reply["checkpoint"]["log_id"], "test-log");
         let node = crate::commitment::key_id(state.signing_key());
-        let copy = std::fs::read(ledger.join(CAPSULES_FILE)).unwrap();
+        let copy = crate::chain_store::chain_text(ledger)
+            .unwrap()
+            .unwrap()
+            .to_vec();
         assert!(check(&copy, &reply, &node, None).is_ok());
         let (all, _) = complete_lines(&copy);
         let dropped: Vec<u8> = all[1..].iter().flat_map(|l| [*l, b"\n"].concat()).collect();
@@ -980,7 +1000,10 @@ mod tests {
         let node = crate::commitment::key_id(state.signing_key());
         // A record sealed after the last checkpoint, as step 07's outcome is.
         state.pad_one().unwrap();
-        let read = std::fs::read(ledger.join(CAPSULES_FILE)).unwrap();
+        let read = crate::chain_store::chain_text(&ledger)
+            .unwrap()
+            .unwrap()
+            .to_vec();
         let stale = reply(
             &ledger,
             LOG,
@@ -1029,7 +1052,10 @@ mod tests {
         // The cut padded the chain: the copy is read after the ask, up to the
         // checkpoint's last leaf, and holds the record read before it.
         let leaves = fresh["range_proof"]["to_index"].as_u64().unwrap() as usize + 1;
-        let after = std::fs::read(ledger.join(CAPSULES_FILE)).unwrap();
+        let after = crate::chain_store::chain_text(&ledger)
+            .unwrap()
+            .unwrap()
+            .to_vec();
         let (all, _) = complete_lines(&after);
         assert!(all.len() >= leaves && leaves >= complete_lines(&read).0.len());
         let copy: Vec<u8> = all[..leaves]

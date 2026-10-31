@@ -38,6 +38,22 @@ use tokio::process::{Child, Command};
 use tokio::time::{sleep, timeout};
 
 const PLUGIN_BIN: &str = env!("CARGO_BIN_EXE_capsules");
+
+/// The node's chain as `capsules chain-lines` prints it: one record per
+/// line, in the `capsules.jsonl` line format, read from the chain's stores.
+fn chain_lines(data_dir: &std::path::Path) -> String {
+    let out = std::process::Command::new(PLUGIN_BIN)
+        .args(["chain-lines", "--data-dir"])
+        .arg(data_dir)
+        .output()
+        .expect("run capsules chain-lines");
+    assert!(
+        out.status.success(),
+        "chain-lines: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8(out.stdout).expect("chain-lines prints UTF-8")
+}
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -398,17 +414,38 @@ async fn allowed_exchange_emits_a_signed_chained_ledgered_capsule_and_publishes_
     let verifying_key = capsule_emit_lib::keys::load_verifying_key_pem(&pubkey_pem)
         .expect("parse persisted public key");
 
+    // The running node holds the chain log's writer lock: read its lines
+    // with `capsules chain-lines` and the statement from the record store,
+    // which takes no lock.
     let ledger_dir = host.capsule_data_dir().join("ledger");
-    let (ledger, report) =
-        capsule_emit_lib::ledger::Ledger::open(&ledger_dir).expect("reopen plugin's ledger");
-    assert!(
-        report.valid_entries >= 1,
-        "ledger must contain the emitted capsule"
-    );
-    let entry = ledger
-        .lookup(&capsule_id)
-        .expect("ledger lookup")
+    let lines = chain_lines(host.capsule_data_dir());
+    assert!(!lines.is_empty(), "ledger must contain the emitted capsule");
+    let capsule: serde_json::Value = lines
+        .lines()
+        .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+        .find(|c| c["capsule_id"] == capsule_id)
         .expect("capsule_id from the HTTP response must be in the ledger");
+    let records = capsule_emit_artifact::jsonl::JsonlStore::new(
+        ledger_dir.join("artifacts.jsonl"),
+        "chain",
+        [verifying_key.to_bytes()],
+    )
+    .expect("open the record store");
+    let signed_statement = capsule_emit_artifact::Store::get(&records, &capsule_id)
+        .expect("the record is stored")
+        .artifacts
+        .into_iter()
+        .find(|a| a.name == "signed-statement")
+        .and_then(|a| a.content)
+        .expect("its signed statement");
+    struct Entry {
+        capsule: serde_json::Value,
+        signed_statement: Vec<u8>,
+    }
+    let entry = Entry {
+        capsule,
+        signed_statement,
+    };
 
     let verify_report = capsule_emit_lib::verify::verify_offline(
         &entry.capsule,
@@ -488,7 +525,7 @@ async fn doctor_and_join_answer_through_the_real_hosts_console() {
         ledger.is_dir(),
         "the plugin opened its ledger at {ledger:?}"
     );
-    let sealed = || std::fs::read(ledger.join("capsules.jsonl")).ok();
+    let sealed = || chain_lines(host.capsule_data_dir());
     let before = sealed();
     let doctor = host
         .post_tool("doctor", &serde_json::json!({"probe": true}))

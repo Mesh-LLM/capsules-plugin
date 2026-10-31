@@ -191,14 +191,10 @@ impl Witnesses {
         configured: Vec<String>,
         keys: &BTreeMap<String, String>,
     ) -> Self {
-        let mut lines: Vec<Value> =
-            std::fs::read_to_string(ledger_dir.join(crate::evidence_log::CHECKPOINTS_FILE))
-                .map(|text| {
-                    text.lines()
-                        .filter_map(|l| serde_json::from_str(l.trim()).ok())
-                        .collect()
-                })
-                .unwrap_or_default();
+        let mut lines: Vec<Value> = crate::chain_store::checkpoints_string(ledger_dir)
+            .lines()
+            .filter_map(|l| serde_json::from_str(l.trim()).ok())
+            .collect();
         crate::witness_status::annotate(&mut lines, &configured, keys, ledger_dir);
         let held = lines
             .iter()

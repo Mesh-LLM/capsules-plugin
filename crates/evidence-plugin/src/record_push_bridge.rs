@@ -1411,7 +1411,10 @@ pub(crate) mod tests {
         assert_eq!(provenance[0]["capsule_id"], id);
         assert_eq!(provenance[0]["received_from"], peer);
         assert_eq!(provenance[0]["via"], "ask");
-        let citing: Vec<_> = lines("capsules.jsonl")
+        let citing: Vec<_> = crate::chain_store::chain_string(mine.ledger_dir())
+            .lines()
+            .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+            .collect::<Vec<_>>()
             .into_iter()
             .filter_map(|r| {
                 r.pointer("/model_attestation/compute_attestation/received_half")
@@ -1467,7 +1470,7 @@ pub(crate) mod tests {
 
     /// The `received_half` blocks of `state`'s citing records, oldest first.
     fn received_halves(state: &CapsuleState) -> Vec<serde_json::Value> {
-        std::fs::read_to_string(state.ledger_dir().join("capsules.jsonl"))
+        crate::chain_store::read_chain_string(state.ledger_dir())
             .unwrap_or_default()
             .lines()
             .filter_map(|l| {
@@ -1518,7 +1521,7 @@ pub(crate) mod tests {
         assert_eq!(cited[0]["cited_capsule_id"], foreign["capsule_id"]);
         assert_eq!(cited[0]["own_half_capsule_id"], own["capsule_id"]);
         assert_ne!(cited[0]["own_half_capsule_id"], other["capsule_id"]);
-        let record = std::fs::read_to_string(mine.ledger_dir().join("capsules.jsonl"))
+        let record = crate::chain_store::read_chain_string(mine.ledger_dir())
             .unwrap()
             .lines()
             .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
@@ -1839,7 +1842,6 @@ pub(crate) mod tests {
     /// checkpoint, which is signed by the half's own key.
     pub(crate) fn real_bundle(dir: &std::path::Path) -> serde_json::Value {
         use crate::producer::anchor::AnchorClient;
-        use crate::producer::checkpoint::{CheckpointCadenceConfig, CheckpointState};
         let capsules = CapsuleState::open(dir, "rust-node").expect("open capsule state");
         let exchange = crate::capsule_emit::ExchangeRecord {
             model: "m",
@@ -1858,12 +1860,8 @@ pub(crate) mod tests {
         let half = capsules
             .emit_for_exchange(&exchange)
             .expect("seal the pushed half");
-        let (mut state, _) = CheckpointState::load(
-            &dir.join("ledger"),
-            "rust-node",
-            CheckpointCadenceConfig::default(),
-        )
-        .expect("load checkpoint state");
+        let (mut state, _) = crate::chain_store::test_load(&dir.join("ledger"), "rust-node")
+            .expect("load checkpoint state");
         let coverage = state
             .checkpoint_covering(
                 &half.capsule_id,

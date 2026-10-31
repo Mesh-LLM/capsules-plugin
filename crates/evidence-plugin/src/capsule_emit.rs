@@ -392,9 +392,14 @@ pub struct CapsuleState {
     /// (`checkpoint_cadence`), then this, then `ledger`, then
     /// `sequence_counters`.
     append_turn: parking_lot::ReentrantMutex<()>,
-    /// Where `ledger` lives, kept so an owner cleanup can re-open it
-    /// (`rebuild_index`) without a second writer ever existing.
+    /// Where `ledger` lives.
     ledger_dir: PathBuf,
+    /// The chain's stores (`crate::chain_store`), opened once: `ledger` and
+    /// the checkpoint cadence write through them, and an owner cleanup
+    /// re-opens the ledger over them (`rebuild_index`), so a second writer
+    /// never exists. `None` for a node that stays on the flat ledger
+    /// (`chain_store::stays_flat`).
+    stores: Option<crate::chain_store::ChainStores>,
     node_id: String,
     /// Per-`(self, counterparty)` monotone `seq`/`prev_seq` cache, persisted
     /// beside the ledger at `<data_dir>/sequence_counters.json` (see
@@ -511,7 +516,30 @@ impl CapsuleState {
     pub fn open(data_dir: &Path, node_id: impl Into<String>) -> anyhow::Result<Self> {
         let keys = keys::load_or_create(&data_dir.join("keys"))?;
         let ledger_dir = data_dir.join("ledger");
-        let (ledger, report) = crate::producer::index::open_ledger(&ledger_dir)?;
+        let node_keys = crate::chain_store::node_signing_keys(&data_dir.join("keys"));
+        let (stores, (ledger, report)) = match crate::chain_store::stays_flat(&ledger_dir)? {
+            // A flat history the stores cannot hold whole stays flat, as
+            // today, until the owner starts a new history.
+            Some(why) => {
+                tracing::info!("{why}");
+                (
+                    None,
+                    crate::producer::ledger::Ledger::open_with_indexer(
+                        &ledger_dir,
+                        crate::producer::index::record_index_keys,
+                    )?,
+                )
+            }
+            None => {
+                let stores = crate::chain_store::ChainStores::open(&ledger_dir, &node_keys)?;
+                // A node an earlier release wrote keeps its chain in the flat
+                // layout until this moves it onto the stores (once,
+                // resumable).
+                crate::chain_store::import_flat(&ledger_dir, &stores, &node_keys)?;
+                let opened = stores.open_ledger()?;
+                (Some(stores), opened)
+            }
+        };
         tracing::info!(recovered_entries = report.valid_entries, "ledger opened");
         if let Some(offset) = report.truncated_torn_write_at {
             tracing::warn!(
@@ -542,6 +570,7 @@ impl CapsuleState {
             ledger: Mutex::new(ledger),
             append_turn: parking_lot::ReentrantMutex::new(()),
             ledger_dir,
+            stores,
             node_id: node_id.into(),
             sequence_counters: Mutex::new(sequence_counters),
             learned_self_node_id: Mutex::new(learned_self_node_id),
@@ -1630,6 +1659,57 @@ impl CapsuleState {
         &self.ledger_dir
     }
 
+    /// The chain's stores, `None` on a node that stays on the flat ledger.
+    #[cfg(test)]
+    pub fn chain_stores(&self) -> Option<&crate::chain_store::ChainStores> {
+        self.stores.as_ref()
+    }
+
+    /// The checkpoint state of this node's chain, in its layout: in the
+    /// chain log beside the entries (`chain_store::load_checkpoint_state`),
+    /// or the flat `checkpoints.jsonl` and `mmr_nodes.dat` on a node that
+    /// stays flat.
+    pub fn load_checkpoint_state(
+        &self,
+        log_id: impl Into<String>,
+        cfg: crate::producer::checkpoint::CheckpointCadenceConfig,
+    ) -> Result<
+        (
+            crate::producer::checkpoint::CheckpointState,
+            crate::producer::checkpoint::LoadReport,
+        ),
+        crate::producer::checkpoint::CheckpointStateError,
+    > {
+        match &self.stores {
+            Some(stores) => crate::chain_store::load_checkpoint_state(
+                stores,
+                log_id,
+                cfg,
+                &self.node_signing_keys(),
+            ),
+            None => {
+                crate::producer::checkpoint::CheckpointState::load(&self.ledger_dir, log_id, cfg)
+            }
+        }
+    }
+
+    /// Every key this node has signed with: its key, then the ones a
+    /// rotation archived.
+    pub fn node_signing_keys(&self) -> Vec<ed25519_dalek::SigningKey> {
+        let mut keys = vec![self.keys.signing_key.clone()];
+        if let Some(data_dir) = self.ledger_dir.parent() {
+            for key in crate::chain_store::node_signing_keys(&data_dir.join("keys")) {
+                if !keys
+                    .iter()
+                    .any(|k| k.verifying_key() == key.verifying_key())
+                {
+                    keys.push(key);
+                }
+            }
+        }
+        keys
+    }
+
     /// Rebuild the in-memory index by re-opening the ledger from disk, which
     /// re-checks every record (id, chain link, signed statement). Swapped in
     /// only when the rebuilt chain ends at the same head this node already
@@ -1637,7 +1717,13 @@ impl CapsuleState {
     /// file, and that is reported, never papered over.
     pub fn rebuild_index(&self) -> anyhow::Result<IndexRebuild> {
         let mut ledger = self.ledger();
-        let (rebuilt, report) = crate::producer::index::open_ledger(&self.ledger_dir)?;
+        let (rebuilt, report) = match &self.stores {
+            Some(stores) => stores.open_ledger()?,
+            None => crate::producer::ledger::Ledger::open_with_indexer(
+                &self.ledger_dir,
+                crate::producer::index::record_index_keys,
+            )?,
+        };
         if rebuilt.chain_head() != ledger.chain_head() {
             anyhow::bail!(
                 "the records on disk end at {:?} but this node holds {:?}; not replacing the index",
@@ -2228,8 +2314,7 @@ pub(crate) mod tests {
             )
             .expect("seal unblock");
 
-        let ledger =
-            std::fs::read_to_string(dir.join("ledger").join("capsules.jsonl")).expect("ledger");
+        let ledger = crate::chain_store::read_chain_string(&dir.join("ledger")).expect("ledger");
         let unblock_line: Value = ledger
             .lines()
             .filter_map(|line| serde_json::from_str::<Value>(line).ok())
@@ -3550,16 +3635,17 @@ pub(crate) mod tests {
         let dir = std::env::temp_dir().join(format!("cap-noseq-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let state = CapsuleState::open(&dir, "node-under-test").expect("open state");
-        // Make the ledger write fail: the statements directory becomes a file.
-        let statements = dir.join("ledger").join("signed-statements");
-        std::fs::remove_dir_all(&statements).expect("statements dir exists");
-        std::fs::write(&statements, b"not a directory").unwrap();
+        // Make the ledger write fail: the record store becomes a directory.
+        let records = dir.join("ledger").join(crate::chain_store::ARTIFACTS_FILE);
+        let kept = std::fs::read(&records).expect("the record store exists");
+        std::fs::remove_file(&records).unwrap();
+        std::fs::create_dir_all(&records).unwrap();
         let observed = observed_with(DispatchPath::RawProxy, None);
         assert!(state.emit_for_observed_host_exchange(&observed).is_err());
         assert_eq!(state.observed_not_sealed(), 1);
 
-        std::fs::remove_file(&statements).unwrap();
-        std::fs::create_dir_all(&statements).unwrap();
+        std::fs::remove_dir_all(&records).unwrap();
+        std::fs::write(&records, kept).unwrap();
         let c = state
             .emit_for_observed_host_exchange(&observed)
             .expect("seal")
@@ -3930,7 +4016,7 @@ pub(crate) mod tests {
         let main = state
             .emit_for_observed_split_exchange(&observed_with(DispatchPath::RawProxy, None), &plan)
             .expect("seal split");
-        let lines: Vec<Value> = std::fs::read_to_string(dir.join("ledger").join("capsules.jsonl"))
+        let lines: Vec<Value> = crate::chain_store::read_chain_string(&dir.join("ledger"))
             .unwrap()
             .lines()
             .map(|l| serde_json::from_str(l).unwrap())
@@ -3967,18 +4053,13 @@ pub(crate) mod tests {
     /// a real checkpoint, with the stage records it cites.
     fn real_split_bundle(dir: &Path) -> Value {
         use crate::producer::anchor::AnchorClient;
-        use crate::producer::checkpoint::{CheckpointCadenceConfig, CheckpointState};
         let state = CapsuleState::open(dir, "rust-node").expect("open state");
         let (plan, _) = released_split("relayed_all_agree");
         let main = state
             .emit_for_observed_split_exchange(&observed_with(DispatchPath::RawProxy, None), &plan)
             .expect("seal split");
-        let (mut checkpoints, _) = CheckpointState::load(
-            &dir.join("ledger"),
-            "rust-node",
-            CheckpointCadenceConfig::default(),
-        )
-        .expect("load checkpoint state");
+        let (mut checkpoints, _) = crate::chain_store::test_load(&dir.join("ledger"), "rust-node")
+            .expect("load checkpoint state");
         let coverage = checkpoints
             .checkpoint_covering(
                 &main.capsule_id,
@@ -4780,7 +4861,7 @@ mod settlement_tests {
             reopened.chain_head().as_deref(),
             Some(first.capsule_id.as_str())
         );
-        let lines = fs::read_to_string(dir.join("ledger").join("capsules.jsonl")).unwrap();
+        let lines = crate::chain_store::read_chain_string(&dir.join("ledger")).unwrap();
         assert_eq!(lines.lines().count(), 1);
         let _ = fs::remove_dir_all(&dir);
     }

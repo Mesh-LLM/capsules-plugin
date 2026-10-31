@@ -154,9 +154,12 @@ impl Harness {
             .await
             .expect("POST /v1/chat/completions");
         assert_eq!(resp.status(), reqwest::StatusCode::OK);
-        let checkpoints = self.data_dir.join("ledger").join("checkpoints.jsonl");
+        // The chain's checkpoints are commits in its CLL journal.
+        let journal = self.data_dir.join("ledger").join("log.jsonl");
         timeout(TEST_TIMEOUT, async {
-            while std::fs::metadata(&checkpoints).map_or(true, |m| m.len() == 0) {
+            while !std::fs::read_to_string(&journal)
+                .is_ok_and(|text| text.contains("\"type\":\"cll.commit\""))
+            {
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
         })

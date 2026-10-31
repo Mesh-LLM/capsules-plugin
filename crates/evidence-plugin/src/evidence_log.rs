@@ -3,16 +3,20 @@
 //! request is resolved against).
 //!
 //! **Read-only, and its own MMR.** The plugin's checkpoint cadence owns the
-//! durable node store (`mmr_nodes.dat`) and is its only writer; opening it a
-//! second time would run its torn-write recovery from here. So this index
-//! folds `capsules.jsonl` into an in-memory MMR of its own (the same leaves:
-//! each line's `capsule_id`, padding included, in file order) and keeps it
-//! current incrementally: each answer reads only the complete lines appended
-//! since the last one. A file that was replaced or rewritten under the index
-//! (its last indexed line no longer matches) is re-indexed from the start.
+//! chain's checkpoint state and its ledger the chain's stores, each under the
+//! log's writer lock (`crate::chain_store`). So this index reads the chain's
+//! lines as `chain_store::chain_text` gives them (the `capsules.jsonl` line
+//! format, from the stores without their lock, or from a flat
+//! `capsules.jsonl`), folds them into an in-memory MMR of its own (the same
+//! leaves: each line's `capsule_id`, padding included, in log order) and
+//! keeps it current incrementally: each answer folds only the complete lines
+//! appended since the last one. A chain that was replaced or rewritten under
+//! the index (its last indexed line no longer matches) is re-indexed from
+//! the start.
 //!
-//! **Only checkpoints this index re-derives.** A checkpoint from
-//! `checkpoints.jsonl` joins the chain only if it is signed by this node's
+//! **Only checkpoints this index re-derives.** A checkpoint from the chain's
+//! checkpoints (`chain_store::checkpoints_text`, the `checkpoints.jsonl`
+//! line format) joins the chain only if it is signed by this node's
 //! key, chains from the stream's first checkpoint, its root is the root
 //! this index computes at its size, and its line carries its own COSE wire
 //! statement (below). The first checkpoint that fails any of these ends the
@@ -32,8 +36,9 @@
 //! without one, or with another, ends the chain like any other failure.
 //!
 //! **What a record is here.** A record's digest is its `capsule_id` (the leaf
-//! the checkpoints commit to) and its body is its line in `capsules.jsonl`,
-//! byte for byte, producer envelope included. A requester checks one with
+//! the checkpoints commit to) and its body is its line, as
+//! `chain_store::chain_text` gives it, byte for byte, producer envelope
+//! included. A requester checks one with
 //! [`record_digest`]: the body's recomputed `capsule_id`, which must equal the
 //! one it states. The body is not the `capsule_id` preimage, so its SHA-256 is
 //! not its digest: the interop profile's Checkpointed Local Log check reports
@@ -63,6 +68,8 @@ use sha2::{Digest, Sha256};
 use evidencebook::served_summary::{latency, LeafFacts, Outcome, ServedFacts};
 
 pub const CAPSULES_FILE: &str = "capsules.jsonl";
+/// The flat layout's checkpoints, which tests write as fixtures.
+#[cfg(test)]
 pub const CHECKPOINTS_FILE: &str = "checkpoints.jsonl";
 /// Which exchange record each deal capsule (a step or a report of an
 /// `x-deal-v0` deal) is of: one `{"capsule_id", "exchange_capsule_id"}` line
@@ -273,6 +280,34 @@ impl Tail {
         }
     }
 
+    /// [`Tail::read_new`] over `bytes` (`None` for a missing file).
+    fn read_new_in(&self, bytes: Option<&[u8]>, mut f: impl FnMut(u64, &[u8]) -> bool) -> bool {
+        let Some(bytes) = bytes else {
+            return self.consumed == 0;
+        };
+        let Ok(consumed) = usize::try_from(self.consumed) else {
+            return false;
+        };
+        if bytes.len() < consumed {
+            return false;
+        }
+        if let Some((offset, digest)) = self.last_line {
+            let line = &bytes[offset as usize..consumed];
+            if <[u8; 32]>::from(Sha256::digest(line)) != digest {
+                return false;
+            }
+        }
+        let mut offset = consumed;
+        while let Some(relative) = bytes[offset..].iter().position(|&b| b == b'\n') {
+            let end = offset + relative + 1;
+            if !f(offset as u64, &bytes[offset..end]) {
+                return true;
+            }
+            offset = end;
+        }
+        true
+    }
+
     fn advance(&mut self, offset: u64, line: &[u8]) {
         self.consumed = offset + line.len() as u64;
         self.last_line = Some((offset, Sha256::digest(line).into()));
@@ -302,6 +337,8 @@ impl ChainCheckpoint {
 /// The index of one ledger directory.
 pub struct LedgerIndex {
     ledger_dir: PathBuf,
+    /// The chain's lines as last read: record bodies are read from it.
+    text: Option<std::sync::Arc<Vec<u8>>>,
     /// This node's key (`key_id` form: raw public key, lowercase hex). Only
     /// checkpoints it signed are anchors.
     node_key_id: String,
@@ -332,6 +369,7 @@ impl LedgerIndex {
     fn new(ledger_dir: &Path, node_key_id: &str) -> Self {
         Self {
             ledger_dir: ledger_dir.to_path_buf(),
+            text: None,
             node_key_id: node_key_id.to_string(),
             capsules: Tail::default(),
             checkpoints: Tail::default(),
@@ -358,11 +396,13 @@ impl LedgerIndex {
         let mut pending: Vec<(u64, Vec<u8>)> = Vec::new();
         let start = self.capsules.clone();
         if self.capsules_stopped.is_none() {
-            let path = self.ledger_dir.join(CAPSULES_FILE);
-            let continues = start.read_new(&path, |offset, line| {
-                pending.push((offset, line.to_vec()));
-                true
-            })?;
+            let text = crate::chain_store::chain_text(&self.ledger_dir)?;
+            let continues =
+                start.read_new_in(text.as_deref().map(Vec::as_slice), |offset, line| {
+                    pending.push((offset, line.to_vec()));
+                    true
+                });
+            self.text = text;
             if !continues {
                 *self = Self::new(&self.ledger_dir, &self.node_key_id);
                 return self.refresh();
@@ -396,12 +436,12 @@ impl LedgerIndex {
             tail.advance(offset, &line);
         }
         self.capsules = tail;
-        let path = self.ledger_dir.join(CHECKPOINTS_FILE);
-        if !self.take_checkpoints(&path)? {
+        let checkpoints = crate::chain_store::checkpoints_text(&self.ledger_dir)?;
+        if !self.take_checkpoints(checkpoints.as_deref()) {
             self.checkpoints = Tail::default();
             self.chain.clear();
             self.chain_stopped = None;
-            self.take_checkpoints(&path)?;
+            self.take_checkpoints(checkpoints.as_deref());
         }
         Ok(())
     }
@@ -464,11 +504,11 @@ impl LedgerIndex {
     }
 
     /// Extend the chain from the checkpoint lines appended since the last
-    /// call. `Ok(false)` when the file was rewritten.
-    fn take_checkpoints(&mut self, path: &Path) -> std::io::Result<bool> {
+    /// call. `false` when they were rewritten.
+    fn take_checkpoints(&mut self, text: Option<&[u8]>) -> bool {
         let start = self.checkpoints.clone();
         let mut tail = start.clone();
-        let continues = start.read_new(path, |offset, line| {
+        let continues = start.read_new_in(text, |offset, line| {
             if self.chain_stopped.is_some() {
                 return false;
             }
@@ -483,11 +523,11 @@ impl LedgerIndex {
             }
             tail.advance(offset, line);
             true
-        })?;
+        });
         if continues {
             self.checkpoints = tail;
         }
-        Ok(continues)
+        continues
     }
 
     /// `Some` for a checkpoint that extends the chain; `None` for one past
@@ -652,12 +692,16 @@ impl LedgerIndex {
         self.leaves.get(i as usize).is_some_and(|l| !l.never_leaves)
     }
 
-    /// A view that reads record bodies from the ledger file.
+    /// A view that reads record bodies from the chain's lines as they are
+    /// now (a flat file rewritten since it was indexed no longer matches,
+    /// and `LogView::record_at` refuses the line), or as indexed when they
+    /// cannot be read.
     pub fn view(&self) -> std::io::Result<LogView<'_>> {
-        Ok(LogView {
-            index: self,
-            file: File::open(self.ledger_dir.join(CAPSULES_FILE)).ok(),
-        })
+        let text = crate::chain_store::chain_text(&self.ledger_dir)
+            .ok()
+            .flatten()
+            .or_else(|| self.text.clone());
+        Ok(LogView { index: self, text })
     }
 }
 
@@ -700,10 +744,10 @@ pub fn with_index<T>(
     Ok(f(index))
 }
 
-/// The index plus the ledger file, for reading bodies.
+/// The index plus the chain's lines, for reading bodies.
 pub struct LogView<'a> {
     pub index: &'a LedgerIndex,
-    file: Option<File>,
+    text: Option<std::sync::Arc<Vec<u8>>>,
 }
 
 impl LogView<'_> {
@@ -711,10 +755,9 @@ impl LogView<'_> {
     /// when the line is no longer the one indexed.
     pub fn record_at(&self, leaf_index: u64) -> Option<Record> {
         let leaf = self.index.leaves.get(usize::try_from(leaf_index).ok()?)?;
-        let mut body = vec![0u8; usize::try_from(leaf.len).ok()?];
-        let mut file = self.file.as_ref()?;
-        file.seek(SeekFrom::Start(leaf.offset)).ok()?;
-        file.read_exact(&mut body).ok()?;
+        let start = usize::try_from(leaf.offset).ok()?;
+        let end = start.checked_add(usize::try_from(leaf.len).ok()?)?;
+        let body = self.text.as_ref()?.get(start..end)?.to_vec();
         let parsed: Value = serde_json::from_slice(&body).ok()?;
         (parsed.get("capsule_id").and_then(Value::as_str) == Some(leaf.capsule_id.as_str())).then(
             || Record {

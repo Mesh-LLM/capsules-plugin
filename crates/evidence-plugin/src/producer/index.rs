@@ -11,7 +11,7 @@ use crate::producer::capsule::{
     ADJUDICATION_ACK_REFUSED_BLOCK, ADJUDICATION_ISSUED_BLOCK, ADJUDICATION_RECEIVED_BLOCK,
     SETTLEMENT_EXTENSION_KEY,
 };
-use crate::producer::ledger::{counterparty_citation_keys, Ledger, LedgerError, RecoveryReport};
+use crate::producer::ledger::{counterparty_citation_keys, Ledger, RecoveryReport};
 
 /// The index key of a settlement record for `event_ref`.
 pub fn settlement_event_key(event_ref: &str) -> String {
@@ -87,7 +87,14 @@ pub fn record_index_keys(capsule: &Value) -> Vec<String> {
     keys
 }
 
-/// Open (or recover) a ledger under this plugin's index.
-pub fn open_ledger(ledger_dir: &Path) -> Result<(Ledger, RecoveryReport), LedgerError> {
-    Ledger::open_with_indexer(ledger_dir, record_index_keys)
+/// Open (or recover) a ledger under this plugin's index, in its layout: the
+/// chain's stores (`crate::chain_store`) where it has them, sharing the ones
+/// this process holds open, else the flat files (an archived history from
+/// before the stores). The node's own chain is opened by `CapsuleState`.
+pub fn open_ledger(ledger_dir: &Path) -> anyhow::Result<(Ledger, RecoveryReport)> {
+    if crate::chain_store::is_store_layout(ledger_dir) {
+        let keys = crate::chain_store::keys_beside(ledger_dir);
+        return Ok(crate::chain_store::ChainStores::open(ledger_dir, &keys)?.open_ledger()?);
+    }
+    Ok(Ledger::open_with_indexer(ledger_dir, record_index_keys)?)
 }

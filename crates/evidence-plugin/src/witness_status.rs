@@ -270,8 +270,7 @@ fn witness_latest(
 
 /// Whether this node's checkpoints include one of `size` with `root`.
 fn local_holds(ledger_dir: &Path, size: u64, root: &str) -> bool {
-    std::fs::read_to_string(ledger_dir.join("checkpoints.jsonl"))
-        .unwrap_or_default()
+    crate::chain_store::checkpoints_string(ledger_dir)
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line.trim()).ok())
         .any(|cp| {
@@ -282,8 +281,7 @@ fn local_holds(ledger_dir: &Path, size: u64, root: &str) -> bool {
 
 /// The latest checkpoint line, if any.
 fn latest_line(ledger_dir: &Path) -> Option<Value> {
-    std::fs::read_to_string(ledger_dir.join("checkpoints.jsonl"))
-        .ok()?
+    crate::chain_store::checkpoints_string(ledger_dir)
         .lines()
         .rev()
         .map(str::trim)

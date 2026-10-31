@@ -28,7 +28,7 @@
 //! `mesh_evidence_request` is.
 
 use crate::capsule_emit::{CapsuleState, EmittedCapsule};
-use crate::producer::capsule::{OwnerMaintenance, OWNER_MAINTENANCE_BLOCK};
+use crate::producer::capsule::{Disposer, OwnerMaintenance, OWNER_MAINTENANCE_BLOCK};
 use mesh_llm_plugin::{PluginError, PluginResult};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -48,7 +48,7 @@ const LOG_ID_FILE: &str = "log_id";
 /// The setting that names a node's log id instead of the default.
 pub const LOG_ID_SETTING: &str = "CAPSULES_LOG_ID";
 const PENDING_FILE: &str = "new-history.pending.json";
-const ARCHIVE_DIR: &str = "archive";
+pub(crate) const ARCHIVE_DIR: &str = "archive";
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 pub struct NoArgs {}
@@ -129,8 +129,9 @@ fn is_history_of(log_id: &str, base: &str) -> bool {
 /// carries the log id it was cut under, and the next one must carry the same
 /// one, so a log with a checkpoint keeps its log id.
 fn has_checkpoints(ledger_dir: &Path) -> bool {
-    fs::read_to_string(ledger_dir.join("checkpoints.jsonl"))
-        .is_ok_and(|text| text.lines().any(|line| !line.trim().is_empty()))
+    crate::chain_store::checkpoints_string(ledger_dir)
+        .lines()
+        .any(|line| !line.trim().is_empty())
 }
 
 /// The log id this node runs under, chosen once and then kept in
@@ -257,15 +258,13 @@ pub fn is_archived(data_dir: &Path, capsule_id: &str) -> bool {
     let Ok(slots) = fs::read_dir(data_dir.join(ARCHIVE_DIR)) else {
         return false;
     };
-    slots.flatten().any(|slot| {
-        fs::read_to_string(slot.path().join("capsules.jsonl")).is_ok_and(|text| {
-            text.lines().any(|line| {
-                serde_json::from_str::<Value>(line.trim()).is_ok_and(|record| {
-                    record.get("capsule_id").and_then(Value::as_str) == Some(capsule_id)
-                })
-            })
-        })
-    })
+    // `pre-store/` holds the flat files an import moved onto the stores
+    // (`chain_store::import_flat`): the current history, never an earlier
+    // one, so no record of it reads as archived.
+    slots
+        .flatten()
+        .filter(|slot| slot.file_name() != crate::chain_store::PRE_STORE_ARCHIVE)
+        .any(|slot| crate::chain_store::holds_record(&slot.path(), capsule_id))
 }
 
 /// Phase 1, BEFORE `CapsuleState::open` and the checkpoint cadence: if a new
@@ -297,9 +296,7 @@ fn plan_move(
     }
     let (slot, _) = next_archive_slot(data_dir);
     // Counted before the move, for the new history's first record.
-    pending.prior_record_count = Some(count_records(
-        &data_dir.join("ledger").join("capsules.jsonl"),
-    ));
+    pending.prior_record_count = Some(count_records(&data_dir.join("ledger")));
     pending.new_log_id = Some(format!(
         "{}/h{}",
         default_log_id,
@@ -374,16 +371,17 @@ pub fn finish_pending_after_open(
             kind: "history_started",
             facts,
             prior_history_head: Some(&pending.closing_record_id),
+            // Finishes the start of a new history a person asked for.
+            disposer: Disposer::Person,
         })?;
     }
     fs::remove_file(data_dir.join(PENDING_FILE))?;
     Ok(())
 }
 
-fn count_records(capsules_path: &Path) -> usize {
-    fs::read_to_string(capsules_path)
-        .map(|s| s.lines().filter(|l| !l.trim().is_empty()).count())
-        .unwrap_or(0)
+/// The lines of the chain under `ledger_dir`, in either layout.
+fn count_records(ledger_dir: &Path) -> usize {
+    crate::chain_store::line_count(ledger_dir)
 }
 
 // ---------------------------------------------------------------------------
@@ -623,6 +621,8 @@ impl Maintenance {
                 kind: "stored_text_deleted",
                 facts,
                 prior_history_head: None,
+                // An owner tool call: a person asked for it.
+                disposer: Disposer::Person,
             })
             .map_err(internal)?;
         Ok(json!({
@@ -644,6 +644,8 @@ impl Maintenance {
                 kind: "index_rebuilt",
                 facts,
                 prior_history_head: None,
+                // An owner tool call: a person asked for it.
+                disposer: Disposer::Person,
             })
             .map_err(internal)?;
         Ok(json!({
@@ -678,6 +680,8 @@ impl Maintenance {
                 kind: "history_closing",
                 facts,
                 prior_history_head: None,
+                // An owner tool call: a person asked for it.
+                disposer: Disposer::Person,
             })
             .map_err(internal)?;
         let pending = PendingNewHistory {
@@ -979,7 +983,16 @@ mod tests {
         let dir = temp_dir("log-id-migrate");
         let (m, _ids) = maintenance(&dir, 1);
         drop(m);
-        put_checkpoint(&dir, "node-under-test");
+        // A checkpoint cut under the old shared log id.
+        let key = crate::producer::keys::load_or_create(&dir.join("keys"))
+            .unwrap()
+            .signing_key;
+        crate::chain_store::test_load(&dir.join("ledger"), "node-under-test")
+            .unwrap()
+            .0
+            .reconnect(&key, &crate::checkpoint_cadence::anchor_for())
+            .unwrap()
+            .expect("a cut");
         let key_id = key_id_of_node(&dir);
         let log_id =
             resolve_log_id(&dir, "node-under-test", "node-under-test", &key_id, None).unwrap();
@@ -995,7 +1008,10 @@ mod tests {
         assert_eq!(log_id, format!("node-under-test/{key_id}/h2"));
         let state = CapsuleState::open(&dir, "node-under-test").unwrap();
         finish_pending_after_open(&dir, &state, &log_id).unwrap();
-        assert!(dir.join("archive/1/checkpoints.jsonl").exists());
+        assert!(dir
+            .join("archive/1")
+            .join(crate::chain_store::LOG_FILE)
+            .exists());
         let first = reopen_clean(&dir);
         let first = first
             .lookup(first.chain_head().unwrap())
@@ -1240,9 +1256,16 @@ mod tests {
     fn rebuild_index_refuses_a_tampered_chain_and_seals_nothing() {
         let dir = temp_dir("rebuild-tamper");
         let (m, ids) = maintenance(&dir, 2);
-        let path = dir.join("ledger/capsules.jsonl");
-        let text = fs::read_to_string(&path).unwrap();
-        fs::write(&path, text.replacen("\"decide\"", "\"deny\"", 1)).unwrap();
+        // One byte of the first stored record's capsule changed in place.
+        let path = dir.join("ledger").join(crate::chain_store::ARTIFACTS_FILE);
+        let mut bytes = fs::read(&path).unwrap();
+        let at = bytes
+            .windows(11)
+            .position(|w| w == b"\"capsule\":\"")
+            .unwrap()
+            + 20;
+        bytes[at] = if bytes[at] == b'A' { b'B' } else { b'A' };
+        fs::write(&path, bytes).unwrap();
         assert!(m.rebuild_index().is_err());
         assert_eq!(m.capsules.chain_head().as_deref(), Some(ids[1].as_str()));
         let _ = fs::remove_dir_all(&dir);

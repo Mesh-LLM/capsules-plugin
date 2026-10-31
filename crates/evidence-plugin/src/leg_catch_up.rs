@@ -424,12 +424,7 @@ mod tests {
         assert!(lines(&held, inclusion).is_empty());
 
         // The catch-up: the same leg, under a checkpoint of the payer's log.
-        let (state, _) = crate::producer::checkpoint::CheckpointState::load(
-            &ledger,
-            "payer-log",
-            crate::producer::checkpoint::CheckpointCadenceConfig::default(),
-        )
-        .unwrap();
+        let (state, _) = crate::chain_store::test_load(&ledger, "payer-log").unwrap();
         let handle =
             crate::checkpoint_cadence::CheckpointHandle::new(state, payer.signing_key().clone());
         let coverage = handle.coverage_for(&leg_id).await.unwrap();
@@ -454,7 +449,10 @@ mod tests {
         ] {
             assert_eq!(lines(&held, store).len(), 1, "held once: {store}");
         }
-        let provider_chain = lines(&held, "capsules.jsonl");
+        let provider_chain: Vec<Value> = crate::chain_store::chain_string(&held)
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
         let cited = |block: &str| {
             provider_chain
                 .iter()

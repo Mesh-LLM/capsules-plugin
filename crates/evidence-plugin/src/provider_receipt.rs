@@ -124,21 +124,14 @@ fn legs_of(ledger_dir: &Path, exchange_id: &str) -> std::io::Result<Vec<String>>
     if hashes.is_empty() {
         return Ok(Vec::new());
     }
-    let ledger = match std::fs::File::open(ledger_dir.join(evidence_log::CAPSULES_FILE)) {
-        Ok(file) => file,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(e) => return Err(e),
+    // The chain's lines (`chain_store::chain_text`, the stores or a flat
+    // `capsules.jsonl`).
+    let Some(chain) = crate::chain_store::chain_text(ledger_dir)? else {
+        return Ok(Vec::new());
     };
-    // Streamed, a line at a time: the ledger grows without bound.
-    let mut reader = std::io::BufReader::new(ledger);
     let mut legs = Vec::new();
-    let mut line = Vec::new();
-    loop {
-        line.clear();
-        if std::io::BufRead::read_until(&mut reader, b'\n', &mut line)? == 0 {
-            break;
-        }
-        let text = String::from_utf8_lossy(&line);
+    for line in chain.split(|&b| b == b'\n').filter(|l| !l.is_empty()) {
+        let text = String::from_utf8_lossy(line);
         if !hashes.iter().any(|h| text.contains(h.as_str())) {
             continue;
         }

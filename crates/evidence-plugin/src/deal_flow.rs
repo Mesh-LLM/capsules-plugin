@@ -1004,8 +1004,9 @@ mod tests {
 
     /// The deal capsules in the ledger, in order.
     fn deal_capsules(dir: &Path) -> Vec<Value> {
-        lines(&ledger(dir).join("capsules.jsonl"))
-            .into_iter()
+        crate::chain_store::chain_string(&ledger(dir))
+            .lines()
+            .map(|l| serde_json::from_str::<Value>(l).unwrap())
             .filter(|c| c.get("deal_id").is_some() || c["action_id"] == deal::REPORT_ACTION_ID)
             .collect()
     }

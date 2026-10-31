@@ -44,7 +44,10 @@ const OLD_APP_DIR: &str = "capsule-emit-mesh";
 /// directory.
 const LEGACY_RELATIVE_DIR: &str = "admission-policy-data";
 const NODE_KEY: &str = "keys/node-key.pem";
+/// The chain, in the flat layout an earlier release wrote and in the
+/// stores layout (`chain_store`): a data directory holding either is a node.
 const LEDGER: &str = "ledger/capsules.jsonl";
+const LEDGER_LOG: &str = "ledger/log.jsonl";
 /// Holds the advisory lock; its contents (the holder's pid) are only for the
 /// refusal message.
 const LOCK_FILE: &str = "capsules.lock";
@@ -85,7 +88,8 @@ fn check_no_second_key(dir: &Path, chosen: bool, cwd: &Path) -> anyhow::Result<(
     if dir.join(NODE_KEY).exists() {
         return Ok(());
     }
-    let ledger_has_records = std::fs::metadata(dir.join(LEDGER)).is_ok_and(|m| m.len() > 0);
+    let ledger_has_records = std::fs::metadata(dir.join(LEDGER)).is_ok_and(|m| m.len() > 0)
+        || crate::chain_store::line_count(&dir.join("ledger")) > 0;
     if ledger_has_records {
         bail!(
             "{} holds a ledger but no signing key ({NODE_KEY}); refusing to start with a new key, \
@@ -108,7 +112,7 @@ fn check_no_second_key(dir: &Path, chosen: bool, cwd: &Path) -> anyhow::Result<(
 
 /// Whether `dir` holds a node: its signing key or its ledger.
 fn holds_node(dir: &Path) -> bool {
-    dir.join(NODE_KEY).exists() || dir.join(LEDGER).exists()
+    dir.join(NODE_KEY).exists() || dir.join(LEDGER).exists() || dir.join(LEDGER_LOG).exists()
 }
 
 /// The old default directory to keep using, when this node has one: only
@@ -217,13 +221,15 @@ fn other_holders(path: &Path) -> Vec<u32> {
 /// Refuse a directory whose ledger another process has open: two writers on
 /// one hash chain break it, and a plugin from before 0.1.3 takes no lock.
 fn check_no_other_writer(dir: &Path) -> anyhow::Result<()> {
-    let holders = other_holders(&dir.join(LEDGER));
-    if let Some(pid) = holders.first() {
-        bail!(
-            "{} is open in another process (pid {pid}); refusing to write to a ledger another \
-             process is writing. Stop that process, or give this node its own {ENV_DATA_DIR}",
-            dir.join(LEDGER).display()
-        );
+    for ledger in [LEDGER, LEDGER_LOG] {
+        let holders = other_holders(&dir.join(ledger));
+        if let Some(pid) = holders.first() {
+            bail!(
+                "{} is open in another process (pid {pid}); refusing to write to a ledger another \
+                 process is writing. Stop that process, or give this node its own {ENV_DATA_DIR}",
+                dir.join(ledger).display()
+            );
+        }
     }
     Ok(())
 }
@@ -551,14 +557,14 @@ mod tests {
     fn an_existing_node_keeps_its_old_directory_in_place() {
         let (old, new) = old_node("old-in-place", 3);
         let key = std::fs::read(old.join(NODE_KEY)).unwrap();
-        let ledger = std::fs::read(old.join(LEDGER)).unwrap();
+        let ledger = std::fs::read(old.join(LEDGER_LOG)).unwrap();
         assert_eq!(
             existing_old_default(&new, false).unwrap(),
             Some(old.clone())
         );
         assert!(!new.exists(), "nothing created under the new name");
         assert_eq!(std::fs::read(old.join(NODE_KEY)).unwrap(), key);
-        assert_eq!(std::fs::read(old.join(LEDGER)).unwrap(), ledger);
+        assert_eq!(std::fs::read(old.join(LEDGER_LOG)).unwrap(), ledger);
     }
 
     #[test]

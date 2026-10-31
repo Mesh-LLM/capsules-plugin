@@ -123,7 +123,7 @@ fn held_verdict(ledger_dir: &std::path::Path, verdict_capsule_id: &str) -> Optio
 
 /// `issued` / `received` when this node's chain records the verdict.
 fn recorded_as(ledger_dir: &std::path::Path, verdict_capsule_id: &str) -> Option<&'static str> {
-    let text = std::fs::read_to_string(ledger_dir.join("capsules.jsonl")).ok()?;
+    let text = crate::chain_store::chain_string(ledger_dir);
     for line in text.lines() {
         let Ok(record) = serde_json::from_str::<Value>(line) else {
             continue;

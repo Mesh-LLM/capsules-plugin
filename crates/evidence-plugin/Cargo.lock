@@ -730,6 +730,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "capsule-emit",
+ "capsule-emit-artifact",
  "capsule-engine",
  "checkpointed-local-log",
  "chrono",

@@ -333,12 +333,9 @@ impl CheckpointHandle {
     /// padding through `capsules` as [`spawn`] does.
     #[cfg(test)]
     pub(crate) fn for_tests(capsules: Arc<CapsuleState>, log_id: &str) -> Self {
-        let (mut state, _) = CheckpointState::load(
-            capsules.ledger_dir(),
-            log_id.to_string(),
-            CheckpointCadenceConfig::default(),
-        )
-        .unwrap();
+        let (mut state, _) = capsules
+            .load_checkpoint_state(log_id.to_string(), CheckpointCadenceConfig::default())
+            .unwrap();
         state.set_padding_sink(Box::new(LedgerPadder(capsules.clone())));
         Self::new(state, capsules.signing_key().clone())
     }
@@ -496,7 +493,9 @@ pub fn spawn(
     let keys_dir = ledger_dir.clone();
     let interval = Duration::from_secs(cfg.cadence_seconds);
     let pad_bucket = cfg.pad_bucket;
-    let (mut state, report) = CheckpointState::load(&ledger_dir, log_id, cfg).map_err(|e| {
+    // Kept in the chain's own log, beside its entries (`chain_store`), or
+    // in the flat files on a node that stays flat.
+    let (mut state, report) = capsules.load_checkpoint_state(log_id, cfg).map_err(|e| {
         anyhow::anyhow!(
             "failed to load checkpoint state at {}: {e}",
             ledger_dir.display()
@@ -819,13 +818,12 @@ mod tests {
             .unwrap();
         let ledger = capsules.ledger_dir().to_path_buf();
         let lines = || {
-            std::fs::read_to_string(ledger.join("capsules.jsonl"))
+            crate::chain_store::read_chain_string(&ledger)
                 .unwrap()
                 .lines()
                 .count()
         };
-        let (mut state, _) =
-            CheckpointState::load(&ledger, "test-log", CheckpointCadenceConfig::default()).unwrap();
+        let (mut state, _) = crate::chain_store::test_load(&ledger, "test-log").unwrap();
         let signer = SigningKey::from_bytes(&[9u8; 32]);
         let anchor = anchor_for();
         assert!(state.reconnect(&signer, &anchor).unwrap().is_some());
@@ -863,7 +861,7 @@ mod tests {
     }
 
     fn checkpoint_lines(dir: &std::path::Path) -> usize {
-        std::fs::read_to_string(dir.join("checkpoints.jsonl"))
+        crate::chain_store::read_checkpoints_string(dir)
             .map(|s| s.lines().count())
             .unwrap_or(0)
     }
@@ -972,14 +970,13 @@ mod tests {
         }
 
         let ledger = capsules.ledger_dir();
-        let records: Vec<serde_json::Value> =
-            std::fs::read_to_string(ledger.join("capsules.jsonl"))
-                .unwrap()
-                .lines()
-                .map(|l| serde_json::from_str(l).unwrap())
-                .collect();
+        let records: Vec<serde_json::Value> = crate::chain_store::read_chain_string(ledger)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
         let checkpoints: Vec<CheckpointRecord> =
-            std::fs::read_to_string(ledger.join("checkpoints.jsonl"))
+            crate::chain_store::read_checkpoints_string(ledger)
                 .unwrap()
                 .lines()
                 .map(|l| serde_json::from_str(l).unwrap())
@@ -1020,12 +1017,8 @@ mod tests {
         }
         let dir = tempfile::tempdir().unwrap();
         let capsules = CapsuleState::open(dir.path(), "node-under-test").unwrap();
-        let (mut state, _) = CheckpointState::load(
-            capsules.ledger_dir(),
-            "test-log",
-            CheckpointCadenceConfig::default(),
-        )
-        .unwrap();
+        let (mut state, _) =
+            crate::chain_store::test_load(capsules.ledger_dir(), "test-log").unwrap();
         state.set_padding_sink(Box::new(Refuses));
         let handle = CheckpointHandle::new(state, capsules.signing_key().clone());
         let (half, coverage) = handle

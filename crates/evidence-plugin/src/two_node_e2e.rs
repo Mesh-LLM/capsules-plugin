@@ -59,8 +59,9 @@ impl Node {
             .unwrap_or_else(|_| panic!("{var} must name a node's plugin data directory"));
         let data_dir = PathBuf::from(dir);
         assert!(
-            data_dir.join("ledger").join("capsules.jsonl").is_file(),
-            "{var}: no ledger/capsules.jsonl under {}",
+            data_dir.join("ledger").join("log.jsonl").is_file()
+                || data_dir.join("ledger").join("capsules.jsonl").is_file(),
+            "{var}: no chain (ledger/log.jsonl or ledger/capsules.jsonl) under {}",
             data_dir.display()
         );
         Self { data_dir }
@@ -72,7 +73,11 @@ impl Node {
 
     /// Every line of this node's own chained log, padding included.
     fn ledger_lines(&self) -> Vec<Value> {
-        read_jsonl(&self.ledger_dir().join("capsules.jsonl"))
+        crate::chain_store::chain_lines(&self.ledger_dir())
+            .unwrap()
+            .iter()
+            .map(|l| serde_json::from_slice(l).unwrap())
+            .collect()
     }
 
     /// This node's own sealed halves of exchanges with `role`.
@@ -148,10 +153,41 @@ fn copy_dir(from: &Path, to: &Path) {
     }
 }
 
-/// A scratch copy of `node`'s ledger directory.
+/// A scratch copy of `node`'s ledger directory with its chain laid out flat
+/// (`capsules.jsonl` and `signed-statements/`, the lines and statements as
+/// stored), so an attack can change a line in place.
 fn scratch_ledger(node: &Node) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     copy_dir(&node.ledger_dir(), dir.path());
+    let ledger = node.ledger_dir();
+    if crate::chain_store::is_store_layout(&ledger) {
+        for name in [
+            crate::chain_store::LOG_FILE,
+            crate::chain_store::ARTIFACTS_FILE,
+        ] {
+            let _ = std::fs::remove_file(dir.path().join(name));
+        }
+        let statements = dir.path().join("signed-statements");
+        std::fs::create_dir_all(&statements).unwrap();
+        let lines = crate::chain_store::chain_lines(&ledger).unwrap();
+        for line in &lines {
+            let id = serde_json::from_slice::<Value>(line).unwrap()["capsule_id"]
+                .as_str()
+                .unwrap()
+                .to_string();
+            std::fs::write(
+                statements.join(format!("{id}.cose")),
+                crate::chain_store::statement(&ledger, &id).unwrap(),
+            )
+            .unwrap();
+        }
+        let mut text = Vec::new();
+        for line in lines {
+            text.extend_from_slice(&line);
+            text.push(b'\n');
+        }
+        std::fs::write(dir.path().join("capsules.jsonl"), text).unwrap();
+    }
     dir
 }
 
@@ -260,7 +296,12 @@ impl Run {
 }
 
 fn open_ledger(dir: &Path) -> Result<usize, LedgerError> {
-    crate::producer::index::open_ledger(dir).map(|(_, report)| report.valid_entries)
+    crate::producer::index::open_ledger(dir)
+        .map(|(_, report)| report.valid_entries)
+        .map_err(|e| {
+            e.downcast::<LedgerError>()
+                .unwrap_or_else(|e| panic!("{}: not a ledger error: {e:#}", dir.display()))
+        })
 }
 
 /// Each node sealed its own record of every exchange: the requester one

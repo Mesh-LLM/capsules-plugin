@@ -59,7 +59,7 @@ impl Node {
                 Seal::Cut => crate::deal_receipt::tests::cut(state),
             }
         }
-        self.ids = std::fs::read_to_string(state.ledger_dir().join("capsules.jsonl"))
+        self.ids = crate::chain_store::read_chain_string(state.ledger_dir())
             .unwrap()
             .lines()
             .map(|l| {
@@ -75,7 +75,7 @@ impl Node {
 
     /// The anchor digests of the node's checkpoints, in order.
     fn anchors(&self) -> Vec<String> {
-        std::fs::read_to_string(self.state.ledger_dir().join("checkpoints.jsonl"))
+        crate::chain_store::read_checkpoints_string(self.state.ledger_dir())
             .unwrap()
             .lines()
             .map(|l| {

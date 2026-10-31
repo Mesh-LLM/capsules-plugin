@@ -502,7 +502,6 @@ pub(crate) mod tests {
     use super::*;
     use crate::capsule_emit::CapsuleState;
     use crate::deal_flow::SealedExchange;
-    use crate::producer::checkpoint::{CheckpointCadenceConfig, CheckpointState};
 
     const EXCHANGE_ID: &str = "exchange-1";
     pub(crate) const PEER: &str = "peer-node-with-a-distinct-name";
@@ -553,9 +552,8 @@ pub(crate) mod tests {
     /// A checkpoint of the node's own key over everything sealed so far.
     pub(crate) fn cut(state: &CapsuleState) {
         let ledger = state.ledger_dir().to_path_buf();
-        let (mut checkpoints, _) =
-            CheckpointState::load(&ledger, "test-log", CheckpointCadenceConfig::default()).unwrap();
-        let last = std::fs::read_to_string(ledger.join(evidence_log::CAPSULES_FILE))
+        let (mut checkpoints, _) = crate::chain_store::test_load(&ledger, "test-log").unwrap();
+        let last = crate::chain_store::read_chain_string(&ledger)
             .unwrap()
             .lines()
             .last()

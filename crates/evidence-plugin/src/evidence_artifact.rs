@@ -1853,16 +1853,11 @@ mod tests {
         Vec<String>,
     ) {
         use crate::producer::anchor::AnchorClient;
-        use crate::producer::checkpoint::{CheckpointCadenceConfig, CheckpointState};
         let dir = tempfile::tempdir().unwrap();
         let state = crate::capsule_emit::CapsuleState::open(dir.path(), "node-under-test").unwrap();
         let ledger = state.ledger_dir().to_path_buf();
-        let (mut checkpoints, _) = CheckpointState::load(
-            &ledger,
-            "node-under-test",
-            CheckpointCadenceConfig::default(),
-        )
-        .unwrap();
+        let (mut checkpoints, _) =
+            crate::chain_store::test_load(&ledger, "node-under-test").unwrap();
         let anchor = AnchorClient::new("http://127.0.0.1:1");
         let mut ids = Vec::new();
         for i in 0..records {
@@ -1984,7 +1979,21 @@ mod tests {
     /// list an answer carries extends checkpoint by checkpoint.
     #[test]
     fn a_checkpoint_without_its_statement_ends_the_chain() {
-        let (_dir, ledger, key, _) = producer_ledger(6, &[1, 3, 5]);
+        let (_dir, stores, key, _) = producer_ledger(6, &[1, 3, 5]);
+        // The same chain in the flat layout, whose checkpoint lines can lose
+        // their statement (the chain log's commits always carry one).
+        let flat = tempfile::tempdir().unwrap();
+        let ledger = flat.path().to_path_buf();
+        std::fs::write(
+            ledger.join(crate::evidence_log::CAPSULES_FILE),
+            crate::chain_store::chain_string(&stores),
+        )
+        .unwrap();
+        std::fs::write(
+            ledger.join(crate::evidence_log::CHECKPOINTS_FILE),
+            crate::chain_store::checkpoints_string(&stores),
+        )
+        .unwrap();
         let path = ledger.join(crate::evidence_log::CHECKPOINTS_FILE);
         let lines: Vec<Value> = std::fs::read_to_string(&path)
             .unwrap()

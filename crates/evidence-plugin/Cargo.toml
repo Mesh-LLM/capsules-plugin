@@ -156,6 +156,10 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 # `arbitrary_precision` for the whole binary (see `strict_json`).
 capsule-emit-lib = { package = "capsule-emit", version = "0.0.9" }
 cll = { package = "checkpointed-local-log", version = "0.3.1" }
+# The chain's records: capsule-emit's artifact store, the layer its `Ledger`
+# keeps each line in beside the CLL entry log (`chain_store`). The version
+# capsule-emit 0.0.9 itself uses.
+capsule-emit-artifact = "0.0.1"
 # Evidence requests are answered in-process (`evidence_answer`): parsing,
 # resolution and signed refusals come from the protocol crate
 # (draft-mih-agent-evidence-request-00), `evidence-request`, which is what

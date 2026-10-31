@@ -21,7 +21,7 @@ cadence uses), and the CLL #13 range proof (`cll::range_proof::range_proof`, `{v
 
 | File (all under `ledger/`) | Leaf body digest | Checkpoints |
 |---|---|---|
-| `capsules.jsonl` (the chain) | the line's `capsule_id` (unchanged) | `checkpoints.jsonl` (unchanged) |
+| `capsules.jsonl` (the chain, asked for by this name; its lines are kept in `log.jsonl` and `artifacts.jsonl`, and `capsules chain-lines` prints them in this file's line format) | the line's `capsule_id` (unchanged) | the chain log `log.jsonl` (`checkpoints.jsonl` on a node that stays on the flat ledger) |
 | `received-capsules.jsonl`, `received-provenance.jsonl`, `received-inclusion.jsonl`, `issued-adjudications.jsonl`, `received-adjudications.jsonl`, `requested-adjudications.jsonl` | SHA-256 of the line's bytes, without its `\n` | `file-checkpoints.jsonl` |
 
 No other file under `ledger/` is checkpointed, and the route refuses them: `referee-pairs.jsonl`,
@@ -81,7 +81,9 @@ Save the reply as JSON for the check below.
 ```
 
 For `capsules.jsonl`, `leaf_digest` is `"capsule_id"` and the checkpoint is the newest one of
-the chain in `checkpoints.jsonl`. When no chain checkpoint covers the chain's last record yet,
+the chain, from the chain log (or `checkpoints.jsonl` on a node that stays on the flat ledger).
+A copy of the chain to check is the output of `capsules chain-lines`, with the same `--from`
+and `--to` as the ask. When no chain checkpoint covers the chain's last record yet,
 the ask first has the cadence cut one, as a record push does: padded to the bucket like every
 chain checkpoint, and at most one cut per push window, so an ask inside a used window waits
 for the next. With the cadence off (`CAPSULES_CHECKPOINT_CADENCE=off`), or when that cut fails,

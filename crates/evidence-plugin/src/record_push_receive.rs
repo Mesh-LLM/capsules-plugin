@@ -1003,14 +1003,9 @@ pub(crate) fn names_other_model(half: &Value, own: &[&Value]) -> bool {
 
 /// This node's own requester records of the exchange `request_digest`.
 fn own_requested_records(ledger_dir: &Path, request_digest: &str) -> std::io::Result<Vec<Value>> {
-    let file = match std::fs::File::open(ledger_dir.join("capsules.jsonl")) {
-        Ok(file) => file,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(e) => return Err(e),
-    };
     let mut own = Vec::new();
-    for line in std::io::BufReader::new(file).lines() {
-        let Ok(record) = serde_json::from_str::<Value>(&line?) else {
+    for line in crate::chain_store::chain_lines(ledger_dir)? {
+        let Ok(record) = serde_json::from_slice::<Value>(&line) else {
             continue;
         };
         let requested = poc(&record)
