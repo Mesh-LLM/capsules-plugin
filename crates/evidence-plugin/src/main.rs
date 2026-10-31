@@ -733,7 +733,7 @@ async fn coverage_for_push(
     checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
     capsule: &Value,
     peer_id: &str,
-) -> Option<record_push_bridge::Coverage> {
+) -> Option<producer::checkpoint::Coverage> {
     let (Some(handle), Some(capsule_id)) = (
         checkpoints,
         capsule.get("capsule_id").and_then(Value::as_str),
