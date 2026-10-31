@@ -274,6 +274,22 @@ Pull requests since 0.1.8: #167, #168, #169, #170, #174, #199, #200, #201, #204,
   configured, so it could be a private copy. Only an answer with a verified witness receipt keeps
   "verified". A remembered history keeps its witness standing; one remembered before this says its
   standing was not recorded. A record row still closes as Confirmed. Mesh-LLM/capsules-plugin#154.
+- **A referee names a twin only when its own top-2 margin at the split reaches a pinned
+  threshold.** Honest nodes on different backends (Metal, CUDA, CPU, other thread or batch
+  settings) can split greedy decoding on a near-tie, and a referee that computes like one of them
+  would contradict the other. The referee's re-answer now asks its server for `logprobs` with
+  `top_logprobs: 2`, and the verdict seals a `split_margin` block: the threshold, the referee's
+  top-2 candidates and margin at the token where it departs from the other twin, and each twin's
+  own margin when its answer carries logprobs (evidence only; it never changes the ruling).
+  Values are exact decimal strings in nats. Below `SPLIT_MARGIN_THRESHOLD_NATS`
+  (3.0 nats, measured: `vectors/parity/referee/margin-measurement/`), the ruling is
+  `inconclusive` with `inconclusive_because: split_within_margin`; with no margin to read (no
+  logprobs, tokens that don't spell the answer, a split token that was not the top one), it is
+  `inconclusive` with `split_margin_unavailable`. A server that refuses logprobs is asked once
+  more without them. mesh-llm returns logprobs from Mesh-LLM/mesh-llm#2565 on, which is not in
+  0.78.1, and not for split serving, so until a referee runs a release with it, a
+  referee-decided split is `inconclusive`. Mesh-LLM/capsules-plugin#155.
+
 - **The payer's deal report is sealed for the owner (`keep`) and never leaves the node.** It was
   sealed for the counterparty audience, so capsule-viewer rendered the owner's own receipt as the
   other party's copy and refused it as `keep`. A copy for the counterparty is made only by a share

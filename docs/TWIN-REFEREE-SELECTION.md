@@ -25,6 +25,26 @@ retried, and another referee is not tried.
 
 It is off by default; the operator turns it on (`adjudicate_differing_twins: on`).
 
+**When the referee's word names a twin.** The same model and quant on honest
+but different hardware or builds (Metal, CUDA, CPU, other thread or batch
+settings) computes slightly different next-word scores, so where the top two
+are nearly tied, temperature 0 can choose differently on two honest twins. So
+the referee asks its own server for the top-2 logprobs of every token of its
+re-answer, and its word names a twin only when its own margin (top-1 minus
+top-2 logprob, in nats) at the token where it departs from the other twin is
+at least `SPLIT_MARGIN_THRESHOLD_NATS` (3.0 nats; `referee/verdict.rs`).
+Below that, the ruling is `inconclusive` (`inconclusive_because:
+split_within_margin`); with no margin to read (a server that returns no
+logprobs, such as mesh-llm before 0.79 or split serving), it is `inconclusive`
+too (`split_margin_unavailable`). Neither counts against anyone. Only the
+referee's margin decides: the twins' own margins, when their answers carry
+them, are sealed beside it (`split_margin`) and never change the ruling. The
+value is at least twice the largest change in the top-2 gap measured between
+honest backends (`vectors/parity/referee/margin-measurement/`). One split is
+one token, so a near-identical model (another quantization of the same
+weights) mostly comes out `inconclusive` here; telling those apart needs many
+tokens pooled (Mesh-LLM/mesh-llm#2548).
+
 ## 2. Who is eligible
 
 A node is eligible only if all of these hold:

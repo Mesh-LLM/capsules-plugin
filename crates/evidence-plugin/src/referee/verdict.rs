@@ -6,11 +6,14 @@
 //! same words are corroborated. Any difference is a difference: there is no
 //! similarity threshold, and without a referee it is inconclusive. Only a
 //! referee's re-answer can name a twin, and only the twin the referee did
-//! not agree with.
+//! not agree with, and only when the referee's own top-2 margin at the split
+//! is at least [`SPLIT_MARGIN_THRESHOLD_NATS`] (#155): below it, honest
+//! backends could have split there, so the ruling is inconclusive.
 
-use serde_json::json;
+use serde_json::{json, Map, Value};
 
 use super::half::{Half, HalfError};
+use super::margin::{self, margin_at, Margin};
 
 pub const VERDICT_CORROBORATED: &str = "corroborated";
 pub const VERDICT_INCONCLUSIVE: &str = "inconclusive";
@@ -29,6 +32,25 @@ pub const NO_VERDICT_OWNER_ABSENT: &str = "owner_absent";
 pub const NO_VERDICT_SAME_OWNER_TWIN: &str = "same_owner_twin";
 pub const NO_VERDICT_REFEREE_NOT_INDEPENDENT: &str = "referee_not_independent";
 pub const NO_VERDICT_REFEREE_UNREACHABLE: &str = "referee_unreachable";
+
+/// Why a referee whose word matched one twin still rules `inconclusive`
+/// (`inconclusive_because`, #155). Neither counts against either twin.
+pub const INCONCLUSIVE_SPLIT_WITHIN_MARGIN: &str = "split_within_margin";
+pub const INCONCLUSIVE_SPLIT_MARGIN_UNAVAILABLE: &str = "split_margin_unavailable";
+
+/// Decided (#155): the least top-2 margin, in nats, at which a referee's
+/// word at the split names a twin. Below it, or with no margin, the ruling
+/// is `inconclusive`. A margin equal to it names the twin. It is at least
+/// twice the largest change in the top-2 gap seen between honest backends
+/// (`vectors/parity/referee/margin-measurement/`); a change is a CHANGELOG
+/// line. There is no operator setting: a lower value charges honest nodes
+/// more readily.
+pub const SPLIT_MARGIN_THRESHOLD_NATS: f64 = 3.0;
+
+/// [`SPLIT_MARGIN_THRESHOLD_NATS`] in the micro-nats the rule compares.
+pub fn split_margin_threshold() -> i64 {
+    margin::micro(SPLIT_MARGIN_THRESHOLD_NATS)
+}
 
 /// The fixed members of the sealed ruling block.
 pub const ADJUDICATION_SCHEMA: &str = "capsule-emit-mesh/adjudication/v1";
@@ -61,6 +83,41 @@ pub fn words(text: &str) -> Vec<&str> {
     text.split(is_space).filter(|w| !w.is_empty()).collect()
 }
 
+/// Each word of a text with the byte it starts at.
+fn word_spans(text: &str) -> Vec<(usize, &str)> {
+    let mut spans = Vec::new();
+    let mut start = None;
+    for (at, c) in text.char_indices() {
+        match (is_space(c), start) {
+            (true, Some(s)) => {
+                spans.push((s, &text[s..at]));
+                start = None;
+            }
+            (false, None) => start = Some(at),
+            _ => {}
+        }
+    }
+    if let Some(s) = start {
+        spans.push((s, &text[s..]));
+    }
+    spans
+}
+
+/// The byte of `text` where its word `index` first departs from `other`'s
+/// word `other_index`: the word's start plus the bytes the two words share.
+/// `None` when `text` has no word `index`.
+fn departure(text: &str, index: usize, other: &str, other_index: usize) -> Option<usize> {
+    let (start, word) = *word_spans(text).get(index)?;
+    let theirs = token_at(other, other_index).unwrap_or_default();
+    let shared: usize = word
+        .chars()
+        .zip(theirs.chars())
+        .take_while(|(x, y)| x == y)
+        .map(|(c, _)| c.len_utf8())
+        .sum();
+    Some(start + shared)
+}
+
 /// The word at `index` of `text`, `None` past its end.
 pub fn token_at(text: &str, index: usize) -> Option<&str> {
     words(text).get(index).copied()
@@ -91,22 +148,56 @@ pub fn compare_transcripts(text_a: &str, text_b: &str) -> Comparison {
     }
 }
 
+/// A referee's ruling on two twins that differ.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Ruling {
+    pub verdict: String,
+    /// Why the referee's word did not name a twin though it matched one
+    /// ([`INCONCLUSIVE_SPLIT_WITHIN_MARGIN`], [`INCONCLUSIVE_SPLIT_MARGIN_UNAVAILABLE`]).
+    pub inconclusive_because: Option<&'static str>,
+    /// The sealed `split_margin` block, when the margin was weighed.
+    pub split_margin: Option<Value>,
+}
+
+impl Ruling {
+    fn inconclusive() -> Self {
+        Self {
+            verdict: VERDICT_INCONCLUSIVE.to_string(),
+            inconclusive_because: None,
+            split_margin: None,
+        }
+    }
+}
+
 /// The ruling a referee's re-answer gives on two twins that differ. A
 /// re-answer of a request with messages counts only when it repeats the
 /// agreed words exactly; its word at the difference then names the twin it
-/// agrees with, and the other twin is contradicted. Anything else is
-/// inconclusive, never a guess.
-pub fn referee_verdict(a: &Half, b: &Half, comparison: &Comparison, referee_text: &str) -> String {
+/// agrees with, and the other twin is contradicted, when the referee's own
+/// margin at the split (read from `referee_body`, its answer with logprobs)
+/// reaches [`SPLIT_MARGIN_THRESHOLD_NATS`]. Anything else is inconclusive,
+/// never a guess. The twins' own margins, when their answers carry them,
+/// are sealed beside it and never change the ruling.
+pub fn referee_verdict(
+    a: &Half,
+    b: &Half,
+    comparison: &Comparison,
+    referee_text: &str,
+    referee_body: Option<&Value>,
+) -> Ruling {
     let at = comparison.divergence_index.unwrap_or(0);
-    let referee_token = if a.request_has_messages() {
+    // The referee's word read at the difference: `at` when it re-answered the
+    // twins' messages, its first word otherwise.
+    let referee_index = if a.request_has_messages() {
         let agreed: Vec<&str> = words(a.text()).into_iter().take(at).collect();
         let theirs = words(referee_text);
-        (theirs.iter().take(at).copied().collect::<Vec<_>>() == agreed)
-            .then(|| token_at(referee_text, at))
-            .flatten()
+        if theirs.iter().take(at).copied().collect::<Vec<_>>() != agreed {
+            return Ruling::inconclusive();
+        }
+        at
     } else {
-        token_at(referee_text, 0)
+        0
     };
+    let referee_token = token_at(referee_text, referee_index);
     let matches =
         |half: &Half| referee_token.is_some() && referee_token == token_at(half.text(), at);
     let (matches_a, matches_b) = (matches(a), matches(b));
@@ -114,23 +205,72 @@ pub fn referee_verdict(a: &Half, b: &Half, comparison: &Comparison, referee_text
     let (agreed, other) = match (matches_a, matches_b) {
         (true, false) => (a, b),
         (false, true) => (b, a),
-        _ => return VERDICT_INCONCLUSIVE.to_string(),
+        _ => return Ruling::inconclusive(),
     };
     let named = if cfg!(feature = "mutant-referee-verdict-names-wrong-twin") {
         agreed
     } else {
         other
     };
-    match named.node_id.as_deref() {
-        Some(node) if !node.is_empty() => contradicted(node),
-        _ => VERDICT_INCONCLUSIVE.to_string(),
+    let Some(node) = named.node_id.as_deref().filter(|n| !n.is_empty()) else {
+        return Ruling::inconclusive();
+    };
+    // The referee's margin at the token where it departs from the twin it
+    // did not agree with: the choice an honest backend could have flipped.
+    let referee_margin = departure(referee_text, referee_index, other.text(), at)
+        .zip(referee_body)
+        .and_then(|(split, body)| margin_at(body, referee_text, split));
+    let because = match &referee_margin {
+        None => Some(INCONCLUSIVE_SPLIT_MARGIN_UNAVAILABLE),
+        Some(m) if m.margin < split_margin_threshold() => Some(INCONCLUSIVE_SPLIT_WITHIN_MARGIN),
+        Some(_) => None,
+    };
+    let because = because.filter(|_| !cfg!(feature = "mutant-referee-ignores-split-margin"));
+    Ruling {
+        verdict: match because {
+            Some(_) => VERDICT_INCONCLUSIVE.to_string(),
+            None => contradicted(node),
+        },
+        inconclusive_because: because,
+        split_margin: Some(split_margin_block(referee_margin.as_ref(), a, b, at)),
     }
+}
+
+/// The sealed `split_margin` block: the threshold, the referee's margin
+/// (`null` when it had none), and each twin's own margin where its answer
+/// departs from the other's, when that twin's answer carries logprobs.
+fn split_margin_block(referee: Option<&Margin>, a: &Half, b: &Half, at: usize) -> Value {
+    let mut block = Map::new();
+    block.insert("unit".into(), json!("nats"));
+    block.insert(
+        "threshold".into(),
+        json!(margin::decimal(split_margin_threshold())),
+    );
+    block.insert(
+        "referee".into(),
+        referee.map_or(Value::Null, Margin::to_json),
+    );
+    let twin = |own: &Half, other: &Half| {
+        let body = own.response_body.as_ref()?;
+        let split = departure(own.text(), at, other.text(), at)?;
+        margin_at(body, own.text(), split)
+    };
+    for (key, own, other) in [("twin_a", a, b), ("twin_b", b, a)] {
+        if let Some(m) = twin(own, other) {
+            block.insert(key.into(), m.to_json());
+        }
+    }
+    Value::Object(block)
 }
 
 /// What a referee that was asked answered.
 #[derive(Debug, Clone)]
 pub struct RefereeAnswer {
     pub verdict: String,
+    /// [`Ruling::inconclusive_because`].
+    pub inconclusive_because: Option<&'static str>,
+    /// [`Ruling::split_margin`].
+    pub split_margin: Option<Value>,
     /// The referee's own record of its answer, when it has one.
     pub capsule_id: Option<String>,
     /// Who the referee is.
@@ -159,6 +299,10 @@ pub enum UnknownWeights {
 pub struct Outcome {
     pub verdict: Option<String>,
     pub no_verdict_reason: Option<&'static str>,
+    /// Why an `inconclusive` referee ruling named no twin (#155).
+    pub inconclusive_because: Option<&'static str>,
+    /// The referee's sealed `split_margin` block (#155).
+    pub split_margin: Option<Value>,
     pub divergence_index: Option<usize>,
     pub prefix_digest: Option<String>,
     pub twin_owner_distinct: Option<bool>,
@@ -176,6 +320,8 @@ impl Outcome {
         Self {
             verdict: None,
             no_verdict_reason: Some(reason),
+            inconclusive_because: None,
+            split_margin: None,
             divergence_index: None,
             prefix_digest: None,
             twin_owner_distinct: None,
@@ -191,7 +337,7 @@ impl Outcome {
     /// The answer the parity corpus compares (`adjudicate` path).
     #[cfg(test)]
     pub fn to_answer(&self) -> serde_json::Value {
-        json!({
+        let mut answer = json!({
             "verdict": self.verdict,
             "status": self.verdict.as_deref().and_then(status_for_verdict),
             "no_verdict_reason": self.no_verdict_reason,
@@ -200,7 +346,16 @@ impl Outcome {
             "twin_owner_distinct": self.twin_owner_distinct,
             "weights_digest": self.weights_digest,
             "referee_called": self.referee_called,
-        })
+        });
+        // Only when the margin was weighed (#155): answers from before it
+        // have neither member.
+        if let Some(because) = self.inconclusive_because {
+            answer["inconclusive_because"] = json!(because);
+        }
+        if let Some(block) = &self.split_margin {
+            answer["split_margin"] = block.clone();
+        }
+        answer
     }
 }
 
@@ -254,6 +409,8 @@ pub fn adjudicate(
     let compared = |verdict: Option<String>, reason: Option<&'static str>| Outcome {
         verdict,
         no_verdict_reason: reason,
+        inconclusive_because: None,
+        split_margin: None,
         divergence_index: comparison.divergence_index,
         prefix_digest: comparison.prefix_digest.clone(),
         twin_owner_distinct: Some(true),
@@ -279,6 +436,8 @@ pub fn adjudicate(
             referee_called: true,
             referee_capsule_id: answer.capsule_id,
             referee_id: Some(answer.referee_id),
+            inconclusive_because: answer.inconclusive_because,
+            split_margin: answer.split_margin,
             ..compared(Some(answer.verdict), None)
         }),
     }
