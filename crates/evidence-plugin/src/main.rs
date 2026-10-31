@@ -32,6 +32,7 @@ mod exchange_corroboration;
 mod exchange_text;
 mod history_page;
 mod host_status;
+mod ledger_checkpoints;
 mod ledger_fetch_bridge;
 mod lifecycle_channel;
 mod mesh_evidence_bridge;
@@ -1530,6 +1531,12 @@ async fn main() -> anyhow::Result<()> {
         );
         return Ok(());
     }
+    // The offline check of a copied ledger file against a signed checkpoint
+    // (`ledger_checkpoints`): touches no data directory.
+    if std::env::args().nth(1).as_deref() == Some("ledger-check") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        std::process::exit(ledger_checkpoints::cli(&args));
+    }
     // The join quickstart INSTALL.md carries, from the tools' own constants.
     if std::env::args().nth(1).as_deref() == Some("--print-join-quickstart") {
         print!("{}", doctor::quickstart(PLUGIN_ID));
@@ -1715,6 +1722,14 @@ async fn main() -> anyhow::Result<()> {
             node_pub_key_pem: Some(evidence_pub_key_pem),
             received_log_dir: evidence_routes::EvidenceSource::received_log_dir(&data_dir),
         },
+    );
+    // Signed checkpoints over the ledger files, for checking copies offline.
+    let plugin = ledger_checkpoints::with_route(
+        plugin,
+        data_dir.join("ledger"),
+        log_id.clone(),
+        capsules_for_routing_choice.signing_key().clone(),
+        checkpoints.clone(),
     );
     let plugin = history_page::with_route(
         plugin,

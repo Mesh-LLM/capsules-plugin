@@ -705,7 +705,7 @@ pub fn record_digest(body: &[u8]) -> Option<String> {
 /// Whether `statement` is this checkpoint's own COSE wire statement: it
 /// verifies under its `kid`, which is the checkpoint's key, and it states
 /// exactly the checkpoint's log, sizes, roots and time.
-fn states(statement: &[u8], cp: &CheckpointRecord) -> bool {
+pub(crate) fn states(statement: &[u8], cp: &CheckpointRecord) -> bool {
     let verified = verify_checkpoint_cose_offline(statement);
     let Some(decoded) = verified.decoded.filter(|_| verified.ok) else {
         return false;

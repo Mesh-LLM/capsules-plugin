@@ -315,6 +315,20 @@ impl CheckpointHandle {
         }
     }
 
+    /// A handle over `ledger_dir`'s checkpoint state with no interval task,
+    /// padding through `capsules` as [`spawn`] does.
+    #[cfg(test)]
+    pub(crate) fn for_tests(capsules: Arc<CapsuleState>, log_id: &str) -> Self {
+        let (mut state, _) = CheckpointState::load(
+            capsules.ledger_dir(),
+            log_id.to_string(),
+            CheckpointCadenceConfig::default(),
+        )
+        .unwrap();
+        state.set_padding_sink(Box::new(LedgerPadder(capsules.clone())));
+        Self::new(state, capsules.signing_key().clone())
+    }
+
     pub fn latest_head(&self) -> LatestHead {
         self.latest_head.clone()
     }
@@ -459,6 +473,19 @@ pub fn spawn(
             tokio::select! {
                 _ = ticker.tick() => {
                     run("tick", |s, k, a| s.tick(k, a));
+                    // The other ledger files' checkpoints, each cut when its
+                    // file has grown (`ledger_checkpoints`).
+                    {
+                        let (dir, log_id, signer) =
+                            (keys_dir.clone(), log_id_for_witnesses.clone(), task.signer.clone());
+                        if let Err(e) = tokio::task::spawn_blocking(move || {
+                            crate::ledger_checkpoints::cut_all(&dir, &log_id, &signer)
+                        })
+                        .await
+                        {
+                            tracing::warn!(error = %e, "ledger file checkpoints did not complete");
+                        }
+                    }
                     // Each named witness: its key fetched when none is given,
                     // and one that lags asked again so its row can say why.
                     // Only the named witnesses, and only when one is named.
