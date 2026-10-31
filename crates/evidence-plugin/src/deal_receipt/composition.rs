@@ -17,13 +17,18 @@
 //!
 //! **The members** come only from this node's book of asks
 //! ([`crate::ask_book`]): one per request record the owner names, with the
-//! outcome recorded for it. A half received by push has no request behind it
-//! and is never a member. An absence's observer is this node, its only
-//! observer. A refusal is the peer's signed refusal as it came back, read
-//! from the kept reply (#198), observed by the peer's key; only one this
-//! node verified under the key the peer announced is a member. So is an
-//! `evidence_bundle/1` answer (#197): the provider's bundle, with the
-//! envelope as received minus its artifact as the member's response.
+//! outcome recorded for it. Each must be an `evidence_bundle/1` ask for a
+//! record, the provider's half the exchange record names when it names one,
+//! asked of the node the deal recorded as serving the exchange; a deal whose
+//! state no longer names that node composes nothing. A half received by push
+//! has no request behind it and is never a member. An absence's observer is
+//! this node, its only observer. A refusal is the peer's signed refusal as
+//! it came back, read from the kept reply (#198), its signed members only,
+//! observed by the peer's key; only one this node verified under the key
+//! the peer announced is a member. So is an `evidence_bundle/1` answer
+//! (#197): the provider's bundle, with the envelope's signed members,
+//! signature and verification items (as received, minus its artifact) as
+//! the member's response.
 //!
 //! **The block** is set on the built bundle, as `capsulectl-deal deal
 //! compose` sets it: agent-action-capsule's producer reserves `composed/v1`

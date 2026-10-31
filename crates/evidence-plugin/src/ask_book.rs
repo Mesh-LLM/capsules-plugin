@@ -451,8 +451,9 @@ fn keep_reply(ledger_dir: &Path, digest: &str, reply: &[u8]) -> std::io::Result<
 /// composition carries. Refused, naming the record, when it is no response
 /// record here (`NotFound`), when it was sealed before replies were kept
 /// and so has no digest (`Invalid`), or when the kept bytes are missing or
-/// are not the ones sealed (`Corrupt`). The payer's composition (#196)
-/// is its first caller.
+/// are not the ones sealed (`Corrupt`). For a caller holding only the
+/// record id; the payer's composition (#196), which already holds the
+/// record's header, calls [`kept_reply_of`].
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn kept_reply(ledger_dir: &Path, response_record_id: &str) -> Result<Vec<u8>, AskError> {
     let header = crate::evidence_panes::read_capsule_records(ledger_dir)
