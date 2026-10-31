@@ -614,13 +614,13 @@ fn exchange_block(own: &StageBlock, assignment: &StageAssignment, k: u32, term: 
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::producer::keys::KeyPair;
     use crate::producer::stage::seal_stage_record;
     use serde_json::json;
 
-    fn case(name: &str) -> Value {
+    pub(crate) fn case(name: &str) -> Value {
         let cases: Value =
             serde_json::from_str(include_str!("../../../vectors/split-stage/hop-cases.json"))
                 .unwrap();
@@ -633,7 +633,7 @@ mod tests {
             .clone()
     }
 
-    fn stage_zero(case: &Value, exchange_id: &str) -> StageEvent {
+    pub(crate) fn stage_zero(case: &Value, exchange_id: &str) -> StageEvent {
         let receipt = CoordinatorReceipt::from_value(&case["receipt"]).unwrap();
         StageEvent {
             block: StageBlock::from_value(&case["own"]).unwrap(),
@@ -649,7 +649,7 @@ mod tests {
         }
     }
 
-    fn stage_records(case: &Value) -> Vec<Value> {
+    pub(crate) fn stage_records(case: &Value) -> Vec<Value> {
         case["carried"]
             .as_array()
             .unwrap()
@@ -669,7 +669,7 @@ mod tests {
 
     /// The node `case`'s topology assigns `record`'s stage to: the one peer
     /// allowed to push it.
-    fn sender(case: &Value, record: &Value) -> String {
+    pub(crate) fn sender(case: &Value, record: &Value) -> String {
         let k = stage_block_of(record).unwrap().unwrap().stage_index as usize;
         case["receipt"]["topology"][k]["assignment"]["node_id"]
             .as_str()

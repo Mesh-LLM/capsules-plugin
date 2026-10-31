@@ -2610,6 +2610,49 @@ mod push_eligibility_tests {
         );
     }
 
+    /// capsules-plugin#202 for a split this node coordinated: its main
+    /// record, released by the split tick, is sealed with its own checkpoint.
+    #[test]
+    fn a_released_split_is_sealed_with_its_own_checkpoint() {
+        let dir = tempfile::tempdir().unwrap();
+        let capsules = Arc::new(CapsuleState::open(dir.path(), "node-under-test").unwrap());
+        let handle = checkpoint_cadence::CheckpointHandle::for_tests(capsules.clone(), "test-log");
+        let store = ObservedLifecycleEvents::open(dir.path()).unwrap();
+        let splits = Splits::new();
+        let case = split_stage::tests::case("relayed_all_agree");
+        splits
+            .collector
+            .on_stage_zero(split_stage::tests::stage_zero(&case, "exch-1"), 0)
+            .unwrap();
+        // Every stage's record is in, so the tick releases it now.
+        for record in split_stage::tests::stage_records(&case) {
+            let sender = split_stage::tests::sender(&case, &record);
+            splits.collector.on_stage_record(&record, &sender, 0);
+        }
+        let envelope: OpenAiExchangeEnvelope = serde_json::from_str(
+            r#"{"exchange_id":"exch-1","dispatch_path":"raw_proxy","phase":"terminal","model":"m",
+                "status":200,"serving_provenance":{"served_by_node_id":"self-node-a",
+                  "weights_digest":"sha256:loaded-weights","requested_by_node_id":"peer-node-b"}}"#,
+        )
+        .unwrap();
+        assert!(splits.collector.hold(Some("exch-1"), envelope).is_none());
+
+        seal_released_splits(&capsules, Some(&handle), &splits, &store);
+
+        let main = splits
+            .take_pushes()
+            .pop()
+            .expect("the split was sealed")
+            .main;
+        let at = capsules
+            .capsule_ids_in_order()
+            .iter()
+            .position(|c| c == main["capsule_id"].as_str().unwrap())
+            .unwrap() as u64;
+        let head = handle.latest_head().get().expect("a checkpoint was cut");
+        assert!(cll::mmr::leaf_count(head.mmr_size).unwrap() > at);
+    }
+
     /// evidencebook#69 finding 1, through the real adapter: a host-served
     /// terminal naming the node that asked seals that node as the record's
     /// requesting party (`host_provenance_from` once dropped it).

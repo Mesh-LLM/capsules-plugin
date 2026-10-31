@@ -396,6 +396,13 @@ impl CheckpointHandle {
     /// them (their padding re-enters the turn on this thread). A failed cut
     /// keeps the sealed half: it is returned with no coverage, and its push
     /// asks for coverage as any record does.
+    ///
+    /// Waits for the checkpoint state like a push does: while the interval
+    /// tick holds it to offer a checkpoint to a configured witness (each
+    /// witness call times out after 10 s), the half waits too. Sealing it
+    /// without the state would let a neighbour land before its cut, so the
+    /// wait is kept; with no witness configured (the default) the tick holds
+    /// the state only for a local cut.
     pub fn seal_and_cover(
         &self,
         capsules: &CapsuleState,
