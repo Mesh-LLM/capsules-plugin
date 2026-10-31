@@ -55,8 +55,9 @@ pub(crate) enum Refusal {
     /// An interval-complete bundle would cross a padding record. A padding
     /// record is not a Capsule; agent-action-capsule 0.7 carries it only as a
     /// `non_record_leaves` entry (Bundle -02, #339), and that emission stays
-    /// off (`carry_non_record_leaves`) until Steven's rollout gate opens it,
-    /// so the producer refuses such an interval.
+    /// off (`carry_non_record_leaves`) until capsulectl, the hosted verify
+    /// page and evidencebook check it (Steven's ruling u532, on the Q3
+    /// rollout gate), so the producer refuses such an interval.
     PaddingInInterval,
 }
 
@@ -67,9 +68,9 @@ impl Refusal {
             Refusal::NotReported => "the deal has no report yet".into(),
             Refusal::PayloadMissing(id) => format!("the payload of deal record {id} is not kept"),
             Refusal::NotCheckpointed => "no signed checkpoint covers the deal yet".into(),
-            Refusal::PaddingInInterval => "the ledger holds a padding record in the interval, \
-                which an Evidence Bundle carries only once non_record_leaves emission is \
-                enabled (Steven's rollout gate)"
+            Refusal::PaddingInInterval => "the ledger holds a padding record in the interval; \
+                this plugin does not yet put padding in an Evidence Bundle (non_record_leaves, \
+                Bundle -02), so the receipt waits until the verifiers can check it"
                 .into(),
         }
     }

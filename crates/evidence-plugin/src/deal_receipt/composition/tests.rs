@@ -475,8 +475,8 @@ fn a_pending_unknown_or_repeated_request_is_not_a_member() {
 
 /// The checkpoint cadence pads checkpoints by default. A padding record is
 /// not a Capsule, so the interval cannot be carried until
-/// non_record_leaves emission is enabled (Steven's rollout gate): the owner
-/// hears why, not a host error.
+/// the plugin emits non_record_leaves (once the verifiers check it): the
+/// owner hears why, not a host error.
 #[test]
 fn an_interval_over_padding_is_refused_by_name() {
     let node = node();
@@ -495,7 +495,7 @@ fn an_interval_over_padding_is_refused_by_name() {
     assert!(answer["why"]
         .as_str()
         .unwrap()
-        .contains("non_record_leaves emission is enabled"));
+        .contains("non_record_leaves"));
 }
 
 #[test]
