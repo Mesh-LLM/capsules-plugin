@@ -315,12 +315,7 @@ fn built(
             })
         })
         .ok_or(Refusal::NotCheckpointed)?;
-    let source = LogSource {
-        index,
-        view: index.view().map_err(unreadable)?,
-        statement: covering.statement.clone(),
-        size: covering.record.mmr_size,
-    };
+    let source = LogSource::at(index, covering).map_err(unreadable)?;
     let interval = interval_from.map_or(Interval::ProducerSelected, Interval::From);
     let mut options = BuildOptions::new(selection.root.to_string(), interval);
     // The records named are the whole selection: no citation is followed.
