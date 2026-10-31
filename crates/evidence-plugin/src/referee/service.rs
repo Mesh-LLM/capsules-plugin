@@ -26,6 +26,13 @@
 //! 7. Both twins served the same weights, as their records say; otherwise,
 //!    or when either was sampled, the ruling is `not_comparable`, with why.
 //!
+//! A ruling names a twin only when this node's own top-2 margin at the split
+//! reaches the pinned threshold (`verdict::SPLIT_MARGIN_THRESHOLD_NATS`,
+//! #155); otherwise it is `inconclusive`, sealed with `inconclusive_because`.
+//! The margin is read from the answer of step 6, whose digest this node's own
+//! record covers, so no one else's number can move it. Every weighed margin
+//! is sealed (`split_margin`).
+//!
 //! The verdict seals the tier the requester stated (`selection_tier`) and the
 //! model the twins served (`model_hash`), and names this node as referee. How
 //! the referee's prompt is known is recorded as the requester's word
@@ -388,11 +395,16 @@ pub fn handle_adjudicate_request(
         .map(str::to_string);
     let mut ask = |a: &Half, b: &Half, comparison: &verdict::Comparison| match &referee_capsule_id {
         None => Err(Unreachable),
-        Some(capsule_id) => Ok(RefereeAnswer {
-            verdict: referee_verdict(a, b, comparison, &referee_text),
-            capsule_id: Some(capsule_id.clone()),
-            referee_id: self_id.clone(),
-        }),
+        Some(capsule_id) => {
+            let ruling = referee_verdict(a, b, comparison, &referee_text, answer_body.as_ref());
+            Ok(RefereeAnswer {
+                verdict: ruling.verdict,
+                inconclusive_because: ruling.inconclusive_because,
+                split_margin: ruling.split_margin,
+                capsule_id: Some(capsule_id.clone()),
+                referee_id: self_id.clone(),
+            })
+        }
     };
     let referee: Option<verdict::Referee<'_>> = if not_comparable_because.is_some() {
         None
@@ -446,6 +458,12 @@ pub fn handle_adjudicate_request(
     if outcome.referee_called {
         if let Some(digest) = &answer_digest {
             extra.insert("referee_answer_digest".into(), json!(digest));
+        }
+        if let Some(because) = outcome.inconclusive_because {
+            extra.insert("inconclusive_because".into(), json!(because));
+        }
+        if let Some(block) = &outcome.split_margin {
+            extra.insert("split_margin".into(), block.clone());
         }
     }
     if let Some(bracket) = bracket.filter(|b| !b.is_empty()) {

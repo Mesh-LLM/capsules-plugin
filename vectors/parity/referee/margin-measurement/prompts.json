@@ -1,0 +1,29 @@
+{
+ "note": "The referee parity corpus's prompt, then long-generation prompts across prose, explanation, code, lists, arithmetic and French (#155).",
+ "prompts": [
+  "List the first five counting numbers.",
+  "Write a short story about a lighthouse keeper who finds a message in a bottle.",
+  "Explain how a refrigerator moves heat from inside to outside, step by step.",
+  "Write a Python function that merges two sorted lists, then explain its running time.",
+  "Describe the water cycle to a ten-year-old.",
+  "Write a Rust function that parses a comma-separated line of integers and returns their sum, handling bad input.",
+  "What are the main causes of the French Revolution? Answer in a few paragraphs.",
+  "Write a haiku about autumn, then explain the imagery in it.",
+  "Give a recipe for a simple tomato soup, with ingredients and steps.",
+  "Explain the difference between TCP and UDP, with examples of when to use each.",
+  "Write a letter from a cat to its owner complaining about the new dog.",
+  "Solve step by step: a train leaves at 3:15 pm and travels 210 km at 84 km/h. When does it arrive?",
+  "Décris une journée typique dans un petit village de montagne en hiver.",
+  "Write a SQL query that finds the top three customers by total order value, and explain each clause.",
+  "Summarize the plot of a heist movie you invent, in about two hundred words.",
+  "Explain what a hash function is and why collisions matter.",
+  "List ten ideas for a weekend project with a Raspberry Pi, one sentence each.",
+  "Write a dialogue between a teacher and a student about why the sky is blue.",
+  "Explain how compound interest works, with a worked example over five years.",
+  "Write a C function that reverses a string in place, and list the edge cases it handles.",
+  "Describe the life cycle of a star like the Sun.",
+  "Write a product description for a waterproof hiking backpack.",
+  "Compare democracy and monarchy as systems of government in a balanced way.",
+  "Write a limerick about a programmer, then a second one about a compiler."
+ ]
+}

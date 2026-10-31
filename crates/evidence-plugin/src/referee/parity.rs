@@ -117,13 +117,17 @@ fn run_adjudicate(case: &Value) -> Vec<Value> {
         if asked.get("unreachable") == Some(&json!(true)) {
             return Err(Unreachable);
         }
+        let text = asked["answer_text"].as_str().unwrap_or_default();
+        // The referee's answer as a server returns it, with its logprobs
+        // when the case gives them (#155).
+        let body = asked.get("answer_logprobs").map(
+            |logprobs| json!({"choices": [{"message": {"content": text}, "logprobs": logprobs}]}),
+        );
+        let ruling = verdict::referee_verdict(a, b, comparison, text, body.as_ref());
         Ok(RefereeAnswer {
-            verdict: verdict::referee_verdict(
-                a,
-                b,
-                comparison,
-                asked["answer_text"].as_str().unwrap_or_default(),
-            ),
+            verdict: ruling.verdict,
+            inconclusive_because: ruling.inconclusive_because,
+            split_margin: ruling.split_margin,
             capsule_id: None,
             referee_id: referee_id.unwrap_or_default().to_string(),
         })
@@ -203,7 +207,7 @@ fn held_summary(held: &Value, node_key_id: &str, names: &mut VerdictNames) -> Va
     Value::Object(out)
 }
 
-fn run_service(case: &Value) -> Vec<Value> {
+pub(crate) fn run_service(case: &Value) -> Vec<Value> {
     let node = CaseNode::new(&case["node"]);
     let key_id = node.key_id();
     let referee = crate::referee::service::Referee {
@@ -535,7 +539,15 @@ fn run_request(case: &Value) -> Vec<Value> {
                     };
                     let (a, b) = (half(&pair.twins[0]), half(&pair.twins[1]));
                     let comparison = verdict::compare_transcripts(a.text(), b.text());
-                    Called::Verdict(verdict::referee_verdict(&a, &b, &comparison, reanswer))
+                    // This path judges the requester's book, not the
+                    // referee's margin (`split_margin`): its referee answers
+                    // with a margin far above the threshold.
+                    let body = json!({"choices": [{
+                        "message": {"content": reanswer},
+                        "logprobs": crate::referee::parity_margin::decisive_logprobs(reanswer),
+                    }]});
+                    let ruling = verdict::referee_verdict(&a, &b, &comparison, reanswer, Some(&body));
+                    Called::Verdict(ruling.verdict)
                 }
             };
             let out = book.attempt(on, &pair, attempt["manual"] == json!(true), choose, call);
@@ -553,6 +565,8 @@ pub(crate) fn paths() -> Vec<(&'static str, &'static str, Runner)> {
     vec![
         ("adjudicate", "golden", run_adjudicate as Runner),
         ("service", "golden", run_service),
+        // Written here (#155): the copied corpus predates the margin rule.
+        ("split_margin", "rule_answers", run_service),
         ("hold", "golden", run_hold),
         ("deliver", "golden", run_deliver),
         ("classify", "golden", run_classify),

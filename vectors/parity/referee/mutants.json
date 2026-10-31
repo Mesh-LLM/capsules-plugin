@@ -116,24 +116,16 @@
    "fault": "The ruling names the twin the referee agreed with as the contradicted one.",
    "feature": "mutant-referee-verdict-names-wrong-twin",
    "must_fail": [
-    "adjudicate/differ_at_the_first_word",
-    "adjudicate/differ_last_word_referee_decides",
-    "adjudicate/no_disclosed_request",
-    "adjudicate/one_answer_is_the_start_of_the_other",
-    "adjudicate/referee_matches_a",
-    "adjudicate/referee_matches_b",
-    "adjudicate/temperature_zero_is_compared",
-    "service/contradicts_a",
-    "service/contradicts_b",
-    "service/no_bracket_id",
-    "service/repeat_returns_the_issued_verdict",
-    "service/repeat_with_the_halves_swapped",
-    "service/tier_two_referee"
+    "split_margin/margin_exactly_at_the_threshold",
+    "split_margin/margin_well_above",
+    "split_margin/multi_token_word_departing_token_counts",
+    "split_margin/twin_claims_a_near_tie"
    ],
    "name": "verdict-names-wrong-twin",
    "paths": [
     "adjudicate",
-    "service"
+    "service",
+    "split_margin"
    ],
    "port_module": "referee/verdict.rs"
   },
@@ -155,6 +147,38 @@
     "hold"
    ],
    "port_module": "referee/hold.rs"
+  },
+  {
+   "fault": "The referee's word names a twin whatever its top-2 margin at the split, or with none (#155).",
+   "feature": "mutant-referee-ignores-split-margin",
+   "must_fail": [
+    "adjudicate/differ_at_the_first_word",
+    "adjudicate/differ_last_word_referee_decides",
+    "adjudicate/no_disclosed_request",
+    "adjudicate/one_answer_is_the_start_of_the_other",
+    "adjudicate/referee_matches_a",
+    "adjudicate/referee_matches_b",
+    "adjudicate/temperature_zero_is_compared",
+    "service/contradicts_a",
+    "service/contradicts_b",
+    "service/no_bracket_id",
+    "service/repeat_returns_the_issued_verdict",
+    "service/repeat_with_the_halves_swapped",
+    "service/tier_two_referee",
+    "split_margin/chosen_token_is_not_the_top_one",
+    "split_margin/margin_one_micronat_below",
+    "split_margin/margin_well_below",
+    "split_margin/multi_token_word_near_tie_at_the_departure",
+    "split_margin/referee_answer_without_logprobs",
+    "split_margin/tokens_do_not_spell_the_answer"
+   ],
+   "name": "ignores-split-margin",
+   "paths": [
+    "adjudicate",
+    "service",
+    "split_margin"
+   ],
+   "port_module": "referee/verdict.rs, referee/margin.rs"
   }
  ],
  "note": "Implementation mutants for the Rust runner. Build the port with 'feature' and run its referee parity test: the run must fail, and every case in 'must_fail' must be among the cases it reports. The lists are produced by referee_mutants.py, which makes each fault in the Python that gives the expected answers and records the cases whose answers change.",

@@ -99,6 +99,7 @@ mutant-referee-request-asks-twice-per-pair = []
 mutant-referee-counts-skip-asked-gate = []
 mutant-referee-verdict-names-wrong-twin = []
 mutant-referee-hold-skips-asked-check = []
+mutant-referee-ignores-split-margin = []
 
 [dependencies]
 mesh-llm-plugin = "0.78"
