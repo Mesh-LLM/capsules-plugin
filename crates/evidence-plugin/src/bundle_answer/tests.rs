@@ -435,3 +435,50 @@ fn an_interval_over_padding_is_declined_until_bundles_carry_it() {
         Some(Reason::NoSuchSubject)
     );
 }
+
+#[test]
+fn a_time_freshness_is_served_under_the_earliest_covering_checkpoint_it_allows() {
+    let node = node();
+    let since = signed(
+        "node-a",
+        for_record(&node, 1, json!({"min_freshness": "2020-01-01T00:00:00Z"})),
+    );
+    let wire = wire_of(node.ask(&since, "counterparties"));
+    let checked = node
+        .check(&since, &wire)
+        .expect("the requester's check holds");
+    assert_eq!(checked.anchor, node.anchors()[1]);
+    assert_eq!(checked.records, [1, 2, 3]);
+    // No checkpoint is that fresh.
+    let future = signed(
+        "node-a",
+        for_record(&node, 1, json!({"min_freshness": "2099-01-01T00:00:00Z"})),
+    );
+    assert_eq!(
+        refused(&node.ask(&future, "counterparties")),
+        Some(Reason::CoverageUnsatisfiable)
+    );
+}
+
+/// Over `MAX_ANSWER_RECORDS` records from the half to the tip: declined as
+/// a limit of this node's own (`capacity_exceeded`, `policy_declined` under
+/// /0) before any record is read.
+#[test]
+fn an_interval_over_the_record_limit_is_declined() {
+    let limit = crate::evidence_answer::MAX_ANSWER_RECORDS as usize;
+    let mut seals: Vec<Seal> = (0..=limit).map(|_| Seal::Served("node-a")).collect();
+    seals.push(Seal::Cut);
+    let node = Node::new(&seals);
+    let first = signed("node-a", for_record(&node, 0, json!({"min_freshness": 1})));
+    assert_eq!(
+        refused(&node.ask(&first, "counterparties")),
+        Some(Reason::PolicyDeclined)
+    );
+    // The last half alone is within every limit.
+    let last = signed(
+        "node-a",
+        for_record(&node, limit, json!({"min_freshness": 1})),
+    );
+    let wire = wire_of(node.ask(&last, "counterparties"));
+    assert_eq!(node.check(&last, &wire).unwrap().records, [limit as u64]);
+}
