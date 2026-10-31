@@ -161,7 +161,7 @@ fn specs() -> Vec<Spec> {
         ),
         base(
             "referee_answer_without_logprobs",
-            "a referee whose server returned no logprobs (mesh-llm before 0.79, split serving): no margin, never a charge",
+            "a referee whose server returned no logprobs (mesh-llm releases without Mesh-LLM/mesh-llm#2565, 0.78.1 and earlier; split serving): no margin, never a charge",
             None,
             "inconclusive",
             Some(INCONCLUSIVE_SPLIT_MARGIN_UNAVAILABLE),

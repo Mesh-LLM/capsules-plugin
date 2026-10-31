@@ -258,7 +258,7 @@ pub fn reanswer_body(twin: &LiveTwin, divergence: usize) -> Value {
 }
 
 /// The same request without logprobs, for a server that refuses them
-/// (mesh-llm before 0.79, split serving).
+/// (mesh-llm releases without Mesh-LLM/mesh-llm#2565, 0.78.1 and earlier; split serving).
 pub fn without_logprobs(body: &Value) -> Value {
     let mut body = body.clone();
     if let Some(map) = body.as_object_mut() {
