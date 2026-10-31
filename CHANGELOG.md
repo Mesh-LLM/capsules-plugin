@@ -11,6 +11,23 @@
   choice and default is unchanged, so no saved config changes meaning. The old "Sharing policy",
   "Referee" and "Routing rule" groups are gone; "Evidence network" stays as its own group.
 
+- **A referee names a twin only when its own top-2 margin at the split reaches a pinned
+  threshold.** Honest nodes on different backends (Metal, CUDA, CPU, other thread or batch
+  settings) can split greedy decoding on a near-tie, and a referee that computes like one of them
+  would contradict the other. The referee's re-answer now asks its server for `logprobs` with
+  `top_logprobs: 2`, and the verdict seals a `split_margin` block: the threshold, the referee's
+  top-2 candidates and least margin over its tokens from the space before the word where it
+  departs from the other twin through the token where they part, and each twin's
+  own margin when its answer carries logprobs (evidence only; it never changes the ruling).
+  Values are exact decimal strings in nats. Below `SPLIT_MARGIN_THRESHOLD_NATS`
+  (3.0 nats, measured: `vectors/parity/referee/margin-measurement/`), the ruling is
+  `inconclusive` with `inconclusive_because: split_within_margin`; with no margin to read (no
+  logprobs, tokens that don't spell the answer, a split token that was not the top one), it is
+  `inconclusive` with `split_margin_unavailable`. A server that refuses logprobs is asked once
+  more without them. mesh-llm returns logprobs from Mesh-LLM/mesh-llm#2565 on, which is not in
+  0.78.1, and not for split serving, so until a referee runs a release with it, a
+  referee-decided split is `inconclusive`. Mesh-LLM/capsules-plugin#155.
+
 ## 0.1.7
 
 ### Added
