@@ -356,6 +356,7 @@ mod tests {
         assert!(bundle["disclosures"]
             .as_object()
             .is_none_or(|d| d.is_empty()));
+        crate::deal_receipt::tests::assert_selection_only(&bundle);
         let text = serde_json::to_string(&bundle).unwrap();
         assert!(!text.contains("hello"), "no response text");
         assert!(!text.contains("\"content\":\"hi\""), "no prompt text");

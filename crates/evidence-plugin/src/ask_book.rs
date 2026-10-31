@@ -80,17 +80,10 @@ struct AskBook<'a> {
 
 impl<'a> AskBook<'a> {
     fn open(capsules: &'a CapsuleState, now: &str) -> Self {
-        let records = crate::evidence_panes::read_capsule_records(capsules.ledger_dir())
-            .iter()
-            .filter_map(|record| {
-                let id = record.get("capsule_id")?.as_str()?.to_string();
-                Some((id, entry_block(record)?.clone()))
-            })
-            .collect();
         Self {
             capsules,
             now: now.to_string(),
-            records,
+            records: entries(capsules.ledger_dir()),
         }
     }
 
@@ -118,17 +111,35 @@ impl<'a> AskBook<'a> {
             matches!(
                 header.get("record_type").and_then(Value::as_str),
                 Some(record_types::RESPONSE | record_types::RECORDED_ABSENCE)
-            ) && header
-                .get("links")
-                .and_then(Value::as_array)
-                .is_some_and(|links| {
-                    links.iter().any(|l| {
-                        l.get("type").and_then(Value::as_str) == Some(LinkType::Cites.as_str())
-                            && l.get("target").and_then(Value::as_str) == Some(request_record_id)
-                    })
-                })
+            ) && cites(header, request_record_id)
         })
     }
+}
+
+/// Every record of this book on the ledger at `ledger_dir`, in ledger
+/// order, as `(record id, header)`.
+pub(crate) fn entries(ledger_dir: &std::path::Path) -> Vec<(String, Map<String, Value>)> {
+    crate::evidence_panes::read_capsule_records(ledger_dir)
+        .iter()
+        .filter_map(|record| {
+            let id = record.get("capsule_id")?.as_str()?.to_string();
+            Some((id, entry_block(record)?.clone()))
+        })
+        .collect()
+}
+
+/// Whether the entry `header` cites `record_id`: how a response or an
+/// absence names the request it is the outcome of.
+pub(crate) fn cites(header: &Map<String, Value>, record_id: &str) -> bool {
+    header
+        .get("links")
+        .and_then(Value::as_array)
+        .is_some_and(|links| {
+            links.iter().any(|l| {
+                l.get("type").and_then(Value::as_str) == Some(LinkType::Cites.as_str())
+                    && l.get("target").and_then(Value::as_str) == Some(record_id)
+            })
+        })
 }
 
 impl RecordSource for AskBook<'_> {

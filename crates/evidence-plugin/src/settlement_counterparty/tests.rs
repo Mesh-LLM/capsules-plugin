@@ -107,7 +107,10 @@ fn key(state: &CapsuleState) -> String {
 fn bundle_for(state: &CapsuleState, peer: &str) -> Value {
     cut(state);
     let ids = select(state.ledger_dir(), &key(state), peer).unwrap().ids;
-    bundle(state.ledger_dir(), &key(state), &ids).unwrap()
+    let bundle = bundle(state.ledger_dir(), &key(state), &ids).unwrap();
+    // It goes to the peer: its selection only, never the whole interval.
+    crate::deal_receipt::tests::assert_selection_only(&bundle);
+    bundle
 }
 
 /// The operator's registry naming `b` with `key`.

@@ -1869,6 +1869,11 @@ async fn main() -> anyhow::Result<()> {
         capsules_for_routing_choice.clone(),
         checkpoints.clone(),
     );
+    let plugin = deal_receipt::composition::with_route(
+        plugin,
+        capsules_for_routing_choice.clone(),
+        checkpoints.clone(),
+    );
     let plugin = provider_receipt::with_route(
         plugin,
         capsules_for_routing_choice.clone(),

@@ -825,7 +825,7 @@ fn holds_a_cited_key(index: &LedgerIndex, principal_key: Option<&str>) -> bool {
 
 /// Whether every record in `records` may go to `principal` under
 /// `history_segments` (see the module doc).
-fn may_serve_all(
+pub(crate) fn may_serve_all(
     index: &LedgerIndex,
     records: &[u64],
     principal: &[String],

@@ -38,6 +38,8 @@ use serde_json::{json, Map, Value};
 use crate::checkpoint_cadence::CheckpointHandle;
 use crate::evidence_log::{self, LedgerIndex, LogView};
 
+pub(crate) mod composition;
+
 /// Why no bundle is given. Each is the node's own state, not an error.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Refusal {
@@ -214,13 +216,29 @@ impl ProofSource for LogSource<'_> {
         })
     }
 
-    fn range_proof(&self, _first_seq: u64) -> Result<RangeProof, BuildError> {
-        // Only producer-selected bundles are built: the log is not shown whole.
-        Err(failed("no range proof: the bundle is producer-selected"))
+    fn range_proof(&self, first_seq: u64) -> Result<RangeProof, BuildError> {
+        let tip = leaf_count(self.size).map_err(|e| failed(format!("checkpoint size: {e}")))?;
+        if first_seq == 0 || first_seq > tip {
+            return Err(failed(format!(
+                "range proof from seq {first_seq}: outside 1..={tip}"
+            )));
+        }
+        let proof = self
+            .index
+            .range_proof(first_seq - 1, tip - 1, self.size)
+            .map_err(|e| failed(format!("range proof from seq {first_seq}: {e}")))?;
+        Ok(RangeProof {
+            from_seq: first_seq,
+            to_seq: tip,
+            size: proof.size,
+            from_index: proof.from_index,
+            to_index: proof.to_index,
+            witness: proof.witness,
+        })
     }
 }
 
-/// The records a producer-selected receipt bundle carries, and what it adds.
+/// The records a receipt bundle carries, and what it adds.
 pub(crate) struct Selection<'a> {
     /// The bundle's root: one of `ids`.
     pub root: &'a str,
@@ -231,13 +249,43 @@ pub(crate) struct Selection<'a> {
     pub extensions: Map<String, Value>,
 }
 
-/// The bundle of `selection`, proven against the earliest checkpoint of this
-/// node's log that reaches every record: the same bundle every time, and no
-/// count of what was sealed after.
+/// The bundle of `selection` and nothing else of the log, proven against the
+/// earliest checkpoint of this node's log that reaches every record: the
+/// same bundle every time, and no count of what was sealed after.
 pub(crate) fn selected_bundle(
     index: &LedgerIndex,
     node_key_id: &str,
     selection: Selection<'_>,
+) -> Result<Value, Error> {
+    built(index, node_key_id, selection, None)
+}
+
+/// The bundle of `selection` and every other record of the log from the
+/// earliest of its records to the checkpoint, with a range proof
+/// (interval-complete). Private: only [`composition`], the owner's own keep
+/// file, shows the log whole. Every bundle that may go to a peer is
+/// [`selected_bundle`]'s (Sherlock2, #199).
+fn interval_bundle(
+    index: &LedgerIndex,
+    node_key_id: &str,
+    selection: Selection<'_>,
+) -> Result<Value, Error> {
+    let first = selection
+        .ids
+        .iter()
+        .filter_map(|id| index.leaf_index_of(id))
+        .min()
+        .ok_or(Refusal::NotCheckpointed)?;
+    built(index, node_key_id, selection, Some(first + 1))
+}
+
+/// [`selected_bundle`], or with `interval_from` (a seq) the interval from
+/// there to the checkpoint.
+fn built(
+    index: &LedgerIndex,
+    node_key_id: &str,
+    selection: Selection<'_>,
+    interval_from: Option<u64>,
 ) -> Result<Value, Error> {
     let unreadable = |e: std::io::Error| Error::Failed(format!("the ledger is not readable: {e}"));
     let covering = index
@@ -258,7 +306,8 @@ pub(crate) fn selected_bundle(
         statement: covering.statement.clone(),
         size: covering.record.mmr_size,
     };
-    let mut options = BuildOptions::new(selection.root.to_string(), Interval::ProducerSelected);
+    let interval = interval_from.map_or(Interval::ProducerSelected, Interval::From);
+    let mut options = BuildOptions::new(selection.root.to_string(), interval);
     // The records named are the whole selection: no citation is followed.
     options.closure_depth = 0;
     options.include = selection.ids.to_vec();
@@ -433,7 +482,7 @@ pub(crate) mod tests {
     }
 
     /// Seal the payer's deal for `exchange`, delivered or not yet.
-    fn seal_deal(state: &CapsuleState, exchange: &str, delivered: bool) {
+    pub(crate) fn seal_deal(state: &CapsuleState, exchange: &str, delivered: bool) {
         let request = hex64('d');
         let deals = state.deals();
         deals.on_invoice(state, EXCHANGE_ID, &hex64('a'), 1000, 1_790_000_000);
@@ -488,6 +537,23 @@ pub(crate) mod tests {
             .unwrap();
     }
 
+    /// A bundle that may leave the owner's hands, or go to a peer, carries
+    /// only its selection: no range proof (the log is not shown whole) and no
+    /// composition. Only [`composition`] builds an interval-complete
+    /// bundle (Sherlock2, #199).
+    pub(crate) fn assert_selection_only(bundle: &Value) {
+        assert_eq!(bundle["completeness"]["selection"], "producer-selected");
+        assert!(bundle["completeness_certificate"]
+            .get("range_proof")
+            .is_none());
+        assert!(bundle["completeness_certificate"]
+            .get("first_seq")
+            .is_none());
+        assert!(bundle["extensions"]
+            .get(composition::COMPOSED_KIND)
+            .is_none());
+    }
+
     fn built(state: &CapsuleState) -> Result<Value, Error> {
         bundle(
             state.ledger_dir(),
@@ -505,6 +571,7 @@ pub(crate) mod tests {
             .unwrap();
         cut(&state);
         let bundle = built(&state).unwrap_or_else(|e| panic!("{e:?}"));
+        assert_selection_only(&bundle);
 
         let deal_ids: Vec<String> = evidence_log::with_index(
             state.ledger_dir(),

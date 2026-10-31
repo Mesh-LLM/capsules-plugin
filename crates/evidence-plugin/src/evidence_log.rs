@@ -193,6 +193,7 @@ pub(crate) fn never_leaves(record: &Value) -> bool {
     crate::evidence_panes::is_local_routing_choice(record)
         || crate::ask_book::is_ask_record(record)
         || is_deal_report(record)
+        || crate::deal_receipt::composition::is_composition(record)
         || record
             .pointer("/model_attestation/compute_attestation")
             .and_then(|c| c.get(crate::producer::capsule::OWNER_MAINTENANCE_BLOCK))
@@ -587,6 +588,17 @@ impl LedgerIndex {
         size: u64,
     ) -> Result<cll::mmr::InclusionProof, cll::mmr::MmrError> {
         cll::mmr::inclusion_proof(&self.nodes, leaf_index, size)
+    }
+
+    /// The range proof of leaf indices `from..=to` in the MMR of `size`
+    /// nodes (cll's CLL #13 proof).
+    pub fn range_proof(
+        &self,
+        from: u64,
+        to: u64,
+        size: u64,
+    ) -> Result<cll::range_proof::RangeProof, cll::mmr::MmrError> {
+        cll::range_proof::range_proof(&self.nodes, from, to, size)
     }
 
     pub fn leaf_index_of(&self, capsule_id: &str) -> Option<u64> {

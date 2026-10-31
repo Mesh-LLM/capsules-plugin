@@ -226,7 +226,7 @@ async fn bridge_inbound_ledger_fetch_stream(
 /// proven node; otherwise a record goes only to the node it names as the other side
 /// of its exchange, so a record that names no other side is not served.
 /// `requester_id` is the node the request's signature proved ([`answer`]).
-fn may_serve(record: &Value, requester: &[String], history_segments: &str) -> bool {
+pub(crate) fn may_serve(record: &Value, requester: &[String], history_segments: &str) -> bool {
     if history_segments == "off" || crate::evidence_log::never_leaves(record) {
         return false;
     }
