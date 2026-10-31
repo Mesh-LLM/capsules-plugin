@@ -147,7 +147,11 @@ A `record` subject with the `evidence_bundle/1` derivation names one of this
 node's exchange halves and asks for it as an Evidence Bundle: every record from
 the half to the checkpoint it is served under, each as sealed with its payload
 withheld, under a range proof. That is the earliest checkpoint covering the
-half that the request's coverage allows. The rule above applies to every
+half that the request's coverage allows. Withholding the payload does not
+withhold the content: a record of this node carries its content in its
+header, so the answer shows each record of the interval as fully as fetching
+that record would, and the gate below lets out only records the asker could
+already fetch whole. The rule above applies to every
 record in that interval: one record the asker may not have refuses the whole
 answer `not_authorized`, and so does a record that never leaves this node
 (an ask, a routing choice, owner maintenance, a deal's report), whatever the

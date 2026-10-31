@@ -462,23 +462,35 @@ fn a_time_freshness_is_served_under_the_earliest_covering_checkpoint_it_allows()
 
 /// Over `MAX_ANSWER_RECORDS` records from the half to the tip: declined as
 /// a limit of this node's own (`capacity_exceeded`, `policy_declined` under
-/// /0) before any record is read.
+/// /0), once the gate has passed and before any record is read.
 #[test]
 fn an_interval_over_the_record_limit_is_declined() {
     let limit = crate::evidence_answer::MAX_ANSWER_RECORDS as usize;
-    let mut seals: Vec<Seal> = (0..=limit).map(|_| Seal::Served("node-a")).collect();
+    // node-b's half first, so node-b is a counterparty of this node.
+    let mut seals = vec![Seal::Served("node-b")];
+    seals.extend((0..=limit).map(|_| Seal::Served("node-a")));
     seals.push(Seal::Cut);
     let node = Node::new(&seals);
-    let first = signed("node-a", for_record(&node, 0, json!({"min_freshness": 1})));
+    let first = signed("node-a", for_record(&node, 1, json!({"min_freshness": 1})));
     assert_eq!(
         refused(&node.ask(&first, "counterparties")),
         Some(Reason::PolicyDeclined)
     );
+    // The limit is not read before the gate: another party learns nothing
+    // of the interval's length.
+    let by_b = signed("node-b", for_record(&node, 1, json!({"min_freshness": 1})));
+    assert_eq!(
+        refused(&node.ask(&by_b, "counterparties")),
+        Some(Reason::NotAuthorized)
+    );
     // The last half alone is within every limit.
     let last = signed(
         "node-a",
-        for_record(&node, limit, json!({"min_freshness": 1})),
+        for_record(&node, limit + 1, json!({"min_freshness": 1})),
     );
     let wire = wire_of(node.ask(&last, "counterparties"));
-    assert_eq!(node.check(&last, &wire).unwrap().records, [limit as u64]);
+    assert_eq!(
+        node.check(&last, &wire).unwrap().records,
+        [limit as u64 + 1]
+    );
 }

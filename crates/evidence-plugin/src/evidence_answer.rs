@@ -814,10 +814,9 @@ fn bundle_answer(
     let at = bundle::serving_position(index, &req.coverage, first)?;
     let covered =
         leaf_count(index.chain[at].record.mmr_size).map_err(|_| Reason::CoverageUnsatisfiable)?;
-    if covered - first > MAX_ANSWER_RECORDS {
-        return Err(Reason::CapacityExceeded);
-    }
     let records: Vec<u64> = (first..covered).collect();
+    // The gate reads the index only, so it runs before the size limit: an
+    // asker the interval is refused to learns nothing of its length.
     if policy_gate_applies() {
         let leaves = &index.leaves;
         if records
@@ -840,6 +839,9 @@ fn bundle_answer(
         ) {
             return Err(Reason::NotAuthorized);
         }
+    }
+    if records.len() as u64 > MAX_ANSWER_RECORDS {
+        return Err(Reason::CapacityExceeded);
     }
     let anchor = ResolvedAnchor::Anchor(bundle::anchor_of(&index.chain[at])?);
     evidence_artifact::build(
