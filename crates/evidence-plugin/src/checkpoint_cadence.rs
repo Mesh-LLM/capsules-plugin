@@ -412,11 +412,9 @@ impl CheckpointHandle {
         let _turn = capsules.hold_appends();
         let emitted = seal(capsules)?;
         match state.checkpoint_covering(&emitted.capsule_id, &self.signer, &self.anchor) {
+            // Not a push cut: the push window stays as pushes left it, so a
+            // stream of served halves never keeps a push waiting.
             Ok(coverage) => {
-                *self
-                    .last_push_cut
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner) = Some(Instant::now());
                 self.latest_head.set(coverage.checkpoint.clone());
                 Ok((emitted, Some(coverage)))
             }
@@ -994,6 +992,35 @@ mod tests {
                 &coverage.checkpoint.timestamp
             ));
         }
+    }
+
+    /// A cut that fails keeps the sealed half, returned with no coverage.
+    #[test]
+    fn a_failed_cut_keeps_the_sealed_half() {
+        struct Refuses;
+        impl PaddingSink for Refuses {
+            fn pad_to_bucket(&self, _bucket: u64) -> Result<u64, String> {
+                Err("refused".into())
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let capsules = CapsuleState::open(dir.path(), "node-under-test").unwrap();
+        let (mut state, _) = CheckpointState::load(
+            capsules.ledger_dir(),
+            "test-log",
+            CheckpointCadenceConfig::default(),
+        )
+        .unwrap();
+        state.set_padding_sink(Box::new(Refuses));
+        let handle = CheckpointHandle::new(state, capsules.signing_key().clone());
+        let (half, coverage) = handle
+            .seal_and_cover(&capsules, |c| {
+                c.emit_for_exchange(&crate::capsule_emit::tests::sample_exchange("node-a"))
+            })
+            .unwrap();
+        assert!(coverage.is_none());
+        assert!(capsules.lookup(&half.capsule_id).unwrap().is_some());
+        assert_eq!(checkpoint_lines(capsules.ledger_dir()), 0);
     }
 
     #[test]

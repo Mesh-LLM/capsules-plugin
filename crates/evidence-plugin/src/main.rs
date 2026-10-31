@@ -2650,7 +2650,18 @@ mod push_eligibility_tests {
             .position(|c| c == main["capsule_id"].as_str().unwrap())
             .unwrap() as u64;
         let head = handle.latest_head().get().expect("a checkpoint was cut");
-        assert!(cll::mmr::leaf_count(head.mmr_size).unwrap() > at);
+        let tip = cll::mmr::leaf_count(head.mmr_size).unwrap();
+        assert!(tip > at);
+        // The stage records were sealed before it; after it, padding alone.
+        let records: Vec<Value> =
+            std::fs::read_to_string(capsules.ledger_dir().join("capsules.jsonl"))
+                .unwrap()
+                .lines()
+                .map(|l| serde_json::from_str(l).unwrap())
+                .collect();
+        assert!(records[at as usize + 1..tip as usize]
+            .iter()
+            .all(crate::producer::padding::is_padding));
     }
 
     /// evidencebook#69 finding 1, through the real adapter: a host-served
