@@ -33,6 +33,7 @@ mod exchange_text;
 mod history_page;
 mod host_status;
 mod ledger_fetch_bridge;
+mod leg_catch_up;
 mod lifecycle_channel;
 mod mesh_evidence_bridge;
 mod network_join;
@@ -433,6 +434,7 @@ async fn settlement_legs_on_lifecycle(
     context: &mut mesh_llm_plugin::PluginContext<'_>,
     event: &settlement_channel::PaymentLifecycleEvent,
     capsules: &Arc<CapsuleState>,
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
     self_peer: &self_peer::SelfPeer,
 ) {
     let (capsules, event) = (capsules.clone(), event.clone());
@@ -447,7 +449,7 @@ async fn settlement_legs_on_lifecycle(
     })
     .await;
     if let Ok((capsules, pushes)) = pushes {
-        push_settlement_legs(context, &capsules, pushes, self_peer).await;
+        push_settlement_legs(context, &capsules, pushes, checkpoints, self_peer).await;
     }
 }
 
@@ -509,6 +511,7 @@ async fn settlement_legs_on_exchange(
     context: &mut mesh_llm_plugin::PluginContext<'_>,
     body: &[u8],
     capsules: &Arc<CapsuleState>,
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
     self_peer: &self_peer::SelfPeer,
 ) {
     let Ok(envelope) = serde_json::from_slice::<OpenAiExchangeEnvelope>(body) else {
@@ -617,7 +620,7 @@ async fn settlement_legs_on_exchange(
     })
     .await;
     if let Ok((capsules, pushes)) = pushes {
-        push_settlement_legs(context, &capsules, pushes, self_peer).await;
+        push_settlement_legs(context, &capsules, pushes, checkpoints, self_peer).await;
         // A session with this provider for the model it states, when the
         // operator set session terms and none holds now: this exchange is
         // outside it, later ones cite it (R11). It runs in its own task, so
@@ -682,11 +685,15 @@ async fn deal_on_exchange(
 }
 
 /// Push payer terms legs; one not sent (pushing off, own peer id unknown, or
-/// a failed push) is queued again for the next settlement event.
+/// a failed push) is queued again for the next settlement event. Each goes
+/// out as a bundle under a checkpoint covering it, as a half pushed at
+/// completion does, so the receiver holds its checkpoint and inclusion proof
+/// (loop step 05 `pushed_under_checkpoint`).
 async fn push_settlement_legs(
     context: &mut mesh_llm_plugin::PluginContext<'_>,
     capsules: &CapsuleState,
     pushes: Vec<settlement_legs::Push>,
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
     self_peer: &self_peer::SelfPeer,
 ) {
     if pushes.is_empty() {
@@ -713,22 +720,156 @@ async fn push_settlement_legs(
     }
     let self_id = self_id.unwrap_or_default();
     for push in pushes {
+        let coverage = push_coverage(checkpoints, &push.capsule, &push.peer).await;
         match record_push_bridge::push_capsule_to_peer(
             context,
             &push.peer,
             &self_id,
             &push.capsule,
-            None,
+            coverage.as_ref(),
             &[],
             None,
         )
         .await
         {
-            Ok(()) => tracing::debug!(peer = %push.peer, "pushed settlement terms leg"),
+            Ok(reply) => {
+                tracing::debug!(peer = %push.peer, "pushed settlement terms leg");
+                // Only `covered` is final here: a leg pushed bare (the
+                // cadence off, or no checkpoint) is still the catch-up's.
+                if leg_catch_up::names_inclusion(&push.capsule, &reply) {
+                    let covered = leg_catch_up::Outcome::Covered;
+                    record_leg_outcome(capsules, &push.capsule, &push.peer, covered).await;
+                }
+            }
             Err(error) => {
                 tracing::warn!(%error, peer = %push.peer, "settlement terms leg push failed; held for retry");
                 capsules.settlement_legs().requeue(&push);
             }
+        }
+    }
+}
+
+/// Record how a push of a terms leg ended ([`leg_catch_up`]), off the async
+/// runtime: the record is read and synced to disk.
+async fn record_leg_outcome(
+    capsules: &CapsuleState,
+    capsule: &Value,
+    peer: &str,
+    outcome: leg_catch_up::Outcome,
+) {
+    let (ledger_dir, capsule, peer) = (
+        capsules.ledger_dir().to_path_buf(),
+        capsule.clone(),
+        peer.to_string(),
+    );
+    let recorded = tokio::task::spawn_blocking(move || {
+        leg_catch_up::record(&ledger_dir, &capsule, &peer, outcome)
+    })
+    .await;
+    match recorded {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => {
+            tracing::warn!(%error, outcome = outcome.wire(), "a terms leg push outcome was not recorded; the catch-up may send it again")
+        }
+        Err(join_error) => {
+            tracing::warn!(%join_error, "terms leg outcome task did not complete")
+        }
+    }
+}
+
+/// Start the catch-up of this node's earlier terms legs that went out
+/// uncovered ([`leg_catch_up`]), once per process: at the first mesh event
+/// or channel message once this node's own peer id is known, the checkpoint
+/// cadence is on and pushing is. The host reports the peer id on its first
+/// mesh event, so in practice that is soon after start. It runs in its own task, so the host's
+/// ordered channel handling never waits on a provider.
+fn start_leg_catch_up(
+    context: &mesh_llm_plugin::PluginContext<'_>,
+    capsules: &Arc<CapsuleState>,
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
+    self_peer: &self_peer::SelfPeer,
+) {
+    let (Some(checkpoints), Some(self_id)) = (checkpoints, self_peer.current()) else {
+        return;
+    };
+    if share_policy::record_at_completion_is_off() || !leg_catch_up::claim_run() {
+        return;
+    }
+    let (mut context, capsules, checkpoints) =
+        (context.owned(), capsules.clone(), checkpoints.clone());
+    tokio::spawn(async move {
+        let ledger_dir = capsules.ledger_dir().to_path_buf();
+        let plan = tokio::task::spawn_blocking(move || leg_catch_up::plan(&ledger_dir))
+            .await
+            .unwrap_or_default();
+        if plan.unknown_peer > 0 {
+            tracing::info!(
+                count = plan.unknown_peer,
+                first = ?plan.unknown_peer_ids,
+                "terms legs not pushed again: their serving peer is not in this node's records"
+            );
+        }
+        let due = plan.due.len();
+        let mut run = leg_catch_up::Run::new(plan.due, leg_catch_up::MAX_PER_RUN);
+        let (mut attempted, mut covered) = (0usize, 0usize);
+        while let Some(leg) = run.next() {
+            // Only a covered push adds anything: the provider holds the leg.
+            let Some(coverage) = push_coverage(Some(&checkpoints), &leg.capsule, &leg.peer).await
+            else {
+                continue;
+            };
+            attempted += 1;
+            let pushed = record_push_bridge::push_capsule_to_peer(
+                &mut context,
+                &leg.peer,
+                &self_id,
+                &leg.capsule,
+                Some(&coverage),
+                &[],
+                None,
+            )
+            .await;
+            match leg_catch_up::outcome_of(&leg.capsule, &pushed) {
+                Some(outcome) => {
+                    if outcome == leg_catch_up::Outcome::Covered {
+                        covered += 1;
+                    }
+                    record_leg_outcome(&capsules, &leg.capsule, &leg.peer, outcome).await;
+                }
+                None => {
+                    if let Err(error) = &pushed {
+                        tracing::warn!(%error, peer = %leg.peer, "terms leg catch-up push did not reach the peer; its legs wait for the next run");
+                    }
+                    run.unreached(&leg.peer);
+                }
+            }
+        }
+        if due > 0 {
+            tracing::info!(due, attempted, covered, "terms leg catch-up done");
+        }
+    });
+}
+
+/// A checkpoint covering `capsule` (this node's own record, about to be
+/// pushed to `peer_id`) and its inclusion proof, when the checkpoint cadence
+/// is on; `None` (and the bare record is pushed) when it is off or the
+/// checkpoint layer fails. A record is never held back for want of a proof.
+async fn push_coverage(
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
+    capsule: &Value,
+    peer_id: &str,
+) -> Option<producer::checkpoint::Coverage> {
+    let (Some(handle), Some(capsule_id)) = (
+        checkpoints,
+        capsule.get("capsule_id").and_then(Value::as_str),
+    ) else {
+        return None;
+    };
+    match handle.coverage_for(capsule_id).await {
+        Ok(coverage) => Some(coverage),
+        Err(error) => {
+            tracing::warn!(%error, %peer_id, "no checkpoint covering the pushed record -- pushing the bare record");
+            None
         }
     }
 }
@@ -772,19 +913,7 @@ async fn push_at_completion_if_configured(
     else {
         return;
     };
-    let coverage = match (
-        checkpoints,
-        capsule_json.get("capsule_id").and_then(Value::as_str),
-    ) {
-        (Some(handle), Some(capsule_id)) => match handle.coverage_for(capsule_id).await {
-            Ok(coverage) => Some(coverage),
-            Err(error) => {
-                tracing::warn!(%error, %peer_id, "no checkpoint covering the pushed half -- pushing the bare record");
-                None
-            }
-        },
-        _ => None,
-    };
+    let coverage = push_coverage(checkpoints, &capsule_json, peer_id).await;
     match record_push_bridge::push_capsule_to_peer(
         context,
         peer_id,
@@ -796,7 +925,7 @@ async fn push_at_completion_if_configured(
     )
     .await
     {
-        Ok(()) => {
+        Ok(_) => {
             tracing::info!(%peer_id, "pushed sealed capsule to counterparty at completion");
         }
         Err(error) => {
@@ -981,10 +1110,7 @@ async fn handle_stage_event(
         tracing::warn!(%coordinator, "stage record not pushed: this node's own peer id is unknown");
         return;
     };
-    let coverage = match checkpoints {
-        Some(handle) => handle.coverage_for(&sealed.capsule_id).await.ok(),
-        None => None,
-    };
+    let coverage = push_coverage(checkpoints, &sealed.capsule, &coordinator).await;
     if let Err(error) = record_push_bridge::push_capsule_to_peer(
         context,
         &coordinator,
@@ -1653,6 +1779,8 @@ async fn main() -> anyhow::Result<()> {
         .as_ref()
         .map(checkpoint_cadence::CheckpointHandle::latest_head);
     let checkpoints_for_handler = checkpoints.clone();
+    let capsules_for_events = capsules.clone();
+    let checkpoints_for_events = checkpoints.clone();
 
     let capsules_for_handler = capsules.clone();
     // Local routing choices seal onto the same single-writer chain.
@@ -1751,13 +1879,14 @@ async fn main() -> anyhow::Result<()> {
             let splits = splits_for_handler.clone();
             Box::pin(async move {
                 drain_split_pushes(context, &capsules, &splits, checkpoints.as_ref(), &self_peer).await;
+                start_leg_catch_up(context, &capsules, checkpoints.as_ref(), &self_peer);
                 if message.channel == split_stage::SKIPPY_STAGE_CHANNEL {
                     handle_stage_event(context, &message.body, &capsules, &splits, checkpoints.as_ref(), &self_peer)
                         .await;
                     return Ok(());
                 }
                 if message.channel == OPENAI_EXCHANGE_CHANNEL {
-                    settlement_legs_on_exchange(context, &message.body, &capsules, &self_peer).await;
+                    settlement_legs_on_exchange(context, &message.body, &capsules, checkpoints.as_ref(), &self_peer).await;
                     if let Some((envelope, capsule_json)) = observe_exchange_event(
                         &message.body,
                         exchange_text::enabled(),
@@ -1846,7 +1975,7 @@ async fn main() -> anyhow::Result<()> {
                                     tracing::warn!(%join_error, "settlement seal task did not complete");
                                 }
                             }
-                            settlement_legs_on_lifecycle(context, &legs_event, &capsules, &self_peer).await;
+                            settlement_legs_on_lifecycle(context, &legs_event, &capsules, checkpoints.as_ref(), &self_peer).await;
                         }
                         Err(error) => {
                             tracing::warn!(%error, "refused payment.lifecycle.v1 event; not sealed");
@@ -1904,14 +2033,21 @@ async fn main() -> anyhow::Result<()> {
         })
     })
     .customize(move |plugin| {
-        plugin.on_mesh_event(move |event, _context| {
+        plugin.on_mesh_event(move |event, context| {
             let self_peer = self_peer_for_events.clone();
-            Box::pin(async move {
-                if self_peer.learn(&event.local_peer_id) {
-                    tracing::info!(peer_id = %event.local_peer_id, "own mesh peer id reported by the host");
-                }
-                Ok(())
-            })
+            if self_peer.learn(&event.local_peer_id) {
+                tracing::info!(peer_id = %event.local_peer_id, "own mesh peer id reported by the host");
+            }
+            // The first mesh event names this node's own peer id: the
+            // earliest point a catch-up push can name its sender, so it
+            // starts here, not only at the first channel message.
+            start_leg_catch_up(
+                context,
+                &capsules_for_events,
+                checkpoints_for_events.as_ref(),
+                &self_peer,
+            );
+            Box::pin(async move { Ok(()) })
         })
     })
     .customize(move |plugin| with_admission_hook(plugin, peer_admission, capsules_for_hook))
@@ -2624,5 +2760,52 @@ mod agreement_model_tests {
         assert!(no_digest.await.is_empty());
         let unread = served_models(None, Some(digest), true, async { false }, never());
         assert_eq!(unread.await, [by_digest]);
+    }
+}
+
+#[cfg(test)]
+mod paid_push_tests {
+    use super::*;
+
+    /// A payer's terms leg of a paid exchange is pushed as the half at
+    /// completion is: under a checkpoint of its own ledger covering it, with
+    /// its inclusion proof, so the provider holds both (loop step 05
+    /// `pushed_under_checkpoint`; it was pushed bare). With the cadence off
+    /// it goes bare, as before.
+    #[tokio::test]
+    async fn a_payers_terms_leg_is_pushed_under_a_checkpoint_covering_it() {
+        let (a, b) = settlement_legs::tests::dirs();
+        settlement_legs::tests::two_nodes(a.path(), b.path(), settlement_legs::tests::WALLET);
+        let ledger = a.path().join("ledger");
+        let lines: Vec<Value> = std::fs::read_to_string(ledger.join("capsules.jsonl"))
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        // The leg `two_nodes` pushed to the provider: the payer's terms leg.
+        let (at, leg) = lines
+            .iter()
+            .enumerate()
+            .find(|(_, c)| c["settlement"]["leg"] == "terms")
+            .expect("the payer's terms leg");
+        let (state, _) = producer::checkpoint::CheckpointState::load(
+            &ledger,
+            "payer-log",
+            producer::checkpoint::CheckpointCadenceConfig::default(),
+        )
+        .unwrap();
+        let handle = checkpoint_cadence::CheckpointHandle::new(
+            state,
+            ed25519_dalek::SigningKey::from_bytes(&[9u8; 32]),
+        );
+        let coverage = push_coverage(Some(&handle), leg, "provider")
+            .await
+            .expect("a checkpoint covering the leg");
+        assert_eq!(coverage.leaf_index, at as u64);
+        let body = record_push_bridge::bundle_body(leg, &coverage);
+        assert_eq!(body["capsule"], *leg);
+        assert!(body["inclusion"]["proof"].is_object(), "{body}");
+        assert!(body["checkpoint"]["root"].is_string(), "{body}");
+        assert!(push_coverage(None, leg, "provider").await.is_none());
     }
 }

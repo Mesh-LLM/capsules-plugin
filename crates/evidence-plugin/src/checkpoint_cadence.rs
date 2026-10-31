@@ -305,7 +305,7 @@ fn remaining_window(last_cut: Option<Instant>, now: Instant) -> Duration {
 }
 
 impl CheckpointHandle {
-    fn new(state: CheckpointState, signer: SigningKey) -> Self {
+    pub(crate) fn new(state: CheckpointState, signer: SigningKey) -> Self {
         Self {
             state: Arc::new(Mutex::new(state)),
             signer,

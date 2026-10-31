@@ -803,11 +803,12 @@ pub(crate) mod tests {
     const INPUT: &str = "8437d5a5e0c5aa3304c0e0d17288cd504593ca7e560e3691a30739f1725ee7c5";
     const OUTPUT: &str = "59c0c4d2859c994004ad65ce13831b9cdaf688828d6c9f08cdb06f1bda9f15dd";
     const RESPONSE: &str = "33e3aff1f39db84ca6bc2e4a8d19703c57566b215e2fa5282dcfefc983bf4ebf";
-    const PROVIDER_PEER: &str = "284a8bb62c0491b1a27f57425ce585626f7dc9a1495de4519a869a8c11d9f478";
+    pub(crate) const PROVIDER_PEER: &str =
+        "284a8bb62c0491b1a27f57425ce585626f7dc9a1495de4519a869a8c11d9f478";
     pub(crate) const WALLET: &[(&str, u64)] = &[("credited_msat", 995), ("fee_msat", 5)];
 
     /// A host-shaped event, with role and the wallet's numbers as given.
-    fn event(
+    pub(crate) fn event(
         role: &str,
         exchange_id: &str,
         phase: Phase,

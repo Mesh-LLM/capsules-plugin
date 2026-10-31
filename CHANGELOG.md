@@ -11,6 +11,22 @@
   choice and default is unchanged, so no saved config changes meaning. The old "Sharing policy",
   "Referee" and "Routing rule" groups are gone; "Evidence network" stays as its own group.
 
+### Fixed
+
+- **A payer's settlement terms leg is pushed under a checkpoint, with its inclusion proof.** It
+  went bare, unlike every other pushed half, so the provider held it with no checkpoint or proof
+  and its book could not show it was pushed under one (loop step 05 `pushed_under_checkpoint`).
+  With the checkpoint cadence off it is pushed bare, as before. A leg an earlier version pushed
+  bare is pushed once more, under a checkpoint, once per start with the cadence on: at the host's
+  first mesh event, which names this node's peer id, or its first channel message, whichever comes
+  first. It goes to the peer the leg's sealed exchange record names; the provider, already holding
+  the leg, adds its checkpoint and inclusion proof. Each push's outcome is kept in
+  `ledger/covered-terms-legs.jsonl` (`covered`, or `no_inclusion` from a receiver that predates
+  bundles), and a leg with an outcome is not pushed again; one that did not arrive, or that the
+  receiver refused, is retried at the next start. At most 64 pushes per start, and a peer that
+  cannot be reached is skipped for the rest of that start. It re-sends sealed records only and
+  moves no money. Mesh-LLM/capsules-plugin#187.
+
 ## 0.1.7
 
 ### Added

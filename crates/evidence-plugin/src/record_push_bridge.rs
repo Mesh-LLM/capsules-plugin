@@ -928,6 +928,9 @@ async fn seal_inclusion_citing_record_for_push(
 /// bundle: Steven's loop step 12 ruling has counterparties verify the full
 /// record while the public commitment names it by digest alone
 /// (Mesh-LLM/capsules-plugin#113).
+///
+/// Returns the receiver's acceptance: for a bundle it held, the inclusion it
+/// verified (`record_push_receive`'s reply).
 pub async fn push_capsule_to_peer(
     context: &mut PluginContext<'_>,
     peer_id: &str,
@@ -936,7 +939,7 @@ pub async fn push_capsule_to_peer(
     coverage: Option<&Coverage>,
     split_stage_records: &[serde_json::Value],
     controller_binding: Option<&serde_json::Value>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<serde_json::Value> {
     let response = match coverage {
         Some(coverage) => {
             push_bundle(
@@ -959,7 +962,7 @@ pub async fn push_capsule_to_peer(
     if response.get("reason").is_some() {
         anyhow::bail!("peer {peer_id} refused record-push: {response}");
     }
-    Ok(())
+    Ok(response)
 }
 
 /// The bundle with what it carries beside the half. A receiver that reads
@@ -1412,6 +1415,24 @@ pub(crate) mod tests {
             })
             .unwrap()
             .capsule
+    }
+
+    /// A push answered as `bridge_inbound_record_push` answers one, past the
+    /// stream and the split collector: received, then on success the citing
+    /// records sealed and a terms leg handed on. The reply the sender reads.
+    pub(crate) async fn answer_push(
+        capsules: &Arc<CapsuleState>,
+        sender: &str,
+        body: &[u8],
+    ) -> serde_json::Value {
+        let (reply, accepted_key) = receive_pushed_record(capsules, sender, body).await.unwrap();
+        if accepted(&reply) {
+            seal_citing_records_for_push(capsules, sender, body, &reply, accepted_key.as_ref())
+                .await
+                .unwrap();
+            hold_settlement_terms(capsules, body).await;
+        }
+        reply
     }
 
     /// The `received_half` blocks of `state`'s citing records, oldest first.
