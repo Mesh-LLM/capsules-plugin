@@ -31,10 +31,11 @@ signed, chained, checkpointed record and answers
 - the only requester identity on the evidence path is the request's own
   `requester_id`, which SHARING-POLICY calls "a scope filter against casual
   reads, not access control";
-- the record-free answers (checkpoint list, `history_card/1`,
-  `served_summary/1`) are answered under every sharing tier, including `off`,
-  so a node discloses cadence, model use and volume to anyone who asks
-  (SHARING-POLICY, "Reading records back");
+- the record-free answers (checkpoint list, `history_card/1`, and
+  `served_summary/1` until it was retired, Mesh-LLM/capsules-plugin#106) were
+  answered under every sharing tier, including `off`, so a node disclosed
+  cadence, model use and volume to anyone who asked (SHARING-POLICY,
+  "Reading records back");
 - a node's weights digest is a claim copied from the host, not measured by the
   plugin (VERIFICATION-CHAIN, "What the whole chain still does not prove"), so
   two nodes can claim the same weights and answer the same temperature-0
@@ -134,18 +135,23 @@ network: payment legs record observations, they do not move money.
 
 ### 5.2 Privacy defaults and disclosure classes
 
-Today the checkpoint list, `history_card/1` and `served_summary/1` are
-answered under every `share_history_segments` value, including `off`
-(SHARING-POLICY; parity cases in `evidence_request_parity.rs`). They
-carry no record bodies, but they are not harmless:
+When this document was drafted, the checkpoint list, `history_card/1` and
+`served_summary/1` were answered under every `share_history_segments` value,
+including `off` (SHARING-POLICY; parity cases in
+`evidence_request_parity.rs`). They carry no record bodies, but they are not
+harmless:
 
 - checkpoint `log_size` and `issued_at` over time give the node's **cadence
   and volume**;
-- `served_summary/1` gives **model-use patterns** per model;
-- the floor of 5 in `served_summary/1` protects a single answer, not a
+- `served_summary/1` gave **model-use patterns** per model;
+- the floor of 5 in `served_summary/1` protected a single answer, not a
   sequence of answers: two summaries over overlapping ranges (for example the
-  range at checkpoint *n* and at *n + 1*) can be subtracted, and the
-  difference can be a single exchange's model and latency.
+  range at checkpoint *n* and at *n + 1*) could be subtracted, and the
+  difference could be a single exchange's model and latency.
+
+That differencing is why `served_summary/1` is retired
+(Mesh-LLM/capsules-plugin#106): beside the weekly `service_history/1` cells,
+the summary less those cells would give a withheld week's count.
 
 Draft -00's own Privacy section notes that history cards leak cadence and
 volume. This document therefore replaces "answered under every tier" with four
@@ -479,7 +485,7 @@ interoperability (M1–M5).
   and anchor, and a requester that knows only -00 can verify it.
 - **T7 — Privacy defaults.** On a node with default settings: no evidence
   capability is advertised; checkpoints and `history_card/1` are answered
-  to a non-counterparty, signed or not; `served_summary/1` to a
+  to a non-counterparty, signed or not; `service_history/1` to a
   non-counterparty is refused `policy_declined`, identically for every such
   asker. With a public summary policy on: a request for a non-aligned or
   overlapping interval is refused, and the summaries for two adjacent

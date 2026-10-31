@@ -13,7 +13,8 @@ needed.
   summary less those cells would give a withheld week's count. Every requester is refused it:
   `derivation_unsupported`, or the `policy_declined` any other derivation gets while
   `share_standard_history` is off and the requester is not a counterparty. The commitment lists
-  `service_history/1` in its place, and `share_standard_history` now covers `service_history/1`.
+  `service_history/1` in its place, and `share_standard_history` covers `service_history/1` and no
+  longer `served_summary/1`.
   A 0.1.6 or older peer's `served_summary/1` answer is no longer checked here.
 
 ## What's new in 0.1.7

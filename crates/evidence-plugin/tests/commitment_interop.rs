@@ -27,6 +27,19 @@ const COMMITMENT_CHANNEL: &str = "commitment/1";
 const NODE_A: &str = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1";
 const NODE_B: &str = "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2";
 
+/// `service_history/1`'s name on the wire: the SHA-256 of the RFC 8785
+/// bytes of `derivations/service-history-1.json`, computed here so a
+/// changed definition cannot leave a stale name behind (the policy gate
+/// refuses a stranger before it looks the derivation up).
+fn service_history_digest() -> String {
+    use sha2::Digest as _;
+    let document: serde_json::Value =
+        serde_json::from_str(include_str!("../../../derivations/service-history-1.json"))
+            .expect("the definition file is JSON");
+    let text = evidence_request::jcs::to_string(&document).expect("canonicalizable");
+    hex::encode(sha2::Sha256::digest(text.as_bytes()))
+}
+
 struct Harness {
     child: tokio::process::Child,
     stream: LocalStream,
@@ -315,12 +328,24 @@ async fn a_second_node_fetches_the_commitment_and_a_refusal_names_its_policy_dig
     assert_eq!(fetched["policy"], own["policy"]);
     assert_eq!(*commitment, own["commitment"]);
 
-    // A stranger asking A for its Service History (named by its definition
-    // digest, `derivations/service-history-1.json`) is refused, and the
-    // refusal names the digest A's signed commitment advertises.
+    // A stranger asking A for its Service History, by the name A's signed
+    // commitment lists it under, is refused, and the refusal names the
+    // digest that commitment advertises.
+    let service_history = service_history_digest();
+    assert!(
+        commitment["answers"]["derivations"]
+            .as_array()
+            .is_some_and(|d| d.iter().any(|n| *n == service_history)),
+        "{commitment}"
+    );
+    let request = json!({
+        "subject": {"full_history": null},
+        "coverage": {"min_freshness": 1},
+        "derivation": service_history,
+    });
     let (mut read, mut write) = a.open_stream(None).await.into_split();
     write
-        .write_all(br#"{"subject":{"full_history":null},"coverage":{"min_freshness":1},"derivation":"cbc96d800ad206791db7e0793b80a2720c1908468ba99692b739aa8e74aab2d8"}"#)
+        .write_all(&serde_json::to_vec(&request).unwrap())
         .await
         .unwrap();
     write.shutdown().await.unwrap();
