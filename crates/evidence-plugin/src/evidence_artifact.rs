@@ -42,7 +42,12 @@
 //!   evidence_stream, history_card, history_card_digest, period_counts,
 //!   subject}`, the card the `history_card/1` artifact at the same anchor
 //!   (`crate::service_history`). This node signs its envelope itself, with
-//!   no material, as that profile asks.
+//!   no material, as that profile asks;
+//! - `evidence_bundle/1` (this node's own, over a `record` subject naming
+//!   one of its exchange halves): RFC 8785 of an interval-complete
+//!   `evidence-bundle/v2` rooted at the half, so `artifact_digest` is its
+//!   BundleDigest (`crate::bundle_answer`). This node signs its envelope
+//!   itself, with the anchor's `cll-checkpoint`.
 //!
 //! **Beyond the profile.** The profile defines no material for a record set,
 //! the checkpoint list or a derivation (its P-13), and no carrier for a
@@ -125,6 +130,8 @@ pub fn build(b: &Build<'_>, view: &LogView<'_>) -> Result<Value, Reason> {
     let service_history = crate::service_history::is_derivation(b.request.derivation.as_ref());
     let signed = if service_history {
         service_history_envelope(b, view, served)?
+    } else if crate::bundle_answer::is_derivation(b.request.derivation.as_ref()) {
+        crate::bundle_answer::envelope(b, view, served)?
     } else {
         signed_envelope(b, view, served)?
     };
@@ -332,7 +339,7 @@ pub(crate) fn profile_of(sent: &[u8]) -> String {
 
 /// A checkpoint time in the profile's form: UTC, any fraction dropped
 /// (profile §5.2).
-fn profile_time(timestamp: &str) -> String {
+pub(crate) fn profile_time(timestamp: &str) -> String {
     match timestamp.split_once('.') {
         Some((seconds, _)) => format!("{seconds}Z"),
         None => timestamp.to_string(),
@@ -484,7 +491,11 @@ pub fn check(
 
     let derivation = match &env.derivation {
         None => None,
-        Some(Derivation::Token(t)) if t == DERIVATION_HISTORY_CARD => Some(t.as_str()),
+        Some(Derivation::Token(t))
+            if t == DERIVATION_HISTORY_CARD || t == crate::bundle_answer::TOKEN =>
+        {
+            Some(t.as_str())
+        }
         Some(Derivation::Digest(d))
             if d == crate::exchange_corroboration::DEFINITION_DIGEST
                 || d == crate::service_history::definition_digest() =>
@@ -582,6 +593,17 @@ pub fn check(
             let leaves;
             (halves, leaves) = crate::exchange_corroboration::check_entries(&art, id, &served.cp)
                 .map_err(|why| CheckError::Answer(why.into()))?;
+            (served, leaves, Vec::new())
+        }
+        (Some(t), Subject::Record(root)) if t == crate::bundle_answer::TOKEN => {
+            let served = anchor_checkpoint_only(&env, key)?;
+            let leaves = crate::bundle_answer::check_artifact(
+                &env.artifact,
+                root,
+                &served.cp,
+                &served.digest,
+            )
+            .map_err(CheckError::Answer)?;
             (served, leaves, Vec::new())
         }
         (Some(_), _) => return fail("the answer is for a derivation of another subject"),
