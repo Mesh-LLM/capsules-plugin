@@ -155,10 +155,12 @@ already fetch whole. The rule above applies to every
 record in that interval: one record the asker may not have refuses the whole
 answer `not_authorized`, and so does a record that never leaves this node
 (an ask, a routing choice, owner maintenance, a deal's report), whatever the
-switch says. Padding names no one and is not held against the asker, but an
-Evidence Bundle cannot carry it yet
-([agent-action-capsule#339](https://github.com/action-state-group/agent-action-capsule/issues/339)),
-so an interval with padding in it is declined as a limit of this node's own.
+switch says. Padding names no one and is not held against the asker, but
+this plugin does not yet put padding in an Evidence Bundle
+(`non_record_leaves`, Bundle -02,
+[agent-action-capsule#339](https://github.com/action-state-group/agent-action-capsule/issues/339))
+until the verifiers can check it, so an interval with padding in it is
+declined as a limit of this node's own.
 This derivation is not in the commitment's `answers.derivations`, which lists
 only what every counterparty gets under every setting.
 
