@@ -245,6 +245,19 @@ impl Deals {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    /// The node that served the exchange record `exchange_capsule_id`, as the
+    /// deal for it recorded it; `None` when this node holds no such deal (or
+    /// no longer: the state keeps the latest [`MAX_DEALS`]).
+    pub fn provider_of(&self, sealer: &dyn Sealer, exchange_capsule_id: &str) -> Option<String> {
+        let mut inner = self.lock();
+        self.load(&mut inner, sealer);
+        inner
+            .entries
+            .values()
+            .find(|e| e.exchange_capsule_id.as_deref() == Some(exchange_capsule_id))
+            .and_then(|e| e.peer.clone())
+    }
+
     /// An invoice for `exchange_id` was issued (the first makes the deal) and this
     /// node sealed its terms leg `leg`, for `amount_msat`.
     pub fn on_invoice(
@@ -884,7 +897,10 @@ pub(crate) fn append_line(path: &Path, line: &Value) -> std::io::Result<()> {
 
 /// The report's lines. `audience`, `did`, `money`, `lifecycle`, `steps`,
 /// `told` and `scope` are the members the receipt reads
-/// (capsule-viewer `receipt/model.py`). Money lines are msat text. A close
+/// (capsule-viewer `receipt/model.py`). `asked_step` names the deal's
+/// baseline, the opening step deal-view requires of a keep report; the
+/// asked words stay closed (no `asked_opening`), so its page says they could
+/// not be checked. Money lines are msat text. A close
 /// `open` says what this node saw: payment seen with no delivery, or no
 /// payment seen, never "not delivered".
 fn report_body(
@@ -943,6 +959,9 @@ fn report_body(
         json!({"state": state, "text": text, "as_of": records::at(now), "later": []}),
     );
     body.insert("steps".into(), Value::Array(steps));
+    if let Some(baseline) = entry.step(deal::TYPE_BASELINE) {
+        body.insert("asked_step".into(), json!(baseline.capsule_id));
+    }
     body
 }
 

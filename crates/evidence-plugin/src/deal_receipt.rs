@@ -52,6 +52,10 @@ pub(crate) enum Refusal {
     PayloadMissing(String),
     /// No signed checkpoint covers the deal's records yet.
     NotCheckpointed,
+    /// An interval-complete bundle would cross a padding record, which an
+    /// Evidence Bundle cannot carry yet (agent-action-capsule#339): it is not
+    /// a Capsule, so the producer refuses it.
+    PaddingInInterval,
 }
 
 impl Refusal {
@@ -61,6 +65,9 @@ impl Refusal {
             Refusal::NotReported => "the deal has no report yet".into(),
             Refusal::PayloadMissing(id) => format!("the payload of deal record {id} is not kept"),
             Refusal::NotCheckpointed => "no signed checkpoint covers the deal yet".into(),
+            Refusal::PaddingInInterval => "the ledger holds a padding record in the interval, \
+                which an Evidence Bundle cannot carry yet (agent-action-capsule#339)"
+                .into(),
         }
     }
 }
@@ -316,6 +323,19 @@ fn built(
         })
         .ok_or(Refusal::NotCheckpointed)?;
     let source = LogSource::at(index, covering).map_err(unreadable)?;
+    if let Some(first) = interval_from {
+        let covered = leaf_count(covering.record.mmr_size).map_or(0, |n| n as usize);
+        let from = usize::try_from(first - 1).unwrap_or(usize::MAX);
+        if index
+            .leaves
+            .iter()
+            .take(covered)
+            .skip(from)
+            .any(|leaf| leaf.padding)
+        {
+            return Err(Refusal::PaddingInInterval.into());
+        }
+    }
     let interval = interval_from.map_or(Interval::ProducerSelected, Interval::From);
     let mut options = BuildOptions::new(selection.root.to_string(), interval);
     // The records named are the whole selection: no citation is followed.
@@ -481,7 +501,7 @@ pub(crate) mod tests {
     use crate::producer::checkpoint::{CheckpointCadenceConfig, CheckpointState};
 
     const EXCHANGE_ID: &str = "exchange-1";
-    const PEER: &str = "peer-node-with-a-distinct-name";
+    pub(crate) const PEER: &str = "peer-node-with-a-distinct-name";
 
     fn hex64(c: char) -> String {
         c.to_string().repeat(64)
@@ -614,6 +634,14 @@ pub(crate) mod tests {
         assert!(carried.contains(&report));
         let report_payload = &bundle["disclosures"][report]["agent_input"];
         assert_eq!(report_payload["type"], "deal_report");
+        // deal-view's opening-step rule for a keep report: `asked_step` names
+        // a disclosed record whose block says `baseline`.
+        let asked = report_payload["report"]["asked_step"].as_str().unwrap();
+        assert!(carried.contains(&asked));
+        assert_eq!(
+            bundle["disclosures"][asked]["agent_input"]["x-deal-v0"]["record_type"],
+            "baseline"
+        );
 
         // Every claim passes but the interval: the bundle is producer-selected,
         // so what the log holds besides these records is not shown.

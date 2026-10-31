@@ -451,8 +451,9 @@ fn keep_reply(ledger_dir: &Path, digest: &str, reply: &[u8]) -> std::io::Result<
 /// composition carries. Refused, naming the record, when it is no response
 /// record here (`NotFound`), when it was sealed before replies were kept
 /// and so has no digest (`Invalid`), or when the kept bytes are missing or
-/// are not the ones sealed (`Corrupt`). The payer's composition (#196)
-/// is its first caller.
+/// are not the ones sealed (`Corrupt`). For a caller holding only the
+/// record id; the payer's composition (#196), which already holds the
+/// record's header, calls [`kept_reply_of`].
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn kept_reply(ledger_dir: &Path, response_record_id: &str) -> Result<Vec<u8>, AskError> {
     let header = crate::evidence_panes::read_capsule_records(ledger_dir)
@@ -467,6 +468,22 @@ pub fn kept_reply(ledger_dir: &Path, response_record_id: &str) -> Result<Vec<u8>
                 "{response_record_id} is not a response this book recorded"
             ))
         })?;
+    kept_reply_of(ledger_dir, response_record_id, &header)
+}
+
+/// [`kept_reply`], for a response record whose entry `header` the caller
+/// already read from the ledger (as [`entries`] gives it), so the ledger is
+/// not read again.
+pub(crate) fn kept_reply_of(
+    ledger_dir: &Path,
+    response_record_id: &str,
+    header: &Map<String, Value>,
+) -> Result<Vec<u8>, AskError> {
+    if header.get("record_type") != Some(&json!(record_types::RESPONSE)) {
+        return Err(AskError::NotFound(format!(
+            "{response_record_id} is not a response this book recorded"
+        )));
+    }
     let Some(digest) = header
         .get("statement")
         .and_then(|s| s.get("response_digest"))
