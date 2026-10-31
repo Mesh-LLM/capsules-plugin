@@ -118,7 +118,7 @@
    "must_fail": [
     "split_margin/margin_exactly_at_the_threshold",
     "split_margin/margin_well_above",
-    "split_margin/multi_token_word_departing_token_counts",
+    "split_margin/multi_token_word_least_margin_counts",
     "split_margin/twin_claims_a_near_tie"
    ],
    "name": "verdict-names-wrong-twin",
@@ -169,7 +169,9 @@
     "split_margin/margin_one_micronat_below",
     "split_margin/margin_well_below",
     "split_margin/multi_token_word_near_tie_at_the_departure",
+    "split_margin/multi_token_word_near_tie_before_the_departing_byte",
     "split_margin/referee_answer_without_logprobs",
+    "split_margin/split_inside_a_character",
     "split_margin/tokens_do_not_spell_the_answer"
    ],
    "name": "ignores-split-margin",

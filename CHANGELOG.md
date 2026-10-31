@@ -101,7 +101,8 @@
   settings) can split greedy decoding on a near-tie, and a referee that computes like one of them
   would contradict the other. The referee's re-answer now asks its server for `logprobs` with
   `top_logprobs: 2`, and the verdict seals a `split_margin` block: the threshold, the referee's
-  top-2 candidates and margin at the token where it departs from the other twin, and each twin's
+  top-2 candidates and least margin over its tokens from the space before the word where it
+  departs from the other twin through the token where they part, and each twin's
   own margin when its answer carries logprobs (evidence only; it never changes the ruling).
   Values are exact decimal strings in nats. Below `SPLIT_MARGIN_THRESHOLD_NATS`
   (3.0 nats, measured: `vectors/parity/referee/margin-measurement/`), the ruling is

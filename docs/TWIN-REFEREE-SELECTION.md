@@ -31,19 +31,28 @@ settings) computes slightly different next-word scores, so where the top two
 are nearly tied, temperature 0 can choose differently on two honest twins. So
 the referee asks its own server for the top-2 logprobs of every token of its
 re-answer, and its word names a twin only when its own margin (top-1 minus
-top-2 logprob, in nats) at the token where it departs from the other twin is
-at least `SPLIT_MARGIN_THRESHOLD_NATS` (3.0 nats; `referee/verdict.rs`).
+top-2 logprob, in nats) is at least `SPLIT_MARGIN_THRESHOLD_NATS` (3.0 nats;
+`referee/verdict.rs`) at every token from the space before the word where it
+departs from the other twin through the token where they part: the other twin
+may cut the same text into other tokens, so any of them may be where it chose
+differently.
+
 Below that, the ruling is `inconclusive` (`inconclusive_because:
-split_within_margin`); with no margin to read (a server that returns no
-logprobs, such as a mesh-llm release without Mesh-LLM/mesh-llm#2565 (0.78.1 and earlier) or split serving), it is `inconclusive`
-too (`split_margin_unavailable`). Neither counts against anyone. Only the
-referee's margin decides: the twins' own margins, when their answers carry
-them, are sealed beside it (`split_margin`) and never change the ruling. The
-value is at least twice the largest change in the top-2 gap measured between
-honest backends (`vectors/parity/referee/margin-measurement/`). One split is
-one token, so a near-identical model (another quantization of the same
-weights) mostly comes out `inconclusive` here; telling those apart needs many
-tokens pooled (Mesh-LLM/mesh-llm#2548).
+split_within_margin`). With no margin to read it is `inconclusive` too
+(`split_margin_unavailable`): a server that returns no logprobs (a mesh-llm
+release without Mesh-LLM/mesh-llm#2565, 0.78.1 and earlier, or split serving),
+tokens that do not spell the answer, or a token that was not the most likely
+one. Neither counts against anyone. Only the referee's margin decides: the
+twins' own margins, when their answers carry them, are sealed beside it
+(`split_margin`) and never change the ruling.
+
+The value is at least twice the largest change in the top-2 gap measured
+between honest backends at positions whose gap is under it, where a change
+can flip the choice (2.37 nats needed; see "The 2x rule" in
+`vectors/parity/referee/margin-measurement/README.md`). One split is one
+token, so a near-identical model (another quantization of the same weights)
+mostly comes out `inconclusive` here; telling those apart needs many tokens
+pooled (Mesh-LLM/mesh-llm#2548).
 
 ## 2. Who is eligible
 

@@ -269,6 +269,7 @@ pub fn without_logprobs(body: &Value) -> Value {
 }
 
 /// What a re-answer came to.
+#[derive(Debug, PartialEq)]
 enum Reanswered {
     Answer(Value),
     /// The referee's server answered with an error status.
@@ -277,11 +278,15 @@ enum Reanswered {
     Unreachable,
 }
 
-async fn reanswer(referee: &str, body: &Value) -> Reanswered {
-    let api = crate::settings::var(ENV_OPENAI_API)
+/// The host's OpenAI-compatible API, as the operator set it.
+fn openai_api() -> String {
+    crate::settings::var(ENV_OPENAI_API)
         .ok()
         .filter(|u| !u.trim().is_empty())
-        .unwrap_or_else(|| DEFAULT_OPENAI_API.to_string());
+        .unwrap_or_else(|| DEFAULT_OPENAI_API.to_string())
+}
+
+async fn reanswer(api: &str, referee: &str, body: &Value) -> Reanswered {
     let nonce = format!(
         "{REFEREE_NONCE_PREFIX}{}",
         &crate::producer::capsule::fresh_store_nonce()[..32]
@@ -304,6 +309,18 @@ async fn reanswer(referee: &str, body: &Value) -> Reanswered {
         Some(answer) => Reanswered::Answer(answer),
         None => Reanswered::Unreachable,
     }
+}
+
+/// Re-answer `body` at `api`; when the server refuses it, once more without
+/// logprobs. The request that was answered (or last tried), and the outcome.
+async fn reanswer_with_fallback(api: &str, referee: &str, body: Value) -> (Value, Reanswered) {
+    let answered = reanswer(api, referee, &body).await;
+    if answered != Reanswered::Refused {
+        return (body, answered);
+    }
+    let body = without_logprobs(&body);
+    let answered = reanswer(api, referee, &body).await;
+    (body, answered)
 }
 
 /// The adjudicate request sent to the referee.
@@ -337,12 +354,8 @@ async fn ask(
     let divergence = super::verdict::compare_transcripts(&a.twin.text, &b.twin.text)
         .divergence_index
         .unwrap_or(0);
-    let mut body = reanswer_body(a, divergence);
-    let mut answered = reanswer(referee, &body).await;
-    if matches!(answered, Reanswered::Refused) {
-        body = without_logprobs(&body);
-        answered = reanswer(referee, &body).await;
-    }
+    let (body, answered) =
+        reanswer_with_fallback(&openai_api(), referee, reanswer_body(a, divergence)).await;
     let Reanswered::Answer(response) = answered else {
         return (Called::Unreachable, None);
     };
@@ -858,5 +871,66 @@ mod tests {
         let plain = without_logprobs(&body);
         assert!(plain.get("logprobs").is_none() && plain.get("top_logprobs").is_none());
         assert_eq!(plain["messages"], body["messages"]);
+    }
+
+    /// A stub of the host's OpenAI API: every request body it got, and its
+    /// status for a body that asks for logprobs and for one that does not.
+    async fn stub(with_logprobs: u16, without: u16) -> (String, Arc<std::sync::Mutex<Vec<Value>>>) {
+        use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
+        type Seen = Arc<std::sync::Mutex<Vec<Value>>>;
+        let seen: Seen = Arc::default();
+        let app = Router::new()
+            .route(
+                "/v1/chat/completions",
+                post(
+                    move |State(seen): State<Seen>, Json(body): Json<Value>| async move {
+                        let asks = body.get("logprobs").is_some();
+                        seen.lock().unwrap().push(body);
+                        let status = if asks { with_logprobs } else { without };
+                        let answer = json!({"choices": [{"message": {"content": "ok"}}]});
+                        (StatusCode::from_u16(status).unwrap(), Json(answer))
+                    },
+                ),
+            )
+            .with_state(seen.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (api, seen)
+    }
+
+    /// A server that refuses logprobs is asked once more without them; one
+    /// that serves them, or refuses both, is asked once or twice, never more.
+    #[tokio::test]
+    async fn a_server_refusing_logprobs_is_asked_once_more_without_them() {
+        let body = json!({"messages": [], "temperature": 0, "logprobs": true, "top_logprobs": 2});
+        let (api, seen) = stub(400, 200).await;
+        let (sent, answered) = reanswer_with_fallback(&api, "node-c", body.clone()).await;
+        assert!(matches!(answered, Reanswered::Answer(_)));
+        assert_eq!(
+            sent,
+            without_logprobs(&body),
+            "the answered request is the one sent"
+        );
+        let got = seen.lock().unwrap().clone();
+        assert_eq!(got, vec![body.clone(), without_logprobs(&body)]);
+
+        let (api, seen) = stub(200, 200).await;
+        let (sent, answered) = reanswer_with_fallback(&api, "node-c", body.clone()).await;
+        assert!(matches!(answered, Reanswered::Answer(_)));
+        assert_eq!((sent, seen.lock().unwrap().len()), (body.clone(), 1));
+
+        let (api, seen) = stub(400, 500).await;
+        let (_, answered) = reanswer_with_fallback(&api, "node-c", body.clone()).await;
+        assert_eq!(answered, Reanswered::Refused);
+        assert_eq!(seen.lock().unwrap().len(), 2, "no third request");
+
+        // Nothing listening: unreachable, not retried as a refusal.
+        let closed = {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            format!("http://{}", listener.local_addr().unwrap())
+        };
+        let (sent, answered) = reanswer_with_fallback(&closed, "node-c", body.clone()).await;
+        assert_eq!((sent, answered), (body, Reanswered::Unreachable));
     }
 }
