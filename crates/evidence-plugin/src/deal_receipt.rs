@@ -3,10 +3,12 @@
 //! the plugin emits the bundle and draws nothing).
 //!
 //! The bundle carries this node's own `x-deal-v0` records for the exchange
-//! (baseline, outcome, close and the in-log `deal_report`), each proven in
-//! this node's log by an inclusion proof against one signed checkpoint, with
-//! the viewer's pointer `extensions["x-deal-v0"].sealed_report` naming the
-//! report. Their payloads are disclosed; nothing else of the ledger is
+//! (baseline, outcome, close, any later outcome and close after a close
+//! `open`, and the in-log `deal_report` of each close), each proven in this
+//! node's log by an inclusion proof against one signed checkpoint, with the
+//! viewer's pointer `extensions["x-deal-v0"].sealed_report` naming the latest
+//! report. Their payloads are disclosed, except an earlier report's, withheld
+//! as PROFILE §1 has it for later bundles; nothing else of the ledger is
 //! carried (not the exchange record, not any other record), and the baseline's
 //! intent stays closed: the nonce that opens it is never in the bundle, so
 //! the receipt shows the commitment, not the words (Sherlock2, #96 design
@@ -75,7 +77,7 @@ impl From<Refusal> for Error {
 }
 
 /// The deal capsules of `exchange_capsule_id`, in log order, with the payload
-/// the journal keeps for each and the report's id.
+/// disclosed for each and the latest report's id.
 struct Deal {
     ids: Vec<String>,
     payloads: BTreeMap<String, Value>,
@@ -95,7 +97,7 @@ fn read_deal(ledger_dir: &Path, ids: Vec<String>) -> Result<Deal, Error> {
         }
     };
     let mut payloads = BTreeMap::new();
-    let mut report = None;
+    let mut reports = Vec::new();
     for line in journal.split(|b| *b == b'\n') {
         let Ok(v) = serde_json::from_slice::<Value>(line) else {
             continue;
@@ -107,7 +109,7 @@ fn read_deal(ledger_dir: &Path, ids: Vec<String>) -> Result<Deal, Error> {
             continue;
         }
         if v.get("record_type").and_then(Value::as_str) == Some(deal::REPORT_TYPE) {
-            report.get_or_insert_with(|| id.to_string());
+            reports.push(id.to_string());
         }
         if let Some(payload) = v.get("payload") {
             payloads
@@ -115,10 +117,19 @@ fn read_deal(ledger_dir: &Path, ids: Vec<String>) -> Result<Deal, Error> {
                 .or_insert_with(|| payload.clone());
         }
     }
-    let report = report.ok_or(Refusal::NotReported)?;
+    // The latest in the log: the report of the latest close.
+    let report = ids
+        .iter()
+        .rev()
+        .find(|id| reports.contains(id))
+        .cloned()
+        .ok_or(Refusal::NotReported)?;
     if let Some(missing) = ids.iter().find(|id| !payloads.contains_key(*id)) {
         return Err(Refusal::PayloadMissing(missing.clone()).into());
     }
+    // An earlier report is carried with its payload withheld: the bundle
+    // discloses one copy's text, the latest.
+    payloads.retain(|id, _| *id == report || !reports.contains(id));
     Ok(Deal {
         ids,
         payloads,
@@ -657,6 +668,64 @@ pub(crate) mod tests {
             .iter()
             .all(|r| r["capsule_id"] != json!(exchange)));
         assert!(bundle["disclosures"].get(&exchange).is_none());
+    }
+
+    /// A deal closed `open` that settles later: the receipt names the latest
+    /// report, discloses its text, and carries the earlier report withheld.
+    #[test]
+    fn a_late_settlement_gives_the_latest_report_and_withholds_the_earlier() {
+        let (_dir, state) = node(false);
+        state.deals().tick(&state, 1_790_000_000 + 15 * 60);
+        let first = built_after_cut(&state);
+        let first_report = first["extensions"]["x-deal-v0"]["sealed_report"].clone();
+
+        let deals = state.deals();
+        deals.on_paid(&state, EXCHANGE_ID, &hex64('b'), 1000, 1_790_001_000);
+        deals.on_delivered(&state, EXCHANGE_ID, &hex64('c'), 1_790_001_010);
+        let bundle = built_after_cut(&state);
+        let report = bundle["extensions"]["x-deal-v0"]["sealed_report"]
+            .as_str()
+            .unwrap();
+        assert_ne!(json!(report), first_report);
+        let records = bundle["records"].as_array().unwrap();
+        assert_eq!(records.len(), 10, "every deal record, both rounds");
+        assert_eq!(
+            records.last().unwrap()["capsule_id"],
+            json!(report),
+            "the latest report is the last record"
+        );
+        let text = &bundle["disclosures"][report]["agent_input"]["report"];
+        assert_eq!(text["lifecycle"]["state"], "closed");
+        // Earlier reports are carried, their text withheld.
+        let first_report = first_report.as_str().unwrap();
+        assert!(records.iter().any(|r| r["capsule_id"] == first_report));
+        assert!(bundle["disclosures"].get(first_report).is_none());
+        let reports = bundle["disclosures"]
+            .as_object()
+            .unwrap()
+            .values()
+            .filter(|d| d["agent_input"]["type"] == "deal_report")
+            .count();
+        assert_eq!(reports, 1);
+        let checked = agent_action_capsule::bundle::verify_bundle_strict(
+            &bundle,
+            &agent_action_capsule::bundle::StrictOptions {
+                require_signature: true,
+                witness_directory: None,
+            },
+        );
+        let failed: Vec<_> = checked
+            .claims
+            .iter()
+            .filter(|(name, c)| *name != "interval_coverage" && c.status.as_str() != "pass")
+            .map(|(name, c)| (*name, c.status.as_str()))
+            .collect();
+        assert!(failed.is_empty(), "{failed:?}");
+    }
+
+    fn built_after_cut(state: &CapsuleState) -> Value {
+        cut(state);
+        built(state).unwrap_or_else(|e| panic!("{e:?}"))
     }
 
     /// A checkpoint that stops short of the report does not cover the deal;

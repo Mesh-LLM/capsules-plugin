@@ -15,6 +15,11 @@
 //!   restarted first (`open`: the record is not final, never "pending").
 //! - **report**, an in-log `deal_report` for the owner (audience `keep`), after
 //!   the close, citing the Mesh records each of its lines is about.
+//! - **a later outcome, close and report** when a payment or delivery leg is
+//!   sealed after a close `open` (PROFILE §6 rule 7: an `open` close pauses
+//!   the record): the new outcome says `completed` once the legs settle the
+//!   deal, else `open` again, and the new report's lines cite the late leg.
+//!   The latest report is the deal's; the earlier ones stay in the log.
 //!
 //! **The share gate.** Every deal capsule is linked to the exchange record it
 //! is of in `deal-links.jsonl` ([`crate::evidence_log`]) *before* it is
@@ -97,7 +102,8 @@ struct Sealed {
     digest: String,
     capsule_id: String,
     at: String,
-    /// On an outcome: it says `completed`.
+    /// On an outcome: it says `completed`. A close copies it, but closes
+    /// sealed before it did say `false`, so the latest outcome is read.
     #[serde(default)]
     completed: bool,
 }
@@ -121,12 +127,43 @@ struct Entry {
     billed_msat: u64,
     paid_msat: u64,
     steps: Vec<Sealed>,
+    /// The report of the latest close; `None` while a later outcome waits
+    /// for its close and report.
     report: Option<String>,
+    /// A payment or delivery leg came after the latest outcome, which said
+    /// `open`: a later outcome and close are due once that one is closed.
+    #[serde(default)]
+    late: bool,
 }
 
 impl Entry {
     fn step(&self, record_type: &str) -> Option<&Sealed> {
         self.steps.iter().find(|s| s.record_type == record_type)
+    }
+
+    /// The latest step of `record_type`.
+    fn latest(&self, record_type: &str) -> Option<&Sealed> {
+        self.steps
+            .iter()
+            .rev()
+            .find(|s| s.record_type == record_type)
+    }
+
+    /// A leg came: after an outcome `open`, the record takes a later one.
+    fn leg_came(&mut self) {
+        self.late |= self
+            .latest(deal::TYPE_OUTCOME)
+            .is_some_and(|o| !o.completed);
+    }
+
+    /// The latest outcome said `open` and a leg came after it, or the legs
+    /// settle the deal now. The second covers a state saved before `late`
+    /// was kept, whose late legs were stored with nothing sealed: an outcome
+    /// says `open` only when the legs did not settle the deal then.
+    fn later_round_due(&self) -> bool {
+        self.latest(deal::TYPE_OUTCOME)
+            .is_some_and(|o| !o.completed)
+            && (self.late || self.settled())
     }
 
     /// Every invoice seen is paid and the response is in.
@@ -262,6 +299,7 @@ impl Deals {
             if !e.paid_legs.iter().any(|l| l == leg) {
                 e.paid_legs.push(leg.to_string());
                 e.paid_msat = e.paid_msat.saturating_add(amount_msat);
+                e.leg_came();
             }
         });
     }
@@ -269,7 +307,10 @@ impl Deals {
     /// This node sealed the payer's `delivered` leg `leg`.
     pub fn on_delivered(&self, sealer: &dyn Sealer, exchange_id: &str, leg: &str, now: i64) {
         self.update(sealer, exchange_id, now, false, |e| {
-            e.delivered_leg.get_or_insert_with(|| leg.to_string());
+            if e.delivered_leg.is_none() {
+                e.delivered_leg = Some(leg.to_string());
+                e.leg_came();
+            }
         });
     }
 
@@ -336,14 +377,18 @@ impl Deals {
                 owned.put_in(&mut entry);
             }
             inner.entries.insert(exchange_id.to_string(), entry);
-            // Finished deals go first, oldest first; a deal still to be
-            // closed is never dropped for room.
+            // Reported deals go first, `completed` before `open`, oldest
+            // first; a deal still to be closed, or due a later round, is
+            // never dropped for room.
             while inner.entries.len() > MAX_DEALS {
                 let oldest = inner
                     .entries
                     .iter()
-                    .filter(|(_, e)| e.report.is_some())
-                    .min_by_key(|(_, e)| e.started)
+                    .filter(|(_, e)| e.report.is_some() && !e.later_round_due())
+                    .min_by_key(|(_, e)| {
+                        let completed = e.latest(deal::TYPE_OUTCOME).is_some_and(|o| o.completed);
+                        (!completed, e.started)
+                    })
                     .map(|(k, _)| k.clone());
                 match oldest {
                     Some(k) => inner.entries.remove(&k),
@@ -392,9 +437,6 @@ impl Deals {
         let Some(entry) = inner.entries.get_mut(exchange_id) else {
             return;
         };
-        if entry.report.is_some() {
-            return;
-        }
         let deal_id = entry.deal_id.clone();
         let nonce = entry.nonce.clone();
         let (Some(peer), Some(exchange), Some(digest), Some(model)) = (
@@ -453,51 +495,69 @@ impl Deals {
         }
         let baseline = entry.step(deal::TYPE_BASELINE).map(|s| s.digest.clone());
         let Some(baseline) = baseline else { return };
-        let settled = entry.settled();
-        if entry.step(deal::TYPE_OUTCOME).is_none() {
-            let due = settled || restarted || now - entry.started >= OPEN_AFTER;
-            if !due {
+        // One step at a time, each after the latest: outcome, close, report,
+        // and after a close `open` that a leg came after, the next round.
+        loop {
+            let Some(last) = entry.steps.last().cloned() else {
                 return;
-            }
+            };
             let after = After {
-                seq: 2,
-                prev: baseline.clone(),
+                seq: last.seq + 1,
+                prev: last.digest.clone(),
                 baseline: baseline.clone(),
             };
-            let Ok(enc) = d
-                .outcome(&records::at(now), &after, settled)
-                .inspect_err(|error| tracing::warn!(%error, "deal outcome not built"))
-            else {
-                return;
-            };
-            if !seal(entry, enc, 2, settled) {
-                return;
+            // What the latest outcome said, which its close says too.
+            let completed = entry
+                .latest(deal::TYPE_OUTCOME)
+                .is_some_and(|o| o.completed);
+            match last.record_type.as_str() {
+                deal::TYPE_CLOSE if entry.report.is_none() => {
+                    entry.report = self.seal_report(sealer, entry, &exchange, completed, now);
+                    if entry.report.is_none() {
+                        return;
+                    }
+                }
+                deal::TYPE_BASELINE | deal::TYPE_CLOSE => {
+                    let due = if last.record_type == deal::TYPE_BASELINE {
+                        entry.settled() || restarted || now - entry.started >= OPEN_AFTER
+                    } else {
+                        // PROFILE §6 rule 7: a close `open` may be followed
+                        // by a later outcome and close; a terminal one never.
+                        entry.later_round_due()
+                    };
+                    if !due {
+                        return;
+                    }
+                    let settled = entry.settled();
+                    let Ok(enc) = d
+                        .outcome(&records::at(now), &after, settled)
+                        .inspect_err(|error| tracing::warn!(%error, "deal outcome not built"))
+                    else {
+                        return;
+                    };
+                    if !seal(entry, enc, after.seq, settled) {
+                        return;
+                    }
+                    // The legs so far are in this outcome; the report of
+                    // the close before it is no longer the latest.
+                    entry.late = false;
+                    entry.report = None;
+                }
+                deal::TYPE_OUTCOME => {
+                    // The close says what the outcome said, whatever the
+                    // legs say now.
+                    let Ok(enc) = d
+                        .close(&records::at(now), &after, last.completed)
+                        .inspect_err(|error| tracing::warn!(%error, "deal close not built"))
+                    else {
+                        return;
+                    };
+                    if !seal(entry, enc, after.seq, last.completed) {
+                        return;
+                    }
+                }
+                _ => return,
             }
-        }
-        if entry.step(deal::TYPE_CLOSE).is_none() {
-            let Some(outcome) = entry.step(deal::TYPE_OUTCOME).cloned() else {
-                return;
-            };
-            // The close says what the outcome said, whatever the legs say now.
-            let closes_settled = outcome.completed;
-            let after = After {
-                seq: 3,
-                prev: outcome.digest.clone(),
-                baseline,
-            };
-            let Ok(enc) = d
-                .close(&records::at(now), &after, closes_settled)
-                .inspect_err(|error| tracing::warn!(%error, "deal close not built"))
-            else {
-                return;
-            };
-            if !seal(entry, enc, 3, false) {
-                return;
-            }
-        }
-        if entry.report.is_none() {
-            let closed_settled = entry.step(deal::TYPE_OUTCOME).is_some_and(|o| o.completed);
-            entry.report = self.seal_report(sealer, entry, &exchange, closed_settled, now);
         }
     }
 
@@ -571,6 +631,9 @@ impl Deals {
         .map_err(|error| tracing::warn!(%error, "deal report not built"))
         .ok()?;
         let record: Value = serde_json::from_slice(&payload).ok()?;
+        // Which close the report reads, so a restart tells the latest
+        // close's report from an earlier one's.
+        let close_seq = entry.steps.last().map_or(0, |s| s.seq);
         let result = sealer.seal(
             &|head| {
                 records::report_capsule(
@@ -585,7 +648,7 @@ impl Deals {
                 self.link(capsule_id, exchange_capsule_id)?;
                 self.journal(&json!({
                     "capsule_id": capsule_id, "deal_id": entry.deal_id,
-                    "record_type": deal::REPORT_TYPE, "payload": record,
+                    "record_type": deal::REPORT_TYPE, "close_seq": close_seq, "payload": record,
                 }))
             },
         );
@@ -610,7 +673,8 @@ impl Deals {
     }
 
     /// Read the state and the store secret once; fold in the steps the journal
-    /// holds that the ledger holds too but the state does not.
+    /// holds that the ledger holds too but the state does not, in the order
+    /// sealed, and the report of the latest close.
     fn load(&self, inner: &mut Inner, sealer: &dyn Sealer) {
         if inner.loaded {
             return;
@@ -661,7 +725,13 @@ impl Deals {
                 continue;
             };
             if v.get("record_type").and_then(Value::as_str) == Some(deal::REPORT_TYPE) {
-                entry.report.get_or_insert(capsule_id);
+                // A report journaled before later rounds were sealed read the
+                // first close, seq 3.
+                let close_seq = v.get("close_seq").and_then(Value::as_i64).unwrap_or(3);
+                let latest = entry.steps.last();
+                if latest.is_some_and(|s| s.record_type == deal::TYPE_CLOSE && s.seq == close_seq) {
+                    entry.report.get_or_insert(capsule_id);
+                }
                 continue;
             }
             let (Some(record_type), Some(digest), Some(at), Some(seq)) = (
@@ -674,7 +744,15 @@ impl Deals {
             };
             let completed =
                 v.pointer("/payload/body/outcome").and_then(Value::as_str) == Some("completed");
-            if entry.step(&record_type).is_none() {
+            if !entry.steps.iter().any(|s| s.seq == seq) {
+                // A step past what the state holds: the state's report is of
+                // an earlier close, and an outcome took in the legs so far.
+                if entry.steps.last().is_none_or(|s| s.seq < seq) {
+                    entry.report = None;
+                    if record_type == deal::TYPE_OUTCOME {
+                        entry.late = false;
+                    }
+                }
                 entry.steps.push(Sealed {
                     record_type,
                     seq,
@@ -1279,31 +1357,392 @@ mod tests {
         assert_eq!(baselines, 1);
     }
 
+    /// What each deal capsule is, in log order: its record type, or "report".
+    fn kinds(dir: &Path) -> Vec<String> {
+        deal_capsules(dir)
+            .iter()
+            .map(|c| {
+                payload(dir, c["capsule_id"].as_str().unwrap())
+                    .pointer("/x-deal-v0/record_type")
+                    .and_then(Value::as_str)
+                    .unwrap_or("report")
+                    .to_string()
+            })
+            .collect()
+    }
+
+    /// The payload of the `n`th deal capsule (from 0, in log order).
+    fn nth(dir: &Path, n: usize) -> Value {
+        payload(dir, deal_capsules(dir)[n]["capsule_id"].as_str().unwrap())
+    }
+
+    /// Every capsule id the report's `did` lines cite.
+    fn cited(report: &Value) -> Vec<String> {
+        report["report"]["did"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|d| d["steps"].as_array().unwrap())
+            .map(|s| s.as_str().unwrap().to_string())
+            .collect()
+    }
+
+    const ROUND: [&str; 3] = ["outcome", "close", "report"];
+
+    /// PROFILE §6 rule 7: legs sealed after a close `open` seal a later
+    /// outcome and close, chained on the close, and a new report citing them.
+    #[test]
+    fn a_leg_after_an_open_close_seals_a_later_outcome_close_and_report() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = open(dir.path());
+        let t = 1_790_000_000;
+        paid_exchange(&state, t);
+        state.deals().tick(&state, t + OPEN_AFTER);
+        assert_eq!(
+            kinds(dir.path()),
+            ["baseline", "outcome", "close", "report"]
+        );
+
+        // The payment, late: the record takes it, still `open` (no delivery).
+        let deals = state.deals();
+        deals.on_paid(&state, EXCHANGE, &hex64('b'), 1000, t + OPEN_AFTER + 30);
+        let mut want = vec!["baseline", "outcome", "close", "report"];
+        want.extend(ROUND);
+        assert_eq!(kinds(dir.path()), want);
+        let outcome = nth(dir.path(), 4);
+        assert_eq!(outcome["x-deal-v0"]["seq"], 4);
+        assert_eq!(outcome["body"]["outcome"], "open");
+        // Chained on the close before it.
+        let journal = lines(&ledger(dir.path()).join(PAYLOADS_FILE));
+        let close = journal.iter().find(|l| l["seq"] == 3).unwrap();
+        assert_eq!(outcome["x-deal-v0"]["prev"]["digest"], close["digest"]);
+        let report = nth(dir.path(), 6);
+        assert_eq!(
+            report["report"]["lifecycle"]["text"],
+            "Payment seen; delivery not recorded."
+        );
+        assert!(cited(&report).contains(&hex64('b')), "cites the late leg");
+
+        // Then the delivery: settled, so the record is `completed`.
+        deals.on_delivered(&state, EXCHANGE, &hex64('c'), t + OPEN_AFTER + 40);
+        want.extend(ROUND);
+        assert_eq!(kinds(dir.path()), want);
+        let outcome = nth(dir.path(), 7);
+        assert_eq!(outcome["x-deal-v0"]["seq"], 6);
+        assert_eq!(outcome["body"]["outcome"], "completed");
+        assert_eq!(nth(dir.path(), 8)["body"]["outcome"], "completed");
+        let report = nth(dir.path(), 9);
+        assert_eq!(report["report"]["lifecycle"]["state"], "closed");
+        let cites = cited(&report);
+        assert!(cites.contains(&hex64('b')) && cites.contains(&hex64('c')));
+        // The report lists every step, the later ones too.
+        assert_eq!(report["report"]["steps"].as_array().unwrap().len(), 7);
+        // Every capsule is linked to the exchange, the later ones too.
+        let links = lines(&ledger(dir.path()).join(crate::evidence_log::DEAL_LINKS_FILE));
+        assert_eq!(links.len(), 10);
+        // Each report, the later ones too, never leaves the node.
+        let reports: Vec<Value> = deal_capsules(dir.path())
+            .into_iter()
+            .filter(|c| c.get("deal_id").is_none())
+            .collect();
+        assert_eq!(reports.len(), 3);
+        assert!(reports.iter().all(crate::evidence_log::never_leaves));
+
+        // A completed close is terminal: nothing more, whatever comes.
+        deals.on_paid(&state, EXCHANGE, &hex64('9'), 1, t + OPEN_AFTER + 50);
+        deals.tick(&state, t + 10 * OPEN_AFTER);
+        assert_eq!(deal_capsules(dir.path()).len(), 10);
+    }
+
+    /// A restart closed the deal `open`; the settlement that comes after
+    /// seals the later rounds, which a further restart does not repeat.
+    #[test]
+    fn a_settlement_after_a_restart_seals_a_later_completed_close() {
+        let dir = tempfile::tempdir().unwrap();
+        let t = 1_790_000_000;
+        {
+            let state = open(dir.path());
+            paid_exchange(&state, t);
+        }
+        let state = open(dir.path());
+        state.deals().recover(&state, t + 100);
+        assert_eq!(
+            kinds(dir.path()),
+            ["baseline", "outcome", "close", "report"]
+        );
+        let deals = state.deals();
+        deals.on_delivered(&state, EXCHANGE, &hex64('c'), t + 110);
+        deals.on_paid(&state, EXCHANGE, &hex64('b'), 1000, t + 120);
+        let mut want = vec!["baseline", "outcome", "close", "report"];
+        want.extend(ROUND);
+        want.extend(ROUND);
+        assert_eq!(kinds(dir.path()), want);
+        assert_eq!(nth(dir.path(), 4)["body"]["outcome"], "open");
+        assert_eq!(nth(dir.path(), 7)["body"]["outcome"], "completed");
+        assert_eq!(nth(dir.path(), 9)["report"]["lifecycle"]["state"], "closed");
+
+        drop(state);
+        let state = open(dir.path());
+        state.deals().recover(&state, t + 200);
+        state.deals().tick(&state, t + 10 * OPEN_AFTER);
+        assert_eq!(deal_capsules(dir.path()).len(), 10);
+    }
+
+    /// The later round was sealed and journaled, then the node died before
+    /// the state was saved: the next start finds the round again from the
+    /// journal, and its report as the latest, instead of sealing another.
+    #[test]
+    fn a_later_round_lost_from_the_state_is_found_again_from_the_journal() {
+        let dir = tempfile::tempdir().unwrap();
+        let t = 1_790_000_000;
+        let first_report = {
+            let state = open(dir.path());
+            paid_exchange(&state, t);
+            state.deals().tick(&state, t + OPEN_AFTER);
+            let first = deal_capsules(dir.path())[3]["capsule_id"].clone();
+            state
+                .deals()
+                .on_paid(&state, EXCHANGE, &hex64('b'), 1000, t + OPEN_AFTER + 30);
+            first
+        };
+        assert_eq!(deal_capsules(dir.path()).len(), 7);
+        // The state as saved when the leg came: three steps, the first
+        // report, and a later round due.
+        let path = ledger(dir.path()).join(STATE_FILE);
+        let mut saved: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let steps = saved[EXCHANGE]["steps"].as_array().unwrap()[..3].to_vec();
+        saved[EXCHANGE]["steps"] = json!(steps);
+        saved[EXCHANGE]["report"] = first_report;
+        saved[EXCHANGE]["late"] = json!(true);
+        std::fs::write(&path, saved.to_string()).unwrap();
+
+        let state = open(dir.path());
+        state.deals().recover(&state, t + OPEN_AFTER + 100);
+        assert_eq!(deal_capsules(dir.path()).len(), 7, "nothing sealed again");
+        // The delivery seals the next round on top of the one found.
+        state
+            .deals()
+            .on_delivered(&state, EXCHANGE, &hex64('c'), t + OPEN_AFTER + 110);
+        assert_eq!(deal_capsules(dir.path()).len(), 10);
+        assert_eq!(nth(dir.path(), 7)["x-deal-v0"]["seq"], 6);
+        let saved: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(
+            saved[EXCHANGE]["report"],
+            deal_capsules(dir.path())[9]["capsule_id"]
+        );
+    }
+
+    /// A deal closed `open`, then a late leg sealed outcome 4, close 5 and
+    /// report R2. Returns the ids of the report R1 and of steps 4 and 5 and R2.
+    fn late_round(dir: &Path, t: i64) -> (Value, [Value; 3]) {
+        let state = open(dir);
+        paid_exchange(&state, t);
+        state.deals().tick(&state, t + OPEN_AFTER);
+        state
+            .deals()
+            .on_paid(&state, EXCHANGE, &hex64('b'), 1000, t + OPEN_AFTER + 30);
+        let ids: Vec<Value> = deal_capsules(dir)
+            .iter()
+            .map(|c| c["capsule_id"].clone())
+            .collect();
+        assert_eq!(ids.len(), 7);
+        (
+            ids[3].clone(),
+            [ids[4].clone(), ids[5].clone(), ids[6].clone()],
+        )
+    }
+
+    /// As if `ids` had never been journaled (nor, so, appended).
+    fn unjournal(dir: &Path, ids: &[&Value]) {
+        let path = ledger(dir).join(PAYLOADS_FILE);
+        let kept: Vec<String> = lines(&path)
+            .into_iter()
+            .filter(|l| !ids.contains(&&l["capsule_id"]))
+            .map(|l| l.to_string())
+            .collect();
+        std::fs::write(&path, kept.join("\n") + "\n").unwrap();
+    }
+
+    fn journaled(dir: &Path, record_type: &str) -> Vec<Value> {
+        lines(&ledger(dir).join(PAYLOADS_FILE))
+            .into_iter()
+            .filter(|l| l["record_type"] == record_type)
+            .collect()
+    }
+
+    /// Close 5 sealed, its report not (the state saved with no report): the
+    /// next start must not take the first close's report for it, and seals
+    /// the report of close 5.
+    #[test]
+    fn a_report_of_an_earlier_close_is_not_taken_for_the_latest() {
+        let dir = tempfile::tempdir().unwrap();
+        let t = 1_790_000_000;
+        let (first_report, [_, _, second_report]) = late_round(dir.path(), t);
+        unjournal(dir.path(), &[&second_report]);
+        let path = ledger(dir.path()).join(STATE_FILE);
+        let mut saved: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved[EXCHANGE]["steps"].as_array().unwrap().len(), 5);
+        saved[EXCHANGE]["report"] = Value::Null;
+        std::fs::write(&path, saved.to_string()).unwrap();
+
+        let state = open(dir.path());
+        state.deals().recover(&state, t + OPEN_AFTER + 100);
+        let reports = journaled(dir.path(), deal::REPORT_TYPE);
+        assert_eq!(reports.len(), 2, "R1 and one new report");
+        let new = &reports[1];
+        assert_ne!(new["capsule_id"], first_report);
+        assert_eq!(new["close_seq"], 5);
+        let saved: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved[EXCHANGE]["report"], new["capsule_id"]);
+        state.deals().recover(&state, t + OPEN_AFTER + 200);
+        assert_eq!(journaled(dir.path(), deal::REPORT_TYPE).len(), 2);
+    }
+
+    /// A crash mid-round: outcome 4 journaled and appended, close 5 not, the
+    /// state still at the first close with the leg due. The next start finds
+    /// outcome 4 and seals close 5 and its report once, with no second outcome.
+    #[test]
+    fn a_round_cut_after_its_outcome_is_closed_once_after_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let t = 1_790_000_000;
+        let (first_report, [_, close, second_report]) = late_round(dir.path(), t);
+        unjournal(dir.path(), &[&close, &second_report]);
+        let path = ledger(dir.path()).join(STATE_FILE);
+        let mut saved: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let steps = saved[EXCHANGE]["steps"].as_array().unwrap()[..3].to_vec();
+        saved[EXCHANGE]["steps"] = json!(steps);
+        saved[EXCHANGE]["report"] = first_report;
+        saved[EXCHANGE]["late"] = json!(true);
+        std::fs::write(&path, saved.to_string()).unwrap();
+
+        for _ in 0..2 {
+            let state = open(dir.path());
+            state.deals().recover(&state, t + OPEN_AFTER + 100);
+            let seqs = |record_type| -> Vec<i64> {
+                journaled(dir.path(), record_type)
+                    .iter()
+                    .map(|l| l["seq"].as_i64().unwrap())
+                    .collect()
+            };
+            assert_eq!(seqs(deal::TYPE_OUTCOME), [2, 4], "no second outcome 4");
+            assert_eq!(seqs(deal::TYPE_CLOSE), [3, 5]);
+            let reports = journaled(dir.path(), deal::REPORT_TYPE);
+            assert_eq!(reports.len(), 2);
+            assert_eq!(reports[1]["close_seq"], 5);
+        }
+    }
+
+    /// A state saved by 0.1.6: the late legs were stored after the close
+    /// `open` and nothing more sealed, and there is no `late`. The next start
+    /// seals the one round they settle, and only once.
+    #[test]
+    fn a_deal_left_open_with_settled_legs_by_an_older_build_gets_its_round() {
+        let dir = tempfile::tempdir().unwrap();
+        let t = 1_790_000_000;
+        {
+            let state = open(dir.path());
+            paid_exchange(&state, t);
+            state.deals().tick(&state, t + OPEN_AFTER);
+        }
+        assert_eq!(deal_capsules(dir.path()).len(), 4);
+        let path = ledger(dir.path()).join(STATE_FILE);
+        let mut saved: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let entry = saved[EXCHANGE].as_object_mut().unwrap();
+        entry.remove("late");
+        entry.insert("paid_legs".into(), json!([hex64('b')]));
+        entry.insert("paid_msat".into(), json!(1000));
+        entry.insert("delivered_leg".into(), json!(hex64('c')));
+        std::fs::write(&path, saved.to_string()).unwrap();
+
+        let state = open(dir.path());
+        state.deals().recover(&state, t + OPEN_AFTER + 100);
+        let mut want = vec!["baseline", "outcome", "close", "report"];
+        want.extend(ROUND);
+        assert_eq!(kinds(dir.path()), want);
+        assert_eq!(nth(dir.path(), 4)["body"]["outcome"], "completed");
+        assert_eq!(nth(dir.path(), 6)["report"]["lifecycle"]["state"], "closed");
+        state.deals().tick(&state, t + OPEN_AFTER + 200);
+        drop(state);
+        let state = open(dir.path());
+        state.deals().recover(&state, t + OPEN_AFTER + 300);
+        assert_eq!(deal_capsules(dir.path()).len(), 7);
+    }
+
+    /// Room is made from `completed` deals before `open` ones, however old.
+    #[test]
+    fn room_is_made_from_completed_deals_before_open_ones() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = open(dir.path());
+        let deals = state.deals();
+        let t = 1_790_000_000;
+        let deal = |id: &str, now: i64| {
+            deals.on_invoice(&state, id, &hex64('a'), 1000, now);
+            deals.on_exchange(&state, id, &sealed_exchange(), now + 1);
+        };
+        deal("ex-open", t);
+        deals.tick(&state, t + OPEN_AFTER);
+        deal("ex-done", t + OPEN_AFTER + 10);
+        deals.on_paid(&state, "ex-done", &hex64('b'), 1000, t + OPEN_AFTER + 20);
+        deals.on_delivered(&state, "ex-done", &hex64('c'), t + OPEN_AFTER + 30);
+        for i in 0..MAX_DEALS - 1 {
+            deals.on_invoice(
+                &state,
+                &format!("ex-{i}"),
+                &hex64('a'),
+                1,
+                t + OPEN_AFTER + 40,
+            );
+        }
+        let saved: Value =
+            serde_json::from_slice(&std::fs::read(ledger(dir.path()).join(STATE_FILE)).unwrap())
+                .unwrap();
+        let saved = saved.as_object().unwrap();
+        assert_eq!(saved.len(), MAX_DEALS);
+        assert!(saved.contains_key("ex-open"), "the open deal is kept");
+        assert!(
+            !saved.contains_key("ex-done"),
+            "the completed one made room"
+        );
+    }
+
     #[test]
     fn the_built_chain_passes_the_reference_checker() {
         let Some(profile) = std::env::var_os("EVIDENCEBOOK_DEAL_PROFILE_DIR") else {
             eprintln!("EVIDENCEBOOK_DEAL_PROFILE_DIR not set; check_profile.py not run");
             return;
         };
-        let dir = tempfile::tempdir().unwrap();
-        let state = open(dir.path());
-        paid_exchange(&state, 1_790_000_000);
-        state
-            .deals()
-            .on_paid(&state, EXCHANGE, &hex64('b'), 1000, 1_790_000_030);
-        state
-            .deals()
-            .on_delivered(&state, EXCHANGE, &hex64('c'), 1_790_000_040);
-        let chain: Vec<String> = deal_capsules(dir.path())
+        // Settled at once, and settled after a close `open` (rule 7).
+        for late in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let state = open(dir.path());
+            let t = 1_790_000_000;
+            paid_exchange(&state, t);
+            if late {
+                state.deals().tick(&state, t + OPEN_AFTER);
+            }
+            let after = if late { OPEN_AFTER } else { 0 };
+            state
+                .deals()
+                .on_paid(&state, EXCHANGE, &hex64('b'), 1000, t + after + 30);
+            state
+                .deals()
+                .on_delivered(&state, EXCHANGE, &hex64('c'), t + after + 40);
+            check_chain(&profile, dir.path());
+        }
+    }
+
+    /// `check_profile.py` over the deal's steps sealed in `dir`.
+    fn check_chain(profile: &std::ffi::OsStr, dir: &Path) {
+        let chain: Vec<String> = deal_capsules(dir)
             .iter()
             .filter(|c| c.get("deal_id").is_some())
-            .map(|c| payload(dir.path(), c["capsule_id"].as_str().unwrap()).to_string())
+            .map(|c| payload(dir, c["capsule_id"].as_str().unwrap()).to_string())
             .collect();
-        let path = dir.path().join("chain.json");
+        let path = dir.join("chain.json");
         std::fs::write(&path, format!("[{}]", chain.join(","))).unwrap();
         let out = std::process::Command::new("python3")
             .arg("-I")
-            .arg(Path::new(&profile).join("check_profile.py"))
+            .arg(Path::new(profile).join("check_profile.py"))
             .arg(&path)
             .output()
             .unwrap();
