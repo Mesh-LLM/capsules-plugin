@@ -149,25 +149,30 @@ def self_consistent(points):
 
 
 def compare(ra, rb):
-    """Drifts (gap, drift) and splits between two runs of one prompt."""
+    """Drifts (gap, drift), splits, and the positions not read, between two
+    runs of one prompt."""
     drifts, splits = [], []
+    skipped = {"shared_text": 0, "not_in_other_top": 0}
     for i, (ta, tb) in enumerate(zip(ra["tokens"], rb["tokens"])):
         for own, other in ((ta, tb), (tb, ta)):
             # Two token ids can share a text; such a position is ambiguous
             # by text, so it is not read.
             if len(set(tok for tok, _ in own["top"])) < len(own["top"]) or \
                len(set(tok for tok, _ in other["top"])) < len(other["top"]):
+                skipped["shared_text"] += 1
                 continue
             top = dict(other["top"])
             (t1, l1), (t2, l2) = own["top"][0], own["top"][1]
-            if t1 in top and t2 in top:
+            if not (t1 in top and t2 in top):
+                skipped["not_in_other_top"] += 1
+            else:
                 drifts.append((l1 - l2, abs((l1 - l2) - (top[t1] - top[t2]))))
         if ta["token"] != tb["token"]:
             margin = lambda t: t["top"][0][1] - t["top"][1][1]
             splits.append({"position": i, "tokens": [ta["token"], tb["token"]],
                            "margins": [round(margin(ta), 6), round(margin(tb), 6)]})
             break
-    return drifts, splits
+    return drifts, splits, skipped
 
 
 def analyse(args):
@@ -182,9 +187,12 @@ def analyse(args):
         pairs = []
         for a, b in itertools.combinations(sorted(configs, key=lambda c: c["config"]), 2):
             drifts, splits = [], []
+            skipped = {"shared_text": 0, "not_in_other_top": 0}
             identical = 0
             for ra, rb in zip(a["runs"], b["runs"]):
-                d, s = compare(ra, rb)
+                d, s, k = compare(ra, rb)
+                for why in skipped:
+                    skipped[why] += k[why]
                 drifts += d
                 splits += [dict(x, prompt=ra["prompt"][:60]) for x in s]
                 identical += not s and len(ra["tokens"]) == len(rb["tokens"])
@@ -196,6 +204,7 @@ def analyse(args):
                 "prompts": len(a["runs"]),
                 "prompts_identical": identical,
                 "positions_compared": len(drifts),
+                "positions_skipped": skipped,
                 "gap_drift_max": round(max(drifts, default=0.0), 6),
                 "gap_drift_p999": round(quantile(drifts, 0.999) or 0.0, 6),
                 "gap_drift_p99": round(quantile(drifts, 0.99) or 0.0, 6),

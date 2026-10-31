@@ -35,7 +35,7 @@ top-2 logprob, in nats) at the token where it departs from the other twin is
 at least `SPLIT_MARGIN_THRESHOLD_NATS` (3.0 nats; `referee/verdict.rs`).
 Below that, the ruling is `inconclusive` (`inconclusive_because:
 split_within_margin`); with no margin to read (a server that returns no
-logprobs, such as mesh-llm before 0.79 or split serving), it is `inconclusive`
+logprobs, such as a mesh-llm release without Mesh-LLM/mesh-llm#2565 (0.78.1 and earlier) or split serving), it is `inconclusive`
 too (`split_margin_unavailable`). Neither counts against anyone. Only the
 referee's margin decides: the twins' own margins, when their answers carry
 them, are sealed beside it (`split_margin`) and never change the ruling. The

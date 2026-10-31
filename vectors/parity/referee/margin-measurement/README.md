@@ -13,12 +13,12 @@ The question it answers: on honest nodes serving the same weights, how far can a
 
 | Machine | Backends and settings |
 | --- | --- |
-| Apple M5 Pro (Ethan's Mac) | Metal (default; ubatch 64; flash attention off), ARM CPU (6 and 12 threads; ubatch 64) |
-| GCP c3-standard-8, Intel Xeon Platinum 8481C (AVX-512), lab VM `mc53-u755-payer`, own directory only, lab skip rule checked | x86 CPU (4 and 8 threads; ubatch 64) |
+| Apple M5 Pro laptop | Metal (default; ubatch 64; flash attention off), ARM CPU (6 and 12 threads; ubatch 64) |
+| GCP c3-standard-8 VM, Intel Xeon Platinum 8481C (AVX-512) | x86 CPU (4 and 8 threads; ubatch 64) |
 
 | Model | File (sha256) | Backends |
 | --- | --- | --- |
-| Qwen2.5-0.5B-Instruct Q8_0 | `ca59ca7f…` (the S08 demo's model) | Mac Metal, Mac CPU, x86 CPU |
+| Qwen2.5-0.5B-Instruct Q8_0 | Hugging Face `Qwen/Qwen2.5-0.5B-Instruct-GGUF` (`ca59ca7f…`) | Mac Metal, Mac CPU, x86 CPU |
 | Qwen2.5-0.5B-Instruct Q4_K_M | Hugging Face `Qwen/Qwen2.5-0.5B-Instruct-GGUF` | Mac Metal, Mac CPU |
 | Qwen3.5-9B Q4_K_M | Hugging Face `unsloth/Qwen3.5-9B-GGUF` | Mac Metal, Mac CPU |
 
@@ -43,16 +43,18 @@ The raw runs (about 1.6 MB per configuration) are not committed. `results.json` 
   | Qwen2.5-0.5B Q4_K_M | 0.50 | 0.55 | 0.60 | 0.60 |
   | Qwen3.5-9B Q4_K_M | 1.18 | 1.18 | 1.40 | 4.76 |
 
+- **Positions not read.** A position is skipped when two of its top-5 tokens share a text (they cannot be told apart by text) or when the other run's top 5 lacks one of this run's top 2: 60 of 201,260 on the 0.5B Q8_0, none on the 0.5B Q4_K_M, 115 of 35,144 on the 9B (`positions_skipped` per pair).
 - **The 2x rule.** The least T that is at least twice the largest drift among positions whose gap is under T comes out at **2.37 nats** (9B), 1.0 (0.5B Q4_K_M) and 0.8 (0.5B Q8_0).
 
 ## The value: 3.0 nats
 
 - 3.0 is above the 2.37 the 2x rule needs on every backend measured. It is 2.5x the largest drift seen at any gap under 5 nats (1.18), and 4.6x the widest honest split margin (0.648).
-- **CUDA is not measured here.** We had no GPU machine, and making one would be spend. Mesh-LLM/mesh-llm#2548 measured CUDA (RTX 4070 Ti, with batch, flash-attention and offload variants), CPU and Vulkan on Qwen3-8B Q4_K_M:
+- **CUDA is not measured here:** no GPU machine was available. Mesh-LLM/mesh-llm#2548 measured CUDA (RTX 4070 Ti, with batch, flash-attention and offload variants), CPU and Vulkan on Qwen3-8B Q4_K_M:
   - 96 to 98.7 % of top choices were identical across honest variants;
   - mean KL from the reference was 0.002 to 0.007 per token;
   - one honest CPU token reached KL 1.97.
 
   That shows the same picture: drift is mostly small, with rare large single tokens. The extra headroom above 2.37 is for that gap.
-- Rerun `measure.py` on CUDA when a GPU box exists, add its output here, and raise the value if the rule asks for more. A change is a CHANGELOG line.
+- **Only these models are measured:** two dense families, 9B and under, at Q4_K_M and Q8_0. The needed value grew with the model, from 0.8 (0.5B Q8_0) to 2.37 (9B), and larger or mixture-of-experts models are unmeasured. For a model family or size outside these, rerun `measure.py` before relying on 3.0 there.
+- Rerun `measure.py` on CUDA when a GPU machine is available, add its output here, and raise the value if the rule asks for more. A change is a CHANGELOG line.
 - **What it costs.** At 3.0 nats, a split at a token whose gap is under 3 nats is never charged. On the 9B that is about 41 % of positions (14,457 of 35,029 read), so a near-identical model (another quantization of the same weights) mostly comes out `inconclusive`. A single split cannot tell those apart; it needs many tokens pooled (Mesh-LLM/mesh-llm#2548). The twin referee catches only confident divergences.
