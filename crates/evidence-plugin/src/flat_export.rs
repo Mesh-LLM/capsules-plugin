@@ -19,10 +19,13 @@
 //! the flat `Ledger::open_with_indexer` and `CheckpointState::load` against
 //! the shelf's own ledger (same lines, entries and head; the latest
 //! checkpoint). Only then do they move into `ledger/` and `shelf.db` (with its
-//! `-wal` and `-shm`) moves to `<data dir>/archive/shelf-export-<time>/`.
+//! `-wal` and `-shm`) moves to `<data dir>/archive/shelf-export-<time>/`, with
+//! `archive/pre-store/` (the flat files the import archived, now older than the
+//! export), so a later import onto a new shelf finds that archive free.
 //! Nothing but the scratch directory of an earlier, unfinished run is ever
-//! deleted. `capsules.jsonl` moves last, so its presence says the export is
-//! done; a run cut short after the shelf moved finishes at the next run.
+//! deleted. `capsules.jsonl` moves in last and the shelf is set aside after
+//! it, so an earlier release reads the flat files at every point; a run cut
+//! short finishes at the next run.
 
 use std::fs;
 use std::io::{self, Write};
@@ -41,6 +44,13 @@ use crate::producer::ledger::Ledger;
 const STAGING: &str = ".flat-export";
 const STATEMENTS: &str = "signed-statements";
 const MMR_FILE: &str = "mmr_nodes.dat";
+/// The staged files, in the order they move in.
+const STAGED: [&str; 4] = [
+    STATEMENTS,
+    FLAT_CHECKPOINTS_FILE,
+    MMR_FILE,
+    FLAT_CAPSULES_FILE,
+];
 /// The shelf's SQLite files.
 const SHELF_FILES: [&str; 3] = [SHELF_FILE, "shelf.db-wal", "shelf.db-shm"];
 
@@ -98,13 +108,17 @@ pub fn cli(args: &[String]) -> i32 {
 pub fn export(data_dir: &Path) -> anyhow::Result<ExportReport> {
     let ledger_dir = data_dir.join("ledger");
     let staging = ledger_dir.join(STAGING);
-    let shelf = ledger_dir.join(SHELF_FILE);
 
-    // A run cut short after the shelf moved: finish it.
-    if !shelf.exists() && staging.join(FLAT_CAPSULES_FILE).exists() {
-        let aside = latest_aside(data_dir)?;
-        let (lines, checkpoints, head) = summarize(&staging)?;
-        promote(&staging, &ledger_dir)?;
+    // A run cut short after the flat files moved in (the scratch directory is
+    // removed last): the flat ledger is complete and only the shelf is left to
+    // set aside.
+    if staging.exists()
+        && !staging.join(FLAT_CAPSULES_FILE).exists()
+        && ledger_dir.join(FLAT_CAPSULES_FILE).exists()
+        && !ledger_dir.join(IMPORT_JOURNAL).exists()
+    {
+        let (lines, checkpoints, head) = summarize(&ledger_dir)?;
+        let aside = set_shelf_aside(data_dir, &ledger_dir, &staging, true)?;
         return Ok(ExportReport {
             lines,
             checkpoints,
@@ -123,6 +137,16 @@ pub fn export(data_dir: &Path) -> anyhow::Result<ExportReport> {
     if !chain_store::is_store_layout(&ledger_dir) {
         bail!("{} holds no {SHELF_FILE}", ledger_dir.display());
     }
+    // Refuse before anything is written, so a refusal leaves the shelf as it
+    // was.
+    for name in STAGED {
+        if ledger_dir.join(name).exists() {
+            bail!(
+                "{} exists beside the shelf; move it away first",
+                ledger_dir.join(name).display()
+            );
+        }
+    }
     // Scratch of an earlier run that did not finish; the shelf is still here.
     if staging.exists() {
         fs::remove_dir_all(&staging)?;
@@ -140,9 +164,9 @@ pub fn export(data_dir: &Path) -> anyhow::Result<ExportReport> {
             .context("a line of the chain has no capsule_id")?;
         let statement = chain_store::statement(&ledger_dir, &id)
             .with_context(|| format!("the shelf holds no signed statement for {id}"))?;
-        fs::write(
-            staging.join(STATEMENTS).join(format!("{id}.cose")),
-            statement,
+        write_synced(
+            &staging.join(STATEMENTS).join(format!("{id}.cose")),
+            &statement,
         )?;
         text.extend_from_slice(line);
         text.push(b'\n');
@@ -163,28 +187,56 @@ pub fn export(data_dir: &Path) -> anyhow::Result<ExportReport> {
         ledger.chain_head().map(str::to_owned)
     };
 
-    // Set the shelf aside, then finish: a crash in between leaves the staged
-    // files complete and no shelf, which the next run completes.
-    let aside = data_dir
-        .join(crate::owner_maintenance::ARCHIVE_DIR)
-        .join(format!(
-            "shelf-export-{}",
-            crate::producer::timestamp::utc_now_iso8601().replace(':', "-")
-        ));
-    fs::create_dir_all(&aside)?;
-    for name in SHELF_FILES {
-        let from = ledger_dir.join(name);
-        if from.exists() {
-            fs::rename(&from, aside.join(name))?;
-        }
-    }
+    // The flat files go in first, `capsules.jsonl` last, then the shelf is set
+    // aside. A crash in between leaves both: an earlier release reads the flat
+    // files and ignores `shelf.db`, and the next run finishes.
     promote(&staging, &ledger_dir)?;
+    let aside = set_shelf_aside(data_dir, &ledger_dir, &staging, false)?;
     Ok(ExportReport {
         lines: ids.len(),
         checkpoints: checkpoint_count,
         head,
         shelf_set_aside: aside,
     })
+}
+
+/// Move the shelf (and the import's `archive/pre-store/`) into
+/// `archive/shelf-export-<time>/`, then remove the scratch directory. The
+/// import's archive of the flat files this shelf replaced would make the next
+/// import refuse (`move_flat_files` overwrites nothing), and its files are
+/// older than the ones just written, so they go with the shelf. `resume`
+/// reuses the directory a cut-short run made, so the shelf's files stay
+/// together.
+fn set_shelf_aside(
+    data_dir: &Path,
+    ledger_dir: &Path,
+    staging: &Path,
+    resume: bool,
+) -> anyhow::Result<PathBuf> {
+    let archive = data_dir.join(crate::owner_maintenance::ARCHIVE_DIR);
+    let mut aside = if resume { latest_aside(&archive) } else { None };
+    let aside = match aside.take() {
+        Some(dir) => dir,
+        None => archive.join(format!(
+            "shelf-export-{}",
+            crate::producer::timestamp::utc_now_iso8601().replace(':', "-")
+        )),
+    };
+    fs::create_dir_all(&aside)?;
+    // The main file first: a leftover `-wal` beside a new `shelf.db` is never
+    // left, and the next run moves what a crash left.
+    for name in SHELF_FILES {
+        let from = ledger_dir.join(name);
+        if from.exists() {
+            fs::rename(&from, aside.join(name))?;
+        }
+    }
+    let pre_store = archive.join(chain_store::PRE_STORE_ARCHIVE);
+    if pre_store.exists() {
+        fs::rename(&pre_store, aside.join(chain_store::PRE_STORE_ARCHIVE))?;
+    }
+    fs::remove_dir_all(staging)?;
+    Ok(aside)
 }
 
 /// Open the staged files as the earlier release does and compare them with
@@ -263,11 +315,10 @@ fn check(
     Ok(log_id)
 }
 
-/// Lines, checkpoints and head of an already staged export.
-fn summarize(staging: &Path) -> anyhow::Result<(usize, usize, Option<String>)> {
-    let (ledger, _) =
-        Ledger::open_with_indexer(staging, crate::producer::index::record_index_keys)?;
-    let checkpoints = fs::read(staging.join(FLAT_CHECKPOINTS_FILE))
+/// Lines, checkpoints and head of the flat ledger in `dir`.
+fn summarize(dir: &Path) -> anyhow::Result<(usize, usize, Option<String>)> {
+    let (ledger, _) = Ledger::open_with_indexer(dir, crate::producer::index::record_index_keys)?;
+    let checkpoints = fs::read(dir.join(FLAT_CHECKPOINTS_FILE))
         .map(|t| t.iter().filter(|&&b| b == b'\n').count())
         .unwrap_or(0);
     Ok((
@@ -277,10 +328,9 @@ fn summarize(staging: &Path) -> anyhow::Result<(usize, usize, Option<String>)> {
     ))
 }
 
-/// Where the shelf of the export that this run finishes went.
-fn latest_aside(data_dir: &Path) -> anyhow::Result<PathBuf> {
-    let archive = data_dir.join(crate::owner_maintenance::ARCHIVE_DIR);
-    let mut found: Vec<PathBuf> = fs::read_dir(&archive)
+/// The directory a cut-short run set the shelf aside in, if any.
+fn latest_aside(archive: &Path) -> Option<PathBuf> {
+    let mut found: Vec<PathBuf> = fs::read_dir(archive)
         .into_iter()
         .flatten()
         .flatten()
@@ -292,31 +342,21 @@ fn latest_aside(data_dir: &Path) -> anyhow::Result<PathBuf> {
         })
         .collect();
     found.sort();
-    found
-        .pop()
-        .with_context(|| format!("no shelf-export-* directory in {}", archive.display()))
+    found.pop()
 }
 
-/// Move the staged files into `ledger_dir`, `capsules.jsonl` last, and remove
-/// the (then empty) scratch directory.
+/// Move the staged files into `ledger_dir`, `capsules.jsonl` last. The
+/// scratch directory stays until the shelf is set aside: it marks the export
+/// as unfinished.
 fn promote(staging: &Path, ledger_dir: &Path) -> anyhow::Result<()> {
-    for name in [
-        STATEMENTS,
-        FLAT_CHECKPOINTS_FILE,
-        MMR_FILE,
-        FLAT_CAPSULES_FILE,
-    ] {
+    for name in STAGED {
         let from = staging.join(name);
-        if !from.exists() {
-            continue;
-        }
         let to = ledger_dir.join(name);
         if to.exists() {
             bail!("{} exists; refusing to overwrite it", to.display());
         }
         fs::rename(&from, &to)?;
     }
-    fs::remove_dir_all(staging)?;
     Ok(())
 }
 

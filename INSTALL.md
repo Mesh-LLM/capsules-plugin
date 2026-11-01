@@ -622,11 +622,11 @@ way back either: records sealed since the move are only in `shelf.db`.
 checkpoint with its witness receipts; nothing is signed again, so it needs no
 key), checks in `ledger/.flat-export/` that the earlier release's own loaders
 open them with the same lines, head and latest checkpoint, and only then moves
-them into `ledger/` and moves `shelf.db` (with its `-wal` and `-shm`) to
-`<data dir>/archive/shelf-export-<time>/`. Nothing is deleted. It takes the
+them into `ledger/`, then moves `shelf.db` (with its `-wal` and `-shm`) and
+`archive/pre-store/` to `<data dir>/archive/shelf-export-<time>/`. Nothing is deleted. It takes the
 data directory's lock, so it refuses while the node runs; it exits 0 on
 success, 2 for a bad argument and 1 when it refuses or fails, leaving the shelf
-where it was. A run cut short after the shelf moved finishes at the next run.
+where it was. A run cut short finishes at the next run; until then an earlier release already reads the flat files.
 Then start the earlier release. Starting this release again later moves the
 flat files onto a new shelf as at the first upgrade. Backing up `ledger/`
 before the first start is still wise, but a restore is no longer the way back.
