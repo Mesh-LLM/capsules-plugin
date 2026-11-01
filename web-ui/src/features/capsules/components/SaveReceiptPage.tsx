@@ -8,20 +8,28 @@ import { Button } from '@/components/ui/button'
 import type { PaneCRow } from '@/features/capsules/api/sidecarTypes'
 import { fetchReceipt } from '@/features/capsules/api/receiptClient'
 import { saveTextFile } from '@/features/capsules/lib/exchange-export'
-import { NO_RECORD_REASONS, receiptRequest } from '@/features/capsules/lib/receipt-view'
-import { NO_PAID_DEAL_WHY, receiptPage, type ReceiptSource } from '@/features/capsules/lib/saved-pages'
+import { receiptRequest, refusalView } from '@/features/capsules/lib/receipt-view'
+import { NO_PAID_DEAL_WHY, UNNAMED_DEAL_WHY, receiptPage, type ReceiptSource } from '@/features/capsules/lib/saved-pages'
 
 /** The sentence under the button: what the page is, for whom. */
 export const RECEIPT_PAGE_SENTENCE =
   'A page for anyone: this node’s receipt for this exchange. It checks itself when opened, offline, no account needed, and holds the receipt’s bytes unchanged. Not included: the text, or proof the answer was right.'
 
+/** An invoice was issued on this row, on either side: the exchange has a
+ *  deal even when the row cannot name it. */
+function paid(row: PaneCRow): boolean {
+  return [row.settlement, row.provider_settlement].some((book) => book != null && book.state !== 'terms_only')
+}
+
 async function receiptSource(row: PaneCRow): Promise<ReceiptSource> {
   const request = receiptRequest(row)
-  if (!request) return { kind: 'no_record', why: NO_PAID_DEAL_WHY }
+  if (!request) {
+    return paid(row) ? { kind: 'no_receipt_yet', why: UNNAMED_DEAL_WHY } : { kind: 'no_record', why: NO_PAID_DEAL_WHY }
+  }
   const fetched = await fetchReceipt(request)
   if (fetched.kind === 'unavailable') throw new Error(fetched.message)
   if (fetched.kind === 'bundle') return fetched
-  return { kind: NO_RECORD_REASONS.includes(fetched.why) ? 'no_record' : 'no_receipt_yet', why: fetched.why }
+  return refusalView(fetched.why)
 }
 
 export function SaveReceiptPage({ row, exchangeKey }: { row: PaneCRow; exchangeKey: string }) {

@@ -202,10 +202,14 @@ export type ReceiptSource =
   | { kind: 'bundle'; bundleText: string }
   | { kind: 'no_record' | 'no_receipt_yet'; why: string }
 
-/** Why a receipt page holds no record when the row names no paid deal this
- *  node can ask for (`receiptRequest` gives none): a free exchange, or one
- *  this node cannot name a deal for. */
-export const NO_PAID_DEAL_WHY = 'this node names no paid deal for this exchange, so it has no receipt to give'
+/** Why a receipt page holds no record for an exchange with no invoice (a
+ *  free exchange, or terms only): no deal is sealed for it. */
+export const NO_PAID_DEAL_WHY = 'this exchange was not paid, so this node sealed no deal for it'
+
+/** Why a paid exchange's page holds no receipt yet when the row cannot name
+ *  its deal (`receiptRequest` gives none: a provider book over more than one
+ *  exchange, or a payer row without its own record). */
+export const UNNAMED_DEAL_WHY = 'this exchange was paid, but this node cannot yet name the one deal it belongs to'
 
 /** One exchange's receipt page (Steven's 10-29 ruling, item 1): the receipt
  *  bundle as the node served it, checked by the page when it opens, or a

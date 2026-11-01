@@ -1,6 +1,5 @@
-// Two distinct exports for the Peers table, same
-// split as `exchange-export.ts` -- "Export view" (a CSV of the current
-// table, exactly what's on screen) and "Save evidence file" (the portable
+// Two distinct exports for the Peers table -- "Export view" (a CSV of the
+// current table, exactly what's on screen) and "Save evidence file" (the portable
 // evidence bundle: the underlying Pane B rows and the raw advertised-peer
 // records, never a spreadsheet-shaped summary of the same facts).
 import type { Peer } from '@/features/app-tabs/types'
