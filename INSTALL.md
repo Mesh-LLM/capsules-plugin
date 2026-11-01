@@ -605,7 +605,10 @@ back either: records sealed since the move are only in `shelf.db`.
 
 So before the first start of this release, stop the node and back up
 `<data dir>/ledger/`. To go back to an earlier release later, stop the node
-and restore that backup; every record sealed since the upgrade is lost.
+and restore that backup; every record sealed since the upgrade is lost. A
+command that exports the shelf back to the flat files an earlier release
+reads, losing nothing, is planned
+([#218](https://github.com/Mesh-LLM/capsules-plugin/issues/218)).
 
 **Owner-maintenance records from earlier releases.** Releases up to 0.1.8
 sealed each owner cleanup (delete stored text, rebuild index, start a new log)
