@@ -596,7 +596,9 @@ The Exchanges tab's "What happened" row has three buttons, one per grade of an a
   a capsulectl book under the node's own key in `DIR`, and runs evidencebook-skills'
   `report.sh --seal` over the inference-deals pack. It keeps the page as `DIR/settlement.html`.
   It needs capsulectl with capsulectl-book (v0.1.0-rc29 or later), an evidencebook-skills
-  checkout, and Python with PyYAML. `DIR` holds the book's signing seed, a copy of the node's
+  checkout, and Python with PyYAML. Only one run goes at a time (a lock in `DIR`), and a run cut
+  short resumes where it stopped without publishing a record twice. The node checks the page
+  with the same `CAPSULECTL_PLUGIN_ROOTS` the script used, which the script records in `DIR`. `DIR` holds the book's signing seed, a copy of the node's
   key, because `book report check` needs it (action-state-group/evidencebook#324). Keep `DIR`
   as private as the data directory.
 

@@ -1,5 +1,5 @@
 //! `GET history-page`: what this node answers a stranger who asks for its
-//! history, for the Evidence page's "Save History page" download.
+//! history, for the Exchanges tab's "Stamped: History page" download.
 //!
 //! The page that download makes carries the node's answer and nothing else,
 //! so it can show no more than the node's disclosure policy sends to that
