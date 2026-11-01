@@ -209,7 +209,9 @@ echo "$third" | jq -e '.verdict == "NO" and .source == "deny_list"
   || { echo "the third decision is not a deny-list NO with its rows" >&2; exit 1; }
 
 # The provider's id never appears in clear in the requester's admission records.
-if decisions | grep -q "$provider_id"; then
+# grep -c reads to the end: a grep -q that stops early would fail chain-lines'
+# write, and pipefail would turn a match into no match.
+if [ "$(decisions | grep -c -- "$provider_id")" -gt 0 ]; then
   echo "an admission record names the provider in clear" >&2
   exit 1
 fi
