@@ -1492,10 +1492,21 @@ fn the_shelf_exports_to_the_flat_layout_losslessly() {
         text.push(b'\n');
     }
     assert_eq!(fs::read(ledger.join(FLAT_CAPSULES_FILE)).unwrap(), text);
+    // The same checkpoints, in the key order an earlier release wrote them
+    // (sorted at every depth).
+    let exported = fs::read(ledger.join(FLAT_CHECKPOINTS_FILE)).unwrap();
     assert_eq!(
-        fs::read(ledger.join(FLAT_CHECKPOINTS_FILE)).unwrap(),
-        checkpoints
+        checkpoint_lines_of(&String::from_utf8(exported.clone()).unwrap()),
+        checkpoint_lines_of(&String::from_utf8(checkpoints.clone()).unwrap())
     );
+    for line in String::from_utf8(exported).unwrap().lines() {
+        let value: Value = serde_json::from_str(line).unwrap();
+        let keys: Vec<&String> = value.as_object().unwrap().keys().collect();
+        let mut sorted = keys.clone();
+        sorted.sort();
+        assert_eq!(keys, sorted, "keys are sorted");
+        assert!(line.starts_with(r#"{"checkpoint_cose":""#));
+    }
     for (id, statement) in ids.iter().zip(&statements) {
         assert_eq!(
             &fs::read(ledger.join("signed-statements").join(format!("{id}.cose"))).unwrap(),

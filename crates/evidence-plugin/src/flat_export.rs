@@ -190,7 +190,8 @@ pub fn export(data_dir: &Path) -> anyhow::Result<ExportReport> {
         ids.push(id);
     }
     write_synced(&staging.join(FLAT_CAPSULES_FILE), &text)?;
-    let checkpoints = chain_store::checkpoints_text(&ledger_dir)?.unwrap_or_default();
+    let checkpoints =
+        flat_checkpoint_text(&chain_store::checkpoints_text(&ledger_dir)?.unwrap_or_default())?;
     write_synced(&staging.join(FLAT_CHECKPOINTS_FILE), &checkpoints)?;
     let checkpoint_count = checkpoints.iter().filter(|&&b| b == b'\n').count();
 
@@ -256,6 +257,30 @@ fn move_to(from: &Path, to: &Path) -> anyhow::Result<()> {
     }
     fs::rename(from, to)?;
     Ok(())
+}
+
+/// The shelf's checkpoint lines in the key order an earlier release wrote
+/// them: serde_json's default map is sorted by key, at every depth, while this
+/// build keeps insertion order. The same records either way; the sorted form
+/// is what makes the exported file byte-identical to the one the node had.
+fn flat_checkpoint_text(text: &[u8]) -> anyhow::Result<Vec<u8>> {
+    fn sorted(value: Value) -> Value {
+        match value {
+            Value::Object(map) => {
+                let mut entries: Vec<_> = map.into_iter().collect();
+                entries.sort_by(|a, b| a.0.cmp(&b.0));
+                Value::Object(entries.into_iter().map(|(k, v)| (k, sorted(v))).collect())
+            }
+            Value::Array(items) => Value::Array(items.into_iter().map(sorted).collect()),
+            other => other,
+        }
+    }
+    let mut out = Vec::with_capacity(text.len());
+    for line in text.split(|&b| b == b'\n').filter(|l| !l.is_empty()) {
+        out.extend_from_slice(&serde_json::to_vec(&sorted(serde_json::from_slice(line)?))?);
+        out.push(b'\n');
+    }
+    Ok(out)
 }
 
 /// Open the staged files as the earlier release does and compare them with
