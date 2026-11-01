@@ -21,8 +21,11 @@
 //! `audience`, the node it is addressed to, so a node it was sent to cannot
 //! forward it to another; and a `nonce` and a `deadline`, so a responder
 //! refuses it once that deadline has passed, and a second time before then
-//! while it runs (the replay cache is in memory, and for a key no host binds
-//! it is best-effort: [`MAX_UNBOUND_NONCES`]). The spec ruling is
+//! (the replay cache is in memory, and for a key no host binds it is
+//! best-effort: [`MAX_UNBOUND_NONCES`]). A restart forgets the nonces, so the
+//! cache keeps one number on disk, the latest deadline it may hold, and after
+//! a restart it holds no nonce whose deadline is at or before it
+//! ([`ReplayCache::persisted`]). The spec ruling is
 //! `svc-ev-m1-request-signing-ruling` with its u289 addendum, as amended by
 //! em-spec u290 and u338 (one tag per channel).
 //!
@@ -44,6 +47,7 @@
 //! is refused.
 
 use std::collections::{BTreeMap, HashMap};
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock, PoisonError};
 
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
@@ -126,6 +130,15 @@ pub const MAX_NONCES_PER_KEY: usize = 4096;
 /// (ruling u290 §2). Refusing it instead would let anyone flood the pool to
 /// deny every upgraded asker, and an unsigned request gets the same answer.
 pub const MAX_UNBOUND_NONCES: usize = 16_384;
+
+/// The file in the data directory holding the latest deadline the replay
+/// cache may hold, as Unix seconds in decimal ([`ReplayCache::persisted`]).
+pub const HORIZON_FILE: &str = "replay-horizon";
+
+/// How far past a new nonce's deadline the cache moves the horizon it keeps
+/// on disk, in seconds, so it writes the file at most about once per this
+/// many seconds of deadlines, not once per request.
+pub const HORIZON_STEP_SECS: i64 = 30;
 
 /// The signing input for `map` on `channel`: its domain tag, a zero byte,
 /// and the map without [`MEMBER`] in the protocol crate's canonical JSON
@@ -401,12 +414,17 @@ pub enum Use {
     First,
     /// Already held within its deadline.
     Replayed,
-    /// A bound key that already holds [`MAX_NONCES_PER_KEY`] live nonces:
-    /// not seen, but not held either. Refused like a replay, since an
-    /// unheld nonce could be replayed later; a limit of this node's own.
+    /// A bound key's nonce this cache cannot hold or cannot vouch for: the
+    /// key already holds [`MAX_NONCES_PER_KEY`] live nonces, its deadline is
+    /// at or before the horizon of the run before a restart (it may have
+    /// been held then), or the new horizon could not be written. Refused
+    /// like a replay, since an unheld nonce could be replayed later; a limit
+    /// of this node's own.
     Full,
     /// An unbound key's nonce, not seen, but not held either: the unbound
-    /// pool is full of live nonces.
+    /// pool is full of live nonces, or, as for [`Use::Full`], its deadline
+    /// is at or before the horizon of the run before a restart or the new
+    /// horizon could not be written.
     Unchecked,
 }
 
@@ -416,9 +434,90 @@ pub enum Use {
 pub struct ReplayCache {
     bound: Mutex<HashMap<String, HashMap<String, i64>>>,
     unbound: Mutex<HashMap<(String, String), i64>>,
+    horizon: Mutex<Horizon>,
+}
+
+/// What a [`ReplayCache`] keeps across a restart. Unset (the default) for a
+/// cache that keeps nothing: every deadline is after `floor`, and nothing
+/// is written.
+#[derive(Default)]
+struct Horizon {
+    /// Where `kept` is written ([`HORIZON_FILE`]).
+    file: Option<PathBuf>,
+    /// The horizon the run before this one left: a nonce whose deadline is
+    /// at or before it may have been held then, and is not held now.
+    floor: Option<i64>,
+    /// No nonce held has a later deadline; the file holds it.
+    kept: Option<i64>,
+}
+
+impl Horizon {
+    /// Whether `deadline` may belong to a nonce held before this run.
+    fn before_restart(&self, deadline: i64) -> bool {
+        self.floor.is_some_and(|floor| deadline <= floor)
+    }
+
+    /// Make room to hold a nonce until `deadline`: write a later horizon
+    /// first when the kept one is earlier. False when that write failed, so
+    /// the nonce must not be held: after a restart it would be forgotten.
+    fn cover(&mut self, deadline: i64) -> bool {
+        let Some(file) = &self.file else {
+            return true;
+        };
+        if self.kept.is_some_and(|kept| deadline <= kept) {
+            return true;
+        }
+        let next = deadline.saturating_add(HORIZON_STEP_SECS);
+        match crate::owner_maintenance::write_atomically(file, next.to_string().as_bytes()) {
+            Ok(()) => {
+                self.kept = Some(next);
+                true
+            }
+            Err(error) => {
+                tracing::warn!(%error, file = %file.display(), "the replay horizon could not be written; a signed request's nonce is not held");
+                false
+            }
+        }
+    }
 }
 
 impl ReplayCache {
+    /// A cache that survives a restart: it keeps the latest deadline it may
+    /// hold in `data_dir`'s [`HORIZON_FILE`], written before any nonce with
+    /// a later deadline is held, and holds no nonce whose deadline is at or
+    /// before the one the last run left, since that run may have held it and
+    /// this one has forgotten it. `now` is Unix seconds.
+    ///
+    /// A missing file is a first run, so nothing is refused (a node upgraded
+    /// from a version that wrote none is unprotected for that one restart).
+    /// A file that cannot be read or parsed counts as a horizon
+    /// [`MAX_WINDOW_SECS`] and [`HORIZON_STEP_SECS`] from `now`, the latest
+    /// any held nonce could have; so does a horizon later than that, which
+    /// only a clock that moved back leaves.
+    pub fn persisted(data_dir: &Path, now: i64) -> ReplayCache {
+        let file = data_dir.join(HORIZON_FILE);
+        let latest = now
+            .saturating_add(MAX_WINDOW_SECS)
+            .saturating_add(HORIZON_STEP_SECS);
+        let floor = match std::fs::read_to_string(&file) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Ok(text) => Some(
+                text.trim()
+                    .parse::<i64>()
+                    .map_or(latest, |kept| kept.min(latest)),
+            ),
+            Err(_) => Some(latest),
+        };
+        ReplayCache {
+            horizon: Mutex::new(Horizon {
+                file: Some(file),
+                floor,
+                kept: floor,
+            }),
+            ..ReplayCache::default()
+        }
+    }
+
     /// Record `nonce` for `key_id` until `deadline` (Unix seconds).
     /// [`Use::Replayed`] when it is already held, [`Use::Full`] when a bound
     /// key already holds [`MAX_NONCES_PER_KEY`] live nonces; [`Use::Unchecked`] when
@@ -443,6 +542,10 @@ impl ReplayCache {
             if seen.len() >= MAX_UNBOUND_NONCES {
                 return Use::Unchecked;
             }
+            let mut horizon = self.horizon.lock().unwrap_or_else(PoisonError::into_inner);
+            if horizon.before_restart(deadline) || !horizon.cover(deadline) {
+                return Use::Unchecked;
+            }
             seen.insert(pair, deadline);
             return Use::First;
         }
@@ -458,15 +561,33 @@ impl ReplayCache {
         if nonces.len() >= MAX_NONCES_PER_KEY {
             return Use::Full;
         }
+        let mut horizon = self.horizon.lock().unwrap_or_else(PoisonError::into_inner);
+        if horizon.before_restart(deadline) || !horizon.cover(deadline) {
+            return Use::Full;
+        }
         nonces.insert(nonce.to_string(), deadline);
         Use::First
     }
 }
 
-/// The one cache the mesh responder uses.
+static CACHE: OnceLock<ReplayCache> = OnceLock::new();
+
+/// The one cache the mesh responder uses: the one [`keep_replay_horizon`]
+/// set, else (in tests) one that keeps nothing across a restart.
 pub fn replay_cache() -> &'static ReplayCache {
-    static CACHE: OnceLock<ReplayCache> = OnceLock::new();
     CACHE.get_or_init(ReplayCache::default)
+}
+
+/// Make [`replay_cache`] the one that survives a restart, kept in
+/// `data_dir` ([`ReplayCache::persisted`]). Called once at startup, before
+/// any request is answered; false when the cache was already in use.
+pub fn keep_replay_horizon(data_dir: &Path) -> bool {
+    CACHE
+        .set(ReplayCache::persisted(
+            data_dir,
+            chrono::Utc::now().timestamp(),
+        ))
+        .is_ok()
 }
 
 /// The keys a responder checks a signature's binding against.
@@ -1223,6 +1344,110 @@ mod tests {
             Use::Replayed,
             "a live nonce survives the prune"
         );
+    }
+
+    /// A signed request captured before a restart is refused after it while
+    /// its deadline lasts: the horizon on disk outlives the nonces in memory
+    /// (evidencebook#206 row 1). A request signed after the restart, with a
+    /// deadline past the horizon, is held as usual.
+    #[test]
+    fn a_nonce_held_before_a_restart_is_refused_after_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let before = ReplayCache::persisted(dir.path(), 0);
+        assert_eq!(before.first_use("k", "n", 120, 0, true), Use::First);
+        assert_eq!(before.first_use("u", "n", 120, 0, false), Use::First);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join(HORIZON_FILE)).unwrap(),
+            (120 + HORIZON_STEP_SECS).to_string(),
+            "written before the nonce is held, one step ahead"
+        );
+        assert_eq!(
+            before.first_use("k", "m", 120 + HORIZON_STEP_SECS, 1, true),
+            Use::First
+        );
+        drop(before);
+
+        let after = ReplayCache::persisted(dir.path(), 10);
+        assert_eq!(
+            after.first_use("k", "n", 120, 10, true),
+            Use::Full,
+            "a bound key's replay is refused"
+        );
+        assert_eq!(
+            after.first_use("u", "n", 120, 10, false),
+            Use::Unchecked,
+            "an unbound key's reads as unsigned"
+        );
+        assert_eq!(
+            after.first_use("k", "fresh", 120 + HORIZON_STEP_SECS, 10, true),
+            Use::Full,
+            "at the horizon a deadline may still be one held before"
+        );
+        let past = 121 + HORIZON_STEP_SECS;
+        assert_eq!(after.first_use("k", "fresh", past, 10, true), Use::First);
+        assert_eq!(after.first_use("k", "fresh", past, 11, true), Use::Replayed);
+    }
+
+    /// No file: a first run refuses nothing. An unreadable horizon, or one
+    /// past the latest a held nonce could have, counts as that latest one.
+    #[test]
+    fn the_horizon_is_bounded_when_missing_unreadable_or_too_late() {
+        let latest = 1000 + MAX_WINDOW_SECS + HORIZON_STEP_SECS;
+        let dir = tempfile::tempdir().unwrap();
+        let first_run = ReplayCache::persisted(dir.path(), 1000);
+        assert_eq!(first_run.first_use("k", "n", 1001, 1000, true), Use::First);
+
+        for text in ["not a number", "999999999"] {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::write(dir.path().join(HORIZON_FILE), text).unwrap();
+            let cache = ReplayCache::persisted(dir.path(), 1000);
+            assert_eq!(
+                cache.first_use("k", "a", latest, 1000, true),
+                Use::Full,
+                "{text}"
+            );
+            assert_eq!(
+                cache.first_use("k", "b", latest + 1, 1000, true),
+                Use::First,
+                "{text}"
+            );
+        }
+    }
+
+    /// A nonce is not held when the horizon cannot be written first, since
+    /// a restart would forget it.
+    #[test]
+    fn a_nonce_is_not_held_when_its_horizon_cannot_be_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = ReplayCache::persisted(&dir.path().join("missing"), 0);
+        assert_eq!(cache.first_use("k", "n", 120, 0, true), Use::Full);
+        assert_eq!(cache.first_use("u", "n", 120, 0, false), Use::Unchecked);
+    }
+
+    /// The horizon file is written once per step of deadlines, not per
+    /// request.
+    #[test]
+    fn the_horizon_is_written_once_per_step() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join(HORIZON_FILE);
+        let cache = ReplayCache::persisted(dir.path(), 0);
+        assert_eq!(cache.first_use("k", "0", 100, 0, true), Use::First);
+        std::fs::remove_file(&file).unwrap();
+        for i in 1..=HORIZON_STEP_SECS {
+            assert_eq!(
+                cache.first_use("k", &i.to_string(), 100 + i, 0, true),
+                Use::First
+            );
+        }
+        assert!(
+            !file.exists(),
+            "inside the kept horizon, nothing is written"
+        );
+        assert_eq!(
+            cache.first_use("k", "next", 101 + HORIZON_STEP_SECS, 0, true),
+            Use::First
+        );
+        assert!(file.exists());
     }
 
     /// The audience is this node's id, exactly; a node that does not know

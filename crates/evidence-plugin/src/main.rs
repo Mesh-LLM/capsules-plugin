@@ -1744,6 +1744,13 @@ async fn main() -> anyhow::Result<()> {
     let _data_dir_lock = data_dir::lock(&data_dir)?;
     tracing::info!(data_dir = %data_dir.display(), "plugin data directory");
     sharing_effective::keep_current(data_dir.clone());
+    // Before any signed request is checked: a nonce held before a restart
+    // stays refused after it (evidencebook#206 row 1).
+    if !requester_auth::keep_replay_horizon(&data_dir) {
+        tracing::warn!(
+            "the replay cache was in use before startup; it keeps nothing across a restart"
+        );
+    }
     // The log id is node-unique by default (the node's signing key id), and a
     // new history the owner asked for last run starts HERE, before the
     // ledger or the checkpoint cadence opens (see `owner_maintenance`).
