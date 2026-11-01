@@ -423,6 +423,11 @@ pub struct CapsuleState {
     observed_not_sealed: std::sync::atomic::AtomicU64,
     /// Where a TDX quote for a record comes from (`producer::tee_attest`).
     quote_source: Box<dyn crate::producer::tee_attest::QuoteSource>,
+    /// The data directory's writer lock when this process did not hold it
+    /// already (the plugin's `main` takes it first; a test or tool opening a
+    /// node takes it here), so the node's shelf always opens on a held lock.
+    /// Declared last: it is let go after the stores close.
+    _data_dir_lock: Option<crate::data_dir::DataDirLock>,
 }
 
 /// The ledger, held: the append turn, then the ledger mutex (dropped in the
@@ -514,8 +519,16 @@ impl CapsuleState {
     /// mirroring the acceptance already proven in isolation by
     /// `mesh-rust-capsule-production-m2`'s `chain_ledger_conformance` test.
     pub fn open(data_dir: &Path, node_id: impl Into<String>) -> anyhow::Result<Self> {
-        let keys = keys::load_or_create(&data_dir.join("keys"))?;
         let ledger_dir = data_dir.join("ledger");
+        let data_dir_lock = if crate::data_dir::holds_ledger(&ledger_dir) {
+            None
+        } else {
+            Some(crate::data_dir::lock_waiting(
+                data_dir,
+                std::time::Duration::from_secs(2),
+            )?)
+        };
+        let keys = keys::load_or_create(&data_dir.join("keys"))?;
         let node_keys = crate::chain_store::node_signing_keys(&data_dir.join("keys"));
         let (stores, (ledger, report)) = match crate::chain_store::stays_flat(&ledger_dir)? {
             // A flat history the stores cannot hold whole stays flat, as
@@ -591,6 +604,7 @@ impl CapsuleState {
             observed_not_sealed: std::sync::atomic::AtomicU64::new(0),
             torn_write_cut_at: report.truncated_torn_write_at,
             quote_source: Box::new(crate::producer::tee_attest::ConfigfsTsm::default()),
+            _data_dir_lock: data_dir_lock,
         })
     }
 

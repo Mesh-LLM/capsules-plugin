@@ -261,6 +261,36 @@ pub fn data_dir() -> anyhow::Result<PathBuf> {
 #[must_use = "the directory is locked only while this is held"]
 pub struct DataDirLock {
     _files: Vec<File>,
+    /// The ledger directory as it really is, while this holds it
+    /// ([`holds_ledger`]).
+    ledger: PathBuf,
+}
+
+/// The ledger directories this process holds a [`DataDirLock`] on, as they
+/// really are: the node's shelf is opened on that held lock and takes none of
+/// its own (evidencebook#254 §2.4), and asks [`holds_ledger`] that it is held.
+static HELD_LEDGERS: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
+
+impl Drop for DataDirLock {
+    fn drop(&mut self) {
+        let mut held = HELD_LEDGERS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(at) = held.iter().position(|l| *l == self.ledger) {
+            held.remove(at);
+        }
+    }
+}
+
+/// Whether this process holds the writer lock covering `ledger_dir`.
+pub fn holds_ledger(ledger_dir: &Path) -> bool {
+    let Ok(real) = std::fs::canonicalize(ledger_dir) else {
+        return false;
+    };
+    HELD_LEDGERS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .contains(&real)
 }
 
 /// One advisory lock on the file at `path` (never through a symlink), or why
@@ -316,21 +346,48 @@ fn take(path: &Path, label: &str) -> anyhow::Result<Result<File, String>> {
 /// the holder's pid. A writer from before 0.1.3 takes no lock, so the ledger
 /// itself is checked too (`check_no_other_writer`).
 pub fn lock(dir: &Path) -> anyhow::Result<DataDirLock> {
+    lock_waiting(dir, std::time::Duration::ZERO)
+}
+
+/// [`lock`], retried every 50 ms for up to `wait` while another holder has
+/// it (the shelf's own lock rule, evidencebook#254 §2.4). A holder that has
+/// just let go may still be counted for a moment: a child process another
+/// thread is starting holds a copy of every open file until it execs.
+pub fn lock_waiting(dir: &Path, wait: std::time::Duration) -> anyhow::Result<DataDirLock> {
+    let deadline = std::time::Instant::now() + wait;
+    loop {
+        match try_lock(dir)? {
+            Ok(lock) => return Ok(lock),
+            Err(held) if std::time::Instant::now() < deadline => {
+                tracing::debug!(%held, "waiting for the data directory's lock");
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Err(held) => bail!(held),
+        }
+    }
+}
+
+/// One attempt at [`lock`]: `Ok(Err(why))` when another holder has it.
+fn try_lock(dir: &Path) -> anyhow::Result<Result<DataDirLock, String>> {
     std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
-    let dir_lock = take(
+    let dir_lock = match take(
         &dir.join(LOCK_FILE),
         &format!("data directory {}", dir.display()),
-    )?
-    .map_err(anyhow::Error::msg)?;
+    )? {
+        Ok(file) => file,
+        Err(held) => return Ok(Err(held)),
+    };
     let ledger = dir.join("ledger");
     std::fs::create_dir_all(&ledger).with_context(|| format!("create {}", ledger.display()))?;
     let real_ledger =
         std::fs::canonicalize(&ledger).with_context(|| format!("resolve {}", ledger.display()))?;
-    let ledger_lock = take(
+    let ledger_lock = match take(
         &real_ledger.join(LEDGER_LOCK_FILE),
         &format!("ledger {}", real_ledger.display()),
-    )?
-    .map_err(anyhow::Error::msg)?;
+    )? {
+        Ok(file) => file,
+        Err(held) => return Ok(Err(held)),
+    };
     let mut files = vec![dir_lock, ledger_lock];
     // The log of requests made of this node: written only to the directory
     // decided here, and only while this process holds a lock covering it.
@@ -363,7 +420,14 @@ pub fn lock(dir: &Path) -> anyhow::Result<DataDirLock> {
     };
     set_received_log_writable(writable);
     check_no_other_writer(dir)?;
-    Ok(DataDirLock { _files: files })
+    HELD_LEDGERS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .push(real_ledger.clone());
+    Ok(Ok(DataDirLock {
+        _files: files,
+        ledger: real_ledger,
+    }))
 }
 
 /// The one directory this run may write the received log to, decided when
@@ -653,6 +717,42 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    /// The shelf opens on this process's lock: held while a lock lives,
+    /// through any spelling of the ledger's path, and not after it is gone.
+    #[test]
+    fn this_process_holds_a_ledger_while_its_lock_lives() {
+        let dir = tmp("lock-held-registry");
+        let ledger = dir.join("ledger");
+        assert!(!holds_ledger(&ledger));
+        let held = lock(&dir).unwrap();
+        assert!(holds_ledger(&ledger));
+        assert!(holds_ledger(&dir.join("ledger/../ledger")));
+        drop(held);
+        assert!(!holds_ledger(&ledger));
+    }
+
+    /// A wait for the lock takes it once the holder lets go within the wait,
+    /// and is refused, naming the holder, when it does not.
+    #[test]
+    fn a_wait_for_the_lock_takes_it_once_the_holder_lets_go() {
+        let dir = tmp("lock-waiting");
+        let held = lock(&dir).unwrap();
+        let message = lock_waiting(&dir, std::time::Duration::from_millis(120))
+            .err()
+            .expect("still held")
+            .to_string();
+        assert!(
+            message.contains(&format!("pid {}", std::process::id())),
+            "{message}"
+        );
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            drop(held);
+        });
+        let _taken = lock_waiting(&dir, std::time::Duration::from_secs(5)).expect("taken");
+        release.join().unwrap();
     }
 
     #[test]

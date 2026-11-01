@@ -165,11 +165,19 @@ fn copy_dir(from: &Path, to: &Path) {
 }
 
 /// Every file under `dir`, by relative path, with its bytes.
+/// Every file under `dir` and its bytes, except the writer lock files, which
+/// hold only the pid of whoever holds the lock.
 fn tree(dir: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
     let mut out = BTreeMap::new();
     fn walk(root: &Path, dir: &Path, out: &mut BTreeMap<PathBuf, Vec<u8>>) {
         for entry in fs::read_dir(dir).unwrap().flatten() {
             let path = entry.path();
+            if matches!(
+                entry.file_name().to_str(),
+                Some(".capsules-writer.lock" | "capsules.lock")
+            ) {
+                continue;
+            }
             if entry.file_type().unwrap().is_dir() {
                 walk(root, &path, out);
             } else {
@@ -975,7 +983,7 @@ fn cut(state: &CapsuleState) -> crate::producer::checkpoint::CheckpointRecord {
 /// open.
 #[test]
 fn the_shelf_keeps_every_checkpoint_and_restores_a_lost_latest_row() {
-    let dir = temp_dir("history");
+    let dir = temp_dir("checkpoint-history");
     let ledger = dir.join("ledger");
     let (first, second) = {
         let state = CapsuleState::open(&dir, "node-under-test").unwrap();
