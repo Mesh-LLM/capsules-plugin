@@ -7,6 +7,30 @@ each exchange, and whether this node's log still verifies. It installs and
 runs on an unmodified mesh-llm release (0.77 or newer). No other runtime is
 needed.
 
+## What's new in 0.1.11
+
+**Stop the node and back up `<data dir>/ledger/` before the first start of this release: the
+upgrade is one way.** The node's chain moves from the flat ledger files into one SQLite file,
+`<data dir>/ledger/shelf.db`, the node's EvidenceBook shelf. Each start moves part of the log, for
+at most a few seconds, so on a node with a long log the move takes more than one start, and until it
+is done the node keeps using its old files. Nothing is signed again and nothing is deleted. If the
+copy does not match the old files, the node refuses to start, says why, and tries again at the next
+start. The move is done when `ledger/capsules.jsonl` has moved to `<data dir>/archive/pre-store/`
+(with `RUST_LOG=info` the node also logs "imported the flat ledger onto the chain stores"). Until
+then, while `archive/pre-store/` is still empty, you can go back: stop the node and remove
+`ledger/shelf.db` and `ledger/import-pending.json`. After it, do not start an earlier release on
+that data directory: it would start a new, empty log under the same log id, contradicting the
+checkpoints peers hold. To go back then, stop the node, replace `<data dir>/ledger/` with the backup
+and move `<data dir>/archive/pre-store/` out of the data directory; every record sealed since the
+upgrade is lost.
+
+Two exceptions. A log with owner approvals from 0.1.8 or earlier (#208) cannot move without loss:
+it stays in the flat files until its owner starts a new history (with `RUST_LOG=info` the node logs
+why at start). A checkpoint saved without its signed statement is not moved; it stays in
+`archive/pre-store/checkpoints.jsonl`. `capsules chain-lines` and `capsules chain-checkpoints`
+print the log and its checkpoints in the line formats earlier releases wrote. Details under
+[Where the records are kept](#where-the-records-are-kept).
+
 ## What's new in 0.1.10
 
 **Upgrading from 0.1.9 needs nothing installed on the other node.** A twin pair's referee call
@@ -616,8 +640,10 @@ for that log. Copying the files back from `archive/pre-store/` is not a way
 back either: records sealed since the move are only in `shelf.db`.
 
 So before the first start of this release, stop the node and back up
-`<data dir>/ledger/`. To go back to an earlier release later, stop the node
-and restore that backup; every record sealed since the upgrade is lost. A
+`<data dir>/ledger/`. To go back to an earlier release later, stop the node,
+replace `<data dir>/ledger/` with that backup and move `<data dir>/archive/pre-store/`
+out of the data directory (a later upgrade refuses to move files over the
+ones already there); every record sealed since the upgrade is lost. A
 command that exports the shelf back to the flat files an earlier release
 reads, losing nothing, is planned
 ([#218](https://github.com/Mesh-LLM/capsules-plugin/issues/218)).
