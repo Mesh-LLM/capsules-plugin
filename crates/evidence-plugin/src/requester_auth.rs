@@ -978,6 +978,53 @@ mod tests {
     /// A key a declaration binds asks as its anchor's nodes and draws on its
     /// anchor's nonce budget. A declaration binding a key to this node's own
     /// key, however this node's key is listed, leaves it bound to no node.
+    /// Keys a controller declaration binds draw on their anchor's share of
+    /// the in-flight pool, so an anchor's holder cannot widen it by binding
+    /// new keys (evidencebook#206 row 3).
+    #[test]
+    fn declared_keys_prove_the_anchor_as_their_share() {
+        let now = evidence_request::time::parse_utc("2026-10-28T00:00:00Z").unwrap();
+        let anchor = key(1);
+        let ka = hex::encode(anchor.verifying_key().to_bytes());
+        let announced = BTreeMap::from([("node-a".to_string(), ka.clone())]);
+        let keys = Keys {
+            announced: &announced,
+            configured: None,
+            own_key: Some(&hex::encode(key(3).verifying_key().to_bytes())),
+        };
+        for member in [key(2), key(4)] {
+            let mut request = json!({
+                "subject": {"checkpoints": null},
+                "coverage": {"min_freshness": 60},
+                "nonce": "n-1",
+                crate::controller_binding::MEMBER: crate::controller_binding::bind_for_test(
+                    &anchor,
+                    &member,
+                    "2026-10-01T00:00:00Z",
+                    "2027-10-01T00:00:00Z",
+                ),
+            });
+            sign(
+                Channel::EvidenceRequest,
+                &mut request,
+                &member,
+                at("2026-10-28T00:00:00Z"),
+                "node-r",
+            );
+            assert_eq!(
+                proves_principal(
+                    Channel::EvidenceRequest,
+                    request.as_object().unwrap(),
+                    now,
+                    keys,
+                    Some("node-r"),
+                ),
+                Some(ka.clone()),
+                "the anchor's share, not the member's own"
+            );
+        }
+    }
+
     #[test]
     fn a_declared_key_shares_its_anchors_budget_and_never_anchors_on_this_node() {
         let now = evidence_request::time::parse_utc("2026-10-28T00:00:00Z").unwrap();
