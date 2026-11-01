@@ -23,9 +23,9 @@
 //! refuses it once that deadline has passed, and a second time before then
 //! (the replay cache is in memory, and for a key no host binds it is
 //! best-effort: [`MAX_UNBOUND_NONCES`]). A restart forgets the nonces, so the
-//! cache keeps one number on disk, the latest deadline it may hold, and after
-//! a restart it holds no nonce whose deadline is at or before it
-//! ([`ReplayCache::persisted`]). The spec ruling is
+//! cache keeps one number on disk, the latest deadline it may hold for a
+//! bound key, and after a restart it holds no nonce whose deadline is at or
+//! before it ([`ReplayCache::persisted`]). The spec ruling is
 //! `svc-ev-m1-request-signing-ruling` with its u289 addendum, as amended by
 //! em-spec u290 and u338 (one tag per channel).
 //!
@@ -422,9 +422,11 @@ pub enum Use {
     /// of this node's own.
     Full,
     /// An unbound key's nonce, not seen, but not held either: the unbound
-    /// pool is full of live nonces, or, as for [`Use::Full`], its deadline
-    /// is at or before the horizon of the run before a restart or the new
-    /// horizon could not be written.
+    /// pool is full of live nonces, or its deadline is at or before the
+    /// horizon of the run before a restart. An unbound key never moves the
+    /// horizon: its request reads as unsigned and gets what any asker gets,
+    /// so its replay check stays in memory, and a key anyone can make cannot
+    /// lengthen what a restart refuses bound keys.
     Unchecked,
 }
 
@@ -444,6 +446,8 @@ pub struct ReplayCache {
 struct Horizon {
     /// Where `kept` is written ([`HORIZON_FILE`]).
     file: Option<PathBuf>,
+    /// The last write failed: logged once, until one succeeds.
+    failing: bool,
     /// The horizon the run before this one left: a nonce whose deadline is
     /// at or before it may have been held then, and is not held now.
     floor: Option<i64>,
@@ -468,13 +472,24 @@ impl Horizon {
             return true;
         }
         let next = deadline.saturating_add(HORIZON_STEP_SECS);
-        match crate::owner_maintenance::write_atomically(file, next.to_string().as_bytes()) {
+        // Durable before the nonce is held: the file, then its directory
+        // entry, so a power loss cannot roll the rename back.
+        let written = crate::owner_maintenance::write_atomically(file, next.to_string().as_bytes())
+            .and_then(|()| match file.parent() {
+                Some(dir) => crate::ask_book::sync_dir(dir),
+                None => Ok(()),
+            });
+        match written {
             Ok(()) => {
                 self.kept = Some(next);
+                self.failing = false;
                 true
             }
             Err(error) => {
-                tracing::warn!(%error, file = %file.display(), "the replay horizon could not be written; a signed request's nonce is not held");
+                if !self.failing {
+                    tracing::error!(%error, file = %file.display(), "the replay horizon cannot be written; signed requests from bound keys are refused capacity_exceeded until it can");
+                }
+                self.failing = true;
                 false
             }
         }
@@ -483,10 +498,13 @@ impl Horizon {
 
 impl ReplayCache {
     /// A cache that survives a restart: it keeps the latest deadline it may
-    /// hold in `data_dir`'s [`HORIZON_FILE`], written before any nonce with
-    /// a later deadline is held, and holds no nonce whose deadline is at or
-    /// before the one the last run left, since that run may have held it and
-    /// this one has forgotten it. `now` is Unix seconds.
+    /// hold for a bound key in `data_dir`'s [`HORIZON_FILE`], written before
+    /// any bound key's nonce with a later deadline is held, and holds no
+    /// nonce whose deadline is at or before the one the last run left, since
+    /// that run may have held it and this one has forgotten it. If the
+    /// horizon cannot be written, a bound key's nonce is not held, so its
+    /// request is refused (fail closed); the first failure is logged as an
+    /// error. `now` is Unix seconds.
     ///
     /// A missing file is a first run, so nothing is refused (a node upgraded
     /// from a version that wrote none is unprotected for that one restart).
@@ -511,6 +529,7 @@ impl ReplayCache {
         ReplayCache {
             horizon: Mutex::new(Horizon {
                 file: Some(file),
+                failing: false,
                 floor,
                 kept: floor,
             }),
@@ -519,9 +538,12 @@ impl ReplayCache {
     }
 
     /// Record `nonce` for `key_id` until `deadline` (Unix seconds).
-    /// [`Use::Replayed`] when it is already held, [`Use::Full`] when a bound
-    /// key already holds [`MAX_NONCES_PER_KEY`] live nonces; [`Use::Unchecked`] when
-    /// unbound keys together hold [`MAX_UNBOUND_NONCES`] live nonces.
+    /// [`Use::Replayed`] when it is already held; [`Use::Full`] when a bound
+    /// key already holds [`MAX_NONCES_PER_KEY`] live nonces, its deadline is
+    /// at or before the last run's horizon, or the horizon cannot be written;
+    /// [`Use::Unchecked`] when unbound keys together hold
+    /// [`MAX_UNBOUND_NONCES`] live nonces or an unbound key's deadline is at
+    /// or before the last run's horizon.
     pub fn first_use(
         &self,
         key_id: &str,
@@ -542,8 +564,8 @@ impl ReplayCache {
             if seen.len() >= MAX_UNBOUND_NONCES {
                 return Use::Unchecked;
             }
-            let mut horizon = self.horizon.lock().unwrap_or_else(PoisonError::into_inner);
-            if horizon.before_restart(deadline) || !horizon.cover(deadline) {
+            let horizon = self.horizon.lock().unwrap_or_else(PoisonError::into_inner);
+            if horizon.before_restart(deadline) {
                 return Use::Unchecked;
             }
             seen.insert(pair, deadline);
@@ -627,13 +649,16 @@ pub enum Failure {
     AudienceMismatch { key_id: String },
     /// This (key_id, nonce) was already seen within its deadline.
     Replayed { key_id: String },
-    /// A bound key has no room to hold the nonce ([`Use::Full`]): a limit of
-    /// this node's own, refused as a replay would be.
+    /// A bound key's nonce cannot be held or vouched for ([`Use::Full`]):
+    /// no room, a deadline at or before the last run's horizon, or a horizon
+    /// that cannot be written. A limit of this node's own, refused as a
+    /// replay would be.
     ReplayCacheFull { key_id: String },
     /// The key is bound to no node, or to several and the request states
     /// no id. The only failure that may read as unsigned
     /// ([`Failure::reads_as_unsigned`]). `replay_checked` is false when the
-    /// unbound pool was full and the nonce was not held ([`Use::Unchecked`]).
+    /// nonce was not held ([`Use::Unchecked`]): the unbound pool was full, or
+    /// its deadline was at or before the last run's horizon.
     Unbound {
         key_id: String,
         replay_checked: bool,
@@ -1414,14 +1439,43 @@ mod tests {
         }
     }
 
-    /// A nonce is not held when the horizon cannot be written first, since
-    /// a restart would forget it.
+    /// A bound key's nonce is not held when the horizon cannot be written
+    /// first, since a restart would forget it; an unbound key's never needs
+    /// the horizon written.
     #[test]
     fn a_nonce_is_not_held_when_its_horizon_cannot_be_written() {
         let dir = tempfile::tempdir().unwrap();
         let cache = ReplayCache::persisted(&dir.path().join("missing"), 0);
         assert_eq!(cache.first_use("k", "n", 120, 0, true), Use::Full);
-        assert_eq!(cache.first_use("u", "n", 120, 0, false), Use::Unchecked);
+        assert_eq!(
+            cache.first_use("k", "n", 120, 1, true),
+            Use::Full,
+            "and still not held"
+        );
+        assert_eq!(cache.first_use("u", "n", 120, 0, false), Use::First);
+    }
+
+    /// A key anyone can make cannot lengthen what a restart refuses: an
+    /// unbound key's longest deadline before the restart leaves the horizon
+    /// alone, so a bound key's ordinary request after it is held.
+    #[test]
+    fn an_unbound_key_never_moves_the_horizon() {
+        let dir = tempfile::tempdir().unwrap();
+        let before = ReplayCache::persisted(dir.path(), 0);
+        assert_eq!(
+            before.first_use("u", "n", MAX_WINDOW_SECS, 0, false),
+            Use::First
+        );
+        assert!(!dir.path().join(HORIZON_FILE).exists());
+        assert_eq!(before.first_use("k", "n", 20, 0, true), Use::First);
+        drop(before);
+
+        let after = ReplayCache::persisted(dir.path(), 10);
+        assert_eq!(
+            after.first_use("k", "fresh", 10 + ASKER_DEADLINE_SECS, 10, true),
+            Use::First,
+            "the horizon is the bound key's 20 + {HORIZON_STEP_SECS}, not the unbound 300"
+        );
     }
 
     /// The horizon file is written once per step of deadlines, not per
