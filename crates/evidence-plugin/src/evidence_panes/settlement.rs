@@ -74,6 +74,13 @@ pub(super) fn is_settlement_record(record: &Value) -> bool {
     settlement_block(record).is_some()
 }
 
+/// A settlement-records leg (draft-mih-agent-settlement-records-00, sealed by
+/// `settlement_legs.rs`) carries a top-level `settlement` member and no
+/// lifecycle block. It is this node's own record, never an exchange half.
+pub(super) fn is_settlement_leg(record: &Value) -> bool {
+    record.get("settlement").is_some_and(Value::is_object)
+}
+
 fn block_str<'a>(record: &'a Value, key: &str) -> Option<&'a str> {
     settlement_block(record)?
         .get(key)
