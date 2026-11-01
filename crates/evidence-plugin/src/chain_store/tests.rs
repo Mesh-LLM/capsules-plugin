@@ -1515,6 +1515,10 @@ fn the_shelf_exports_to_the_flat_layout_losslessly() {
     let (cp, _) =
         CheckpointState::load(&ledger, log_id, CheckpointCadenceConfig::default()).unwrap();
     assert_eq!(cp.leaf_count() as usize, lines.len());
+    let served_count = flat.lines().iter().filter(|l| !l.padding).count();
+    // Windows cannot move files a handle still holds open.
+    drop(cp);
+    drop(flat);
     // Starting this release again imports the flat files onto a new shelf, as
     // at the first upgrade, with every line kept.
     let _budget = UnboundedImport::new();
@@ -1527,10 +1531,7 @@ fn the_shelf_exports_to_the_flat_layout_losslessly() {
     crate::flat_export::export(&dir).unwrap();
     drop(lock);
     // Served as before (padding is not served).
-    assert_eq!(
-        served_flat(&ledger).len(),
-        flat.lines().iter().filter(|l| !l.padding).count()
-    );
+    assert_eq!(served_flat(&ledger).len(), served_count);
     let _ = fs::remove_dir_all(&dir);
 }
 
