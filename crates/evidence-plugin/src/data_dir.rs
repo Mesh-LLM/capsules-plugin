@@ -24,7 +24,9 @@
 //! With none of these the plugin refuses to start. It also refuses to mint a
 //! key where one is expected: a ledger with records but no key, or a key left
 //! in the old default (`./admission-policy-data`) while the new directory has
-//! none.
+//! none. That guard ends with 0.2.0, when `LEGACY_RELATIVE_DIR` is removed;
+//! until then a node that still has the old directory is told to set
+//! `CAPSULES_DATA_DIR` to it.
 //!
 //! One process per directory (`lock`): the ledger is a hash chain with a
 //! single writer, so a second plugin process on the same directory refuses to
@@ -42,6 +44,7 @@ const APP_DIR: &str = "capsules";
 const OLD_APP_DIR: &str = "capsule-emit-mesh";
 /// The default before the directory was absolute, relative to the working
 /// directory.
+// Ends with 0.2.0 (see the module docs).
 const LEGACY_RELATIVE_DIR: &str = "admission-policy-data";
 const NODE_KEY: &str = "keys/node-key.pem";
 /// The chain, in the flat layout an earlier release wrote and on the node's
@@ -81,6 +84,23 @@ fn resolve(
         return Ok((home.join(".local/share").join(APP_DIR), false));
     }
     bail!("no data directory: set {ENV_DATA_DIR} to an absolute path (HOME is not set)")
+}
+
+/// `CAPSULE_EMIT_MESH_DATA_DIR` is no longer read. A node that sets only it
+/// would fall back to the default directory and mint a second key, so refuse.
+fn check_old_data_dir_name_is_not_the_only_one(
+    old: Option<&str>,
+    new: Option<&str>,
+) -> anyhow::Result<()> {
+    let set = |v: Option<&str>| v.is_some_and(|v| !v.trim().is_empty());
+    if set(old) && !set(new) {
+        bail!(
+            "CAPSULE_EMIT_MESH_DATA_DIR is no longer read, and {ENV_DATA_DIR} is not set; \
+             refusing to start in the default directory with a new key. Set {ENV_DATA_DIR}={}.",
+            old.unwrap_or_default().trim()
+        );
+    }
+    Ok(())
 }
 
 /// Refuse to start where starting would silently mint a second key.
@@ -241,6 +261,10 @@ fn check_no_other_writer(dir: &Path) -> anyhow::Result<()> {
 
 /// The plugin's data directory, absolute, checked.
 pub fn data_dir() -> anyhow::Result<PathBuf> {
+    check_old_data_dir_name_is_not_the_only_one(
+        std::env::var("CAPSULE_EMIT_MESH_DATA_DIR").ok().as_deref(),
+        crate::settings::var(ENV_DATA_DIR).ok().as_deref(),
+    )?;
     let cwd = std::env::current_dir().context("read the working directory")?;
     let (dir, chosen) = resolve(
         crate::settings::var(ENV_DATA_DIR).ok().as_deref(),
@@ -514,6 +538,17 @@ fn received_log_target(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_old_data_dir_name_set_refuses_to_start() {
+        assert!(check_old_data_dir_name_is_not_the_only_one(Some("/srv/c"), None).is_err());
+        assert!(check_old_data_dir_name_is_not_the_only_one(Some("/srv/c"), Some(" ")).is_err());
+        assert!(
+            check_old_data_dir_name_is_not_the_only_one(Some("/srv/c"), Some("/srv/c")).is_ok()
+        );
+        assert!(check_old_data_dir_name_is_not_the_only_one(None, None).is_ok());
+        assert!(check_old_data_dir_name_is_not_the_only_one(Some(" "), None).is_ok());
+    }
 
     #[test]
     fn the_received_log_is_written_only_where_a_lock_covers_it() {

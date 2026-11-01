@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+### Removed
+
+- **The old `CAPSULE_EMIT_MESH_*` setting names are no longer read.** They were read "for one
+  release" after the rename in 0.1.3 and are now ignored, with no fallback. Rename each to
+  `CAPSULES_*` (same suffix, e.g. `CAPSULE_EMIT_MESH_LOG_ID` to `CAPSULES_LOG_ID`). Console
+  settings saved under the old plugin name `capsule-emit-mesh` are ignored too; save them again
+  under `capsules`. The plugin warns, naming each old variable still set and each console key saved
+  under the old plugin name. It refuses to start when only `CAPSULE_EMIT_MESH_DATA_DIR` is set (it
+  would otherwise mint a new key in the default directory); that refusal stays. No other setting,
+  record format or wire shape changes.
+
+### Deprecated
+
+- **Removed in 0.2.0, act before upgrading:** the refusal to start when a node's key sits in the
+  old `./admission-policy-data` directory. From 0.2.0 such a node starts in the default directory
+  with a new key, so set `CAPSULES_DATA_DIR` to the old directory now. Also removed: reading
+  `share_history_segments = prospective` as `counterparties` (it logs a warning until then). From
+  0.2.0 `prospective` is an unknown value, which means `off`, and the node shares no history
+  segments, not even with counterparties. Set `counterparties`.
+
+### Changed
+
+- Comments that described the Python sidecar now describe the Rust plugin.
+
 ## 0.1.12
 
 ### Added

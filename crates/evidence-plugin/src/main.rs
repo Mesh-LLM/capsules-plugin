@@ -1751,6 +1751,13 @@ async fn main() -> anyhow::Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
+    for name in settings::ignored_old_names() {
+        tracing::warn!(
+            setting = %name,
+            "the old setting name is no longer read; rename CAPSULE_EMIT_MESH_<NAME> to CAPSULES_<NAME>"
+        );
+    }
+
     // The OpenAI-compatible admission endpoint exists only when blocked
     // models are named (see `plugin_builder`); by default there is no
     // listener, no provider and no admission capability.

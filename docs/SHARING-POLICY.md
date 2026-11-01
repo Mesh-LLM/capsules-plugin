@@ -27,10 +27,12 @@ a counterparty that asks: for one of its records (`share_history_segments`)
 or for the rest of its Standard History (`share_standard_history`). The
 referee (`adjudicate_differing_twins`) is off by default too.
 
-`share_history_segments` also accepts `prospective`, its default before
-0.1.5. It is deprecated: it always served exactly whom `counterparties`
-serves, so it is now read as `counterparties`, and a log line says so. Set
-`counterparties` instead.
+`share_history_segments` also accepts `prospective`, its default before 0.1.5.
+It is deprecated: it always served exactly whom `counterparties` serves, so it
+is now read as `counterparties`, and a log line says so. Set `counterparties`
+instead. `prospective` stops being read in 0.2.0, where an unknown value means
+`off`, so a node still set to `prospective` then shares no history segments,
+even with counterparties.
 
 The plugin declares the seven switches in its `config_schema`
 (`crates/evidence-plugin/src/share_policy.rs`), so the console shows them under

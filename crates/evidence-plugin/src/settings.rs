@@ -12,12 +12,10 @@
 //! console. A setting read once at start (the witness, the checkpoint
 //! cadence) takes effect when mesh-llm is restarted.
 //!
-//! The plugin was called `capsule-emit-mesh` until 0.1.3. For one release the
-//! old name, `CAPSULE_EMIT_MESH_<NAME>`, is still read when the new one is
-//! unset, and a log line names the setting that was used; console settings
-//! saved under the old plugin name are read the same way. When
-//! both are set the new name wins and the log line says the old one was
-//! ignored. Each setting is logged at most once per process.
+//! The plugin was called `capsule-emit-mesh` until 0.1.3. Its old names,
+//! `CAPSULE_EMIT_MESH_<NAME>` and console settings saved under the old plugin
+//! name, are no longer read (removed after 0.1.12); rename them to
+//! `CAPSULES_<NAME>`. Each setting is logged at most once per process.
 
 use std::collections::HashSet;
 use std::env::VarError;
@@ -27,67 +25,12 @@ use std::sync::{Mutex, OnceLock};
 /// The prefix every setting's name carries.
 pub const PREFIX: &str = "CAPSULES_";
 
-/// The prefix the same settings carried before; read for one release only.
-pub const LEGACY_PREFIX: &str = "CAPSULE_EMIT_MESH_";
-
-/// The old name of `name`, or `None` when `name` is not a plugin setting.
-pub fn legacy_name(name: &str) -> Option<String> {
-    name.strip_prefix(PREFIX)
-        .map(|rest| format!("{LEGACY_PREFIX}{rest}"))
-}
-
-/// Which name a setting's value came from.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Source {
-    Current,
-    Legacy,
-    /// Both names were set; the current one was used.
-    CurrentOverLegacy,
-}
-
-/// Pick a value from the current and the old name's values.
-fn pick<T>(current: Option<T>, legacy: Option<T>) -> Option<(T, Source)> {
-    match (current, legacy) {
-        (Some(value), Some(_)) => Some((value, Source::CurrentOverLegacy)),
-        (Some(value), None) => Some((value, Source::Current)),
-        (None, Some(value)) => Some((value, Source::Legacy)),
-        (None, None) => None,
-    }
-}
-
-fn log_once(name: &str, legacy: &str, source: Source) {
-    static LOGGED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-    if source == Source::Current {
-        return;
-    }
-    let mut logged = LOGGED
-        .get_or_init(Default::default)
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if !logged.insert(name.to_string()) {
-        return;
-    }
-    match source {
-        Source::Legacy => tracing::warn!(
-            setting = legacy,
-            renamed_to = name,
-            "read the setting from its old name; rename it, the old name is read for one release only"
-        ),
-        Source::CurrentOverLegacy => tracing::warn!(
-            setting = name,
-            ignored = legacy,
-            "both the setting and its old name are set; using the new name and ignoring the old one"
-        ),
-        Source::Current => {}
-    }
-}
-
 /// This plugin's name in mesh's config file (`[[plugin]] name = ...`).
 pub const PLUGIN_NAME: &str = "capsules";
 
-/// The plugin's name before 0.1.3. Console settings saved under it are read
-/// for one release, under the ones saved under [`PLUGIN_NAME`].
-pub const OLD_PLUGIN_NAME: &str = "capsule-emit-mesh";
+/// The plugin's name before 0.1.3. Console settings saved under it are no
+/// longer read; the file is only checked so they can be named in a warning.
+const OLD_PLUGIN_NAME: &str = "capsule-emit-mesh";
 
 /// The console key a setting is saved under in mesh's config file.
 pub fn console_key(name: &str) -> Option<String> {
@@ -274,13 +217,20 @@ fn settings_from_config(raw: &str) -> Result<std::collections::BTreeMap<String, 
     let Some(plugins) = doc.get("plugin").and_then(|p| p.as_array()) else {
         return Ok(out);
     };
-    // The old name's entry first, so the current one's values win.
+    let ignored = old_plugin_setting_keys(plugins);
+    if !ignored.is_empty() {
+        tracing::warn!(
+            plugin = OLD_PLUGIN_NAME,
+            keys = %ignored.join(","),
+            "console settings saved under the old plugin name are no longer read; save them again under `capsules`"
+        );
+    }
     let named = |name: &'static str| {
         plugins
             .iter()
             .filter(move |entry| entry.get("name").and_then(|n| n.as_str()) == Some(name))
     };
-    for entry in named(OLD_PLUGIN_NAME).chain(named(PLUGIN_NAME)) {
+    for entry in named(PLUGIN_NAME) {
         let Some(settings) = entry.get("settings").and_then(|s| s.as_table()) else {
             continue;
         };
@@ -318,6 +268,16 @@ fn settings_from_config(raw: &str) -> Result<std::collections::BTreeMap<String, 
     Ok(out)
 }
 
+/// The setting keys saved under the old plugin name, which are ignored.
+fn old_plugin_setting_keys(plugins: &[toml::Value]) -> Vec<String> {
+    plugins
+        .iter()
+        .filter(|entry| entry.get("name").and_then(|n| n.as_str()) == Some(OLD_PLUGIN_NAME))
+        .filter_map(|entry| entry.get("settings").and_then(|s| s.as_table()))
+        .flat_map(|settings| settings.keys().cloned())
+        .collect()
+}
+
 /// The console's witness rows: their endpoints in order, and the public key of
 /// each row that gives one. A bare string row is an endpoint with no key.
 fn witness_rows(
@@ -346,8 +306,7 @@ fn witness_rows(
     (urls, keys)
 }
 
-/// The console's value for a setting, when the environment sets neither its
-/// name nor its old name.
+/// The console's value for a setting, when the environment does not set it.
 fn console_value(name: &str) -> Option<String> {
     let key = console_key(name)?;
     let value = console_settings().get(&key).cloned()?;
@@ -365,11 +324,9 @@ fn console_value(name: &str) -> Option<String> {
     Some(value)
 }
 
-/// Whether the environment (either name) sets `name`; an empty value is no value.
+/// Whether the environment sets `name`; an empty value is no value.
 pub fn set_in_env(name: &str) -> bool {
-    // An empty value is no value, as in [`var`].
-    let set = |n: &str| std::env::var_os(n).is_some_and(|v| !v.to_string_lossy().trim().is_empty());
-    set(name) || legacy_name(name).is_some_and(|l| set(&l))
+    std::env::var_os(name).is_some_and(|v| !v.to_string_lossy().trim().is_empty())
 }
 
 /// Where a setting's value comes from: "env", "console", or `None` (unset).
@@ -383,8 +340,29 @@ pub fn origin(name: &str) -> Option<&'static str> {
     }
 }
 
-/// `std::env::var` for a plugin setting: `name` is the setting's current
-/// name; its old name is read when `name` is unset, then the console's value.
+/// Old-name variables in `vars` with a value. They are not read; naming them
+/// at startup keeps an upgrade from silently dropping an operator's setting.
+fn old_names_in(vars: impl Iterator<Item = (String, String)>) -> Vec<String> {
+    let mut names: Vec<String> = vars
+        .filter(|(k, v)| k.starts_with("CAPSULE_EMIT_MESH_") && !v.trim().is_empty())
+        .map(|(k, _)| k)
+        .collect();
+    names.sort();
+    names
+}
+
+/// Old-name variables set in the process environment.
+pub fn ignored_old_names() -> Vec<String> {
+    old_names_in(std::env::vars_os().map(|(k, v)| {
+        (
+            k.to_string_lossy().into_owned(),
+            v.to_string_lossy().into_owned(),
+        )
+    }))
+}
+
+/// `std::env::var` for a plugin setting: the environment, then the console's
+/// value. An empty value is no value: `export X=` never overrides the console.
 pub fn var(name: &str) -> Result<String, VarError> {
     var_in(name, |n| std::env::var(n))
 }
@@ -392,24 +370,13 @@ pub fn var(name: &str) -> Result<String, VarError> {
 /// [`var`] over the environment `env` reads, so the tests never set a
 /// process variable.
 fn var_in(name: &str, env: impl Fn(&str) -> Result<String, VarError>) -> Result<String, VarError> {
-    let Some(legacy) = legacy_name(name) else {
-        return env(name);
-    };
-    // An empty value is no value: `export X=` never overrides the console.
-    let set = |n: &str| match env(n) {
-        Ok(value) if value.trim().is_empty() => None,
-        Ok(value) => Some(Ok(value)),
-        Err(VarError::NotPresent) => None,
-        Err(error) => Some(Err(error)),
-    };
-    let (current, old) = (set(name), set(&legacy));
-    match pick(current, old) {
-        Some((value, source)) => {
-            log_once(name, &legacy, source);
-            value
-        }
-        None => console_value(name).ok_or(VarError::NotPresent),
+    match env(name) {
+        Ok(value) if value.trim().is_empty() => {}
+        Ok(value) => return Ok(value),
+        Err(VarError::NotPresent) => {}
+        Err(error) => return Err(error),
     }
+    console_value(name).ok_or(VarError::NotPresent)
 }
 
 /// `std::env::var_os` for a plugin setting, with the same fallback as [`var`].
@@ -419,17 +386,9 @@ pub fn var_os(name: &str) -> Option<OsString> {
 
 /// [`var_os`] over the environment `env` reads.
 fn var_os_in(name: &str, env: impl Fn(&str) -> Option<OsString>) -> Option<OsString> {
-    let Some(legacy) = legacy_name(name) else {
-        return env(name);
-    };
-    let set = |n: &str| env(n).filter(|v| !v.to_string_lossy().trim().is_empty());
-    match pick(set(name), set(&legacy)) {
-        Some((value, source)) => {
-            log_once(name, &legacy, source);
-            Some(value)
-        }
-        None => console_value(name).map(OsString::from),
-    }
+    env(name)
+        .filter(|v| !v.to_string_lossy().trim().is_empty())
+        .or_else(|| console_value(name).map(OsString::from))
 }
 
 #[cfg(test)]
@@ -465,71 +424,26 @@ mod tests {
     }
 
     #[test]
-    fn the_old_name_is_read_when_the_current_one_is_unset() {
+    fn the_old_name_is_no_longer_read() {
         let name = "CAPSULES_TEST_SETTINGS_LEGACY";
         let env = env(&[("CAPSULE_EMIT_MESH_TEST_SETTINGS_LEGACY", "old")]);
-        assert_eq!(var(name, &env).as_deref(), Ok("old"));
-        assert_eq!(var_os(name, &env), Some(OsString::from("old")));
+        assert_eq!(var(name, &env), Err(VarError::NotPresent));
+        assert_eq!(var_os(name, &env), None);
     }
 
-    /// Reading a setting from its old name says so, once, naming both names.
     #[test]
-    fn reading_the_old_name_is_logged_once_naming_both() {
-        // A scoped subscriber (`with_default`) races other tests' reads of an
-        // old name: a callsite first hit with no subscriber caches as
-        // disabled and never logs here (#214). Only this test installs a
-        // subscriber, so install it process-wide, once, and pick this test's
-        // lines out by its own setting name.
-        #[derive(Clone)]
-        struct Captured;
-        static CAPTURED: Mutex<Vec<u8>> = Mutex::new(Vec::new());
-        impl std::io::Write for Captured {
-            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-                CAPTURED.lock().unwrap().extend_from_slice(buf);
-                Ok(buf.len())
-            }
-            fn flush(&mut self) -> std::io::Result<()> {
-                Ok(())
-            }
-        }
-        static INSTALLED: OnceLock<()> = OnceLock::new();
-        INSTALLED.get_or_init(|| {
-            tracing::subscriber::set_global_default(
-                tracing_subscriber::fmt()
-                    .with_writer(|| Captured)
-                    .with_ansi(false)
-                    .finish(),
-            )
-            .expect("no other test installs a subscriber");
-        });
-        let name = "CAPSULES_TEST_SETTINGS_LOGGED";
-        let env = env(&[("CAPSULE_EMIT_MESH_TEST_SETTINGS_LOGGED", "old")]);
-        assert_eq!(var(name, &env).as_deref(), Ok("old"));
-        assert_eq!(var(name, &env).as_deref(), Ok("old"));
-        let all = String::from_utf8(CAPTURED.lock().unwrap().clone()).unwrap();
-        let log: String = all
-            .lines()
-            .filter(|l| l.contains(name))
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert_eq!(log.lines().count(), 1, "{log}");
-        assert!(
-            log.contains("CAPSULE_EMIT_MESH_TEST_SETTINGS_LOGGED"),
-            "{log}"
+    fn old_names_in_the_environment_are_listed() {
+        let names = old_names_in(
+            [
+                ("CAPSULE_EMIT_MESH_B", "x"),
+                ("CAPSULE_EMIT_MESH_A", "x"),
+                ("CAPSULE_EMIT_MESH_EMPTY", " "),
+                ("CAPSULES_A", "x"),
+            ]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.to_string())),
         );
-        assert!(log.contains(name), "{log}");
-        assert!(log.contains("one release"), "{log}");
-    }
-
-    #[test]
-    fn the_current_name_wins_over_the_old_one() {
-        let name = "CAPSULES_TEST_SETTINGS_BOTH";
-        let env = env(&[
-            (name, "new"),
-            ("CAPSULE_EMIT_MESH_TEST_SETTINGS_BOTH", "old"),
-        ]);
-        assert_eq!(var(name, &env).as_deref(), Ok("new"));
-        assert_eq!(var_os(name, &env), Some(OsString::from("new")));
+        assert_eq!(names, ["CAPSULE_EMIT_MESH_A", "CAPSULE_EMIT_MESH_B"]);
     }
 
     #[test]
@@ -538,23 +452,6 @@ mod tests {
         let env = env(&[]);
         assert_eq!(var(name, &env), Err(VarError::NotPresent));
         assert_eq!(var_os(name, &env), None);
-    }
-
-    #[test]
-    fn a_name_outside_the_plugin_prefix_has_no_fallback() {
-        assert_eq!(legacy_name("HOME"), None);
-        assert_eq!(
-            legacy_name("CAPSULES_PEER_KEYS").as_deref(),
-            Some("CAPSULE_EMIT_MESH_PEER_KEYS")
-        );
-    }
-
-    #[test]
-    fn pick_names_its_source() {
-        assert_eq!(pick(Some(1), None), Some((1, Source::Current)));
-        assert_eq!(pick(None, Some(2)), Some((2, Source::Legacy)));
-        assert_eq!(pick(Some(1), Some(2)), Some((1, Source::CurrentOverLegacy)));
-        assert_eq!(pick::<i32>(None, None), None);
     }
 
     #[test]
@@ -610,7 +507,7 @@ adjudicate_differing_twins = "off"
     }
 
     #[test]
-    fn console_settings_saved_under_the_old_plugin_name_are_read_under_the_new_ones() {
+    fn console_settings_saved_under_the_old_plugin_name_are_ignored() {
         let raw = r#"
 [[plugin]]
 name = "capsule-emit-mesh"
@@ -628,14 +525,19 @@ witness = "https://new.example"
             s.get("witness").map(String::as_str),
             Some("https://new.example")
         );
-        assert_eq!(s.get("referee_bar_days").map(String::as_str), Some("7"));
+        assert_eq!(s.get("referee_bar_days"), None);
         let only_old = settings_from_config(
             "[[plugin]]\nname = \"capsule-emit-mesh\"\n[plugin.settings]\nwitness = \"https://old.example\"\n",
         )
         .unwrap();
+        assert!(only_old.is_empty());
+        let plugins = toml::from_str::<toml::Table>(raw).unwrap()["plugin"]
+            .as_array()
+            .unwrap()
+            .clone();
         assert_eq!(
-            only_old.get("witness").map(String::as_str),
-            Some("https://old.example")
+            old_plugin_setting_keys(&plugins),
+            ["referee_bar_days", "witness"]
         );
     }
 
@@ -743,14 +645,5 @@ witness = [
         let blank = env(&[(name, "  ")]);
         assert_eq!(var(name, &blank), Err(VarError::NotPresent));
         assert_eq!(var_os(name, &blank), None);
-        let both = env(&[
-            (name, "  "),
-            ("CAPSULE_EMIT_MESH_TEST_SETTINGS_EMPTY", "old"),
-        ]);
-        assert_eq!(
-            var(name, &both).as_deref(),
-            Ok("old"),
-            "an empty new name does not hide the old one"
-        );
     }
 }

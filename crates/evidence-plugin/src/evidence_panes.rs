@@ -65,7 +65,7 @@ mod settlement;
 use settlement::{is_settlement_leg, is_settlement_record, peer_counts, SettlementIndex};
 
 /// Sentinel for "this mechanism exists but isn't wired for a plugin-ledger
-/// read yet" -- never fabricated, never the sidecar's own computed value.
+/// read yet" -- never fabricated, never a value computed elsewhere.
 const NOT_CHECKED: &str = "NOT_CHECKED";
 /// `capsule_exchange_tab.STATE_PRESENT_UNVERIFIED` / `STATE_ABSENT` --
 /// these two ARE purely structural (presence of a record, not a claim
@@ -1070,13 +1070,11 @@ fn theirs_cell(record: &Value) -> Value {
 }
 
 /// `capsule_mesh_view.label_role`, source_log fixed to `"plugin"` --
-/// this route's records are always plugin-ledger reads, never sidecar
-/// ones. `_EXPLICIT_POC_ROLES` = `{requested, served, conflict, unknown}`,
+/// this route's records are always plugin-ledger reads. `_EXPLICIT_POC_ROLES` = `{requested, served, conflict, unknown}`,
 /// trusted as-is per the 2026-09-06 role ruling; `_SERVED_OBSERVATION_
 /// POINTS` widens an explicit-but-unset case; `_DEFAULT_ROLE_BY_SOURCE`
-/// for `"plugin"` is `"served"` -- both of
-/// today's real writers (sidecar, plugin) observe this machine acting as
-/// the serving provider, never a requestor elsewhere.
+/// for `"plugin"` is `"served"` -- the plugin
+/// observes this machine acting as the serving provider, never a requestor elsewhere.
 pub(crate) fn label_role(record: &Value) -> &'static str {
     if let Some(role) = poc_block(record)
         .and_then(|poc| poc.get("role"))
