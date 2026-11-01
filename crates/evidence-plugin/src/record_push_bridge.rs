@@ -1150,20 +1150,19 @@ pub(crate) mod tests {
         use crate::producer::anchor::AnchorClient;
         use crate::producer::checkpoint::{CheckpointCadenceConfig, CheckpointState};
         use std::io::Write;
-        let dir = std::env::temp_dir().join(format!("bundle-body-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        // Three tests call this at once, so each gets a directory of its own
+        // (a shared one let a test remove another's ledger, #214).
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().to_path_buf();
         let id = "a".repeat(64);
         let mut f = std::fs::File::create(dir.join("capsules.jsonl")).unwrap();
         writeln!(f, "{}", serde_json::json!({"capsule_id": id})).unwrap();
         let (mut state, _) =
             CheckpointState::load(&dir, "log", CheckpointCadenceConfig::default()).unwrap();
         let key = ed25519_dalek::SigningKey::from_bytes(&[3u8; 32]);
-        let coverage = state
+        state
             .checkpoint_covering(&id, &key, &AnchorClient::new("http://127.0.0.1:1"))
-            .unwrap();
-        let _ = std::fs::remove_dir_all(&dir);
-        coverage
+            .unwrap()
     }
 
     /// The node's own binding rides whole in the binding member, beside
@@ -1604,7 +1603,10 @@ pub(crate) mod tests {
 
     /// The wait is bounded: a pushed half whose own half never seals is cited
     /// untied once `OWN_HALF_WAIT` has passed, well inside the pusher's reply
-    /// timeout, and an asked half does not wait at all.
+    /// timeout, and an asked half does not wait at all. "Does not wait" is
+    /// asserted as finishing inside `OWN_HALF_WAIT - OWN_HALF_POLL`: any real
+    /// wait lasts at least that long, whereas a tighter bound on the seal's
+    /// own work fails when parallel tests load the CPU.
     #[tokio::test]
     async fn a_pushed_half_waits_at_most_the_bound_and_an_asked_one_not_at_all() {
         let peer = "peer-own-half-bound";
@@ -1625,7 +1627,9 @@ pub(crate) mod tests {
         let waited = started.elapsed();
         assert!(waited >= OWN_HALF_WAIT - OWN_HALF_POLL, "{waited:?}");
         assert!(
-            waited < OWN_HALF_WAIT + Duration::from_secs(1),
+            // Inside the pusher's reply timeout (see OWN_HALF_WAIT); a
+            // tighter bound only measures the CPU load of parallel tests.
+            waited < Duration::from_millis(requester_idle_timeout_ms()),
             "{waited:?}"
         );
 
@@ -1636,7 +1640,7 @@ pub(crate) mod tests {
                 .unwrap()
         );
         assert!(
-            started.elapsed() < OWN_HALF_WAIT / 2,
+            started.elapsed() < OWN_HALF_WAIT - OWN_HALF_POLL,
             "{:?}",
             started.elapsed()
         );
@@ -1660,7 +1664,7 @@ pub(crate) mod tests {
         .await
         .unwrap();
         assert!(
-            started.elapsed() < OWN_HALF_WAIT / 2,
+            started.elapsed() < OWN_HALF_WAIT - OWN_HALF_POLL,
             "{:?}",
             started.elapsed()
         );
