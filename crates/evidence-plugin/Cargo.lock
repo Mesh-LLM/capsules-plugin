@@ -759,8 +759,9 @@ dependencies = [
 
 [[package]]
 name = "evidencebook"
-version = "0.0.11"
-source = "git+https://github.com/action-state-group/evidencebook?rev=3a3c44a9c1032014f70846c5288af1bc112839f6#3a3c44a9c1032014f70846c5288af1bc112839f6"
+version = "0.0.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "46cb4ced5c50fa1bcb3a99927c93b3ca1711bfcce138d73e472fab6ee571acbd"
 dependencies = [
  "agent-action-capsule",
  "base64 0.22.1",

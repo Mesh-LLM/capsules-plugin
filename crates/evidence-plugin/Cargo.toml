@@ -187,8 +187,9 @@ evidence-request = { version = "=0.4.1", features = ["cll", "receipt", "acceptan
 # agent-action-capsule 0.5's witness verifier. Same checkpointed-local-log
 # and evidence-request lines as above.
 # The node's shelf (`shelf`, evidencebook#254 §7): the chain is one host log
-# on it. The shelf's branch (evidencebook PR #272) until its release.
-evidencebook = { git = "https://github.com/action-state-group/evidencebook", rev = "3a3c44a9c1032014f70846c5288af1bc112839f6", features = ["deal", "shelf"] }
+# on it. 0.0.12 is the first release with it, on checkpointed-local-log 0.4.0.
+# Pinned exactly: the shelf's file is a cross-language contract.
+evidencebook = { version = "=0.0.12", features = ["deal", "shelf"] }
 # Admission's price rule (#105) is decided by capsule-engine's guard with its
 # asg/inference terms pack (capsule-engine#265, `rust/capsule-engine`), the
 # evaluator Muse's Go guard shares vectors with, so the plugin runs no second
