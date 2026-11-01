@@ -1,7 +1,7 @@
 {
   "advertise_evidence_requests": "off",
-  "share_adjudications": "off",
-  "share_exchange_corroboration": "off",
+  "share_adjudications": "deliver_to_subjects",
+  "share_exchange_corroboration": "on",
   "share_history_segments": "counterparties",
   "share_record_at_completion": "counterparty",
   "share_standard_history": "off",

@@ -10,16 +10,18 @@ here is a score, and nothing here ranks anyone.
 share_record_at_completion:  counterparty | off                    # default: counterparty
 share_history_segments:      counterparties | peers | off          # default: counterparties
 share_standard_history:      on | off                              # default: off
-share_exchange_corroboration: on | off                             # default: off
+share_exchange_corroboration: on | off                             # default: on
 advertise_evidence_requests: on | off                              # default: off
-share_adjudications:         deliver_to_subjects | off             # default: off
+share_adjudications:         deliver_to_subjects | off             # default: deliver_to_subjects
 witness:                     [] | [{endpoint, public_key?}, ...]   # default: [] (off)
 ```
 
-With these defaults the only thing a node sends to a peer on its own is its
+With these defaults the only things a node sends to a peer on its own are its
 sealed record of a completed exchange, and only to the other side of that
-exchange (`share_record_at_completion`): it delivers no verdict and advertises
-nothing. Set `off` to send nothing. It answers any node that
+exchange (`share_record_at_completion`), and a referee's verdict to the nodes
+it judges (`share_adjudications`); it advertises nothing. Set each to `off` to
+send nothing. It answers any node that asks whether it holds a half of one
+exchange (`share_exchange_corroboration`), any node that
 asks for its checkpoint list or `history_card/1` (below), and otherwise only
 a counterparty that asks: for one of its records (`share_history_segments`)
 or for the rest of its Standard History (`share_standard_history`). The
@@ -289,7 +291,7 @@ nothing about who this one has exchanged with:
 
 ## Exchange corroboration (`share_exchange_corroboration`)
 
-Off by default. Another node can ask whether this node holds a half of one
+On by default (since #163). Another node can ask whether this node holds a half of one
 exchange, naming the exchange by the SHA-256 of its client nonce
 (`exchange_corroboration/1`). The answer carries each matching half's id,
 role and two digests, never the record or who was on the other side, and it
@@ -321,7 +323,7 @@ this switch's value (below).
 
 ## Verdicts (`share_adjudications`)
 
-Off by default. When it is on (`deliver_to_subjects`) and a referee's verdict
+On by default (`deliver_to_subjects`, since #163; a delivered verdict cannot be recalled). When it is on and a referee's verdict
 about an exchange exists, it is delivered to every node it concerns, and each
 seals its own record citing it. A node holds a
 delivered verdict only when the referee it names signed it with its announced
@@ -395,8 +397,8 @@ With the defaults, the policy's `policy` member is exactly
 ```json
 {
   "advertise_evidence_requests": "off",
-  "share_adjudications": "off",
-  "share_exchange_corroboration": "off",
+  "share_adjudications": "deliver_to_subjects",
+  "share_exchange_corroboration": "on",
   "share_history_segments": "counterparties",
   "share_record_at_completion": "counterparty",
   "share_standard_history": "off",

@@ -211,7 +211,7 @@ exchanges ended; the record itself goes only to the counterparty:
 | What | To whom | Default | To turn it on (or off) |
 | --- | --- | --- | --- |
 | This node's own sealed record of a completed exchange (a push) | the peer in that exchange | **on** | `share_record_at_completion = "off"` |
-| A verdict a referee signed, delivered to the nodes it judges | those nodes | **off** | `share_adjudications = "deliver_to_subjects"` |
+| A verdict a referee signed, delivered to the nodes it judges (a delivered verdict cannot be recalled) | those nodes | **on** | `share_adjudications = "off"` |
 | Asking a referee when two twins of a client-marked pair answered differently. **This sends the twins' request (the prompt's `messages`) and both twins' answers to the referee peer**, which answers the request with its own inference | one eligible peer | **off** | `adjudicate_differing_twins = "on"` |
 | Stopping routing to a peer after N contradictions | (a request to your own host) | **off** | set `stop_routing_after_contradictions`, and `allow_peer_blocks = true` for this plugin in mesh-llm's config |
 | One of this node's records, when a peer asks for it by id | the peer that record names as the other side | on: an answer, never a push | `share_history_segments = "off"` |

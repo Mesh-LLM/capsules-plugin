@@ -150,10 +150,11 @@ pub(crate) fn advertises_evidence_requests_for(raw: Option<&str>) -> bool {
 }
 
 /// Whether `exchange_corroboration/1` goes to a requester that is not this
-/// node's counterparty: only when the operator turned it on. Off by default.
-/// A setting of its own: `share_standard_history` never releases it.
+/// node's counterparty: on by default (unset or empty), off when the operator
+/// turned it off or set a value this plugin does not know. A setting of its
+/// own: `share_standard_history` never releases it.
 pub(crate) fn shares_exchange_corroboration_for(raw: Option<&str>) -> bool {
-    switched_on(raw)
+    normalized(raw).is_none() || switched_on(raw)
 }
 
 /// This process's own env var for `share_exchange_corroboration`.
@@ -206,14 +207,15 @@ pub fn setting_problems() -> Vec<String> {
 /// This process's own env var for `share_adjudications`.
 pub const ENV_ADJUDICATIONS: &str = "CAPSULES_SHARE_ADJUDICATIONS";
 
-/// Deliver a verdict to the nodes it judges: only when the operator set
-/// `share_adjudications` to `deliver_to_subjects`. The default is off.
+/// Deliver a verdict to the nodes it judges: the default (unset or empty), and
+/// whenever the operator set `share_adjudications` to `deliver_to_subjects`;
+/// `off` or an unknown value does not.
 pub fn adjudications_delivered() -> bool {
     adjudications_delivered_for(crate::settings::var(ENV_ADJUDICATIONS).ok().as_deref())
 }
 
 pub(crate) fn adjudications_delivered_for(raw: Option<&str>) -> bool {
-    normalized(raw).as_deref() == Some("deliver_to_subjects")
+    normalized(raw).is_none_or(|v| v == "deliver_to_subjects")
 }
 
 // The console groups, in the order the Configuration page shows them. The
@@ -286,8 +288,8 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 .order(1),
         )
         .setting(
-            config_setting(EXCHANGE_CORROBORATION_KEY, config_enum(["off", "on"]))
-                .default_value(&"off")
+            config_setting(EXCHANGE_CORROBORATION_KEY, config_enum(["on", "off"]))
+                .default_value(&"on")
                 .description(
                     "Tell a stranger whether you hold your half of one exchange, by its nonce. \
                      Ids and digests only, never who was on the other side.",
@@ -299,7 +301,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
         .setting(
             config_setting(ADVERTISE_EVIDENCE_REQUESTS_KEY, config_enum(["off", "on"]))
                 .default_value(&"off")
-                .description("This version advertises nothing; no node reads this yet.")
+                .description("Coming: this version advertises nothing and no node reads this yet, so it stays off.")
                 .label("Advertise evidence requests")
                 .category(SHOW_CATEGORY_ID, SHOW_CATEGORY_LABEL, SHOW_CATEGORY_SUMMARY, 0)
                 .order(3),
@@ -348,10 +350,11 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 .order(7),
         )
         .setting(
-            config_setting(ADJUDICATIONS_KEY, config_enum(["off", "deliver_to_subjects"]))
-                .default_value(&"off")
+            config_setting(ADJUDICATIONS_KEY, config_enum(["deliver_to_subjects", "off"]))
+                .default_value(&"deliver_to_subjects")
                 .description(
-                    "They ack or dispute on their own side. Delivery only, never a standing.",
+                    "They ack or dispute on their own side. Delivery only, never a standing. \
+                     A verdict already delivered cannot be recalled by turning this off.",
                 )
                 .label("Deliver verdicts to the nodes judged")
                 .category(DIFFER_CATEGORY_ID, DIFFER_CATEGORY_LABEL, DIFFER_CATEGORY_SUMMARY, 1)
@@ -612,8 +615,8 @@ mod tests {
             (STANDARD_HISTORY_KEY, Some("\"off\""), v(&["off", "on"])),
             (
                 EXCHANGE_CORROBORATION_KEY,
-                Some("\"off\""),
-                v(&["off", "on"]),
+                Some("\"on\""),
+                v(&["on", "off"]),
             ),
             (
                 ADVERTISE_EVIDENCE_REQUESTS_KEY,
@@ -630,8 +633,8 @@ mod tests {
             (REFEREE_BAR_DAYS_KEY, Some("30"), v(&[])),
             (
                 ADJUDICATIONS_KEY,
-                Some("\"off\""),
-                v(&["off", "deliver_to_subjects"]),
+                Some("\"deliver_to_subjects\""),
+                v(&["deliver_to_subjects", "off"]),
             ),
             (
                 RECORD_AT_COMPLETION_KEY,
@@ -790,7 +793,7 @@ mod tests {
         );
         assert_eq!(
             by_key(EXCHANGE_CORROBORATION_KEY).default_json.as_deref(),
-            Some("\"off\"")
+            Some("\"on\"")
         );
         assert_eq!(
             by_key(ADVERTISE_EVIDENCE_REQUESTS_KEY)
@@ -800,7 +803,7 @@ mod tests {
         );
         assert_eq!(
             by_key(ADJUDICATIONS_KEY).default_json.as_deref(),
-            Some("\"off\"")
+            Some("\"deliver_to_subjects\"")
         );
         assert_eq!(
             by_key(ADJUDICATE_DIFFERING_TWINS_KEY)
@@ -815,7 +818,9 @@ mod tests {
             !switched_on(None),
             "standard history and advertising are off"
         );
-        assert!(!adjudications_delivered_for(None));
+        // Ruled defaults (#163): verdict delivery and corroboration are on.
+        assert!(adjudications_delivered_for(None));
+        assert!(shares_exchange_corroboration_for(None));
         assert!(!crate::referee::request::adjudicate_differing_twins_from(
             None
         ));
@@ -943,10 +948,20 @@ mod tests {
     }
 
     #[test]
-    fn verdict_delivery_is_on_only_for_deliver_to_subjects() {
+    fn verdict_delivery_is_on_unless_turned_off_or_unknown() {
+        assert!(adjudications_delivered_for(None));
+        assert!(adjudications_delivered_for(Some("  ")));
         assert!(adjudications_delivered_for(Some("deliver_to_subjects")));
-        assert!(!adjudications_delivered_for(None));
         assert!(!adjudications_delivered_for(Some("off")));
         assert!(!adjudications_delivered_for(Some("garbage")));
+    }
+
+    #[test]
+    fn exchange_corroboration_is_on_unless_turned_off_or_unknown() {
+        assert!(shares_exchange_corroboration_for(None));
+        assert!(shares_exchange_corroboration_for(Some("")));
+        assert!(shares_exchange_corroboration_for(Some("on")));
+        assert!(!shares_exchange_corroboration_for(Some("off")));
+        assert!(!shares_exchange_corroboration_for(Some("onn")));
     }
 }
