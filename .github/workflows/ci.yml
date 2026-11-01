@@ -43,8 +43,8 @@ jobs:
           - name: macos-arm64
             os: macos-15
     runs-on: ${{ matrix.os }}
-    # About 25 minutes on linux-x86_64 since the shelf (#213): every seal is a
-    # durable SQLite commit (capsules-plugin#226).
+    # linux-x86_64 took 25 minutes on capsules-plugin#227, up from 21 before
+    # the shelf (#213); see capsules-plugin#226.
     timeout-minutes: 40
     defaults:
       run:
