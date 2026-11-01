@@ -316,27 +316,117 @@ async fn ask(
             return (Called::Unreachable, None);
         }
     }
-    use crate::mesh_evidence_bridge::SendError;
-    let reply =
-        match crate::mesh_evidence_bridge::send_evidence_request(context, referee, &request, None)
+    call_referee(
+        context,
+        peer_keys,
+        &request,
+        referee,
+        tier,
+        &RECORD_NOT_FOUND_WAITS,
+    )
+    .await
+}
+
+/// The waits before each re-send of an adjudicate request the referee
+/// refused `referee_record_not_found`, about three seconds in all. Its
+/// plugin seals its record of the re-answer when its host reports the
+/// exchange done, which can be after the re-answer reached this node; since
+/// a served half is sealed with its own checkpoint, that gap is tens of
+/// milliseconds (capsules-plugin#221).
+const RECORD_NOT_FOUND_WAITS: [Duration; 5] = [
+    Duration::from_millis(100),
+    Duration::from_millis(200),
+    Duration::from_millis(400),
+    Duration::from_millis(800),
+    Duration::from_millis(1600),
+];
+
+/// How an adjudicate request reaches a referee and its reply comes back:
+/// the evidence stream, or an in-process referee in tests.
+pub(crate) trait AdjudicateSender {
+    async fn adjudicate(
+        &mut self,
+        referee: &str,
+        request: &Value,
+    ) -> Result<Value, crate::mesh_evidence_bridge::SendError>;
+}
+
+impl AdjudicateSender for PluginContext<'_> {
+    async fn adjudicate(
+        &mut self,
+        referee: &str,
+        request: &Value,
+    ) -> Result<Value, crate::mesh_evidence_bridge::SendError> {
+        crate::mesh_evidence_bridge::send_evidence_request(self, referee, request, None)
             .await
-        {
-            Ok(answered) => answered.answer,
+            .map(|answered| answered.answer)
+    }
+}
+
+/// Send `request` to `referee` and take back its verdict, only when that
+/// referee signed it at `tier`. A `referee_record_not_found` refusal is sent
+/// again after each of `waits` (each send is signed afresh); any other
+/// refusal is final.
+pub(crate) async fn call_referee(
+    sender: &mut impl AdjudicateSender,
+    peer_keys: Option<&str>,
+    request: &Value,
+    referee: &str,
+    tier: u64,
+    waits: &[Duration],
+) -> (Called, Option<Value>) {
+    use crate::mesh_evidence_bridge::SendError;
+    let mut waits = waits.iter();
+    let reply = loop {
+        let reply = match sender.adjudicate(referee, request).await {
+            Ok(reply) => reply,
             // No plugin stream to open: nothing there can sign a verdict.
-            Err(SendError::NotOpened(_)) => return (Called::CannotSign, None),
+            Err(SendError::NotOpened(error)) => {
+                tracing::warn!(referee, %error, "the referee's evidence stream did not open: referee_cannot_sign");
+                return (Called::CannotSign, None);
+            }
             // Never for an adjudicate request, which is not put in the book.
-            Err(SendError::NotRecorded(_)) => return (Called::Unreachable, None),
-            Err(SendError::NoAnswer(_) | SendError::Malformed(_)) => {
-                return (Called::Unreachable, None)
+            Err(
+                error @ (SendError::NotRecorded(_)
+                | SendError::NoAnswer(_)
+                | SendError::Malformed(_)),
+            ) => {
+                tracing::warn!(
+                    referee,
+                    ?error,
+                    "the referee did not answer: referee_unreachable"
+                );
+                return (Called::Unreachable, None);
             }
         };
+        let not_yet_held = reply.get("reason").and_then(Value::as_str)
+            == Some(crate::referee::service::REASON_REFEREE_RECORD_NOT_FOUND);
+        match waits.next() {
+            Some(wait) if not_yet_held => tokio::time::sleep(*wait).await,
+            _ => break reply,
+        }
+    };
     let capsule = reply.get("verdict_capsule").cloned().unwrap_or(Value::Null);
     match crate::referee::hold::verdict_facts(&capsule, peer_keys) {
         Some(facts) if facts.referee_node_id == referee && facts.selection_tier == Some(tier) => {
             (Called::Verdict(facts.verdict), Some(capsule))
         }
         // A refusal, or anything not signed by that referee at that tier.
-        _ => (Called::CannotSign, None),
+        _ => {
+            let reason = reply
+                .get("reason")
+                .and_then(Value::as_str)
+                .unwrap_or("none");
+            let detail = reply.get("detail").and_then(Value::as_str).unwrap_or("");
+            tracing::warn!(
+                referee,
+                tier,
+                reason,
+                detail,
+                "the referee's reply holds no verdict it signed at this tier: referee_cannot_sign"
+            );
+            (Called::CannotSign, None)
+        }
     }
 }
 
@@ -767,6 +857,127 @@ mod tests {
             json!("contradicted:node-b"),
             "a key no host binds reads as unsigned"
         );
+    }
+
+    /// A referee answered in process, through its own door, as its plugin
+    /// answers the evidence stream; it counts the requests it was sent.
+    struct InProcessReferee<'a> {
+        door: crate::referee::service::Referee<'a>,
+        sent: usize,
+    }
+
+    impl AdjudicateSender for InProcessReferee<'_> {
+        async fn adjudicate(
+            &mut self,
+            _referee: &str,
+            request: &Value,
+        ) -> Result<Value, crate::mesh_evidence_bridge::SendError> {
+            self.sent += 1;
+            let body = serde_json::to_vec(request).unwrap();
+            Ok(crate::referee::service::handle_adjudicate_request(&self.door, &body, NOW).unwrap())
+        }
+    }
+
+    /// The live call from the pair this node holds to the verdict it takes
+    /// back, against a referee whose record of its own re-answer is not
+    /// sealed until `late_record` has passed (`None`: it is there from the
+    /// start): `(called, requests sent)`.
+    async fn live_call(
+        late_record: Option<Duration>,
+        waits: &[Duration],
+        change: impl FnOnce(&mut Value),
+    ) -> ((Called, Option<Value>), usize) {
+        let (dir, case) = requester_with_the_pair();
+        let live = assemble(dir.path(), "bracket-1").unwrap();
+        let sent: Value =
+            serde_json::from_str(case["requests"][0]["body"].as_str().unwrap()).unwrap();
+        let answer = &sent["referee_answer"];
+        let mut request =
+            adjudicate_request(&live, 2, &answer["request_body"], &answer["response_body"]);
+        change(&mut request);
+        let referee = CaseNode::new(&case["node"]);
+        let referee_id =
+            crate::peer_keys::peer_id_for_key_in(referee.peer_keys.as_deref(), &referee.key_id())
+                .expect("the referee is named");
+        let ledger = referee.ledger_dir().join("capsules.jsonl");
+        let lands = late_record.map(|after| {
+            let aside = referee.ledger_dir().join("capsules.jsonl.unsealed");
+            std::fs::rename(&ledger, &aside).unwrap();
+            let ledger = ledger.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(after);
+                std::fs::rename(aside, ledger).unwrap();
+            })
+        });
+        let mut sender = InProcessReferee {
+            door: crate::referee::service::Referee {
+                ledger_dir: referee.ledger_dir(),
+                signing_key: &referee.key,
+                peer_keys: referee.peer_keys.as_deref(),
+            },
+            sent: 0,
+        };
+        let called = call_referee(
+            &mut sender,
+            referee.peer_keys.as_deref(),
+            &request,
+            &referee_id,
+            2,
+            waits,
+        )
+        .await;
+        if let Some(lands) = lands {
+            lands.join().unwrap();
+        }
+        (called, sender.sent)
+    }
+
+    /// capsules-plugin#221: the referee's plugin seals its record of the
+    /// re-answer after the re-answer has reached the asker, so the first ask
+    /// is refused `referee_record_not_found`. The asker asks again and takes
+    /// the verdict the referee signed once its record is there.
+    #[tokio::test]
+    async fn a_referee_whose_record_lands_after_the_ask_still_adjudicates() {
+        let ((called, capsule), sent) = live_call(
+            Some(Duration::from_millis(150)),
+            &RECORD_NOT_FOUND_WAITS,
+            |_| {},
+        )
+        .await;
+        assert_eq!(called, Called::Verdict("contradicted:node-b".into()));
+        assert!(capsule.is_some(), "the signed verdict comes back");
+        assert!(sent > 1, "asked again after the refusal, {sent} sent");
+    }
+
+    /// A referee holding its record rules on the first ask.
+    #[tokio::test]
+    async fn a_referee_holding_its_record_is_asked_once() {
+        let ((called, _), sent) = live_call(None, &RECORD_NOT_FOUND_WAITS, |_| {}).await;
+        assert_eq!(called, Called::Verdict("contradicted:node-b".into()));
+        assert_eq!(sent, 1);
+    }
+
+    /// A record that never lands is asked for once more per wait, then the
+    /// call ends `referee_cannot_sign`, as before.
+    #[tokio::test]
+    async fn a_record_that_never_lands_ends_cannot_sign_after_the_waits() {
+        let waits = [Duration::from_millis(1); 2];
+        let ((called, capsule), sent) =
+            live_call(Some(Duration::from_secs(1)), &waits, |_| {}).await;
+        assert_eq!(called, Called::CannotSign);
+        assert!(capsule.is_none());
+        assert_eq!(sent, 3, "the first ask and one per wait");
+    }
+
+    /// Any other refusal is final: the request is not sent again.
+    #[tokio::test]
+    async fn another_refusal_is_not_asked_again() {
+        let ((called, _), sent) = live_call(None, &RECORD_NOT_FOUND_WAITS, |request| {
+            request["halves"][1]["capsule"]["capsule_id"] = json!("0".repeat(64));
+        })
+        .await;
+        assert_eq!(called, Called::CannotSign);
+        assert_eq!(sent, 1);
     }
 
     /// The operator asking again while the exchange handler is deciding the
