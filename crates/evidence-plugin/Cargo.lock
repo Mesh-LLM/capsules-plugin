@@ -234,8 +234,9 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "capsule-emit"
-version = "0.0.9"
-source = "git+https://github.com/action-state-group/capsule-emit?rev=c91e2f7692e61b69d5fa6d63d78f481d506b6a4c#c91e2f7692e61b69d5fa6d63d78f481d506b6a4c"
+version = "0.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88d71d8b6f23b4aaaf2e9835fc4d2557658923df87a8bfae6b98118dfa58333f"
 dependencies = [
  "agent-action-capsule",
  "anyhow",
@@ -258,8 +259,9 @@ dependencies = [
 
 [[package]]
 name = "capsule-emit-artifact"
-version = "0.0.1"
-source = "git+https://github.com/action-state-group/capsule-emit?rev=c91e2f7692e61b69d5fa6d63d78f481d506b6a4c#c91e2f7692e61b69d5fa6d63d78f481d506b6a4c"
+version = "0.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "428349dc897094a230f7a2c9b2c0e32f5052123cfe2b535ec5b6396e397fe72b"
 dependencies = [
  "agent-action-capsule",
  "base64 0.22.1",
@@ -758,7 +760,7 @@ dependencies = [
 [[package]]
 name = "evidencebook"
 version = "0.0.11"
-source = "git+https://github.com/action-state-group/evidencebook?rev=58b81f59de92d81e9dbebb5e8fa9b6039257f907#58b81f59de92d81e9dbebb5e8fa9b6039257f907"
+source = "git+https://github.com/action-state-group/evidencebook?rev=3a3c44a9c1032014f70846c5288af1bc112839f6#3a3c44a9c1032014f70846c5288af1bc112839f6"
 dependencies = [
  "agent-action-capsule",
  "base64 0.22.1",

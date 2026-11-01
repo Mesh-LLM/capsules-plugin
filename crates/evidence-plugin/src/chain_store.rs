@@ -581,7 +581,8 @@ impl ChainStores {
                 originals: artifacts.clone(),
                 now: None,
                 authenticated_indexes: None,
-                correlation_key: None,
+                // A host log carries no book headers to correlate.
+                correlation_members: Vec::new(),
             })
             .map_err(|e| anyhow::anyhow!("shelf {}: {e}", path.display()))?;
             let stores = shelf
