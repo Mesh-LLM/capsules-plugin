@@ -43,7 +43,9 @@ jobs:
           - name: macos-arm64
             os: macos-15
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # About 25 minutes on linux-x86_64 since the shelf (#213): every seal is a
+    # durable SQLite commit (capsules-plugin#226).
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: crates/evidence-plugin
