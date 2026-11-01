@@ -226,8 +226,12 @@ fn read_pending(data_dir: &Path) -> Option<PendingNewHistory> {
 
 pub(crate) fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let tmp = path.with_extension("tmp");
-    fs::write(&tmp, bytes)?;
-    fs::File::open(&tmp)?.sync_all()?;
+    // Written and synced through one handle: Windows syncs (FlushFileBuffers)
+    // only through a handle open for writing.
+    let mut file = fs::File::create(&tmp)?;
+    std::io::Write::write_all(&mut file, bytes)?;
+    file.sync_all()?;
+    drop(file);
     fs::rename(&tmp, path)
 }
 

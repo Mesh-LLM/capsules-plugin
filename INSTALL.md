@@ -573,7 +573,11 @@ To read the sealed log as one record per line, run
 lines `i` to `j` (0-based, padding records included; the whole log by
 default) in the `capsules.jsonl` line format earlier releases wrote, and can
 run while the node runs. It exits 0 on success, 2 for a bad argument or a range
-outside the log, and 1 when the log cannot be read.
+outside the log, and 1 when the log cannot be read. `capsules chain-checkpoints
+[--data-dir <dir>]` prints the log's checkpoints, oldest first, in the
+`checkpoints.jsonl` line format, the same way: it exits 0 (printing nothing
+when there is no checkpoint yet), 2 for a bad argument and 1 when they cannot
+be read.
 
 **A node from an earlier release** kept its log in
 `<data dir>/ledger/capsules.jsonl`, with `signed-statements/`,

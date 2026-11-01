@@ -581,6 +581,9 @@ mod tests {
         let dir = tmp("lock-stale");
         std::fs::write(dir.join(LOCK_FILE), "999999\n").unwrap();
         let _held = lock(&dir).expect("a stale lock file is not a lock");
+        // Windows keeps every other handle from reading a file under an
+        // exclusive lock, so the pid it holds is read only elsewhere.
+        #[cfg(unix)]
         assert_eq!(
             std::fs::read_to_string(dir.join(LOCK_FILE)).unwrap(),
             format!("{}\n", std::process::id())
@@ -765,6 +768,8 @@ mod tests {
         release.join().unwrap();
     }
 
+    // Unix paths: on Windows `/home/op` has no drive, so is not absolute.
+    #[cfg(unix)]
     #[test]
     fn the_directory_is_absolute_whatever_the_working_directory() {
         let root = Path::new("/");

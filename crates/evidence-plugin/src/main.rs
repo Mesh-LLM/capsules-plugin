@@ -1708,6 +1708,12 @@ async fn main() -> anyhow::Result<()> {
         let args: Vec<String> = std::env::args().skip(2).collect();
         std::process::exit(chain_store::cli(&args));
     }
+    // The chain's checkpoints in the `checkpoints.jsonl` line format, read the
+    // same way (`chain_store::checkpoints_cli`).
+    if std::env::args().nth(1).as_deref() == Some("chain-checkpoints") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        std::process::exit(chain_store::checkpoints_cli(&args));
+    }
     // The join quickstart INSTALL.md carries, from the tools' own constants.
     if std::env::args().nth(1).as_deref() == Some("--print-join-quickstart") {
         print!("{}", doctor::quickstart(PLUGIN_ID));

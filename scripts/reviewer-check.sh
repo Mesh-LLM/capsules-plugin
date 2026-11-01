@@ -97,8 +97,18 @@ mesh plugins install --archive "$ARCHIVE" --name "$PLUGIN" --version "$LABEL" > 
   || { fail "plugin install (see $WORK/install.log)"; exit 1; }
 echo "== mesh-llm: $("$MESH" --version 2>/dev/null | head -1)   plugin: $LABEL   HOME: $H"
 DATA=$H/.local/share/$PLUGIN
-RECORDS=$DATA/ledger/capsules.jsonl
 lines() { [ -f "$1" ] && wc -l < "$1" | tr -d ' ' || echo 0; }
+# Records and checkpoints, in either layout: a release with the shelf keeps them
+# on its shelf (ledger/shelf.db), read with the plugin's own chain-lines and
+# chain-checkpoints ($BIN, found below); an earlier one in the flat files.
+records() {
+  if [ -f "$DATA/ledger/shelf.db" ]; then "$BIN" chain-lines --data-dir "$DATA" 2>/dev/null | wc -l | tr -d ' '
+  else lines "$DATA/ledger/capsules.jsonl"; fi
+}
+checkpoint_count() {
+  if [ -f "$DATA/ledger/shelf.db" ]; then "$BIN" chain-checkpoints --data-dir "$DATA" 2>/dev/null | wc -l | tr -d ' '
+  else lines "$DATA/ledger/checkpoints.jsonl"; fi
+}
 
 port() { echo $(( 20000 + RANDOM % 20000 )); }
 API=$(port); CONSOLE=$(port)
@@ -224,9 +234,9 @@ outbound() { # outbound FROM_TIME TO_TIME (seconds since the epoch, the trace's 
   awk -v from="$1" -v to="$2" '$1 + 0 >= from + 0 && $1 + 0 <= to + 0' "${files[@]}" | grep -E 'sin6?_port=htons\(53\)' | grep -q . && echo "a name lookup (port 53)"
   return 0
 }
-r0=$(lines "$RECORDS"); c0=$(lines "$DATA/ledger/checkpoints.jsonl"); t0=$(date +%s.%6N)
+r0=$(records); c0=$(checkpoint_count); t0=$(date +%s.%6N)
 sleep "$IDLE_SECONDS"
-r1=$(lines "$RECORDS"); c1=$(lines "$DATA/ledger/checkpoints.jsonl"); t1=$(date +%s.%6N)
+r1=$(records); c1=$(checkpoint_count); t1=$(date +%s.%6N)
 if [ -z "$PID" ]; then notchecked "3. idle network (no plugin process)"
 elif [ "$TRACE" != yes ]; then notchecked "3. idle network (needs Linux with strace: every connect/sendto is traced)"
 else
@@ -248,21 +258,21 @@ code=$(curl -s -o "$WORK/response.json" -w '%{http_code}' -H 'content-type: appl
   -d "$(jq -cn --arg m "$MODEL_ID" --arg t "$TOKEN" '{model: $m, messages: [{role: "user", content: ("Repeat this word: " + $t)}], max_tokens: 8}')" \
   "http://127.0.0.1:$API/v1/chat/completions")
 r2=$r1
-for _ in $(seq 30); do r2=$(lines "$RECORDS"); [ "$r2" -gt "$r1" ] && break; sleep 1; done
-sleep 2; r2=$(lines "$RECORDS")
+for _ in $(seq 30); do r2=$(records); [ "$r2" -gt "$r1" ] && break; sleep 1; done
+sleep 2; r2=$(records)
 info "request to $MODEL_ID: HTTP $code"
 if [ "$code" = 200 ] && [ $((r2 - r1)) = 1 ]; then pass "one request sealed exactly one record ($r1 -> $r2)"
 else fail "one request: HTTP $code, records $r1 -> $r2 (expected exactly one more)"; fi
 ANSWER=$(jq -r '.choices[0].message.content // ""' "$WORK/response.json" 2>/dev/null)
 if [ "$RUNNING" = no ]; then notchecked "4. stored text (the plugin never ran)"
 elif [ "$code" != 200 ]; then notchecked "4. stored prompt (the request failed: HTTP $code)"
-elif [ ! -s "$RECORDS" ]; then notchecked "4. stored prompt (no record under $DATA to look in)"
+elif [ "$(records)" = 0 ]; then notchecked "4. stored prompt (no record under $DATA to look in)"
 elif grep -r -q -F "$TOKEN" "$DATA"; then fail "the prompt text is stored under $DATA"
 else pass "the prompt text is not stored anywhere under the plugin's data directory"; fi
 if [ "$RUNNING" = no ]; then :
 elif [ "$code" != 200 ] || [ -z "$ANSWER" ] || [ "${#ANSWER}" -lt 8 ]; then
   notchecked "4. stored answer (no answer of 8 or more characters to look for)"
-elif [ ! -s "$RECORDS" ]; then notchecked "4. stored answer (no record under $DATA to look in)"
+elif [ "$(records)" = 0 ]; then notchecked "4. stored answer (no record under $DATA to look in)"
 # The answer as written, and as it would sit inside a JSON string (quotes and backslashes escaped).
 elif grep -r -q -F "$ANSWER" "$DATA" || grep -r -q -F "$(jq -cn --arg a "$ANSWER" '$a' | sed 's/^"//; s/"$//')" "$DATA"; then
   fail "the answer text is stored under $DATA"

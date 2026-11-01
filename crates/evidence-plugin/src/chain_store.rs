@@ -1086,6 +1086,50 @@ pub fn cli(args: &[String]) -> i32 {
     }
 }
 
+/// `capsules chain-checkpoints [--data-dir DIR]`: write the chain's
+/// checkpoints to stdout, oldest first, one per line, in today's
+/// `checkpoints.jsonl` line format (each with its `checkpoint_cose` and the
+/// witness receipts held for it). Reads the shelf without its writer lock, so
+/// it runs beside a running node. Exit 0 on success (no checkpoint writes
+/// nothing), 2 for a usage error, 1 when the checkpoints cannot be read.
+pub fn checkpoints_cli(args: &[String]) -> i32 {
+    const USAGE: &str = "usage: capsules chain-checkpoints [--data-dir DIR]";
+    let data_dir = match args {
+        [] => crate::data_dir::data_dir(),
+        [flag, dir] if flag == "--data-dir" && !dir.is_empty() => Ok(PathBuf::from(dir)),
+        _ => {
+            eprintln!("chain-checkpoints: {USAGE}");
+            return 2;
+        }
+    };
+    let data_dir = match data_dir {
+        Ok(dir) => dir,
+        Err(e) => {
+            eprintln!("chain-checkpoints: {e:#}");
+            return 1;
+        }
+    };
+    let ledger_dir = data_dir.join("ledger");
+    match checkpoints_text(&ledger_dir) {
+        Ok(text) => {
+            use std::io::Write;
+            let mut out = io::stdout().lock();
+            if out
+                .write_all(text.as_deref().unwrap_or_default())
+                .and_then(|()| out.flush())
+                .is_err()
+            {
+                return 1;
+            }
+            0
+        }
+        Err(e) => {
+            eprintln!("chain-checkpoints: {}: {e}", ledger_dir.display());
+            1
+        }
+    }
+}
+
 /// The inclusive range `--from`/`--to` select from a chain of `count` lines:
 /// `None` for an empty chain asked for everything.
 fn select(count: u64, from: Option<u64>, to: Option<u64>) -> Result<Option<(u64, u64)>, String> {

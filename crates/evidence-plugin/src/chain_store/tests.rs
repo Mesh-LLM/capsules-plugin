@@ -1144,3 +1144,30 @@ fn a_history_row_that_failed_is_added_before_the_next_commit() {
     drop(state);
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// `capsules chain-checkpoints`: 0 on a node on the shelf, 2 for a bad
+/// argument, 1 when there is no data directory to read.
+#[test]
+fn chain_checkpoints_exits_as_documented() {
+    let dir = temp_dir("checkpoints-cli");
+    {
+        let state = CapsuleState::open(&dir, "node-under-test").unwrap();
+        seal(&state, 0);
+        cut(&state);
+    }
+    let arg = |s: &str| s.to_string();
+    assert_eq!(
+        checkpoints_cli(&[arg("--data-dir"), dir.display().to_string()]),
+        0
+    );
+    assert_eq!(checkpoints_cli(&[arg("--from"), arg("1")]), 2);
+    assert_eq!(checkpoints_cli(&[arg("--data-dir")]), 2);
+    let missing = dir.join("no-such-node");
+    fs::create_dir_all(missing.join("ledger")).unwrap();
+    fs::write(missing.join("ledger").join(SHELF_FILE), b"not a database").unwrap();
+    assert_eq!(
+        checkpoints_cli(&[arg("--data-dir"), missing.display().to_string()]),
+        1
+    );
+    let _ = fs::remove_dir_all(&dir);
+}

@@ -41,6 +41,10 @@ token=
 
 node_home() { echo "$out/nodes/$1"; }
 plugin_data() { echo "$(node_home "$1")/.local/share/capsules"; }
+# A node's chain and its checkpoints, in the capsules.jsonl and
+# checkpoints.jsonl line formats, read from its shelf while it runs.
+chain() { "$plugin" chain-lines --data-dir "$(plugin_data "$1")" 2>/dev/null; }
+checkpoints() { "$plugin" chain-checkpoints --data-dir "$(plugin_data "$1")" 2>/dev/null; }
 
 # The token lets anyone join the mesh while it runs; it never reaches a log
 # anyone reads. Matched by value, wherever it appears.
@@ -131,10 +135,7 @@ wait_for() {
 status_field() { curl -fsS "http://127.0.0.1:$1/api/status" | jq -er "$2"; }
 lists_model() { curl -fsS "http://127.0.0.1:$1/v1/models" | jq -e --arg m "$MODEL_NAME" 'any(.data[]; .id == $m)'; }
 halves() {
-  local file
-  file=$(plugin_data "$1")/ledger/capsules.jsonl
-  [ -f "$file" ] || { echo 0; return; }
-  jq -c --arg r "$2" 'select(.model_attestation.compute_attestation["x-mesh-poc-v1"].role? == $r)' "$file" | wc -l
+  chain "$1" | jq -c --arg r "$2" 'select(.model_attestation.compute_attestation["x-mesh-poc-v1"].role? == $r)' | wc -l
 }
 has_halves() { [ "$(halves "$1" "$2")" -ge "$EXCHANGES" ]; }
 # setting NODE LINE: add a line to the node's [plugin.settings] (the last table).
@@ -265,7 +266,7 @@ wait_for 120 "the requester holds the provider's record of each exchange" holds_
 # --- node to node: the requester asks the provider for its history card -----
 # Answered by evidencebook's builder on the provider (evidencebook#35) and
 # checked on the requester under the provider's announced key.
-provider_checkpointed() { [ -s "$(plugin_data provider)/ledger/checkpoints.jsonl" ]; }
+provider_checkpointed() { [ -n "$(checkpoints provider)" ]; }
 wait_for 120 "the provider has cut a checkpoint" provider_checkpointed
 # The requester holds the provider's commitment first, so its ask records the
 # policy a refusal would be checked against.
@@ -295,7 +296,7 @@ wait_for 60 "the provider served its history card, verified under its key" histo
 # on a period boundary (KIND boundary), or its newest checkpoint (KIND newest),
 # and its time.
 checkpoint_pin() {
-  python3 -I - "$(plugin_data provider)/ledger/checkpoints.jsonl" "$1" "$E2E_PERIOD_S" <<'PY'
+  python3 -I - <(checkpoints provider) "$1" "$E2E_PERIOD_S" <<'PY'
 import calendar, hashlib, json, sys, time
 path, kind, period = sys.argv[1], sys.argv[2], int(sys.argv[3])
 pin = None
@@ -367,7 +368,7 @@ PY
 # --- the History page of each node, once it has checkpoints ---------------
 # The requester shares only its card; the provider, which shares Standard
 # History and now has a checkpoint on a period boundary, its Service History.
-requester_checkpointed() { [ -s "$(plugin_data requester)/ledger/checkpoints.jsonl" ]; }
+requester_checkpointed() { [ -n "$(checkpoints requester)" ]; }
 wait_for 120 "the requester has cut a checkpoint" requester_checkpointed
 wait_for 30 "the requester's history-page route serves its card" history_page_answered "$REQUESTER_CONSOLE" requester
 wait_for 30 "the provider's history-page route serves its history" history_page_answered "$PROVIDER_CONSOLE" provider
@@ -403,10 +404,12 @@ tool "$PROVIDER_CONSOLE" deliver_adjudication "$(jq -cn --arg p "$requester_id" 
   --slurpfile v "$out/verdict.json" '{peer_id: $p, verdict_capsule: $v[0].verdict_capsule}')" > "$out/delivered.json"
 jq -e '.status == "received"' "$out/delivered.json" > /dev/null \
   || { echo "the requester did not hold the verdict:" >&2; cat "$out/delivered.json" >&2; exit 1; }
-sealed() { grep -q '"adjudication_received"' "$(plugin_data requester)/ledger/capsules.jsonl"; }
+# grep -c reads all of it: a grep -q that stops early would fail chain-lines'
+# write, and pipefail would read that as no match.
+sealed() { [ "$(chain requester | grep -c '"adjudication_received"')" -gt 0 ]; }
 wait_for 30 "the requester sealed its adjudication_received record" sealed
 
-absent() { grep -q '"recorded_absence"' "$(plugin_data requester)/ledger/capsules.jsonl"; }
+absent() { [ "$(chain requester | grep -c '"recorded_absence"')" -gt 0 ]; }
 wait_for 180 "the requester sealed the absence of its unanswered ask" absent
 
 # --- join again after the first exchange: now it is complete ----------------
