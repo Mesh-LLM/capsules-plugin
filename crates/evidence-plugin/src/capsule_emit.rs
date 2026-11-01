@@ -615,7 +615,7 @@ impl CapsuleState {
             node_id: node_id.into(),
             sequence_counters: Mutex::new(sequence_counters),
             learned_self_node_id: Mutex::new(learned_self_node_id),
-            settlement_legs: crate::settlement_legs::Legs::default(),
+            settlement_legs: crate::settlement_legs::Legs::open(data_dir),
             deals,
             observed_not_sealed: std::sync::atomic::AtomicU64::new(0),
             torn_write_cut_at: report.truncated_torn_write_at,

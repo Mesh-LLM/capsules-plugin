@@ -124,7 +124,7 @@ impl Role {
 /// nullable ones -- `deserialize_with = "Option::deserialize"` turns off
 /// serde's missing-`Option`-means-`None` default, so an absent key is an
 /// error while an explicit `null` is `None`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct PaymentLifecycleEvent {
     pub exchange_id: String,
     pub event_ref: String,

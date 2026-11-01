@@ -16,7 +16,8 @@
 //! so an older receiver is not sent the bare leg on every start. A push the
 //! receiver refused records nothing and is retried at the next start. Every own terms leg with none is due: one pushed bare
 //! by a release before the fix, or one whose push failed and expired from the
-//! in-memory retry queue ([`crate::settlement_legs`]).
+//! retry queue ([`crate::settlement_legs`]), or was in flight when the node
+//! stopped.
 //!
 //! **Which peer.** A terms leg names no peer, so it is read from what this
 //! node sealed: the leg's payment hash, the payer settlement record of that

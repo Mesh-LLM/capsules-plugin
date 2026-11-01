@@ -45,16 +45,22 @@
 //! payee observation waiting for its terms leg, this node's invoices) is held
 //! in memory, bounded by count (at most [`MAX_HELD`] entries per kind, oldest
 //! dropped first) and by time (an entry older than [`MAX_AGE`] is dropped,
-//! with a log line, checked on each event), and lost on restart. A push that
+//! with a log line, checked on each event). It is kept in `settlement_legs.json`
+//! in the plugin data dir, rewritten after each event and loaded on start, so
+//! a restart loses nothing it would not have lost by waiting; the file is
+//! node-local and never served. Entry ages are wall-clock, so they carry across
+//! a restart. A push that
 //! fails is queued again and retried with the next settlement event while it
 //! is held. A leg that cannot be sealed is missing evidence, never a failed
 //! exchange.
 
 use std::collections::{HashMap, VecDeque};
+use std::path::PathBuf;
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use capsule_emit_lib::settlement::{amount, build_leg};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use crate::capsule_emit::{CapsuleState, EmittedCapsule};
@@ -76,10 +82,21 @@ pub struct Push {
     hash: String,
 }
 
+/// The state file's name in the plugin data dir.
+const STATE_FILE: &str = "settlement_legs.json";
+
+/// Seconds since the Unix epoch: wall-clock, so an entry's age survives a
+/// restart.
+fn epoch_secs() -> u64 {
+    u64::try_from(chrono::Utc::now().timestamp()).unwrap_or(0)
+}
+
 /// A map that keeps at most [`MAX_HELD`] entries, dropping the oldest, each
 /// stamped with when it was inserted (for [`MAX_AGE`]).
+#[derive(Serialize, Deserialize)]
+#[serde(bound(serialize = "V: Serialize", deserialize = "V: Deserialize<'de>"))]
 struct Bounded<V> {
-    map: HashMap<String, (Instant, V)>,
+    map: HashMap<String, (u64, V)>,
     order: VecDeque<String>,
 }
 
@@ -96,7 +113,7 @@ impl<V> Bounded<V> {
     fn insert(&mut self, key: String, value: V) {
         if self
             .map
-            .insert(key.clone(), (Instant::now(), value))
+            .insert(key.clone(), (epoch_secs(), value))
             .is_none()
         {
             self.order.push_back(key);
@@ -119,7 +136,7 @@ impl<V> Bounded<V> {
         Some(value)
     }
     /// Drop the entries inserted before `cutoff`; returns how many.
-    fn expire(&mut self, cutoff: Instant) -> usize {
+    fn expire(&mut self, cutoff: u64) -> usize {
         let before = self.map.len();
         self.map.retain(|_, (at, _)| *at >= cutoff);
         let map = &self.map;
@@ -133,7 +150,7 @@ impl<V> Bounded<V> {
 }
 
 /// A terms leg this node (as payer) sealed.
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 struct OwnTerms {
     capsule: Value,
     capsule_id: String,
@@ -142,7 +159,8 @@ struct OwnTerms {
     final_invoice: bool,
 }
 
-#[derive(Default)]
+#[derive(Default, Serialize, Deserialize)]
+#[serde(default)]
 struct Inner {
     /// Payer: its terms legs, by payment hash.
     own_terms: Bounded<OwnTerms>,
@@ -191,6 +209,10 @@ struct Delivered {
 #[derive(Default)]
 pub struct Legs {
     inner: Mutex<Inner>,
+    /// Where `inner` is kept; `None` keeps it in memory only. The mutex
+    /// serializes writes and each snapshots `inner` under it, so a later write
+    /// never leaves an older state behind.
+    file: Option<Mutex<PathBuf>>,
 }
 
 fn msat(value: u64) -> Value {
@@ -256,6 +278,53 @@ fn seal_with(
 }
 
 impl Legs {
+    /// The legs kept in `data_dir`'s state file. An unreadable file is logged
+    /// and held as empty, like a restart with nothing held; entries older than
+    /// [`MAX_AGE`] are dropped.
+    pub fn open(data_dir: &std::path::Path) -> Self {
+        let path = data_dir.join(STATE_FILE);
+        let inner = match std::fs::read(&path) {
+            Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|error| {
+                tracing::warn!(%error, "settlement legs file unreadable; holding none");
+                Inner::default()
+            }),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Inner::default(),
+            Err(error) => {
+                tracing::warn!(%error, "settlement legs file not read; holding none");
+                Inner::default()
+            }
+        };
+        let legs = Self {
+            inner: Mutex::new(inner),
+            file: Some(Mutex::new(path)),
+        };
+        legs.expire(epoch_secs());
+        legs
+    }
+
+    /// Write what is held. Best-effort: a failed write is logged and the
+    /// in-memory state carries on, as a restart would have lost it anyway.
+    fn persist(&self) {
+        let Some(file) = &self.file else {
+            return;
+        };
+        let path = file
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let bytes = match serde_json::to_vec(&*self.inner()) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                tracing::warn!(%error, "settlement legs not serialized");
+                return;
+            }
+        };
+        let tmp = path.with_extension("json.tmp");
+        if let Err(error) = std::fs::write(&tmp, bytes).and_then(|()| std::fs::rename(&tmp, &*path))
+        {
+            tracing::warn!(%error, "settlement legs not saved");
+        }
+    }
+
     fn inner(&self) -> std::sync::MutexGuard<'_, Inner> {
         self.inner
             .lock()
@@ -264,10 +333,8 @@ impl Legs {
 
     /// Drop every entry held longer than [`MAX_AGE`] as of `now`, with one log
     /// line per kind that lost entries. Run on each event.
-    fn expire(&self, now: Instant) {
-        let Some(cutoff) = now.checked_sub(MAX_AGE) else {
-            return;
-        };
+    fn expire(&self, now: u64) {
+        let cutoff = now.saturating_sub(MAX_AGE.as_secs());
         let mut inner = self.inner();
         let dropped = [
             ("terms legs", inner.own_terms.expire(cutoff)),
@@ -303,7 +370,17 @@ impl Legs {
         capsules: &CapsuleState,
         event: &PaymentLifecycleEvent,
     ) -> Vec<Push> {
-        self.expire(Instant::now());
+        let pushes = self.handle_lifecycle(capsules, event);
+        self.persist();
+        pushes
+    }
+
+    fn handle_lifecycle(
+        &self,
+        capsules: &CapsuleState,
+        event: &PaymentLifecycleEvent,
+    ) -> Vec<Push> {
+        self.expire(epoch_secs());
         let role = event.role.unwrap_or(Role::Payer);
         if role == Role::Payer && event.phase == Phase::FinalAccounted {
             self.payer_accounted(capsules, &event.exchange_id, event.amount_msat);
@@ -526,6 +603,7 @@ impl Legs {
         self.inner()
             .citation
             .insert(exchange_id.to_string(), decided.clone());
+        self.persist();
         decided
     }
 
@@ -550,6 +628,7 @@ impl Legs {
         self.inner()
             .served_citation
             .insert(exchange_id.to_string(), decided.clone());
+        self.persist();
         decided
     }
 
@@ -568,7 +647,19 @@ impl Legs {
         peer: Option<&str>,
         response_digest: Option<&str>,
     ) -> Vec<Push> {
-        self.expire(Instant::now());
+        let pushes = self.handle_exchange(capsules, exchange_id, peer, response_digest);
+        self.persist();
+        pushes
+    }
+
+    fn handle_exchange(
+        &self,
+        capsules: &CapsuleState,
+        exchange_id: &str,
+        peer: Option<&str>,
+        response_digest: Option<&str>,
+    ) -> Vec<Push> {
+        self.expire(epoch_secs());
         let (pushes, delivered) = {
             let mut inner = self.inner();
             if let Some(peer) = peer {
@@ -591,19 +682,23 @@ impl Legs {
     /// The terms legs not yet pushed whose serving peer is known: retried
     /// after a push failed or was skipped.
     pub fn retry(&self) -> Vec<Push> {
-        self.expire(Instant::now());
-        let mut inner = self.inner();
-        let ready: Vec<String> = inner
-            .unpushed
-            .order
-            .iter()
-            .filter(|ex| inner.peer.contains(ex))
-            .cloned()
-            .collect();
-        ready
-            .iter()
-            .flat_map(|ex| Self::take_ready(&mut inner, ex))
-            .collect()
+        self.expire(epoch_secs());
+        let pushes = {
+            let mut inner = self.inner();
+            let ready: Vec<String> = inner
+                .unpushed
+                .order
+                .iter()
+                .filter(|ex| inner.peer.contains(ex))
+                .cloned()
+                .collect();
+            ready
+                .iter()
+                .flat_map(|ex| Self::take_ready(&mut inner, ex))
+                .collect()
+        };
+        self.persist();
+        pushes
     }
 
     fn take_ready(inner: &mut Inner, exchange_id: &str) -> Vec<Push> {
@@ -627,15 +722,18 @@ impl Legs {
 
     /// A push that failed or was skipped: queue its terms leg again.
     pub fn requeue(&self, push: &Push) {
-        let mut inner = self.inner();
-        let mut waiting = inner.unpushed.remove(&push.exchange_id).unwrap_or_default();
-        if !waiting.contains(&push.hash) {
-            waiting.push(push.hash.clone());
+        {
+            let mut inner = self.inner();
+            let mut waiting = inner.unpushed.remove(&push.exchange_id).unwrap_or_default();
+            if !waiting.contains(&push.hash) {
+                waiting.push(push.hash.clone());
+            }
+            inner.unpushed.insert(push.exchange_id.clone(), waiting);
+            inner
+                .peer
+                .insert(push.exchange_id.clone(), push.peer.clone());
         }
-        inner.unpushed.insert(push.exchange_id.clone(), waiting);
-        inner
-            .peer
-            .insert(push.exchange_id.clone(), push.peer.clone());
+        self.persist();
     }
 
     /// Payer: the host accounted the exchange's bill (`final_accounted`), so
@@ -728,6 +826,11 @@ impl Legs {
     /// one of this node's own invoices, at that invoice's amount, and no
     /// terms leg is held for that invoice yet. A waiting payee leg is sealed.
     pub fn on_received(&self, capsules: &CapsuleState, capsule: &Value) {
+        self.handle_received(capsules, capsule);
+        self.persist();
+    }
+
+    fn handle_received(&self, capsules: &CapsuleState, capsule: &Value) {
         let Some(member) = capsule.get("settlement") else {
             return;
         };
@@ -1363,14 +1466,133 @@ pub(crate) mod tests {
             pair.payer.settlement_legs(),
             pair.provider.settlement_legs(),
         );
-        payer.expire(Instant::now());
+        payer.expire(epoch_secs());
         assert_ne!(payer.held(), [0; 12], "fresh entries stay");
-        let later = Instant::now() + MAX_AGE + Duration::from_secs(1);
+        let later = epoch_secs() + MAX_AGE.as_secs() + 1;
         payer.expire(later);
         provider.expire(later);
         assert_eq!(payer.held(), [0; 12]);
         assert_eq!(provider.held(), [0; 12]);
         assert!(payer.retry().is_empty());
+    }
+
+    #[test]
+    fn what_the_payer_holds_survives_a_restart() {
+        let (a, b) = dirs();
+        {
+            let pair = Pair::open(a.path(), b.path());
+            pair.payer_event(Phase::InputInvoiceIssued, 0, INPUT, &[]);
+            assert_eq!(kinds(&legs_of(a.path())), ["terms"]);
+        }
+        // The restart: a new state over the same data dir.
+        let pair = Pair::open(a.path(), b.path());
+        assert_ne!(pair.payer.settlement_legs().held(), [0; 12]);
+        pair.payer_event(Phase::InputSettlementObserved, 0, INPUT, &[("fee_msat", 0)]);
+        assert_eq!(kinds(&legs_of(a.path())), ["terms", "payer_observed"]);
+    }
+
+    /// A deal closed open (the exchange ended before the wallet reported) takes
+    /// its payment legs after a restart and completes (#169's later round).
+    #[test]
+    fn a_deal_closed_open_completes_after_a_restart() {
+        let (a, b) = dirs();
+        {
+            let pair = Pair::open(a.path(), b.path());
+            for (phase, seg, hash) in [
+                (Phase::InputInvoiceIssued, 0, INPUT),
+                (Phase::OutputInvoiceIssued, 1, OUTPUT),
+            ] {
+                pair.payer_event(phase, seg, hash, &[]);
+            }
+            let sealed = crate::deal_flow::SealedExchange {
+                capsule_id: &"e".repeat(64),
+                peer: PROVIDER_PEER,
+                request_digest: &"d".repeat(64),
+                model: "model-x",
+            };
+            pair.payer
+                .deals()
+                .on_exchange(&pair.payer, "ex", &sealed, unix_now());
+            pair.payer_accounted();
+            pair.payer.settlement_legs().on_exchange(
+                &pair.payer,
+                "ex",
+                Some(PROVIDER_PEER),
+                Some(RESPONSE),
+            );
+        }
+        let pair = Pair::open(a.path(), b.path());
+        for (phase, seg, hash) in [
+            (Phase::InputSettlementObserved, 0, INPUT),
+            (Phase::OutputSettlementObserved, 1, OUTPUT),
+        ] {
+            pair.payer_event(phase, seg, hash, &[("fee_msat", 0)]);
+        }
+        let sealed_legs = legs_of(a.path());
+        let kinds_sealed = kinds(&sealed_legs);
+        assert_eq!(
+            kinds_sealed
+                .iter()
+                .filter(|k| **k == "payer_observed")
+                .count(),
+            2,
+            "{kinds_sealed:?}"
+        );
+        let journal = std::fs::read_to_string(a.path().join("ledger/deal-payloads.jsonl")).unwrap();
+        let outcome = journal
+            .lines()
+            .map(|l| serde_json::from_str::<Value>(l).unwrap())
+            .rfind(|l| l["record_type"] == "outcome")
+            .expect("an outcome");
+        assert_eq!(outcome["payload"]["body"]["outcome"], "completed");
+    }
+
+    #[test]
+    fn what_the_provider_holds_survives_a_restart() {
+        let (a, b) = dirs();
+        let terms = {
+            let pair = Pair::open(a.path(), b.path());
+            let pushes = pair.payer_event(Phase::InputInvoiceIssued, 0, INPUT, &[]);
+            assert!(pushes.is_empty());
+            pair.provider_event(Phase::InputInvoiceIssued, 0, INPUT, &[]);
+            // The wallet reports before the terms leg arrives: it waits.
+            pair.provider_event(Phase::InputSettlementObserved, 0, INPUT, WALLET);
+            assert!(legs_of(b.path()).is_empty());
+            pair.payer
+                .settlement_legs()
+                .on_exchange(&pair.payer, "ex", Some(PROVIDER_PEER), None)
+        };
+        let pair = Pair::open(a.path(), b.path());
+        pair.deliver(&terms);
+        assert_eq!(kinds(&legs_of(b.path())), ["payee_observed"]);
+    }
+
+    #[test]
+    fn an_unreadable_state_file_holds_nothing() {
+        let (a, _b) = dirs();
+        std::fs::write(a.path().join(STATE_FILE), b"{ not json").unwrap();
+        let state = CapsuleState::open(a.path(), "payer-node").unwrap();
+        assert_eq!(state.settlement_legs().held(), [0; 12]);
+    }
+
+    #[test]
+    fn entries_older_than_the_time_bound_are_dropped_on_start() {
+        let (a, b) = dirs();
+        {
+            let pair = Pair::open(a.path(), b.path());
+            pair.payer_event(Phase::InputInvoiceIssued, 0, INPUT, &[]);
+        }
+        let path = a.path().join(STATE_FILE);
+        let mut state: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let old = epoch_secs() - MAX_AGE.as_secs() - 1;
+        for kind in state.as_object_mut().unwrap().values_mut() {
+            for (_, entry) in kind["map"].as_object_mut().unwrap() {
+                entry[0] = json!(old);
+            }
+        }
+        std::fs::write(&path, serde_json::to_vec(&state).unwrap()).unwrap();
+        let pair = Pair::open(a.path(), b.path());
+        assert_eq!(pair.payer.settlement_legs().held(), [0; 12]);
     }
 
     #[test]
