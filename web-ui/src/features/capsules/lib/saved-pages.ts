@@ -1,4 +1,5 @@
-// The pages the Exchanges tab saves for an outside party: one .html file each,
+// The pages the Exchanges tab saves for an outside party (the History and
+// Settlement pages, and each exchange's receipt page): one .html file each,
 // opened with no account, no server and no network (Mesh-LLM/capsules-plugin#96,
 // Steven's 10-29 ruling).
 //
@@ -6,9 +7,11 @@
 // served (`#mesh-bundle`), so a verifier can take the bytes out unchanged: the
 // page's "Save the JSON" link does it, and so does reading the base64 by hand.
 // The page checks its own bundle when it opens, with the same code the tests
-// run (`history-verify.ts`, inlined), and shows its content only from a bundle
-// that checked. Whatever the page could not check, it lists as not checked.
+// run (`history-verify.ts` or `receipt-page-verify.ts`, inlined), and shows
+// its content only from a bundle that checked. Whatever the page could not
+// check, it lists as not checked.
 import verifierSource from '@/features/capsules/lib/history-verify.ts?iife'
+import receiptVerifierSource from '@/features/capsules/lib/receipt-page-verify.ts?iife'
 
 /** The id of the script that holds the bundle, base64 of the served bytes. */
 export const BUNDLE_ELEMENT_ID = 'mesh-bundle'
@@ -74,6 +77,19 @@ const RUNTIME = `
       var ct=el('table');var ch=el('tr');['From','To','Count'].forEach(function(x){ch.appendChild(el('th',null,x))});ct.appendChild(ch);
       verdict.counts.forEach(function(p){p.cells.forEach(function(c){var r=el('tr');[p.from,p.to,c.what+': '+c.value].forEach(function(x){r.appendChild(el('td',null,x))});ct.appendChild(r)})});
       out.appendChild(ct)}}
+  if(kind==='receipt'){
+    CapsulesSavedPage.receiptPageLines(text).then(function(r){
+      r.lines.forEach(function(line,i){out.appendChild(el('p',i===0?r.tone:'muted',line))})},
+      function(){out.appendChild(el('p','bad','This page could not check its receipt, so it shows none of it.'))});
+    return}
+  if(kind==='receipt-note'){
+    var note;try{note=JSON.parse(text)}catch(e){note=null}
+    if(note&&note.source==='dashboard'&&(note.case==='no_record'||note.case==='no_receipt_yet')&&typeof note.why==='string'){
+      out.appendChild(el('p','warn',note.case==='no_record'?'Receipt: no record':'No receipt yet'));
+      out.appendChild(el('p',null,'Its reason: '+note.why));
+      out.appendChild(el('p','muted','This page holds no evidence from the node.'))}
+    else out.appendChild(el('p','bad','This page could not read its own note, so it shows nothing.'));
+    return}
   if(kind==='settlement-refusal'){
     var doc;try{doc=JSON.parse(text)}catch(e){doc=null}
     if(doc&&doc.source==='dashboard'&&doc.reason==='no_terms_pack'&&doc.words===${JSON.stringify(SETTLEMENT_REFUSAL_WORDS)}){
@@ -87,7 +103,7 @@ const RUNTIME = `
 
 type Shell = {
   title: string
-  kind: 'history' | 'settlement-refusal'
+  kind: 'history' | 'settlement-refusal' | 'receipt' | 'receipt-note'
   intro: string
   bundleText: string
   jsonName: string
@@ -95,7 +111,17 @@ type Shell = {
   inside: string
 }
 
+/** The checker a page inlines: the one for the bundle it carries; a note
+ *  carries no evidence and needs none. */
+function verifierFor(kind: Shell['kind']): string {
+  if (kind === 'history') return verifierSource
+  if (kind === 'receipt') return receiptVerifierSource
+  return ''
+}
+
 function shell({ title, kind, intro, bundleText, jsonName, inside }: Shell): string {
+  const evidence = kind === 'history' || kind === 'receipt'
+  const verifier = verifierFor(kind)
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -109,12 +135,12 @@ function shell({ title, kind, intro, bundleText, jsonName, inside }: Shell): str
 <h1>${escapeHtml(title)}</h1>
 <p class="muted">${escapeHtml(intro)}</p>
 <div id="result"></div>
-<h2>${kind === 'history' ? 'The file inside' : 'The note inside'}</h2>
+<h2>${evidence ? 'The file inside' : 'The note inside'}</h2>
 <p class="muted">${escapeHtml(inside)}</p>
-<p><button id="save-json" type="button">${kind === 'history' ? 'Save the JSON' : 'Save the note'}</button> <code>${escapeHtml(jsonName)}</code></p>
+<p><button id="save-json" type="button">${evidence ? 'Save the JSON' : 'Save the note'}</button> <code>${escapeHtml(jsonName)}</code></p>
 </main>
 <script type="application/octet-stream" id="${BUNDLE_ELEMENT_ID}" data-encoding="base64">${toBase64(bundleText)}</script>
-${kind === 'history' ? `<script>${inlineScript(verifierSource)}</script>` : ''}
+${verifier ? `<script>${inlineScript(verifier)}</script>` : ''}
 <script>${RUNTIME}</script>
 </body>
 </html>
@@ -163,6 +189,55 @@ export function settlementPage(savedAt: string): SavedPage {
       kind: 'settlement-refusal',
       intro: 'Saved ' + savedAt + '.',
       bundleText: refusal,
+      jsonName: `${name}.json`,
+      inside: 'Written by this dashboard when you saved the page. It is not from the node, and it holds no evidence.'
+    })
+  }
+}
+
+/** What the receipt page carries: the bundle the node served, or the reason
+ *  there is none (the node's refusal, word for word, or that the dashboard
+ *  names no paid deal for the exchange). */
+export type ReceiptSource =
+  | { kind: 'bundle'; bundleText: string }
+  | { kind: 'no_record' | 'no_receipt_yet'; why: string }
+
+/** Why a receipt page holds no record for an exchange with no invoice (a
+ *  free exchange, or terms only): no deal is sealed for it. */
+export const NO_PAID_DEAL_WHY = 'this exchange was not paid, so this node sealed no deal for it'
+
+/** Why a paid exchange's page holds no receipt yet when the row cannot name
+ *  its deal (`receiptRequest` gives none: a provider book over more than one
+ *  exchange, or a payer row without its own record). */
+export const UNNAMED_DEAL_WHY = 'this exchange was paid, but this node cannot yet name the one deal it belongs to'
+
+/** One exchange's receipt page (Steven's 10-29 ruling, item 1): the receipt
+ *  bundle as the node served it, checked by the page when it opens, or a
+ *  note saying why there is none. */
+export function receiptPage(source: ReceiptSource, exchangeKey: string, savedAt: string): SavedPage {
+  const name = `mesh-receipt-${exchangeKey.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 64)}-${stamp(savedAt)}`
+  const intro = `This node’s own receipt for exchange ${exchangeKey}. Saved ${savedAt}.`
+  if (source.kind === 'bundle') {
+    return {
+      fileName: `${name}.html`,
+      html: shell({
+        title: 'Receipt for one exchange',
+        kind: 'receipt',
+        intro,
+        bundleText: source.bundleText,
+        jsonName: `${name}.json`,
+        inside: 'This page carries the exact bytes the node served, below. Save them to check them with your own tools.'
+      })
+    }
+  }
+  const note = `${JSON.stringify({ source: 'dashboard', case: source.kind, why: source.why })}\n`
+  return {
+    fileName: `${name}.html`,
+    html: shell({
+      title: 'Receipt for one exchange',
+      kind: 'receipt-note',
+      intro,
+      bundleText: note,
       jsonName: `${name}.json`,
       inside: 'Written by this dashboard when you saved the page. It is not from the node, and it holds no evidence.'
     })

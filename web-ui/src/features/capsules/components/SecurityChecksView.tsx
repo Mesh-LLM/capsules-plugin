@@ -34,7 +34,7 @@ import {
   type ChecksSideCell
 } from '@/features/capsules/lib/security-checks-view'
 import { ChipExplanationPopover } from '@/features/capsules/components/ChipExplanationPopover'
-import { EVIDENCE_FILE_SENTENCE, exchangeEvidenceBundle, saveTextFile } from '@/features/capsules/lib/exchange-export'
+import { RECEIPT_PAGE_SENTENCE, SaveReceiptPage } from '@/features/capsules/components/SaveReceiptPage'
 
 function badgeToneFor(state: string): StatusBadgeTone {
   const tone = toneForState(state)
@@ -533,28 +533,13 @@ export function SecurityChecksView({
         ) : null}
       </div>
 
-      {/* "Save evidence file" acts on the current scope (v3 §4) -- from a row
-         it saves that exchange. It stays on every row, so nothing is lost for
-         someone who wants the file. */}
+      {/* "Save receipt page": this exchange's receipt as a page for an outside
+         party, checking itself when it opens (Steven's 10-29 ruling, item 1;
+         `SaveReceiptPage.tsx`). It stays on every row: a row with no paid
+         deal saves the page that says so. */}
       <div className="flex flex-col gap-1.5 border-t border-border-soft pt-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            className="ui-control h-7 gap-1 rounded-[var(--radius)] px-2 text-[length:var(--density-type-caption)]"
-            onClick={() =>
-              saveTextFile(
-                `mesh-exchange-${row.exchangeKey}-evidence.json`,
-                exchangeEvidenceBundle([row.raw]),
-                'application/json'
-              )
-            }
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            Save evidence file
-          </Button>
-        </div>
-        <p className="text-xs text-fg-faint">{EVIDENCE_FILE_SENTENCE}</p>
+        <SaveReceiptPage exchangeKey={row.exchangeKey} row={row.raw} />
+        <p className="text-xs text-fg-faint">{RECEIPT_PAGE_SENTENCE}</p>
       </div>
     </div>
   )

@@ -65,7 +65,7 @@ async function check() {
 
 describe('ReceiptPanel', () => {
   it('shows "your receipt only" for the payer receipt, with every count over its denominator', async () => {
-    const fetchSpy = routeAnswers({ state: 'bundle', bundle: producerSelected })
+    const fetchSpy = routeAnswers({ state: 'bundle', bundle: JSON.stringify(producerSelected) })
     render(<ReceiptPanel row={payerRow} />)
     await check()
     const label = await screen.findByText('Receipt: your receipt only')
@@ -78,7 +78,7 @@ describe('ReceiptPanel', () => {
   })
 
   it('shows "your receipt only" for the provider receipt, asked by the host exchange id', async () => {
-    const fetchSpy = routeAnswers({ state: 'bundle', bundle: producerSelected })
+    const fetchSpy = routeAnswers({ state: 'bundle', bundle: JSON.stringify(producerSelected) })
     render(<ReceiptPanel row={providerRow} />)
     await check()
     await screen.findByText('Receipt: your receipt only')
@@ -86,7 +86,7 @@ describe('ReceiptPanel', () => {
   })
 
   it('shows "stamped by both" for two verified copies that agree', async () => {
-    routeAnswers({ state: 'bundle', bundle: composedAgree })
+    routeAnswers({ state: 'bundle', bundle: JSON.stringify(composedAgree) })
     render(<ReceiptPanel row={payerRow} />)
     await check()
     expect(await screen.findByText('Receipt: stamped by both')).toBeInTheDocument()
@@ -101,7 +101,7 @@ describe('ReceiptPanel', () => {
   })
 
   it('says it cannot check the receipt in a browser without Ed25519, with no verdict', async () => {
-    routeAnswers({ state: 'bundle', bundle: producerSelected })
+    routeAnswers({ state: 'bundle', bundle: JSON.stringify(producerSelected) })
     withoutEd25519()
     render(<ReceiptPanel row={payerRow} />)
     await check()
@@ -114,7 +114,7 @@ describe('ReceiptPanel', () => {
   it('does not call a tampered bundle a receipt', async () => {
     const tampered = JSON.parse(JSON.stringify(producerSelected))
     tampered.records[0].capsule_id = 'f'.repeat(64)
-    routeAnswers({ state: 'bundle', bundle: tampered })
+    routeAnswers({ state: 'bundle', bundle: JSON.stringify(tampered) })
     render(<ReceiptPanel row={payerRow} />)
     await check()
     expect(await screen.findByText(/the receipt did not verify: do not rely on it/)).toBeInTheDocument()
@@ -179,7 +179,7 @@ describe('ReceiptPanel states', () => {
     render(<ReceiptPanel row={payerRow} />)
     await check()
     await screen.findByText(/could not be loaded here/)
-    routeAnswers({ state: 'bundle', bundle: producerSelected })
+    routeAnswers({ state: 'bundle', bundle: JSON.stringify(producerSelected) })
     await userEvent.click(screen.getByRole('button', { name: 'Check again' }))
     expect(await screen.findByText('Receipt: your receipt only')).toBeInTheDocument()
   })
@@ -194,8 +194,23 @@ describe('ReceiptPanel states', () => {
     expect(button).toBeInTheDocument()
   })
 
+  it('shows a bundle served as an object, not as its text, as a load error', async () => {
+    routeAnswers({ state: 'bundle', bundle: producerSelected })
+    render(<ReceiptPanel row={payerRow} />)
+    await check()
+    expect(await screen.findByText(/could not be loaded here/)).toBeInTheDocument()
+    expect(screen.queryByText(/Receipt:/)).not.toBeInTheDocument()
+  })
+
+  it('reads text that is not JSON as did-not-verify, not a load error', async () => {
+    routeAnswers({ state: 'bundle', bundle: '{not json' })
+    render(<ReceiptPanel row={payerRow} />)
+    await check()
+    expect(await screen.findByText(/the receipt did not verify: do not rely on it/)).toBeInTheDocument()
+  })
+
   it('reads a bundle the runtime cannot read as did-not-verify, not a load error', async () => {
-    routeAnswers({ state: 'bundle', bundle: { not: 'a bundle' } })
+    routeAnswers({ state: 'bundle', bundle: JSON.stringify({ not: 'a bundle' }) })
     render(<ReceiptPanel row={payerRow} />)
     await check()
     expect(await screen.findByText(/the receipt did not verify: do not rely on it/)).toBeInTheDocument()
@@ -214,12 +229,13 @@ describe('ReceiptPanel states', () => {
     )
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
 
-    routeAnswers({ state: 'bundle', bundle: producerSelected })
+    routeAnswers({ state: 'bundle', bundle: JSON.stringify(producerSelected) })
     withoutEd25519()
     render(<ReceiptPanel row={payerRow} />)
     await check()
     await userEvent.click(await screen.findByRole('button', { name: 'Save bundle' }))
-    expect(JSON.parse(await created[0].text())).toEqual(producerSelected)
+    // The bytes the node served, unchanged.
+    expect(await created[0].text()).toBe(JSON.stringify(producerSelected))
     cleanup()
     vi.unstubAllGlobals()
     vi.stubGlobal(
@@ -228,15 +244,15 @@ describe('ReceiptPanel states', () => {
     )
 
     const tampered = { ...producerSelected, records: [{ ...producerSelected.records[0], capsule_id: 'f'.repeat(64) }] }
-    routeAnswers({ state: 'bundle', bundle: tampered })
+    routeAnswers({ state: 'bundle', bundle: JSON.stringify(tampered) })
     render(<ReceiptPanel row={payerRow} />)
     await check()
     await userEvent.click(await screen.findByRole('button', { name: 'Save bundle' }))
-    expect(JSON.parse(await created[1].text())).toEqual(tampered)
+    expect(await created[1].text()).toBe(JSON.stringify(tampered))
   })
 
   it('does not offer "Save bundle" for a receipt that checked', async () => {
-    routeAnswers({ state: 'bundle', bundle: producerSelected })
+    routeAnswers({ state: 'bundle', bundle: JSON.stringify(producerSelected) })
     render(<ReceiptPanel row={payerRow} />)
     await check()
     await screen.findByText('Receipt: your receipt only')
@@ -245,11 +261,11 @@ describe('ReceiptPanel states', () => {
 
   it('says it cannot check where SHA-256 is unavailable (an insecure origin), with no verdict', async () => {
     vi.stubGlobal('crypto', undefined)
-    expect((await checkReceiptBundle(producerSelected)).kind).toBe('cannot_check')
+    expect((await checkReceiptBundle(JSON.stringify(producerSelected))).kind).toBe('cannot_check')
   })
 
   it('reads anything the runtime throws on as did-not-verify', async () => {
-    expect((await checkReceiptBundle(null)).kind).toBe('did_not_verify')
+    expect((await checkReceiptBundle('null')).kind).toBe('did_not_verify')
   })
 })
 

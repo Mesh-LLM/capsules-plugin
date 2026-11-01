@@ -1,11 +1,8 @@
-// Two distinct exports for the Exchanges table (Part 3)
-// — "Export view" (a CSV of the current table, exactly
-// what's on screen) and "Save evidence file" (the portable evidence bundle:
-// full Pane C records, including the nine-property detail the table's
-// Checks column only names, never a spreadsheet-shaped summary of the same
-// facts). Never collapsed into one action -- the two have different
-// semantics and different consumers.
-import type { PaneAJson, PaneCRow } from '@/features/capsules/api/sidecarTypes'
+// The Exchanges table's "Export view" (a CSV of the current table, exactly
+// what's on screen), Integrity's range-wide evidence file, and the file-save
+// helper. A row's evidence for an outside party is its receipt page
+// (`SaveReceiptPage.tsx`, Mesh-LLM/capsules-plugin#96), not a dump of the row.
+import type { PaneAJson } from '@/features/capsules/api/sidecarTypes'
 import type { ExchangeLedgerRow } from '@/features/capsules/lib/exchange-ledger'
 
 const CSV_COLUMNS = ['Time', 'Exchange ID', 'Counterparty', 'Your role', 'Confirmed', 'Checks'] as const
@@ -34,25 +31,11 @@ export function exchangeRowsToCsv(rows: readonly ExchangeLedgerRow[]): string {
   return `${lines.join('\n')}\n`
 }
 
-/** The evidence bundle -- the underlying Pane C records themselves (full
- *  nine-property detail included), not a re-shaping of the table. */
-export function exchangeEvidenceBundle(rows: readonly PaneCRow[]): string {
-  return `${JSON.stringify({ schema: 'mesh-ledger-exchanges-evidence/1', exchanges: rows }, null, 2)}\n`
-}
-
-/** the design note's own "§7 in 40 words"
- *  (`mesh-ledger-tab-design-2026-09-07.md`), verbatim, exactly 40 words.
- *  Never paraphrased: the plain sentence that goes with every evidence file,
- *  per row and per range alike. */
-export const EVIDENCE_FILE_SENTENCE =
-  'A file: what you asked, what you got, which machine and model answered, when it was registered, plus your own copy. Anyone can check it, no account needed. Not included: the text, or proof the answer was right.'
-
 /** Integrity's own "Save evidence file" (
  *  ledger-ux-from-the-user §7) -- covers the RANGE, not one exchange: this
  *  node's sealed chain plus the pane-a card facts (checkpoint/witnesses/
  *  continuity/owner) that back the registration copy and once-per-node
- *  facts rendered on the Integrity section. Distinct schema from the
- *  Exchanges evidence bundle above -- different shape, different claim. */
+ *  facts rendered on the Integrity section. */
 export function integrityEvidenceBundle(sealedRows: PaneAJson['rows'], card: PaneAJson['card']): string {
   return `${JSON.stringify(
     { schema: 'mesh-ledger-integrity-evidence/1', sealed: sealedRows, card: card ?? null },

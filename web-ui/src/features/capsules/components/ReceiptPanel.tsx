@@ -23,10 +23,11 @@ type State = { phase: 'idle' } | { phase: 'checking' } | { phase: 'done'; view: 
 
 const BUTTON_CLASS = 'ui-control h-7 w-fit gap-1 rounded-[var(--radius)] px-2 text-[length:var(--density-type-caption)]'
 
-/** Hand the owner their own bundle as a file, to check it with a full
- *  verifier (the offline viewer). A click, a local Blob, nothing sent. */
-function saveBundle(bundle: unknown): void {
-  saveTextFile('receipt-bundle.json', JSON.stringify(bundle, null, 2), 'application/json')
+/** Hand the owner their own bundle as a file, the bytes the node served, to
+ *  check it with a full verifier (the offline viewer). A click, a local Blob,
+ *  nothing sent. */
+function saveBundle(bundleText: string): void {
+  saveTextFile('receipt-bundle.json', bundleText, 'application/json')
 }
 
 export function ReceiptPanel({ row }: { row: PaneCRow }) {
@@ -107,7 +108,7 @@ export function ReceiptPanel({ row }: { row: PaneCRow }) {
       {view?.kind === 'cannot_check' || view?.kind === 'did_not_verify' ? (
         <Button
           className={BUTTON_CLASS}
-          onClick={() => saveBundle(view.bundle)}
+          onClick={() => saveBundle(view.bundleText)}
           size="sm"
           type="button"
           variant="outline"

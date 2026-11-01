@@ -8,8 +8,9 @@
 //   http/provider-receipt-bundle?exchange_id=<id>  the provider's receipt; the
 //       id is the host's exchange id (`provider_receipt::ProviderReceiptArgs`).
 //
-// Both answer `{"state": "bundle", "bundle": ...}` or `{"state": "refused",
-// "why": ...}`. A refusal is the node's own state (no sealed deal, no
+// Both answer `{"state": "bundle", "bundle": "<the bundle's JSON text>"}` or
+// `{"state": "refused", "why": ...}`. The bundle comes as text so the receipt
+// page can embed the exact bytes the node served. A refusal is the node's own state (no sealed deal, no
 // checkpoint yet), so it is carried as data, never thrown. Fetching can make
 // the node sign a new checkpoint, so the caller fetches on a click, not on
 // render.
@@ -22,7 +23,8 @@ export const PROVIDER_RECEIPT_ROUTE = 'http/provider-receipt-bundle'
 export type ReceiptRequest = { side: 'payer'; capsuleId: string } | { side: 'provider'; exchangeId: string }
 
 export type ReceiptFetch =
-  | { kind: 'bundle'; bundle: unknown }
+  /** `bundleText` is the bundle as the node served it, unchanged. */
+  | { kind: 'bundle'; bundleText: string }
   | { kind: 'refused'; why: string }
   /** The route failed or answered something this page does not know: not a
    *  statement about the exchange. */
@@ -54,8 +56,8 @@ export async function fetchReceipt(request: ReceiptRequest): Promise<ReceiptFetc
       kind: 'refused',
       why: typeof body.why === 'string' ? body.why : ''
     }
-  if (body?.state === 'bundle' && body.bundle !== null && typeof body.bundle === 'object') {
-    return { kind: 'bundle', bundle: body.bundle }
+  if (body?.state === 'bundle' && typeof body.bundle === 'string') {
+    return { kind: 'bundle', bundleText: body.bundle }
   }
   return {
     kind: 'unavailable',
