@@ -568,7 +568,7 @@ async fn seal_citing_records_for_push(
 /// ledger mutex across two `sync_all()`s, which must not stall a tokio
 /// worker thread. A duplicate push (already-cited half, `Ok(None)`) is
 /// SUCCESS -- the half is received/held; there is just nothing new to cite.
-async fn seal_citing_record(
+pub(crate) async fn seal_citing_record(
     capsules: &Arc<CapsuleState>,
     sender_peer_id: &str,
     capsule_bytes: &[u8],
