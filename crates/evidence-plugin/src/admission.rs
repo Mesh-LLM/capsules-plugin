@@ -361,7 +361,7 @@ impl Admission {
         capsules: Arc<CapsuleState>,
     ) -> Self {
         let salt = salt(capsules.signing_key());
-        let base = Arc::new(base::Base::new(capsules.ledger_dir().to_path_buf()));
+        let base = Arc::new(base::Base::with_capsules(capsules.clone()));
         Self::with_seal(
             policy,
             price,

@@ -185,6 +185,16 @@ echo "$second" | jq -e '.verdict == "GO" and .source == "default"
   and (.rows[0] | {row, result}) == {"row": "identity", "result": "pass"}
   and (.rows[1] | {row, result}) == {"row": "key_age", "result": "fail"}' > /dev/null \
   || { echo "the second decision is not a GO citing the card" >&2; exit 1; }
+# The card ask was sealed as an evidence_request before it was sent (loop step
+# 7), and its response, citing it, records the artifact the provider answered.
+chain requester | jq -s -e --arg peer "$provider_id" '
+  def entry: .model_attestation.compute_attestation.evidence_book_entry // empty;
+  [.[] | select(entry | .record_type == "evidence_request" and .statement.responder_ref == $peer
+      and .statement.request.derivation == "history_card/1") | .capsule_id] as $asks
+  | ($asks | length) > 0
+  and any(.[]; entry | select(.record_type == "evidence_response" and .statement.outcome == "artifact")
+      | any(.links[]?; .type == "cites" and (.target as $t | $asks | index($t) != null)))' > /dev/null \
+  || { echo "the history card ask was not sealed with its response" >&2; exit 1; }
 # --- 3. the provider on the deny list: NO, with its rows ---------------------
 # The settings are read at start, so the requester restarts with the list.
 held_half() { [ "$(chain requester | jq -c 'select(.model_attestation.compute_attestation.received_half.signature_ok == true)' | wc -l)" -gt 0 ]; }
