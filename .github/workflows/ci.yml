@@ -135,7 +135,7 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('crates/evidence-plugin/Cargo.lock') }}
 
       - name: Chain store, import and lock tests
-        run: cargo test --locked --bin capsules -- chain_store:: data_dir::
+        run: 'cargo test --locked --bin capsules -- chain_store:: data_dir::'
 
   web-ui:
     name: web UI (${{ matrix.name }})
