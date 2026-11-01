@@ -586,7 +586,10 @@ At its first start on this release the plugin moves those records and
 checkpoints into `shelf.db`, as they were (nothing is signed again),
 checks that they match, and then moves only those five to
 `<data dir>/archive/pre-store/`. Nothing is deleted. A start cut short
-during the move finishes it at the next start. If the files do not match, the
+during the move finishes it at the next start. Each start spends at most a
+few seconds on the move, so the node starts within mesh-llm's deadline: on a
+node with a long log the move takes more than one start, and until it is done
+the node keeps using its old files, which still hold every record. If the files do not match, the
 node refuses to start, says why, and leaves the old files where they were;
 every start tries again. To run the node on an earlier release instead, stop
 it and remove `ledger/shelf.db` and `ledger/import-pending.json`, which hold

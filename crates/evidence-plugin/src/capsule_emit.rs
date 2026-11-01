@@ -519,6 +519,7 @@ impl CapsuleState {
     /// mirroring the acceptance already proven in isolation by
     /// `mesh-rust-capsule-production-m2`'s `chain_ledger_conformance` test.
     pub fn open(data_dir: &Path, node_id: impl Into<String>) -> anyhow::Result<Self> {
+        let opened_at = std::time::Instant::now();
         let ledger_dir = data_dir.join("ledger");
         let data_dir_lock = if crate::data_dir::holds_ledger(&ledger_dir) {
             None
@@ -558,11 +559,26 @@ impl CapsuleState {
                 let stores =
                     crate::chain_store::ChainStores::open(&ledger_dir, &log_id, &node_keys)?;
                 // A node an earlier release wrote keeps its chain in the flat
-                // layout until this moves it onto the stores (once,
-                // resumable).
-                crate::chain_store::import_flat(&ledger_dir, &stores, &node_keys)?;
-                let opened = stores.open_ledger()?;
-                (Some(stores), opened)
+                // layout until this moves it onto the stores: resumable, and
+                // bounded per start so the host's plugin-load deadline holds.
+                // A start that runs out of time runs on the flat ledger.
+                let deadline = opened_at + crate::chain_store::import_budget();
+                match crate::chain_store::import_flat(&ledger_dir, &stores, &node_keys, deadline)? {
+                    crate::chain_store::ImportOutcome::Pending { .. } => {
+                        drop(stores);
+                        (
+                            None,
+                            crate::producer::ledger::Ledger::open_with_indexer(
+                                &ledger_dir,
+                                crate::producer::index::record_index_keys,
+                            )?,
+                        )
+                    }
+                    _ => {
+                        let opened = stores.open_ledger()?;
+                        (Some(stores), opened)
+                    }
+                }
             }
         };
         tracing::info!(recovered_entries = report.valid_entries, "ledger opened");

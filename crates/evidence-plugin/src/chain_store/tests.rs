@@ -450,7 +450,11 @@ fn an_import_killed_while_moving_finishes_the_move() {
             },
         )
         .unwrap();
-        copy_flat(&ledger, &stores, &keys_beside(&ledger)).unwrap();
+        let far = std::time::Instant::now() + std::time::Duration::from_secs(3600);
+        assert!(matches!(
+            copy_flat(&ledger, &stores, &keys_beside(&ledger), far).unwrap(),
+            Copied::Done(_)
+        ));
         write_import_journal(
             &ledger,
             &ImportJournal {
@@ -1169,5 +1173,152 @@ fn chain_checkpoints_exits_as_documented() {
         checkpoints_cli(&[arg("--data-dir"), missing.display().to_string()]),
         1
     );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A flat node with about `lines` lines (sealed records and padding) and a
+/// checkpoint cut every `every` lines, as a long-running earlier release
+/// leaves it.
+fn large_flat_node(tag: &str, lines: u64, every: usize) -> PathBuf {
+    let scratch = temp_dir(&format!("{tag}-scratch"));
+    let records = {
+        let state = CapsuleState::open(&scratch, "node-under-test").unwrap();
+        let mut n = 0;
+        while (line_count(state.ledger_dir()) as u64) < lines {
+            seal(&state, n);
+            n += 1;
+            if n % 8 == 0 {
+                state.pad_ledger_to_bucket(64).unwrap();
+            }
+        }
+        let ledger = state.ledger_dir().to_path_buf();
+        chain_lines(&ledger)
+            .unwrap()
+            .into_iter()
+            .map(|line| {
+                let id = serde_json::from_slice::<Value>(&line).unwrap()["capsule_id"]
+                    .as_str()
+                    .unwrap()
+                    .to_string();
+                let statement = statement(&ledger, &id).unwrap();
+                (id, line, statement)
+            })
+            .collect::<Vec<_>>()
+    };
+    let dir = temp_dir(tag);
+    copy_dir(&scratch.join("keys"), &dir.join("keys"));
+    let ledger = dir.join("ledger");
+    fs::create_dir_all(ledger.join("signed-statements")).unwrap();
+    let key = crate::producer::keys::load_or_create(&dir.join("keys"))
+        .unwrap()
+        .signing_key;
+    let mut file = fs::File::create(ledger.join(FLAT_CAPSULES_FILE)).unwrap();
+    for (i, (id, line, statement)) in records.iter().enumerate() {
+        fs::write(
+            ledger.join("signed-statements").join(format!("{id}.cose")),
+            statement,
+        )
+        .unwrap();
+        std::io::Write::write_all(&mut file, line).unwrap();
+        std::io::Write::write_all(&mut file, b"\n").unwrap();
+        if (i + 1) % every == 0 {
+            std::io::Write::flush(&mut file).unwrap();
+            let (mut cp_state, _) =
+                CheckpointState::load(&ledger, LOG_ID, CheckpointCadenceConfig::default()).unwrap();
+            cp_state
+                .reconnect(&key, &crate::checkpoint_cadence::anchor_for())
+                .unwrap()
+                .expect("a cut");
+        }
+    }
+    drop(file);
+    let _ = fs::remove_dir_all(&scratch);
+    dir
+}
+
+/// A flat chain larger than one start's budget moves over several starts.
+/// Each of them returns within its budget and one chunk, runs the node on
+/// the flat ledger (which serves every line, and takes new ones), and the last
+/// one switches to the shelf with every line, the new ones included.
+#[test]
+fn a_flat_chain_moves_over_bounded_starts_and_the_node_runs_meanwhile() {
+    let dir = large_flat_node("bounded", 300, 50);
+    let ledger = dir.join("ledger");
+    import_faults::CHUNK.with(|c| c.set(Some(64)));
+    import_faults::BUDGET.with(|b| b.set(Some(std::time::Duration::ZERO)));
+    let mut starts = 0;
+    let mut sealed_meanwhile = None;
+    loop {
+        starts += 1;
+        assert!(starts <= 12, "the move never finished");
+        let t = std::time::Instant::now();
+        let state = CapsuleState::open(&dir, "node-under-test").unwrap();
+        assert!(
+            t.elapsed() < std::time::Duration::from_secs(20),
+            "start {starts} took {:?}",
+            t.elapsed()
+        );
+        if state.chain_stores().is_some() {
+            break;
+        }
+        // On the flat ledger: readers read it whole, and it takes new lines.
+        assert!(!is_store_layout(&ledger));
+        assert_eq!(
+            chain_text(&ledger).unwrap().unwrap().as_slice(),
+            fs::read(ledger.join(FLAT_CAPSULES_FILE))
+                .unwrap()
+                .as_slice()
+        );
+        if starts == 2 {
+            sealed_meanwhile = Some(seal(&state, 9000));
+        }
+    }
+    import_faults::CHUNK.with(|c| c.set(None));
+    import_faults::BUDGET.with(|b| b.set(None));
+    assert!(
+        starts >= 4,
+        "300 lines in chunks of 64 take several starts: {starts}"
+    );
+    let archived = fs::read(dir.join("archive/pre-store").join(FLAT_CAPSULES_FILE)).unwrap();
+    assert_eq!(
+        chain_text(&ledger).unwrap().unwrap().as_slice(),
+        archived.as_slice(),
+        "every flat line, in order"
+    );
+    let sealed = sealed_meanwhile.expect("a record sealed on the flat ledger");
+    assert!(holds_record(&ledger, &sealed));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// The first start of this release on a long-running node (3200 lines,
+/// about 4 MB) returns within the host's plugin-load deadline: it moves the
+/// chain, or as much as fits in [`IMPORT_BUDGET`] and goes on next time.
+/// Takes minutes to build its fixture: run it in release with
+/// `cargo test --release --bin capsules -- --ignored a_long_flat_chain`.
+#[test]
+#[ignore = "builds a 3200-line fixture; run in release"]
+fn a_long_flat_chain_starts_within_the_load_deadline() {
+    let dir = large_flat_node("long", 3200, 100);
+    let t = std::time::Instant::now();
+    let state = CapsuleState::open(&dir, "node-under-test").unwrap();
+    let first = t.elapsed();
+    eprintln!(
+        "first start: {first:?}, on the shelf: {}",
+        state.chain_stores().is_some()
+    );
+    assert!(
+        first < IMPORT_BUDGET + std::time::Duration::from_secs(4),
+        "first start took {first:?}"
+    );
+    drop(state);
+    let mut starts = 1;
+    while !is_store_layout(&dir.join("ledger")) {
+        starts += 1;
+        assert!(starts <= 10);
+        let t = std::time::Instant::now();
+        drop(CapsuleState::open(&dir, "node-under-test").unwrap());
+        eprintln!("start {starts}: {:?}", t.elapsed());
+        assert!(t.elapsed() < IMPORT_BUDGET + std::time::Duration::from_secs(4));
+    }
     let _ = fs::remove_dir_all(&dir);
 }

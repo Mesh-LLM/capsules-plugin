@@ -387,6 +387,14 @@ impl cll::log::EntryCounter for ChainLog {
     }
 }
 
+impl ChainLog {
+    /// Append `inputs` in order, each in its own commit (CLL has no batch
+    /// append); the import's budget bounds what that costs a start.
+    fn append_each(&self, inputs: &[AppendInput]) -> cll::log::Result<Vec<AppendResult>> {
+        inputs.iter().map(|input| self.log.append(input)).collect()
+    }
+}
+
 impl EntryStore for ChainLog {
     fn append(&self, input: &AppendInput) -> cll::log::Result<AppendResult> {
         self.log.append(input)
@@ -1227,6 +1235,33 @@ pub struct ImportReport {
     pub tip: Option<String>,
 }
 
+/// How far [`import_flat`] got by its deadline.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ImportOutcome {
+    /// No flat ledger to import (or only a finished move to complete).
+    Nothing,
+    /// The chain is on the shelf now.
+    Imported(ImportReport),
+    /// The deadline came first. `copied` of the flat chain's `lines` are on
+    /// the shelf; this start runs on the flat ledger, which still holds all
+    /// of them, and the next start goes on from there.
+    Pending { copied: u64, lines: u64 },
+}
+
+/// The budget of this start's import ([`IMPORT_BUDGET`], or a test's).
+pub fn import_budget() -> std::time::Duration {
+    #[cfg(test)]
+    if let Some(budget) = import_faults::BUDGET.with(|b| b.get()) {
+        return budget;
+    }
+    IMPORT_BUDGET
+}
+
+/// How long one start spends moving a flat ledger before it starts on the
+/// flat ledger instead: well inside the host's plugin-load deadline (10 s in
+/// mesh-llm), with the rest of the start after it.
+pub const IMPORT_BUDGET: std::time::Duration = std::time::Duration::from_secs(4);
+
 fn read_import_journal(ledger_dir: &Path) -> anyhow::Result<Option<ImportJournal>> {
     match fs::read(ledger_dir.join(IMPORT_JOURNAL)) {
         Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes).map_err(|e| {
@@ -1252,14 +1287,24 @@ pub(crate) mod import_faults {
     use std::cell::Cell;
     thread_local! {
         pub(crate) static FAIL_AFTER_APPENDS: Cell<Option<u64>> = const { Cell::new(None) };
+        /// Lines per chunk instead of `IMPORT_CHUNK`.
+        pub(crate) static CHUNK: Cell<Option<usize>> = const { Cell::new(None) };
+        /// The import's budget instead of `IMPORT_BUDGET`.
+        pub(crate) static BUDGET: Cell<Option<std::time::Duration>> = const { Cell::new(None) };
     }
 }
 
 /// Move a flat ledger (`capsules.jsonl`, `signed-statements/`,
 /// `checkpoints.jsonl`, `mmr_nodes.dat`, `witness-backfill.jsonl`) under
 /// `ledger_dir` onto `stores`. Called under the data directory's writer lock
-/// before the node's [`Ledger`] is opened. `Ok(None)` when there is nothing
-/// to import.
+/// before the node's [`Ledger`] is opened.
+///
+/// **Bounded per start.** Steps 2 and 3 to 5 each start only before
+/// `deadline`, and step 2 checks it after every chunk, so a start never
+/// spends much past it: a large chain moves over several starts
+/// ([`ImportOutcome::Pending`]), each of which runs the node on the flat
+/// ledger meanwhile. The shelf is only a partial copy until step 5, and
+/// readers read the flat files until then ([`is_store_layout`]).
 ///
 /// 1. Journal the import ([`IMPORT_JOURNAL`]).
 /// 2. Read the flat ledger through capsule-emit's `legacy_ledger::LegacyLedger`
@@ -1282,15 +1327,16 @@ pub fn import_flat(
     ledger_dir: &Path,
     stores: &ChainStores,
     keys: &[SigningKey],
-) -> anyhow::Result<Option<ImportReport>> {
+    deadline: std::time::Instant,
+) -> anyhow::Result<ImportOutcome> {
     let flat = ledger_dir.join(FLAT_CAPSULES_FILE).exists();
     let journal = read_import_journal(ledger_dir)?;
     match (&journal, flat) {
-        (None, false) => return Ok(None),
+        (None, false) => return Ok(ImportOutcome::Nothing),
         (Some(j), _) if j.phase == "move" => {
             move_flat_files(ledger_dir)?;
             fs::remove_file(ledger_dir.join(IMPORT_JOURNAL))?;
-            return Ok(None);
+            return Ok(ImportOutcome::Nothing);
         }
         (Some(_), false) => anyhow::bail!(
             "{} says an import of the flat ledger is under way, but {} is gone; refusing to \
@@ -1322,7 +1368,21 @@ pub fn import_flat(
             IMPORT_JOURNAL
         )
     };
-    let report = copy_flat(ledger_dir, stores, keys).map_err(|e| refuse(format!("{e:#}")))?;
+    let report = match copy_flat(ledger_dir, stores, keys, deadline)
+        .map_err(|e| refuse(format!("{e:#}")))?
+    {
+        Copied::Done(report) => report,
+        Copied::Pending { copied } => {
+            let lines = chain_lines(ledger_dir).map_or(0, |l| l.len() as u64);
+            tracing::warn!(
+                copied,
+                lines,
+                "moving the flat ledger onto the shelf: {copied} of {lines} lines so far; this \
+                 start runs on the flat ledger, and the next start goes on"
+            );
+            return Ok(ImportOutcome::Pending { copied, lines });
+        }
+    };
     let mut journal = read_import_journal(ledger_dir)?
         .ok_or_else(|| anyhow::anyhow!("{IMPORT_JOURNAL} went missing during the import"))?;
     journal.phase = "move".into();
@@ -1334,7 +1394,16 @@ pub fn import_flat(
         checkpoints = report.checkpoints,
         "imported the flat ledger onto the chain stores; its files are in archive/{PRE_STORE_ARCHIVE}"
     );
-    Ok(Some(report))
+    Ok(ImportOutcome::Imported(report))
+}
+
+/// What [`copy_flat`] got done by the deadline.
+enum Copied {
+    Done(ImportReport),
+    /// `copied` lines are on the shelf; the rest, or the checks, are left.
+    Pending {
+        copied: u64,
+    },
 }
 
 /// Steps 2 to 4 of [`import_flat`].
@@ -1342,20 +1411,34 @@ fn copy_flat(
     ledger_dir: &Path,
     stores: &ChainStores,
     keys: &[SigningKey],
-) -> anyhow::Result<ImportReport> {
+    deadline: std::time::Instant,
+) -> anyhow::Result<Copied> {
     use capsule_emit_lib::legacy_ledger::LegacyLedger;
     let trusted: Vec<[u8; 32]> = keys.iter().map(|k| k.verifying_key().to_bytes()).collect();
     let legacy = LegacyLedger::new(ledger_dir, NAMESPACE, &trusted)?;
     legacy.init()?;
 
-    // 2. The records and entries.
+    // 2. The records and entries, in chunks of [`IMPORT_CHUNK`] lines: each
+    // chunk's records in one transaction, then its entries. Writing each
+    // record in a transaction of its own took a 3200-line chain past the
+    // host's 10 s plugin-load deadline; in chunks it takes about 2 s. Records
+    // go first, so every entry has its record; a crash between leaves records
+    // without entries, which the resumed import puts again as no-ops.
+    let shelf = ledger_dir.join(SHELF_FILE);
+    let mut records_conn = connect(&shelf, false)?;
+    // A chunk's pages stay in memory until its commit writes them once
+    // (SQLite's default cache spills a large transaction to the WAL page by
+    // page).
+    records_conn
+        .pragma_update(None, "cache_size", -65536)
+        .map_err(other)?;
     let mut legacy_ids: Vec<Vec<u8>> = Vec::new();
+    let mut pending: Vec<(cll::log::Entry, Record)> = Vec::new();
+    let mut wrote = 0usize;
     let mut after = 0u64;
     loop {
         let page = legacy.scan_entries(after, MAX_SCAN_LIMIT)?;
-        if page.is_empty() {
-            break;
-        }
+        let last_page = page.is_empty();
         for entry in page {
             after = entry.seq;
             let capsule_id = hex::encode(&entry.value);
@@ -1365,12 +1448,18 @@ fn copy_flat(
                     entry.seq
                 )
             })?;
-            let held = stores
-                .log
-                .scan_entries(entry.seq - 1, 1)?
-                .into_iter()
-                .next()
-                .filter(|e| e.seq == entry.seq);
+            // Entries held from an earlier start are a prefix of the log;
+            // once one is missing, the rest are new.
+            let held = if pending.is_empty() {
+                stores
+                    .log
+                    .scan_entries(entry.seq - 1, 1)?
+                    .into_iter()
+                    .next()
+                    .filter(|e| e.seq == entry.seq)
+            } else {
+                None
+            };
             match held {
                 Some(held) => {
                     if held.value != entry.value {
@@ -1390,31 +1479,29 @@ fn copy_flat(
                         );
                     }
                 }
-                None => {
-                    stores.artifacts.put(&record).map_err(|e| {
-                        anyhow::anyhow!("line {}: record {capsule_id}: {e}", entry.seq)
-                    })?;
-                    let appended = stores.log.append(&AppendInput {
-                        value: entry.value.clone(),
-                        appended_at: entry.appended_at,
-                    })?;
-                    if appended.outcome != AppendOutcome::Inserted
-                        || appended.entry.seq != entry.seq
-                    {
-                        anyhow::bail!(
-                            "line {}: {capsule_id} is already in the chain log, at {}",
-                            entry.seq,
-                            appended.entry.seq
-                        );
-                    }
-                    #[cfg(test)]
-                    if import_faults::FAIL_AFTER_APPENDS.with(|f| f.get()) == Some(entry.seq) {
-                        anyhow::bail!("injected fault after {} appends", entry.seq);
-                    }
-                }
+                None => pending.push((entry.clone(), record)),
             }
             legacy_ids.push(entry.value);
+            if pending.len() >= import_chunk() {
+                wrote += copy_chunk(stores, &mut records_conn, &mut pending)?;
+                if std::time::Instant::now() >= deadline {
+                    return Ok(Copied::Pending {
+                        copied: cll::log::EntryCounter::entry_count(&*stores.log)?,
+                    });
+                }
+            }
         }
+        if last_page {
+            break;
+        }
+    }
+    wrote += copy_chunk(stores, &mut records_conn, &mut pending)?;
+    // The checks below read the whole chain twice: they start only in time,
+    // or when this start had nothing left to copy, so every start gets on.
+    if wrote > 0 && std::time::Instant::now() >= deadline {
+        return Ok(Copied::Pending {
+            copied: cll::log::EntryCounter::entry_count(&*stores.log)?,
+        });
     }
     let total = legacy_ids.len() as u64;
     if let Some(extra) = stores.log.scan_entries(total, 1)?.into_iter().next() {
@@ -1579,11 +1666,69 @@ fn copy_flat(
         .map_err(|e| anyhow::anyhow!("the moved checkpoint state does not load: {e}"))?;
     }
     legacy.close();
-    Ok(ImportReport {
+    Ok(Copied::Done(ImportReport {
         entries: total,
         checkpoints: checkpoints.len(),
         tip: legacy_ids.last().map(hex::encode),
-    })
+    }))
+}
+
+/// How many lines [`import_flat`] writes per transaction.
+const IMPORT_CHUNK: usize = 512;
+
+fn import_chunk() -> usize {
+    #[cfg(test)]
+    if let Some(chunk) = import_faults::CHUNK.with(|c| c.get()) {
+        return chunk;
+    }
+    IMPORT_CHUNK
+}
+
+/// Write `pending` (flat lines not yet on the shelf, in log order) to
+/// `stores`: their records in one transaction on `conn`, then their entries,
+/// each at the line's own `seq`. Empties `pending`, and says how many lines
+/// it wrote.
+fn copy_chunk(
+    stores: &ChainStores,
+    conn: &mut Connection,
+    pending: &mut Vec<(cll::log::Entry, Record)>,
+) -> anyhow::Result<usize> {
+    use capsule_emit_artifact::TxStore;
+    if pending.is_empty() {
+        return Ok(0);
+    }
+    let mut tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    for (entry, record) in pending.iter() {
+        stores.artifacts.put_tx(&mut tx, record).map_err(|e| {
+            anyhow::anyhow!("line {}: record {}: {e}", entry.seq, record.capsule_id)
+        })?;
+    }
+    tx.commit()?;
+    let inputs: Vec<AppendInput> = pending
+        .iter()
+        .map(|(entry, _)| AppendInput {
+            value: entry.value.clone(),
+            appended_at: entry.appended_at,
+        })
+        .collect();
+    let appended = stores.log.append_each(&inputs)?;
+    for ((entry, record), appended) in pending.iter().zip(&appended) {
+        if appended.outcome != AppendOutcome::Inserted || appended.entry.seq != entry.seq {
+            anyhow::bail!(
+                "line {}: {} is already in the chain log, at {}",
+                entry.seq,
+                record.capsule_id,
+                appended.entry.seq
+            );
+        }
+        #[cfg(test)]
+        if import_faults::FAIL_AFTER_APPENDS.with(|f| f.get()) == Some(entry.seq) {
+            anyhow::bail!("injected fault after {} appends", entry.seq);
+        }
+    }
+    let wrote = pending.len();
+    pending.clear();
+    Ok(wrote)
 }
 
 /// The flat ledger's checkpoints in file order, each with its COSE and its
