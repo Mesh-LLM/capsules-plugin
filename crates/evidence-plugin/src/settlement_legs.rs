@@ -1490,6 +1490,63 @@ pub(crate) mod tests {
         assert_eq!(kinds(&legs_of(a.path())), ["terms", "payer_observed"]);
     }
 
+    /// A deal closed open (the exchange ended before the wallet reported) takes
+    /// its payment legs after a restart and completes (#169's later round).
+    #[test]
+    fn a_deal_closed_open_completes_after_a_restart() {
+        let (a, b) = dirs();
+        {
+            let pair = Pair::open(a.path(), b.path());
+            for (phase, seg, hash) in [
+                (Phase::InputInvoiceIssued, 0, INPUT),
+                (Phase::OutputInvoiceIssued, 1, OUTPUT),
+            ] {
+                pair.payer_event(phase, seg, hash, &[]);
+            }
+            let sealed = crate::deal_flow::SealedExchange {
+                capsule_id: &"e".repeat(64),
+                peer: PROVIDER_PEER,
+                request_digest: &"d".repeat(64),
+                model: "model-x",
+            };
+            pair.payer
+                .deals()
+                .on_exchange(&pair.payer, "ex", &sealed, unix_now());
+            pair.payer_accounted();
+            pair.payer.settlement_legs().on_exchange(
+                &pair.payer,
+                "ex",
+                Some(PROVIDER_PEER),
+                Some(RESPONSE),
+            );
+        }
+        let pair = Pair::open(a.path(), b.path());
+        for (phase, seg, hash) in [
+            (Phase::InputSettlementObserved, 0, INPUT),
+            (Phase::OutputSettlementObserved, 1, OUTPUT),
+        ] {
+            pair.payer_event(phase, seg, hash, &[("fee_msat", 0)]);
+        }
+        let sealed_legs = legs_of(a.path());
+        let kinds_sealed = kinds(&sealed_legs);
+        assert_eq!(
+            kinds_sealed
+                .iter()
+                .filter(|k| **k == "payer_observed")
+                .count(),
+            2,
+            "{kinds_sealed:?}"
+        );
+        let journal = std::fs::read_to_string(a.path().join("ledger/deal-payloads.jsonl")).unwrap();
+        let outcome = journal
+            .lines()
+            .map(|l| serde_json::from_str::<Value>(l).unwrap())
+            .filter(|l| l["record_type"] == "outcome")
+            .last()
+            .expect("an outcome");
+        assert_eq!(outcome["payload"]["body"]["outcome"], "completed");
+    }
+
     #[test]
     fn what_the_provider_holds_survives_a_restart() {
         let (a, b) = dirs();
