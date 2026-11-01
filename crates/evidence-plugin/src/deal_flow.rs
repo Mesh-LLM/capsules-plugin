@@ -853,12 +853,12 @@ fn read_or_make_secret(path: &Path) -> Option<[u8; 32]> {
     }
     let secret: [u8; 32] = hex::decode(random_hex()?).ok()?.try_into().ok()?;
     let write = || -> std::io::Result<()> {
-        use std::os::unix::fs::OpenOptionsExt;
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(path)?;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        // Owner-only on unix; Windows files take their directory's ACL.
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let mut file = options.open(path)?;
         file.write_all(hex::encode(secret).as_bytes())?;
         file.sync_all()
     };

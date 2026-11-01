@@ -21,7 +21,7 @@ cadence uses), and the CLL #13 range proof (`cll::range_proof::range_proof`, `{v
 
 | File (all under `ledger/`) | Leaf body digest | Checkpoints |
 |---|---|---|
-| `capsules.jsonl` (the chain, asked for by this name; its lines are kept in `log.jsonl` and `artifacts.jsonl`, and `capsules chain-lines` prints them in this file's line format) | the line's `capsule_id` (unchanged) | the chain log `log.jsonl` (`checkpoints.jsonl` on a node that stays on the flat ledger) |
+| `capsules.jsonl` (the chain, asked for by this name; its lines are kept on the node's shelf, `shelf.db`, and `capsules chain-lines` prints them in this file's line format) | the line's `capsule_id` (unchanged) | the chain's log on `shelf.db` (`checkpoints.jsonl` on a node that stays on the flat ledger) |
 | `received-capsules.jsonl`, `received-provenance.jsonl`, `received-inclusion.jsonl`, `issued-adjudications.jsonl`, `received-adjudications.jsonl`, `requested-adjudications.jsonl` | SHA-256 of the line's bytes, without its `\n` | `file-checkpoints.jsonl` |
 
 No other file under `ledger/` is checkpointed, and the route refuses them: `referee-pairs.jsonl`,

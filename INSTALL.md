@@ -562,11 +562,11 @@ unrecorded.
 
 Under the plugin's data directory: `CAPSULES_DATA_DIR` if set in the
 node's environment (an absolute path), else `$XDG_DATA_HOME/capsules`,
-else `~/.local/share/capsules`. The sealed log is kept in two files under
-`<data dir>/ledger/`: `log.jsonl`, a Checkpointed Local Log journal that holds
-each record's `capsule_id` in order and the log's checkpoints, and
-`artifacts.jsonl`, which holds each record with its signed statement. The
-node's signing key is under `<data dir>/keys/`; it never leaves the node.
+else `~/.local/share/capsules`. The sealed log is kept in one SQLite file,
+`<data dir>/ledger/shelf.db`: the node's EvidenceBook shelf, which holds each
+record's `capsule_id` in order, the log's checkpoints, and each record with its
+signed statement. The node's signing key is under `<data dir>/keys/`; it never
+leaves the node.
 
 To read the sealed log as one record per line, run
 `capsules chain-lines [--data-dir <dir>] [--from <i>] [--to <j>]`. It prints
@@ -579,7 +579,7 @@ outside the log, and 1 when the log cannot be read.
 `<data dir>/ledger/capsules.jsonl`, with `signed-statements/`,
 `checkpoints.jsonl`, `mmr_nodes.dat` and `witness-backfill.jsonl` beside it.
 At its first start on this release the plugin moves those records and
-checkpoints into the two files above, as they were (nothing is signed again),
+checkpoints into `shelf.db`, as they were (nothing is signed again),
 checks that they match, and then moves only those five to
 `<data dir>/archive/pre-store/`. Nothing is deleted. A start cut short
 during the move finishes it at the next start. If the files do not match, the
@@ -589,10 +589,10 @@ node refuses to start, says why, and leaves the old files where they were.
 sealed each owner cleanup (delete stored text, rebuild index, start a new log)
 with `disposition.approver: "owner"`, which the Agent Action Capsule format
 does not allow. Those records stay as they were sealed and never change, so
-any checker reports them as `approver_invalid`. The new log files only hold
+any checker reports them as `approver_invalid`. The shelf only holds
 records that pass that check, so a node whose log holds such a record keeps
 its log in `capsules.jsonl` as before, and says so at start. The next log
-it starts (Start a new log) uses the new files. Cleanups sealed from this
+it starts (Start a new log) uses the shelf. Cleanups sealed from this
 release on name `approver: "human"` when you ask for them.
 
 ## The log's id

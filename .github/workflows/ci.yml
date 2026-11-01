@@ -105,6 +105,38 @@ jobs:
             exit 1
           fi
 
+  # A Windows node keeps its chain on the same shelf, on the plugin's own
+  # lock (LockFileEx there), and moves an earlier release's flat ledger onto
+  # it like any other (evidencebook#254 §2.4, §7.3). This runs the import
+  # tests (a fixture import, an import killed and resumed, a mismatch that
+  # refuses to start) and the data directory's lock tests on Windows.
+  rust-windows:
+    name: plugin (windows-x86_64, chain store and lock)
+    runs-on: windows-2025
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: crates/evidence-plugin
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master @ 2026-09-12 (the action publishes no release tags)
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/evidence-plugin/target
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('crates/evidence-plugin/Cargo.lock') }}
+
+      - name: Chain store, import and lock tests
+        run: cargo test --locked --bin capsules -- chain_store:: data_dir::
+
   web-ui:
     name: web UI (${{ matrix.name }})
     strategy:

@@ -153,7 +153,10 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 # with no evidencebook; 0.0.9 adds `produce` (the Go-identical Capsule
 # build, which the deal records are sealed with) and leaves Class 1 checks to
 # agent-action-capsule (`structure` is gone). Its canonicalizer turns on serde_json's
-# `arbitrary_precision` for the whole binary (see `strict_json`).
+# `arbitrary_precision` for the whole binary (see `strict_json`). capsule-emit
+# main (c91e2f7) moves it to checkpointed-local-log 0.4.0 and
+# agent-action-capsule 0.8.0, the one CLL line the shelf needs
+# (evidencebook#254 §7.4); pinned there until its release.
 capsule-emit-lib = { package = "capsule-emit", git = "https://github.com/action-state-group/capsule-emit", rev = "c91e2f7692e61b69d5fa6d63d78f481d506b6a4c" }
 cll = { package = "checkpointed-local-log", version = "0.4.0", features = ["sqlite"] }
 # The chain's records: capsule-emit's artifact store (SQLite backend), the
