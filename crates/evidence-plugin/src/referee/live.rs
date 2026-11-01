@@ -878,12 +878,18 @@ mod tests {
         }
     }
 
+    /// When the referee's record of its own re-answer is sealed.
+    enum OwnRecord {
+        Held,
+        LandsAfter(Duration),
+        Never,
+    }
+
     /// The live call from the pair this node holds to the verdict it takes
-    /// back, against a referee whose record of its own re-answer is not
-    /// sealed until `late_record` has passed (`None`: it is there from the
-    /// start): `(called, requests sent)`.
+    /// back, against a referee whose record of its re-answer is sealed as
+    /// `record` says: `(called, requests sent)`.
     async fn live_call(
-        late_record: Option<Duration>,
+        record: OwnRecord,
         waits: &[Duration],
         change: impl FnOnce(&mut Value),
     ) -> ((Called, Option<Value>), usize) {
@@ -900,15 +906,21 @@ mod tests {
             crate::peer_keys::peer_id_for_key_in(referee.peer_keys.as_deref(), &referee.key_id())
                 .expect("the referee is named");
         let ledger = referee.ledger_dir().join("capsules.jsonl");
-        let lands = late_record.map(|after| {
-            let aside = referee.ledger_dir().join("capsules.jsonl.unsealed");
-            std::fs::rename(&ledger, &aside).unwrap();
-            let ledger = ledger.clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(after);
-                std::fs::rename(aside, ledger).unwrap();
-            })
-        });
+        let aside = referee.ledger_dir().join("capsules.jsonl.unsealed");
+        let lands = match record {
+            OwnRecord::Held => None,
+            OwnRecord::Never => {
+                std::fs::rename(&ledger, &aside).unwrap();
+                None
+            }
+            OwnRecord::LandsAfter(after) => {
+                std::fs::rename(&ledger, &aside).unwrap();
+                Some(std::thread::spawn(move || {
+                    std::thread::sleep(after);
+                    std::fs::rename(aside, ledger).unwrap();
+                }))
+            }
+        };
         let mut sender = InProcessReferee {
             door: crate::referee::service::Referee {
                 ledger_dir: referee.ledger_dir(),
@@ -939,7 +951,7 @@ mod tests {
     #[tokio::test]
     async fn a_referee_whose_record_lands_after_the_ask_still_adjudicates() {
         let ((called, capsule), sent) = live_call(
-            Some(Duration::from_millis(150)),
+            OwnRecord::LandsAfter(Duration::from_millis(150)),
             &RECORD_NOT_FOUND_WAITS,
             |_| {},
         )
@@ -952,7 +964,7 @@ mod tests {
     /// A referee holding its record rules on the first ask.
     #[tokio::test]
     async fn a_referee_holding_its_record_is_asked_once() {
-        let ((called, _), sent) = live_call(None, &RECORD_NOT_FOUND_WAITS, |_| {}).await;
+        let ((called, _), sent) = live_call(OwnRecord::Held, &RECORD_NOT_FOUND_WAITS, |_| {}).await;
         assert_eq!(called, Called::Verdict("contradicted:node-b".into()));
         assert_eq!(sent, 1);
     }
@@ -962,8 +974,7 @@ mod tests {
     #[tokio::test]
     async fn a_record_that_never_lands_ends_cannot_sign_after_the_waits() {
         let waits = [Duration::from_millis(1); 2];
-        let ((called, capsule), sent) =
-            live_call(Some(Duration::from_secs(1)), &waits, |_| {}).await;
+        let ((called, capsule), sent) = live_call(OwnRecord::Never, &waits, |_| {}).await;
         assert_eq!(called, Called::CannotSign);
         assert!(capsule.is_none());
         assert_eq!(sent, 3, "the first ask and one per wait");
@@ -972,7 +983,7 @@ mod tests {
     /// Any other refusal is final: the request is not sent again.
     #[tokio::test]
     async fn another_refusal_is_not_asked_again() {
-        let ((called, _), sent) = live_call(None, &RECORD_NOT_FOUND_WAITS, |request| {
+        let ((called, _), sent) = live_call(OwnRecord::Held, &RECORD_NOT_FOUND_WAITS, |request| {
             request["halves"][1]["capsule"]["capsule_id"] = json!("0".repeat(64));
         })
         .await;
