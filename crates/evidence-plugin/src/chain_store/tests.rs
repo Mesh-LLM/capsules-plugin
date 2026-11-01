@@ -1257,14 +1257,18 @@ fn large_flat_node(tag: &str, lines: u64, every: usize) -> PathBuf {
 }
 
 /// A flat chain larger than one start's budget moves over several starts.
-/// Each of them returns within its budget and one chunk, runs the node on
-/// the flat ledger (which serves every line, and takes new ones), and the last
-/// one switches to the shelf with every line, the new ones included.
+/// Each of them runs the node on the flat ledger (which serves every line,
+/// and takes new ones), and the last one switches to the shelf with every
+/// line, the new ones included. (How long a start takes is
+/// `a_long_flat_chain_starts_within_the_load_deadline`'s.)
 #[test]
 fn a_flat_chain_moves_over_bounded_starts_and_the_node_runs_meanwhile() {
     let dir = large_flat_node("bounded", 300, 50);
     let ledger = dir.join("ledger");
+    // No time at all, and 64 entries a start whatever the disk: the move
+    // goes in fixed steps.
     import_faults::CHUNK.with(|c| c.set(Some(64)));
+    import_faults::MIN_APPENDS.with(|m| m.set(Some(64)));
     import_faults::BUDGET.with(|b| b.set(Some(std::time::Duration::ZERO)));
     let mut starts = 0;
     let mut sealed_meanwhile = None;
@@ -1273,13 +1277,7 @@ fn a_flat_chain_moves_over_bounded_starts_and_the_node_runs_meanwhile() {
         // With no budget each start does one unit: a chunk of 64 lines, one
         // checkpoint, or the final checks.
         assert!(starts <= 30, "the move never finished");
-        let t = std::time::Instant::now();
         let state = CapsuleState::open(&dir, "node-under-test").unwrap();
-        assert!(
-            t.elapsed() < std::time::Duration::from_secs(20),
-            "start {starts} took {:?}",
-            t.elapsed()
-        );
         if state.chain_stores().is_some() {
             break;
         }
@@ -1296,6 +1294,7 @@ fn a_flat_chain_moves_over_bounded_starts_and_the_node_runs_meanwhile() {
         }
     }
     import_faults::CHUNK.with(|c| c.set(None));
+    import_faults::MIN_APPENDS.with(|m| m.set(None));
     import_faults::BUDGET.with(|b| b.set(None));
     assert!(
         starts >= 4,
@@ -1390,4 +1389,32 @@ fn the_move_is_one_way() {
     }
     let _ = fs::remove_dir_all(&dir);
     let _ = fs::remove_dir_all(&flat);
+}
+
+/// Past the deadline, a start stops after its first entry, even inside a
+/// chunk: on a disk where each entry's commit is slow (Windows), a whole
+/// chunk would take a start past the host's deadline.
+#[test]
+fn past_the_deadline_a_start_stops_after_one_entry() {
+    let dir = flat_node("one-entry", &[4]);
+    let ledger = dir.join("ledger");
+    import_faults::BUDGET.with(|b| b.set(Some(std::time::Duration::ZERO)));
+    let state = CapsuleState::open(&dir, "node-under-test").unwrap();
+    import_faults::BUDGET.with(|b| b.set(None));
+    assert!(state.chain_stores().is_none(), "this start runs flat");
+    drop(state);
+    let log = LogSqlite::open(
+        ledger.join(SHELF_FILE),
+        &chain_log_id(&rusqlite::Connection::open(ledger.join(SHELF_FILE)).unwrap())
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(cll::log::EntryCounter::entry_count(&log).unwrap(), 1);
+    drop(log);
+    assert!(CapsuleState::open(&dir, "node-under-test")
+        .unwrap()
+        .chain_stores()
+        .is_some());
+    let _ = fs::remove_dir_all(&dir);
 }

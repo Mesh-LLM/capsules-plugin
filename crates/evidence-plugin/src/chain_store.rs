@@ -1297,6 +1297,9 @@ pub(crate) mod import_faults {
         pub(crate) static FAIL_AFTER_APPENDS: Cell<Option<u64>> = const { Cell::new(None) };
         /// Stop after a chunk's records are stored, before its appends.
         pub(crate) static FAIL_BEFORE_APPENDS: Cell<bool> = const { Cell::new(false) };
+        /// Entries a start appends before the deadline can stop it, instead
+        /// of one.
+        pub(crate) static MIN_APPENDS: Cell<Option<usize>> = const { Cell::new(None) };
         /// Lines per chunk instead of `IMPORT_CHUNK`.
         pub(crate) static CHUNK: Cell<Option<usize>> = const { Cell::new(None) };
         /// The import's budget instead of `IMPORT_BUDGET`.
@@ -1492,20 +1495,35 @@ fn copy_flat(
                 None => pending.push((entry.clone(), record)),
             }
             legacy_ids.push(entry.value);
-            if pending.len() >= import_chunk() {
-                wrote += copy_chunk(stores, &mut records_conn, &mut pending)?;
-                if std::time::Instant::now() >= deadline {
-                    return Ok(Copied::Pending {
-                        copied: cll::log::EntryCounter::entry_count(&*stores.log)?,
-                    });
-                }
+            if pending.len() >= import_chunk()
+                && copy_chunk(
+                    stores,
+                    &mut records_conn,
+                    &mut pending,
+                    deadline,
+                    &mut wrote,
+                )?
+            {
+                return Ok(Copied::Pending {
+                    copied: cll::log::EntryCounter::entry_count(&*stores.log)?,
+                });
             }
         }
         if last_page {
             break;
         }
     }
-    wrote += copy_chunk(stores, &mut records_conn, &mut pending)?;
+    if copy_chunk(
+        stores,
+        &mut records_conn,
+        &mut pending,
+        deadline,
+        &mut wrote,
+    )? {
+        return Ok(Copied::Pending {
+            copied: cll::log::EntryCounter::entry_count(&*stores.log)?,
+        });
+    }
     // The checks below read the whole chain twice: they start only in time,
     // or when this start had nothing left to copy, so every start gets on.
     if wrote > 0 && std::time::Instant::now() >= deadline {
@@ -1721,16 +1739,22 @@ fn import_chunk() -> usize {
 
 /// Write `pending` (flat lines not yet on the shelf, in log order) to
 /// `stores`: their records in one transaction on `conn`, then their entries,
-/// each at the line's own `seq`. Empties `pending`, and says how many lines
-/// it wrote.
+/// each at the line's own `seq`, counting them in `wrote`. Each entry is its
+/// own durable commit (CLL appends one at a time), which is slow on some
+/// disks (Windows), so the deadline is checked after each one: past it, and
+/// once this start has appended [`min_appends`], it stops and says so
+/// (`true`). The entries it left have their records stored, which the next
+/// start puts again as no-ops. Empties `pending` either way.
 fn copy_chunk(
     stores: &ChainStores,
     conn: &mut Connection,
     pending: &mut Vec<(cll::log::Entry, Record)>,
-) -> anyhow::Result<usize> {
+    deadline: std::time::Instant,
+    wrote: &mut usize,
+) -> anyhow::Result<bool> {
     use capsule_emit_artifact::TxStore;
     if pending.is_empty() {
-        return Ok(0);
+        return Ok(false);
     }
     let mut tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     for (entry, record) in pending.iter() {
@@ -1760,10 +1784,25 @@ fn copy_chunk(
         if import_faults::FAIL_AFTER_APPENDS.with(|f| f.get()) == Some(entry.seq) {
             anyhow::bail!("injected fault after {} appends", entry.seq);
         }
+        *wrote += 1;
+        if *wrote >= min_appends() && std::time::Instant::now() >= deadline {
+            pending.clear();
+            return Ok(true);
+        }
     }
-    let wrote = pending.len();
     pending.clear();
-    Ok(wrote)
+    Ok(false)
+}
+
+/// How many entries a start appends before the deadline can stop it: one,
+/// so every start gets on (a test sets more, to move in fixed steps
+/// whatever the disk's speed).
+fn min_appends() -> usize {
+    #[cfg(test)]
+    if let Some(n) = import_faults::MIN_APPENDS.with(|m| m.get()) {
+        return n;
+    }
+    1
 }
 
 /// The flat ledger's checkpoints in file order, each with its COSE and its
