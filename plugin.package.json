@@ -96,7 +96,7 @@
         "apply_mode": "static_on_load",
         "restart_scope": "none",
         "visibility": "user",
-        "description": "Coming: this version advertises nothing and no node reads this yet, so it stays off.",
+        "description": "Coming: this version advertises nothing and no node reads this yet.",
         "presentation": {
           "label": "Advertise evidence requests",
           "category_id": "show",

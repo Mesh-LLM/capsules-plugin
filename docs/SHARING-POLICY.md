@@ -16,12 +16,12 @@ share_adjudications:         deliver_to_subjects | off             # default: de
 witness:                     [] | [{endpoint, public_key?}, ...]   # default: [] (off)
 ```
 
-With these defaults the only things a node sends to a peer on its own are its
-sealed record of a completed exchange, and only to the other side of that
-exchange (`share_record_at_completion`), and a referee's verdict to the nodes
-it judges (`share_adjudications`); it advertises nothing. Set each to `off` to
-send nothing. It answers any node that asks whether it holds a half of one
-exchange (`share_exchange_corroboration`), any node that
+With these defaults a node sends a peer two things on its own: its sealed
+record of a completed exchange, only to the other side of that exchange
+(`share_record_at_completion`); and, once a referee has judged a pair, the
+verdict to the nodes it judges (`share_adjudications`). It advertises nothing.
+Set each to `off` to send nothing. It answers any node that asks whether it
+holds a half of one exchange (`share_exchange_corroboration`), any node that
 asks for its checkpoint list or `history_card/1` (below), and otherwise only
 a counterparty that asks: for one of its records (`share_history_segments`)
 or for the rest of its Standard History (`share_standard_history`). The

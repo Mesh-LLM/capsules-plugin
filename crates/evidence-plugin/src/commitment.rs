@@ -105,7 +105,7 @@ pub struct Policy {
 impl Policy {
     /// This process's settings.
     pub fn current() -> Self {
-        Self::from_settings(|env| crate::settings::var(env).ok())
+        Self::from_settings(share_policy::var_or_unreadable)
     }
 
     /// The policy `var` gives, each switch read by its own reader.

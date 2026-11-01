@@ -147,8 +147,9 @@ describe('Local only', () => {
       record_at_completion: off,
       history_segments: off,
       adjudications: off,
+      exchange_corroboration: off,
       witness: { value: null, source: 'default' }
-    }
+    } as ReturnType<typeof status>['sharing']
   })
 
   it('holds only when every switch is off', () => {
@@ -161,6 +162,16 @@ describe('Local only', () => {
       sharing: { ...allOff.sharing, adjudicate_differing_twins: { value: 'on', source: 'set' } }
     } as typeof allOff
     expect(nothingIsShared(refereeOn)).toBe(false)
+  })
+
+  it('does not hold while corroboration is on or missing: it answers a stranger', () => {
+    const withCorroboration = (value: string | null) =>
+      ({
+        ...allOff,
+        sharing: { ...allOff.sharing, exchange_corroboration: value === null ? undefined : { value, source: 'default' } }
+      }) as typeof allOff
+    expect(nothingIsShared(withCorroboration('on'))).toBe(false)
+    expect(nothingIsShared(withCorroboration(null))).toBe(false)
   })
 
   it('does not hold with the defaults, with any one switch on, or without a status', () => {

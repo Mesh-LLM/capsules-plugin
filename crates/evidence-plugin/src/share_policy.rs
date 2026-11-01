@@ -211,7 +211,18 @@ pub const ENV_ADJUDICATIONS: &str = "CAPSULES_SHARE_ADJUDICATIONS";
 /// whenever the operator set `share_adjudications` to `deliver_to_subjects`;
 /// `off` or an unknown value does not.
 pub fn adjudications_delivered() -> bool {
-    adjudications_delivered_for(crate::settings::var(ENV_ADJUDICATIONS).ok().as_deref())
+    adjudications_delivered_for(var_or_unreadable(ENV_ADJUDICATIONS).as_deref())
+}
+
+/// A setting's value for the readers whose default is on: a value that is not
+/// valid Unicode is one the operator set and this plugin cannot read, so it
+/// reads as an unknown value (off), never as unset (the default).
+pub(crate) fn var_or_unreadable(env: &str) -> Option<String> {
+    match crate::settings::var(env) {
+        Ok(raw) => Some(raw),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(std::env::VarError::NotUnicode(_)) => Some("unreadable".to_string()),
+    }
 }
 
 pub(crate) fn adjudications_delivered_for(raw: Option<&str>) -> bool {
@@ -301,7 +312,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
         .setting(
             config_setting(ADVERTISE_EVIDENCE_REQUESTS_KEY, config_enum(["off", "on"]))
                 .default_value(&"off")
-                .description("Coming: this version advertises nothing and no node reads this yet, so it stays off.")
+                .description("Coming: this version advertises nothing and no node reads this yet.")
                 .label("Advertise evidence requests")
                 .category(SHOW_CATEGORY_ID, SHOW_CATEGORY_LABEL, SHOW_CATEGORY_SUMMARY, 0)
                 .order(3),
@@ -954,6 +965,15 @@ mod tests {
         assert!(adjudications_delivered_for(Some("deliver_to_subjects")));
         assert!(!adjudications_delivered_for(Some("off")));
         assert!(!adjudications_delivered_for(Some("garbage")));
+    }
+
+    #[test]
+    fn an_unreadable_value_reads_as_off_for_the_switches_that_default_on() {
+        // `var_or_unreadable` hands a non-Unicode value to the readers as an
+        // unknown value, so it is never taken for unset (the default, on).
+        let unreadable = "unreadable";
+        assert!(!adjudications_delivered_for(Some(unreadable)));
+        assert!(!shares_exchange_corroboration_for(Some(unreadable)));
     }
 
     #[test]

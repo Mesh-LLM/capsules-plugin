@@ -664,7 +664,7 @@ fn corpus_cases(ledger: &[Value], cps: &[CorpusCheckpoint]) -> Vec<Value> {
         // SHA-256 of a client nonce. No corpus record binds a client nonce.
         case_by(
             "corroboration_to_a_stranger",
-            "off by default: a node no record names gets policy_declined, whatever this node holds",
+            "off (set so): a node no record names gets policy_declined, whatever this node holds",
             "counterparties",
             "node-z",
             corroboration(nonce_digest("n-1")),
@@ -1107,9 +1107,10 @@ fn run() -> (BTreeMap<String, Value>, Vec<String>) {
         };
         let log_dir = data.path().join(format!("received-log-{name}"));
         std::fs::create_dir_all(&log_dir).unwrap();
-        // Each case's settings as the operator would write them, read the
-        // way the plugin reads them. Standard History is not shared unless
-        // the case says so. A fresh replay cache per case: each case is one
+        // Each case's settings as the operator would write them. A case that
+        // names no value for a switch models the operator having set it off,
+        // not the plugin's default (corroboration defaults to on). Standard
+        // History is not shared unless the case says so. A fresh replay cache per case: each case is one
         // request.
         let replay = crate::requester_auth::ReplayCache::default();
         let responder = Responder {

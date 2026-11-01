@@ -143,7 +143,11 @@ export function nothingIsShared(status: RecordsStatus | null): boolean {
   // The referee switch is not one of the four rows, but with it on a prompt
   // can leave this machine, so "Local only" needs it off too.
   const referee = (sharing as Partial<Record<string, SharingSwitchState>>).adjudicate_differing_twins
+  // Corroboration answers a stranger's question and defaults to on, so
+  // "Local only" needs it off too (a status without the switch is read as on).
+  const corroboration = (sharing as Partial<Record<string, SharingSwitchState>>).exchange_corroboration
   return (
+    corroboration?.value === 'off' &&
     sharing.record_at_completion?.value === 'off' &&
     sharing.history_segments?.value === 'off' &&
     sharing.adjudications?.value === 'off' &&
