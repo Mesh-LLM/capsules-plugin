@@ -7,7 +7,11 @@ each exchange, and whether this node's log still verifies. It installs and
 runs on an unmodified mesh-llm release (0.77 or newer). No other runtime is
 needed.
 
-## Not yet released
+## What's new in 0.1.9
+
+**Upgrading from 0.1.8 needs nothing installed on the other node.** One answer changes for peers:
+`served_summary/1` is retired (first item). A provider answers an asked exchange half as an Evidence
+Bundle only from 0.1.9.
 
 - **Two sharing settings now default to on (#163).** `share_adjudications` defaults to
   `deliver_to_subjects` and `share_exchange_corroboration` to `on`: a node that never set either now
@@ -21,6 +25,22 @@ needed.
   `service_history/1` in its place, and `share_standard_history` covers `service_history/1` and no
   longer `served_summary/1`.
   A 0.1.8 or older peer's `served_summary/1` answer is no longer checked here.
+- **A provider can answer an asked exchange half as an Evidence Bundle,** and a payer can compose a
+  deal's two-sided receipt from its own records and the provider's bundle. The payer keeps each
+  ask reply's bytes, with their digest sealed in the `evidence_response` record, so a refusal or
+  artifact member carries the reply as it was received. A composition whose interval crosses a
+  padding leaf is still refused, until `non_record_leaves` emission is enabled.
+- **Serving a half no longer refuses `not_authorized` when another record lands at the same
+  moment.** Each served half is sealed and its checkpoint cut under one hold of the ledger.
+- **A refused asker can no longer tell how many records match.** The sharing gate now runs before
+  the record limit on every answer path, and a record that never leaves the node is in no keyed
+  answer's matched set.
+- **A deal closed `open` can be completed later:** a payment that settles after the close seals a
+  second outcome, close and report. After a node restart, a settlement for an exchange from before it
+  cannot arrive yet.
+- **Built with agent-action-capsule 0.7.0.**
+
+Details in [CHANGELOG.md](https://github.com/Mesh-LLM/capsules-plugin/blob/main/CHANGELOG.md).
 
 ## What's new in 0.1.8
 
@@ -262,7 +282,7 @@ glibc 2.35 or newer (x86_64 or arm64).
 and set `VERSION` to the release (without the leading `v`):
 
 ```bash
-VERSION=0.1.8
+VERSION=0.1.9
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64)  TARGET=aarch64-apple-darwin ;;
   Linux-x86_64)  TARGET=x86_64-unknown-linux-gnu ;;

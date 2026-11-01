@@ -2,15 +2,47 @@
 
 ## Unreleased
 
+## 0.1.9
+
 ### Changed
 
-- **Two sharing settings now default to on (#163).** "Deliver verdicts to the nodes judged"
+- **Two sharing settings now default to on (breaking, #163, #210).** "Deliver verdicts to the nodes judged"
   (`share_adjudications`) now defaults to `deliver_to_subjects`, and "Exchange corroboration"
   (`share_exchange_corroboration`) to `on`. A node that never set either now delivers a verdict to
   the node it judges (who can ack or dispute it; a delivered verdict cannot be recalled) and
   answers a stranger who asks, by nonce, whether it holds its half of one exchange (ids and
   digests only, never the counterparty). Set either to `off` to keep the old behavior.
   "Advertise evidence requests" stays off and is shown as coming: nothing reads it yet.
+- **`served_summary/1` is no longer answered or checked (breaking, #106, #174).** Every requester is
+  refused it: `derivation_unsupported`, or `policy_declined` from a non-counterparty while
+  `share_standard_history` is off. The commitment lists `service_history/1` in its place, and
+  `share_standard_history` covers `service_history/1` and no longer `served_summary/1`.
+- **The sharing gate runs before the record limit on every answer path (#203, #205),** so a refused
+  asker gets `not_authorized` at any match count, not a volume signal. A record that never leaves
+  the node is in no keyed answer's matched set (#161, #157, #168).
+- **Each served exchange half is sealed and its checkpoint cut under one hold of the ledger
+  (#202, #204),** so no record can land in the served interval between them.
+- **agent-action-capsule 0.7.0, with `non_record_leaves` emission off (#196, #209).** The
+  composition's padded-interval refusal stays until that emission is enabled.
+
+### Added
+
+- **An asked exchange half is answered as an Evidence Bundle (#197, #201):** subject `record`,
+  derivation `evidence_bundle/1`, served under `expected_pin` or the earliest checkpoint meeting
+  `min_freshness`.
+- **The payer's deal composition for the two-sided receipt (#196, #199, #207):** owner-only
+  `deal-composition`, with `asked_step` in the keep report and refusal and artifact members.
+- **Each ask reply's bytes are kept, their digest sealed in `evidence_response` (#198, #200).**
+- **A deal closed `open` can seal a later outcome, close and report when a payment settles after
+  it (#141, #169).**
+
+### Fixed and tested
+
+- `vectors/controller-binding-v0` is pinned to agent-action-capsule#458's merge commit (#115,
+  #167).
+- The History page is tested against a live node's `history-page` route (#122, #170).
+
+Pull requests since 0.1.8: #167, #168, #169, #170, #174, #199, #200, #201, #204, #205, #207, #209, #210.
 
 ## 0.1.8
 
