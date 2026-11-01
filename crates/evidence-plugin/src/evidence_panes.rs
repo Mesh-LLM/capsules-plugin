@@ -62,7 +62,7 @@ use std::path::Path;
 
 mod agreement;
 mod settlement;
-use settlement::{is_settlement_record, peer_counts, SettlementIndex};
+use settlement::{is_settlement_leg, is_settlement_record, peer_counts, SettlementIndex};
 
 /// Sentinel for "this mechanism exists but isn't wired for a plugin-ledger
 /// read yet" -- never fabricated, never the sidecar's own computed value.
@@ -607,6 +607,10 @@ fn effective_ledger(ledger_dir: &Path) -> EffectiveLedger {
             // it only through the settlement index.
             settlements.push(record.clone());
             settlement_records.push(record);
+        } else if is_settlement_leg(&record) {
+            // A settlement-records leg: ours (Pane A), not an exchange half
+            // (Pane B/C), and not a lifecycle event, so no index entry.
+            settlement_records.push(record);
         } else if is_citing_record(&record) {
             // A citing record: resolve the foreign half it cites from the
             // held-artifact store, and record the receiver's verdict (off the
@@ -1132,7 +1136,7 @@ pub(crate) fn build_pane_a(records: &[Value], card: Value) -> Value {
             // A settlement record is this node's own sealed observation of a
             // payment lifecycle event: one of our log entries, not a served
             // model, and not evidence from the other side.
-            if is_settlement_record(record) {
+            if is_settlement_record(record) || is_settlement_leg(record) {
                 return json!({
                     "capsule_id": record.get("capsule_id").cloned().unwrap_or(Value::Null),
                     "timestamp": record.get("timestamp").cloned().unwrap_or(Value::Null),
@@ -5122,6 +5126,36 @@ mod tests {
             ids(&el.our_records),
             vec!["local-1".to_string(), "choice-1".to_string()]
         );
+    }
+
+    /// A settlement-records leg (a top-level `settlement` member, no lifecycle
+    /// block) is this node's own record: Pane A lists it, Pane B/C never count
+    /// it as an exchange half.
+    #[test]
+    fn a_settlement_leg_is_ours_and_never_an_exchange_half() {
+        let dir = tempfile::tempdir().unwrap();
+        let leg = json!({
+            "capsule_id": "leg-1",
+            "settlement": { "leg": "terms", "sealer_role": "payer" }
+        });
+        std::fs::write(
+            dir.path().join("capsules.jsonl"),
+            format!("{}\n", serde_json::to_string(&leg).unwrap()),
+        )
+        .unwrap();
+
+        let el = effective_ledger(dir.path());
+        assert!(el.pane_bc_records.is_empty());
+        assert_eq!(el.our_records.len(), 1);
+        assert!(el.settlements.is_empty());
+
+        let pane_b = build_pane_json("pane-b", dir.path(), None).unwrap();
+        assert!(
+            !pane_b.to_string().contains("no counterparty evidence for"),
+            "{pane_b}"
+        );
+        let pane_a = build_pane_json("pane-a", dir.path(), None).unwrap();
+        assert!(pane_a.to_string().contains("leg-1"), "{pane_a}");
     }
 
     /// The held-artifact store reader: reads `received-capsules.jsonl` by
