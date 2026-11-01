@@ -7,6 +7,16 @@ each exchange, and whether this node's log still verifies. It installs and
 runs on an unmodified mesh-llm release (0.77 or newer). No other runtime is
 needed.
 
+## What's new in 0.1.10
+
+**Upgrading from 0.1.9 needs nothing installed on the other node.** A twin pair's referee call
+adjudicates again: on 0.1.9 it ended `referee_cannot_sign`, because the asker asked before the
+referee had sealed its record of its own re-answer. The asker now asks again for up to about three
+seconds while the referee refuses `referee_record_not_found`, and both sides log the reason a call
+fails. Upgrade the node that asks; a referee on 0.1.9 answers a 0.1.10 asker.
+
+Details in [CHANGELOG.md](https://github.com/Mesh-LLM/capsules-plugin/blob/main/CHANGELOG.md).
+
 ## What's new in 0.1.9
 
 **Upgrading from 0.1.8 needs nothing installed on the other node.** One answer changes for peers:
@@ -282,7 +292,7 @@ glibc 2.35 or newer (x86_64 or arm64).
 and set `VERSION` to the release (without the leading `v`):
 
 ```bash
-VERSION=0.1.9
+VERSION=0.1.10
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64)  TARGET=aarch64-apple-darwin ;;
   Linux-x86_64)  TARGET=x86_64-unknown-linux-gnu ;;
