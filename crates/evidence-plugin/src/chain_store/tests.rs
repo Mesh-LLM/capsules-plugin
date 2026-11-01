@@ -1586,6 +1586,13 @@ fn export_resumes_when_the_shelf_is_still_beside_the_flat_files() {
     )
     .unwrap();
     fs::create_dir_all(ledger.join(".flat-export")).unwrap();
+    fs::write(
+        ledger
+            .join(".flat-export")
+            .join(crate::flat_export::ASIDE_NOTE),
+        done.shelf_set_aside.file_name().unwrap().to_str().unwrap(),
+    )
+    .unwrap();
     let report = crate::flat_export::export(&dir).unwrap();
     drop(lock);
     assert_eq!(report.lines, lines.len());
@@ -1619,5 +1626,96 @@ fn export_works_without_checkpoints() {
     let (flat, _) =
         Ledger::open_with_indexer(&ledger, crate::producer::index::record_index_keys).unwrap();
     assert_eq!(flat.entries(), 2);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A run cut short while the files moved in (`capsules.jsonl` still in the
+/// scratch directory, the rest already in `ledger/`) is redone by the next run.
+#[test]
+fn export_redoes_a_run_cut_short_while_the_files_moved_in() {
+    let dir = flat_node("export-midpromote", &[4]);
+    let _budget = UnboundedImport::new();
+    drop(CapsuleState::open(&dir, "node-under-test").unwrap());
+    let ledger = dir.join("ledger");
+    let lines = chain_lines(&ledger).unwrap();
+    let lock = crate::data_dir::lock(&dir).unwrap();
+    let done = crate::flat_export::export(&dir).unwrap();
+    for name in ["shelf.db", "shelf.db-wal", "shelf.db-shm"] {
+        let from = done.shelf_set_aside.join(name);
+        if from.exists() {
+            fs::rename(from, ledger.join(name)).unwrap();
+        }
+    }
+    fs::rename(
+        done.shelf_set_aside.join("pre-store"),
+        dir.join("archive/pre-store"),
+    )
+    .unwrap();
+    fs::remove_dir_all(&done.shelf_set_aside).unwrap();
+    fs::create_dir_all(ledger.join(".flat-export")).unwrap();
+    fs::rename(
+        ledger.join(FLAT_CAPSULES_FILE),
+        ledger.join(".flat-export").join(FLAT_CAPSULES_FILE),
+    )
+    .unwrap();
+    let report = crate::flat_export::export(&dir).unwrap();
+    drop(lock);
+    assert_eq!(report.lines, lines.len());
+    assert!(!ledger.join(SHELF_FILE).exists());
+    assert_eq!(chain_lines(&ledger).unwrap(), lines);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A run cut short after the files moved in finishes into its own aside
+/// directory, never an earlier export's: export, re-import, export again, cut
+/// short before the shelf moved.
+#[test]
+fn a_cut_short_run_never_uses_an_earlier_exports_directory() {
+    let dir = flat_node("export-aside", &[4]);
+    let _budget = UnboundedImport::new();
+    drop(CapsuleState::open(&dir, "node-under-test").unwrap());
+    let ledger = dir.join("ledger");
+    let lock = crate::data_dir::lock(&dir).unwrap();
+    let first = crate::flat_export::export(&dir).unwrap();
+    drop(lock);
+    drop(CapsuleState::open(&dir, "node-under-test").unwrap());
+    assert!(is_store_layout(&ledger));
+    let first_shelf = fs::read(first.shelf_set_aside.join(SHELF_FILE)).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    let lock = crate::data_dir::lock(&dir).unwrap();
+    let second = crate::flat_export::export(&dir).unwrap();
+    assert_ne!(first.shelf_set_aside, second.shelf_set_aside);
+    for name in ["shelf.db", "shelf.db-wal", "shelf.db-shm"] {
+        let from = second.shelf_set_aside.join(name);
+        if from.exists() {
+            fs::rename(from, ledger.join(name)).unwrap();
+        }
+    }
+    fs::rename(
+        second.shelf_set_aside.join("pre-store"),
+        dir.join("archive/pre-store"),
+    )
+    .unwrap();
+    fs::remove_dir_all(&second.shelf_set_aside).unwrap();
+    fs::create_dir_all(ledger.join(".flat-export")).unwrap();
+    fs::write(
+        ledger
+            .join(".flat-export")
+            .join(crate::flat_export::ASIDE_NOTE),
+        second
+            .shelf_set_aside
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap(),
+    )
+    .unwrap();
+    let resumed = crate::flat_export::export(&dir).unwrap();
+    drop(lock);
+    assert_eq!(resumed.shelf_set_aside, second.shelf_set_aside);
+    assert_eq!(
+        fs::read(first.shelf_set_aside.join(SHELF_FILE)).unwrap(),
+        first_shelf
+    );
     let _ = fs::remove_dir_all(&dir);
 }
