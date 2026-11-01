@@ -21,7 +21,9 @@
 //! whose signature proves a principal ([`requester_auth::proves_principal`])
 //! and at most [`MAX_IN_FLIGHT_STRANGERS`] others (unsigned, or signed by a
 //! key no host binds) are answered at once, each from its own pool, so
-//! strangers cannot crowd a counterparty out. One more is declined with a
+//! strangers cannot crowd a counterparty out; and one key holds at most
+//! [`MAX_IN_FLIGHT_PER_KEY`] of the first pool, so one counterparty cannot
+//! crowd out the others (evidencebook#206 row 3). One more is declined with a
 //! signed `capacity_exceeded` (`policy_declined` to an `evidence-interop/0`
 //! request) before the ledger is read. Every answer is logged to
 //! the "asked of you" log (`evidence_answer::log_received`).
@@ -188,11 +190,43 @@ pub const MAX_IN_FLIGHT_ANSWERS: usize = 8;
 /// above.
 pub const MAX_IN_FLIGHT_STRANGERS: usize = 2;
 
+/// The most of the proven pool one key holds at once: half of it, so a
+/// counterparty flooding this node leaves room for the others. The key is
+/// the one its nonces draw on (`requester_auth::proves_principal`), so keys
+/// a declaration binds share their anchor's.
+pub const MAX_IN_FLIGHT_PER_KEY: usize = MAX_IN_FLIGHT_ANSWERS / 2;
+
 /// The two in-flight pools. A request draws from its own pool only, so a
-/// full stranger pool never declines a proven principal.
+/// full stranger pool never declines a proven principal; a proven one also
+/// draws on its key's share.
 struct InFlight {
     proven: tokio::sync::Semaphore,
     strangers: tokio::sync::Semaphore,
+    /// Proven permits held, per key; a key holding none is absent.
+    held: std::sync::Mutex<std::collections::HashMap<String, usize>>,
+}
+
+/// A permit from [`InFlight`], and the key's share it holds, if proven.
+struct Permit<'a> {
+    _pool: tokio::sync::SemaphorePermit<'a>,
+    share: Option<(&'a InFlight, String)>,
+}
+
+impl Drop for Permit<'_> {
+    fn drop(&mut self) {
+        if let Some((pools, key)) = self.share.take() {
+            let mut held = pools
+                .held
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(count) = held.get_mut(&key) {
+                *count -= 1;
+                if *count == 0 {
+                    held.remove(&key);
+                }
+            }
+        }
+    }
 }
 
 impl InFlight {
@@ -200,41 +234,56 @@ impl InFlight {
         Self {
             proven: tokio::sync::Semaphore::new(MAX_IN_FLIGHT_ANSWERS),
             strangers: tokio::sync::Semaphore::new(MAX_IN_FLIGHT_STRANGERS),
+            held: Default::default(),
         }
     }
 
-    /// A permit from the pool `proven` names, where `proven` is only worked
-    /// out when some pool has room: with both full the request is declined
-    /// without classifying it.
-    fn try_acquire_with(
-        &self,
-        proven: impl FnOnce() -> bool,
-    ) -> Result<tokio::sync::SemaphorePermit<'_>, ()> {
+    /// A permit from the pool `proven` names (the proven key, or `None` for
+    /// a stranger), where `proven` is only worked out when some pool has
+    /// room: with both full the request is declined without classifying it.
+    /// A proven key already holding [`MAX_IN_FLIGHT_PER_KEY`] is declined
+    /// too.
+    fn try_acquire_with(&self, proven: impl FnOnce() -> Option<String>) -> Result<Permit<'_>, ()> {
         if self.proven.available_permits() == 0 && self.strangers.available_permits() == 0 {
             return Err(());
         }
-        let pool = if proven() {
-            &self.proven
-        } else {
-            &self.strangers
+        let Some(key) = proven() else {
+            let pool = self.strangers.try_acquire().map_err(|_| ())?;
+            return Ok(Permit {
+                _pool: pool,
+                share: None,
+            });
         };
-        pool.try_acquire().map_err(|_| ())
+        let mut held = self
+            .held
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if held.get(&key).copied().unwrap_or(0) >= MAX_IN_FLIGHT_PER_KEY {
+            return Err(());
+        }
+        let pool = self.proven.try_acquire().map_err(|_| ())?;
+        *held.entry(key.clone()).or_default() += 1;
+        Ok(Permit {
+            _pool: pool,
+            share: Some((self, key)),
+        })
     }
 }
 
-/// Whether the parsed request proves a principal as of `now`, on the channel
-/// its door checks it under ([`requester_auth::proves_principal`]).
+/// The key whose share the parsed request draws on, when it proves a
+/// principal as of `now` on the channel its door checks it under
+/// ([`requester_auth::proves_principal`]).
 fn proves_principal(
     parsed: Option<&serde_json::Value>,
     adjudicate: bool,
     now: &str,
     own_node: Option<&str>,
     own_key: &str,
-) -> bool {
+) -> Option<String> {
     let (Some(serde_json::Value::Object(map)), Some(now)) =
         (parsed, evidence_request::time::parse_utc(now))
     else {
-        return false;
+        return None;
     };
     let channel = if adjudicate {
         crate::requester_auth::Channel::RefereeAdjudicate
@@ -1323,40 +1372,91 @@ mod tests {
         assert!(err.to_string().contains("side-stream cap"), "{err}");
     }
 
+    fn proven(key: &str) -> impl FnOnce() -> Option<String> + '_ {
+        move || Some(key.to_string())
+    }
+
     /// A full stranger pool declines strangers only: a proven principal still
     /// gets a permit, and the reverse holds too.
     #[test]
     fn strangers_cannot_exhaust_the_pool_a_proven_principal_draws_from() {
         let pools = InFlight::new();
         let held: Vec<_> = (0..MAX_IN_FLIGHT_STRANGERS)
-            .map(|_| pools.try_acquire_with(|| false).expect("a stranger permit"))
+            .map(|_| pools.try_acquire_with(|| None).expect("a stranger permit"))
             .collect();
         assert!(
-            pools.try_acquire_with(|| false).is_err(),
+            pools.try_acquire_with(|| None).is_err(),
             "the stranger pool is full"
         );
-        let proven: Vec<_> = (0..MAX_IN_FLIGHT_ANSWERS)
-            .map(|_| pools.try_acquire_with(|| true).expect("a proven permit"))
+        let keys: Vec<String> = (0..MAX_IN_FLIGHT_ANSWERS)
+            .map(|i| format!("k{i}"))
+            .collect();
+        let proven_held: Vec<_> = keys
+            .iter()
+            .map(|key| {
+                pools
+                    .try_acquire_with(proven(key))
+                    .expect("a proven permit")
+            })
             .collect();
         assert!(
-            pools.try_acquire_with(|| true).is_err(),
+            pools.try_acquire_with(proven("another")).is_err(),
             "the proven pool is full"
         );
         drop(held);
         assert!(
-            pools.try_acquire_with(|| false).is_ok(),
+            pools.try_acquire_with(|| None).is_ok(),
             "a released permit is reused"
         );
-        drop(proven);
+        drop(proven_held);
+    }
+
+    /// One key holds at most its share of the proven pool: past it, that key
+    /// is declined while another key is still answered, and a released
+    /// permit gives the key its room back (evidencebook#206 row 3).
+    #[test]
+    fn one_key_cannot_hold_the_whole_proven_pool() {
+        let pools = InFlight::new();
+        let flood: Vec<_> = (0..MAX_IN_FLIGHT_PER_KEY)
+            .map(|_| {
+                pools
+                    .try_acquire_with(proven("flood"))
+                    .expect("inside its share")
+            })
+            .collect();
+        assert!(
+            pools.try_acquire_with(proven("flood")).is_err(),
+            "past its share, though the pool has room"
+        );
+        let other = pools
+            .try_acquire_with(proven("other"))
+            .expect("another key is still answered");
+        drop(flood);
+        assert!(
+            pools.try_acquire_with(proven("flood")).is_ok(),
+            "its room comes back"
+        );
+        assert!(
+            pools.held.lock().unwrap().get("flood").is_none(),
+            "dropped permits release the share"
+        );
+        drop(other);
+        assert!(pools.held.lock().unwrap().is_empty());
     }
 
     /// With both pools full the request is declined before it is classified.
     #[test]
     fn a_request_is_not_classified_while_both_pools_are_full() {
         let pools = InFlight::new();
+        let keys: Vec<String> = (0..MAX_IN_FLIGHT_ANSWERS)
+            .map(|i| format!("k{i}"))
+            .collect();
         let held: Vec<_> = (0..MAX_IN_FLIGHT_STRANGERS)
-            .map(|_| pools.try_acquire_with(|| false).unwrap())
-            .chain((0..MAX_IN_FLIGHT_ANSWERS).map(|_| pools.try_acquire_with(|| true).unwrap()))
+            .map(|_| pools.try_acquire_with(|| None).unwrap())
+            .chain(
+                keys.iter()
+                    .map(|key| pools.try_acquire_with(proven(key)).unwrap()),
+            )
             .collect();
         assert!(pools
             .try_acquire_with(|| unreachable!("classified with both pools full"))

@@ -835,12 +835,15 @@ pub fn principal(
     }
 }
 
-/// Whether `map`, received on `channel`, proves a principal now: [`check`]
-/// without its replay step and without recording anything, and with a
-/// deadline not already past (that is refused before [`check`] runs). The
-/// mesh responder uses it to pick which in-flight pool a request draws from
-/// before it spends a permit, so a request that fails here is a stranger's.
-/// A replayed request passes and is refused later by [`check`], before any
+/// The key whose share a request draws on, when `map`, received on
+/// `channel`, proves a principal now: [`check`] without its replay step and
+/// without recording anything, and with a deadline not already past (that
+/// is refused before [`check`] runs). The key is the one its nonces draw on
+/// too: the request's own, or a declaration's anchor, whose holder can bind
+/// any number of new keys. The mesh responder uses it to pick which
+/// in-flight pool, and which key's share of it, a request draws from before
+/// it spends a permit, so a request that yields `None` is a stranger's. A
+/// replayed request passes and is refused later by [`check`], before any
 /// ledger read.
 pub fn proves_principal(
     channel: Channel,
@@ -848,33 +851,28 @@ pub fn proves_principal(
     now: UtcTime,
     keys: Keys<'_>,
     own_node: Option<&str>,
-) -> bool {
+) -> Option<String> {
     let Form::Signed { key_id, sig } = form(map) else {
-        return false;
+        return None;
     };
-    let Some(deadline) = map
+    let deadline = map
         .get("deadline")
         .and_then(Value::as_str)
-        .and_then(evidence_request::time::parse_utc)
-    else {
-        return false;
-    };
+        .and_then(evidence_request::time::parse_utc)?;
     let stated = map
         .get("requester_id")
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|id| !id.is_empty());
-    deadline >= now
-        && deadline.seconds <= now.seconds.saturating_add(MAX_WINDOW_SECS)
-        && verifies(channel, map, &key_id, &sig)
-        && audience_matches(map.get(AUDIENCE).and_then(Value::as_str), own_node)
-        && matches!(
-            bound_node(
-                &request_claimants(keys, map, &key_id, now, own_node).nodes,
-                stated
-            ),
-            Binding::Node(_)
-        )
+    if deadline < now
+        || deadline.seconds > now.seconds.saturating_add(MAX_WINDOW_SECS)
+        || !verifies(channel, map, &key_id, &sig)
+        || !audience_matches(map.get(AUDIENCE).and_then(Value::as_str), own_node)
+    {
+        return None;
+    }
+    let Claimed { nodes, replay_key } = request_claimants(keys, map, &key_id, now, own_node);
+    matches!(bound_node(&nodes, stated), Binding::Node(_)).then_some(replay_key)
 }
 
 /// Whether a signed request's [`AUDIENCE`] is this node, compared as exact
@@ -1126,6 +1124,53 @@ mod tests {
     /// A key a declaration binds asks as its anchor's nodes and draws on its
     /// anchor's nonce budget. A declaration binding a key to this node's own
     /// key, however this node's key is listed, leaves it bound to no node.
+    /// Keys a controller declaration binds draw on their anchor's share of
+    /// the in-flight pool, so an anchor's holder cannot widen it by binding
+    /// new keys (evidencebook#206 row 3).
+    #[test]
+    fn declared_keys_prove_the_anchor_as_their_share() {
+        let now = evidence_request::time::parse_utc("2026-10-28T00:00:00Z").unwrap();
+        let anchor = key(1);
+        let ka = hex::encode(anchor.verifying_key().to_bytes());
+        let announced = BTreeMap::from([("node-a".to_string(), ka.clone())]);
+        let keys = Keys {
+            announced: &announced,
+            configured: None,
+            own_key: Some(&hex::encode(key(3).verifying_key().to_bytes())),
+        };
+        for member in [key(2), key(4)] {
+            let mut request = json!({
+                "subject": {"checkpoints": null},
+                "coverage": {"min_freshness": 60},
+                "nonce": "n-1",
+                crate::controller_binding::MEMBER: crate::controller_binding::bind_for_test(
+                    &anchor,
+                    &member,
+                    "2026-10-01T00:00:00Z",
+                    "2027-10-01T00:00:00Z",
+                ),
+            });
+            sign(
+                Channel::EvidenceRequest,
+                &mut request,
+                &member,
+                at("2026-10-28T00:00:00Z"),
+                "node-r",
+            );
+            assert_eq!(
+                proves_principal(
+                    Channel::EvidenceRequest,
+                    request.as_object().unwrap(),
+                    now,
+                    keys,
+                    Some("node-r"),
+                ),
+                Some(ka.clone()),
+                "the anchor's share, not the member's own"
+            );
+        }
+    }
+
     #[test]
     fn a_declared_key_shares_its_anchors_budget_and_never_anchors_on_this_node() {
         let now = evidence_request::time::parse_utc("2026-10-28T00:00:00Z").unwrap();
@@ -1547,12 +1592,17 @@ mod tests {
             own_key: None,
         };
         let proves = |map: &Map<String, Value>, own: Option<&str>| {
-            proves_principal(Channel::EvidenceRequest, map, now, keys, own)
+            proves_principal(Channel::EvidenceRequest, map, now, keys, own).is_some()
         };
         let good = signed(1);
-        assert!(proves(&good, Some("node-r")));
+        assert_eq!(
+            proves_principal(Channel::EvidenceRequest, &good, now, keys, Some("node-r")),
+            Some(announced["node-a"].clone()),
+            "the key whose share it draws on"
+        );
         assert!(
-            !proves_principal(Channel::RefereeAdjudicate, &good, now, keys, Some("node-r")),
+            proves_principal(Channel::RefereeAdjudicate, &good, now, keys, Some("node-r"))
+                .is_none(),
             "another channel's tag"
         );
         assert!(!proves(&good, Some("node-x")), "another audience");

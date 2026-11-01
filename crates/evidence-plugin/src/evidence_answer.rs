@@ -2273,11 +2273,11 @@ pub(crate) mod tests {
         assert_eq!(snapshot(), before);
     }
 
-    /// One limit for every caller: past the in-flight cap (one process-wide
-    /// semaphore, `mesh_evidence_bridge::MAX_IN_FLIGHT_ANSWERS`), a
-    /// stranger-safe request is declined alike whoever asks: unsigned, a key
-    /// no host binds, a proven stranger or a counterparty. Each gets the
-    /// refusal of its own bytes, before the ledger is read.
+    /// One decline for every caller: past the in-flight cap
+    /// (`mesh_evidence_bridge`'s pools and each key's share of the proven
+    /// one), a stranger-safe request is declined alike whoever asks:
+    /// unsigned, a key no host binds, a proven stranger or a counterparty.
+    /// Each gets the refusal of its own bytes, before the ledger is read.
     #[test]
     fn past_the_in_flight_cap_every_asker_is_declined_alike() {
         let dir = node(&corpus_ledger());
