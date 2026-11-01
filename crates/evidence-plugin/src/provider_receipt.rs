@@ -209,7 +209,8 @@ pub struct ProviderReceiptArgs {
     pub exchange_id: Value,
 }
 
-/// `{"state": "bundle", "bundle": ...}`, or `{"state": "refused", "why": ...}`.
+/// `{"state": "bundle", "bundle": "<JSON text>"}` (`deal_receipt::bundle_answer`),
+/// or `{"state": "refused", "why": ...}`.
 pub fn answer(ledger_dir: &Path, node_key_id: &str, exchange_id: &Value) -> Result<Value, String> {
     let Some(id) = exchange_id
         .as_str()
@@ -218,7 +219,7 @@ pub fn answer(ledger_dir: &Path, node_key_id: &str, exchange_id: &Value) -> Resu
         return Err("exchange_id must be a non-empty string".into());
     };
     match bundle(ledger_dir, node_key_id, id) {
-        Ok(bundle) => Ok(json!({"state": "bundle", "bundle": bundle})),
+        Ok(bundle) => Ok(crate::deal_receipt::bundle_answer(&bundle)),
         Err(Failure::Refused(r)) => Ok(json!({"state": "refused", "why": r.why()})),
         Err(Failure::Failed(why)) => Err(why),
     }

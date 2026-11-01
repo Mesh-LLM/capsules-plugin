@@ -1045,8 +1045,9 @@ fn the_route_answers_a_bundle_or_names_the_refusal() {
     cut(&node.state);
     let answered = answer_of(node.seal(std::slice::from_ref(&absent))).unwrap();
     assert_eq!(answered["state"], "bundle");
+    let served: Value = serde_json::from_str(answered["bundle"].as_str().unwrap()).unwrap();
     assert_eq!(
-        answered["bundle"]["extensions"][COMPOSED_KIND]["members"][0]["id"],
+        served["extensions"][COMPOSED_KIND]["members"][0]["id"],
         json!(absent)
     );
     assert!(answer_of(Err(Error::Failed("disk".into()).into())).is_err());

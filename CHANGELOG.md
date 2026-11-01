@@ -23,6 +23,21 @@
   (`received-capsules.jsonl`, `received-deal-halves.jsonl`), and each step gets a citing record.
   A refusal names the failed check and keeps nothing.
 
+### Changed
+
+- **Each exchange's "Save evidence file" becomes "Save receipt page" (#96, Steven's 10-29
+  ruling, item 1).** The row saves one .html page for an outside party in place of the row's
+  JSON. The page carries the receipt bundle the node served, checks it on open with no network,
+  and its "Save the JSON" hands back those bytes unchanged. It shows one of the three cases:
+  stamped by both, your receipt only, or no record. "Stamped by both" can't occur yet because no
+  node seals the typed seller side. When the node holds no receipt, or the row names no paid
+  deal, the page says so and holds no evidence. The integrity, peers and CSV exports are
+  unchanged.
+- **The receipt routes serve the bundle as its JSON text (breaking for any other caller).**
+  `deal-receipt-bundle`, `provider-receipt-bundle` and `deal-composition` answer
+  `{"state": "bundle", "bundle": "<JSON text>"}`, so a page can embed the exact bytes the node
+  served.
+
 ## 0.1.11
 
 Pull requests since 0.1.10:

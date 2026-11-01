@@ -55,9 +55,9 @@ export type ReceiptView =
   /** Any other refusal (no report yet, no checkpoint yet, ...): the route's
    *  own reason, word for word. */
   | { kind: 'no_receipt_yet'; why: string }
-  /** `bundle` is kept so the owner can save it and check it elsewhere. */
-  | { kind: 'cannot_check'; bundle: unknown }
-  | { kind: 'did_not_verify'; line: string; bundle: unknown }
+  /** `bundleText` is kept so the owner can save it and check it elsewhere. */
+  | { kind: 'cannot_check'; bundleText: string }
+  | { kind: 'did_not_verify'; line: string; bundleText: string }
   /** The route failed: not a statement about the exchange or the bundle. */
   | { kind: 'error'; message: string }
 
@@ -99,36 +99,39 @@ export function receiptCase(context: VerifiedBundleContext): 'both' | 'one_sided
   return artifacts.length === 2 && joined && corroborated ? 'both' : 'one_sided'
 }
 
-/** Check `bundle` with the runtime and place it in a case. */
-export async function checkReceiptBundle(bundle: unknown): Promise<ReceiptView> {
+/** Check the bundle in `bundleText` (its JSON text, as served) with the
+ *  runtime and place it in a case. The saved receipt page runs this same
+ *  function on its embedded bytes (`receipt-page-verify.ts`). */
+export async function checkReceiptBundle(bundleText: string): Promise<ReceiptView> {
   try {
-    return await checkReceiptBundleUnguarded(bundle)
+    return await checkReceiptBundleUnguarded(bundleText)
   } catch {
-    // Anything the runtime throws while reading the bundle is a bundle it
-    // could not read.
-    return { kind: 'did_not_verify', line: VERIFICATION_BANNER_LINES.refused, bundle }
+    // Anything the runtime throws while reading the bundle, or text that is
+    // not JSON, is a bundle it could not read.
+    return { kind: 'did_not_verify', line: VERIFICATION_BANNER_LINES.refused, bundleText }
   }
 }
 
-async function checkReceiptBundleUnguarded(bundle: unknown): Promise<ReceiptView> {
+async function checkReceiptBundleUnguarded(bundleText: string): Promise<ReceiptView> {
+  const bundle: unknown = JSON.parse(bundleText)
   let context: VerifiedBundleContext
   try {
     context = await buildVerifiedBundleContext(bundle)
   } catch (error) {
-    if (error instanceof Sha256UnavailableError) return { kind: 'cannot_check', bundle }
+    if (error instanceof Sha256UnavailableError) return { kind: 'cannot_check', bundleText }
     // The runtime could not read the bundle: it did not verify, which is not
     // a route failure.
-    return { kind: 'did_not_verify', line: VERIFICATION_BANNER_LINES.refused, bundle }
+    return { kind: 'did_not_verify', line: VERIFICATION_BANNER_LINES.refused, bundleText }
   }
   // No strict result: this browser has no Ed25519, so the runtime refuses a
   // producer-selected bundle (verification-page.ts bundleVerified).
-  if (context.strict === undefined) return { kind: 'cannot_check', bundle }
+  if (context.strict === undefined) return { kind: 'cannot_check', bundleText }
   const banner = verificationBanner(context, [])
   if (!bundleVerified(context.verification) || banner.state === 'failed' || composedFailed(context)) {
     return {
       kind: 'did_not_verify',
       line: banner.state === 'failed' ? banner.line : VERIFICATION_BANNER_LINES.refused,
-      bundle
+      bundleText
     }
   }
   const records = (bundle as { records?: unknown }).records
@@ -150,7 +153,7 @@ export async function receiptView(fetched: ReceiptFetch): Promise<ReceiptView> {
       : { kind: 'no_receipt_yet', why: fetched.why }
   }
   if (fetched.kind === 'unavailable') return { kind: 'error', message: fetched.message }
-  return checkReceiptBundle(fetched.bundle)
+  return checkReceiptBundle(fetched.bundleText)
 }
 
 /** Which receipt route a row can ask, or null when it is not a paid exchange

@@ -1,7 +1,16 @@
+import { webcrypto } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { SETTLEMENT_REFUSAL_WORDS, historyPage, settlementPage } from '@/features/capsules/lib/saved-pages'
+import {
+  NO_PAID_DEAL_WHY,
+  SETTLEMENT_REFUSAL_WORDS,
+  historyPage,
+  receiptPage,
+  settlementPage
+} from '@/features/capsules/lib/saved-pages'
+import composedAgree from '@/features/capsules/lib/receipt-fixtures/composed-agree.bundle.json'
+import producerSelected from '@/features/capsules/lib/receipt-fixtures/producer-selected.bundle.json'
 import { embeddedBundle as embedded, openSavedPage as open, savedBytes } from '@/lib/test/open-saved-page'
 
 const fixture = JSON.parse(
@@ -175,5 +184,92 @@ describe('the Settlement page, opened offline', () => {
     const { text: rewordedText } = await open(reworded)
     expect(rewordedText).toContain('could not read its own note, so it shows nothing')
     expect(rewordedText).not.toContain('All settled.')
+  })
+})
+
+// The receipt routes' bundles, as the node serves them: JSON text. The
+// fixtures are agent-action-capsule's strict vector (a producer-selected
+// bundle, one side's receipt) and composed/v1 vector (two copies that agree).
+const oneSided = JSON.stringify(producerSelected)
+const both = JSON.stringify(composedAgree)
+
+/** WebCrypto with Ed25519 import refused, as a browser without it. */
+const withoutEd25519 = {
+  subtle: {
+    digest: webcrypto.subtle.digest.bind(webcrypto.subtle),
+    importKey: async () => {
+      throw Object.assign(new Error('Ed25519 is not supported'), { name: 'NotSupportedError' })
+    }
+  },
+  getRandomValues: webcrypto.getRandomValues.bind(webcrypto)
+}
+
+describe('the receipt page, opened offline', () => {
+  it('checks the embedded receipt itself and hands back the JSON byte for byte', async () => {
+    const { html, fileName } = receiptPage({ kind: 'bundle', bundleText: oneSided }, 'ex-1', SAVED)
+    expect(fileName).toBe('mesh-receipt-ex-1-20261029T180000.html')
+    expect(Buffer.from(embedded(html)).equals(Buffer.from(oneSided, 'utf8'))).toBe(true)
+
+    const { dom, requested, text } = await open(html)
+    expect(dom.window.document.querySelector('#result p.warn')?.textContent).toBe('Receipt: your receipt only')
+    expect(text).toMatch(/\d+ of \d+ records in the receipt are tied to a signed checkpoint\./)
+    expect(text).not.toContain('stamped by both')
+    expect(requested).toEqual([])
+    expect((await savedBytes(dom)).equals(Buffer.from(oneSided, 'utf8'))).toBe(true)
+  })
+
+  it('says "stamped by both" only for two copies that agree', async () => {
+    const { dom } = await open(receiptPage({ kind: 'bundle', bundleText: both }, 'ex-2', SAVED).html)
+    expect(dom.window.document.querySelector('#result p.ok')?.textContent).toBe('Receipt: stamped by both')
+  })
+
+  it('shows none of a receipt that does not check', async () => {
+    const tampered = JSON.parse(oneSided)
+    tampered.records[0].capsule_id = 'f'.repeat(64)
+    const { text } = await open(receiptPage({ kind: 'bundle', bundleText: JSON.stringify(tampered) }, 'ex-1', SAVED).html)
+    expect(text).toContain('the receipt did not verify: do not rely on it')
+    expect(text).not.toContain('Receipt:')
+    expect(text).not.toContain('tied to a signed checkpoint')
+  })
+
+  it('gives no verdict in a browser that cannot check Ed25519', async () => {
+    const { text } = await open(receiptPage({ kind: 'bundle', bundleText: oneSided }, 'ex-1', SAVED).html, {
+      crypto: withoutEd25519
+    })
+    expect(text).toContain("this browser can't check the receipt")
+    expect(text).not.toContain('Receipt:')
+  })
+
+  it('refers to nothing outside itself', () => {
+    const { html } = receiptPage({ kind: 'bundle', bundleText: oneSided }, 'ex-1', SAVED)
+    expect(html).not.toMatch(/(?:src|href)\s*=\s*["']?(?:https?:)?\/\//i)
+    expect(html).not.toMatch(/<link\b/i)
+    expect(html).not.toMatch(/<script[^>]*\ssrc=/i)
+  })
+
+  it('says "no record" with the reason when there is no receipt, and holds no evidence', async () => {
+    const { html } = receiptPage({ kind: 'no_record', why: NO_PAID_DEAL_WHY }, 'ex-3', SAVED)
+    const { text, dom } = await open(html)
+    expect(text).toContain('Receipt: no record')
+    expect(text).toContain(`Its reason: ${NO_PAID_DEAL_WHY}`)
+    expect(text).toContain('This page holds no evidence from the node.')
+    expect(html).not.toContain('CapsulesSavedPage=')
+    const note = JSON.parse((await savedBytes(dom)).toString('utf8'))
+    expect(note).toEqual({ source: 'dashboard', case: 'no_record', why: NO_PAID_DEAL_WHY })
+  })
+
+  it('says "no receipt yet" with the node\'s own reason, drawn as text', async () => {
+    const { dom, text } = await open(
+      receiptPage({ kind: 'no_receipt_yet', why: '<img src=x onerror=alert(1)>' }, 'ex-4', SAVED).html
+    )
+    expect(text).toContain('No receipt yet')
+    expect(text).toContain('Its reason: <img src=x onerror=alert(1)>')
+    expect(dom.window.document.querySelector('#result img')).toBeNull()
+  })
+
+  it('names the file after a hostile exchange key only by its safe characters', () => {
+    expect(receiptPage({ kind: 'no_record', why: 'x' }, '../a b<c>', SAVED).fileName).toBe(
+      'mesh-receipt----a-b-c--20261029T180000.html'
+    )
   })
 })
