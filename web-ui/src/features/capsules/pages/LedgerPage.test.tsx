@@ -12,6 +12,14 @@
 //      never a number the page doesn't hold
 //   6. The exceptions-first line above the table, and the Ledger badge's
 //      "This node's copy" rename
+import {
+  NARRATED_LABEL,
+  NARRATION_NEEDS_AGENT,
+  SEALED_LABEL,
+  STAMPED_LABEL,
+  noReportNote,
+  sealedNote
+} from '@/features/capsules/lib/what-happened'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -87,7 +95,9 @@ vi.mock('@/features/capsules/lib/ask-for-record', async (importOriginal) => {
   return { ...actual, judgeAskReply: vi.fn(actual.judgeAskReply) }
 })
 vi.mock('@/features/capsules/api/client', () => ({
-  fetchCapsuleLedger: vi.fn().mockResolvedValue({ records: [], nodePubKeyPem: null })
+  fetchCapsuleLedger: vi.fn().mockResolvedValue({ records: [], nodePubKeyPem: null }),
+  fetchServedHistory: vi.fn(),
+  fetchSettlementReport: vi.fn()
 }))
 
 // Owner identity is live `/api/status` data
@@ -650,8 +660,8 @@ describe('LedgerPageContent', () => {
       }
       // The downloads work on the sample, so they stay enabled.
       expect(screen.getByRole('button', { name: /export view/i })).toBeEnabled()
-      expect(screen.getByRole('button', { name: 'Save History page' })).toBeEnabled()
-      expect(screen.getByRole('button', { name: 'Save Settlement page' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: STAMPED_LABEL })).toBeEnabled()
+      expect(screen.getByRole('button', { name: SEALED_LABEL })).toBeEnabled()
     } finally {
       vi.unstubAllEnvs()
     }
@@ -982,7 +992,7 @@ describe('LedgerPageContent — Part 3: Exchanges two-sided stream + row inspect
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('Export view (CSV), Save History page and Save Settlement page are distinct, present toolbar actions', async () => {
+  it('Export view (CSV) and the three What happened buttons are distinct, present toolbar actions', async () => {
     const { fetchPaneCList } = await import('@/features/capsules/api/sidecarClient')
     vi.mocked(fetchPaneCList).mockResolvedValue({
       rows: [
@@ -1011,12 +1021,40 @@ describe('LedgerPageContent — Part 3: Exchanges two-sided stream + row inspect
     await screen.findByRole('group', { name: 'Exchange exch-1' })
 
     const exportButton = screen.getByRole('button', { name: /export view \(csv\)/i })
-    const historyButton = screen.getByRole('button', { name: 'Save History page' })
-    const settlementButton = screen.getByRole('button', { name: 'Save Settlement page' })
+    const narratedButton = screen.getByRole('button', { name: NARRATED_LABEL })
+    const historyButton = screen.getByRole('button', { name: STAMPED_LABEL })
+    const settlementButton = screen.getByRole('button', { name: SEALED_LABEL })
     expect(exportButton).toBeInTheDocument()
-    expect(new Set([exportButton, historyButton, settlementButton]).size).toBe(3)
+    expect(new Set([exportButton, narratedButton, historyButton, settlementButton]).size).toBe(4)
     // The old JSON download of every exchange is gone from this row.
     expect(screen.queryByRole('button', { name: /save evidence file/i })).not.toBeInTheDocument()
+
+    // Narrated: the dashboard has no agent, so it says so and narrates nothing.
+    await user.click(narratedButton)
+    expect(screen.getByRole('status')).toHaveTextContent(NARRATION_NEEDS_AGENT)
+
+    // Sealed and checked: the node's page, saved unchanged, with its seal time.
+    const { fetchSettlementReport } = await import('@/features/capsules/api/client')
+    const saved: Blob[] = []
+    const createObjectURL = vi.fn((blob: Blob) => (saved.push(blob), 'blob:x'))
+    vi.stubGlobal('URL', Object.assign(function () {}, { createObjectURL, revokeObjectURL: () => {} }))
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    vi.mocked(fetchSettlementReport).mockResolvedValueOnce({
+      kind: 'report',
+      page: '<!doctype html><p>sealed</p>',
+      sealedAt: '2026-11-01T19:45:33Z',
+      date: '2026-11-01'
+    })
+    await user.click(settlementButton)
+    expect(await screen.findByRole('status')).toHaveTextContent(sealedNote('2026-11-01T19:45:33Z', '2026-11-01'))
+    expect(await saved[0].text()).toBe('<!doctype html><p>sealed</p>')
+
+    // No sealed report: the refusal page, with the node's reason.
+    vi.mocked(fetchSettlementReport).mockResolvedValueOnce({ kind: 'refused', why: 'no settlement report has been sealed yet' })
+    await user.click(settlementButton)
+    expect(await screen.findByRole('status')).toHaveTextContent(noReportNote('no settlement report has been sealed yet'))
+    expect(await saved[1].text()).toContain('This node’s settlement report')
+    vi.unstubAllGlobals()
   })
 
   it('§3A sticky day headers: one per calendar day, tallying the whole day', async () => {

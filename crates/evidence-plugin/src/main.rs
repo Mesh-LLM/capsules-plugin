@@ -72,6 +72,7 @@ mod settlement_adapter;
 mod settlement_channel;
 mod settlement_counterparty;
 mod settlement_legs;
+mod settlement_report;
 mod share_policy;
 mod sharing_effective;
 mod split_stage;
@@ -1940,6 +1941,7 @@ async fn main() -> anyhow::Result<()> {
         capsules_for_routing_choice.clone(),
         self_peer.clone(),
     );
+    let plugin = settlement_report::with_route(plugin);
     let plugin = deal_receipt::with_route(
         plugin,
         capsules_for_routing_choice.clone(),

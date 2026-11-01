@@ -577,6 +577,36 @@ which peer an old record names. If a decision cannot be sealed, the answer is NO
 `admission_seal_failed`, so a broken book stops peer traffic visibly rather than admitting peers
 unrecorded.
 
+## Your settlement report
+
+The Exchanges tab's "What happened" row has three buttons, one per grade of an answer:
+
+- **Narrated by your agent.** The dashboard has no agent, so this button only says to ask your
+  own agent, with the evidencebook-report skill, to read your sealed records.
+- **EvidenceBook report (sealed and checked).** This saves your node's latest sealed settlement
+  report, a page anyone can check offline. The node never builds the report itself. You build
+  it on the node's machine, while the node runs, by hand or on a schedule:
+
+  ```bash
+  scripts/settlement-report.sh --report-dir DIR --capsulectl PATH --skills EVIDENCEBOOK_SKILLS \
+      --data-dir DATA_DIR
+  ```
+
+  The script reads the node's records with `capsules chain-lines`, publishes the new ones into
+  a capsulectl book under the node's own key in `DIR`, and runs evidencebook-skills'
+  `report.sh --seal` over the inference-deals pack. It keeps the page as `DIR/settlement.html`.
+  It needs capsulectl with capsulectl-book (v0.1.0-rc29 or later), an evidencebook-skills
+  checkout, and Python with PyYAML. `DIR` holds the book's signing seed, a copy of the node's
+  key, because `book report check` needs it (action-state-group/evidencebook#324). Keep `DIR`
+  as private as the data directory.
+
+  Set `CAPSULES_SETTLEMENT_REPORT_DIR=DIR` and `CAPSULES_CAPSULECTL=PATH` in the node's
+  environment. When you save the page, the node runs `capsulectl book report check` on it and
+  hands it over only if it matches its seal. Otherwise, or when no report is sealed yet, you
+  get a page that says why and holds no evidence.
+- **Stamped: History page.** This saves what your node answers a stranger who asks for its
+  history. Each paid exchange's receipt is on its own row ("Save receipt page").
+
 ## Where the records are kept
 
 Under the plugin's data directory: `CAPSULES_DATA_DIR` if set in the
