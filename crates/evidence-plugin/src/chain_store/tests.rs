@@ -267,6 +267,7 @@ fn checkpoint_lines_of(text: &str) -> Vec<Value> {
 /// files move to `archive/pre-store/`, and the node's other files stay.
 #[test]
 fn a_fixture_node_imports_and_only_the_chain_files_move() {
+    let _budget = UnboundedImport::new();
     let dir = flat_node("fixture", &[4, 8]);
     let ledger = dir.join("ledger");
     fs::write(ledger.join("deal-links.jsonl"), b"{}\n").unwrap();
@@ -322,6 +323,7 @@ fn a_fixture_node_imports_and_only_the_chain_files_move() {
 /// same records, signatures, statements and receipts).
 #[test]
 fn old_checkpoint_roots_equal_the_new_logs_roots() {
+    let _budget = UnboundedImport::new();
     let dir = flat_node("roots", &[4, 8]);
     let ledger = dir.join("ledger");
     let flat = flat_checkpoints(&ledger).unwrap();
@@ -397,6 +399,7 @@ fn ledger_fetch_returns_the_same_records_before_and_after_the_import() {
 /// clean import's.
 #[test]
 fn an_import_killed_midway_resumes() {
+    let _budget = UnboundedImport::new();
     // Killed partway through a chunk's appends: the shelf holds a prefix that
     // ends inside the chunk, and the chunk's later records without entries.
     killed_and_resumed("resume", |kill| {
@@ -407,6 +410,7 @@ fn an_import_killed_midway_resumes() {
 /// A start killed between a chunk's records and its appends resumes.
 #[test]
 fn an_import_killed_before_a_chunks_appends_resumes() {
+    let _budget = UnboundedImport::new();
     killed_and_resumed("resume-records", |kill| {
         import_faults::FAIL_BEFORE_APPENDS.with(|f| f.set(kill));
     });
@@ -454,6 +458,7 @@ fn killed_and_resumed(tag: &str, fault: impl Fn(bool)) {
 /// A start killed after the flat files began to move finishes the move.
 #[test]
 fn an_import_killed_while_moving_finishes_the_move() {
+    let _budget = UnboundedImport::new();
     let dir = flat_node("moving", &[4]);
     let ledger = dir.join("ledger");
     let flat_text = fs::read(ledger.join(FLAT_CAPSULES_FILE)).unwrap();
@@ -508,6 +513,7 @@ fn an_import_killed_while_moving_finishes_the_move() {
 /// start, saying why, and nothing is deleted or moved.
 #[test]
 fn a_mismatch_refuses_to_start_and_deletes_nothing() {
+    let _budget = UnboundedImport::new();
     // The chain log already holds another node's record at line 1.
     let dir = flat_node("mismatch", &[4]);
     let ledger = dir.join("ledger");
@@ -686,6 +692,7 @@ fn a_node_with_an_old_owner_record_stays_flat_until_a_new_history() {
 /// the earlier history's records do.
 #[test]
 fn the_first_new_history_after_an_import_is_h2() {
+    let _budget = UnboundedImport::new();
     use crate::owner_maintenance::{
         finish_pending_after_open, is_archived, resolve_log_id, Maintenance, StartNewHistoryArgs,
     };
@@ -1354,6 +1361,7 @@ fn a_long_flat_chain_starts_within_the_load_deadline() {
 /// statement is still on the shelf.
 #[test]
 fn the_move_is_one_way() {
+    let _budget = UnboundedImport::new();
     let dir = flat_node("one-way", &[4]);
     let ledger = dir.join("ledger");
     let sealed = {
@@ -1402,7 +1410,7 @@ fn past_the_deadline_a_start_stops_after_one_entry() {
     let ledger = dir.join("ledger");
     import_faults::BUDGET.with(|b| b.set(Some(std::time::Duration::ZERO)));
     let state = CapsuleState::open(&dir, "node-under-test").unwrap();
-    import_faults::BUDGET.with(|b| b.set(None));
+    let _budget = UnboundedImport::new();
     assert!(state.chain_stores().is_none(), "this start runs flat");
     drop(state);
     let log = LogSqlite::open(
@@ -1418,5 +1426,333 @@ fn past_the_deadline_a_start_stops_after_one_entry() {
         .unwrap()
         .chain_stores()
         .is_some());
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// The import finishes in one start whatever the machine's load (the default
+/// budget is a few seconds, which parallel tests can exceed). Held for the
+/// test; the budget is put back when it drops, since the runner reuses threads.
+struct UnboundedImport;
+
+impl UnboundedImport {
+    fn new() -> Self {
+        import_faults::BUDGET.with(|b| b.set(Some(std::time::Duration::from_secs(600))));
+        Self
+    }
+}
+
+impl Drop for UnboundedImport {
+    fn drop(&mut self) {
+        import_faults::BUDGET.with(|b| b.set(None));
+    }
+}
+
+/// #218: a flat fixture imports, the node seals more records on the shelf,
+/// and the export leaves a flat ledger the earlier release opens with every
+/// line, statement and checkpoint the shelf had; `shelf.db` is set aside, not
+/// deleted.
+#[test]
+fn the_shelf_exports_to_the_flat_layout_losslessly() {
+    let dir = flat_node("export", &[4, 8]);
+    let _budget = UnboundedImport::new();
+    let ledger = dir.join("ledger");
+    let state = CapsuleState::open(&dir, "node-under-test").unwrap();
+    for n in 20..24 {
+        seal(&state, n);
+    }
+    state.pad_ledger_to_bucket(8).unwrap();
+    seal(&state, 24);
+    drop(state);
+    assert!(is_store_layout(&ledger));
+    let lines = chain_lines(&ledger).unwrap();
+    let ids = ids_of(&ledger);
+    let statements: Vec<Vec<u8>> = ids
+        .iter()
+        .map(|id| statement(&ledger, id).unwrap())
+        .collect();
+    let checkpoints = checkpoints_text(&ledger).unwrap().unwrap();
+    assert!(!checkpoints.is_empty());
+    let other_file = ledger.join("deal-links.jsonl");
+    fs::write(&other_file, b"{}\n").unwrap();
+
+    let lock = crate::data_dir::lock(&dir).unwrap();
+    let report = crate::flat_export::export(&dir).unwrap();
+    drop(lock);
+
+    assert!(!is_store_layout(&ledger));
+    assert!(!ledger.join(SHELF_FILE).exists());
+    assert!(report.shelf_set_aside.join(SHELF_FILE).exists());
+    assert!(!ledger.join(".flat-export").exists());
+    assert!(other_file.exists());
+    assert_eq!(report.lines, lines.len());
+    // The flat files, byte for byte.
+    let mut text = Vec::new();
+    for line in &lines {
+        text.extend_from_slice(line);
+        text.push(b'\n');
+    }
+    assert_eq!(fs::read(ledger.join(FLAT_CAPSULES_FILE)).unwrap(), text);
+    // The same checkpoints, in the key order an earlier release wrote them
+    // (sorted at every depth).
+    let exported = fs::read(ledger.join(FLAT_CHECKPOINTS_FILE)).unwrap();
+    assert_eq!(
+        checkpoint_lines_of(&String::from_utf8(exported.clone()).unwrap()),
+        checkpoint_lines_of(&String::from_utf8(checkpoints.clone()).unwrap())
+    );
+    for line in String::from_utf8(exported).unwrap().lines() {
+        let value: Value = serde_json::from_str(line).unwrap();
+        let keys: Vec<&String> = value.as_object().unwrap().keys().collect();
+        let mut sorted = keys.clone();
+        sorted.sort();
+        assert_eq!(keys, sorted, "keys are sorted");
+        assert!(line.starts_with(r#"{"checkpoint_cose":""#));
+    }
+    for (id, statement) in ids.iter().zip(&statements) {
+        assert_eq!(
+            &fs::read(ledger.join("signed-statements").join(format!("{id}.cose"))).unwrap(),
+            statement
+        );
+    }
+    // What v0.1.8 does: the flat Ledger and CheckpointState open it.
+    let (flat, _) =
+        Ledger::open_with_indexer(&ledger, crate::producer::index::record_index_keys).unwrap();
+    assert_eq!(flat.entries() as usize, lines.len());
+    let log_id =
+        serde_json::from_slice::<Value>(checkpoints.split(|&b| b == b'\n').next().unwrap())
+            .unwrap()["log_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+    let (cp, _) =
+        CheckpointState::load(&ledger, log_id, CheckpointCadenceConfig::default()).unwrap();
+    assert_eq!(cp.leaf_count() as usize, lines.len());
+    let served_count = flat.lines().iter().filter(|l| !l.padding).count();
+    // Windows cannot move files a handle still holds open.
+    drop(cp);
+    drop(flat);
+    // Starting this release again imports the flat files onto a new shelf, as
+    // at the first upgrade, with every line kept.
+    let _budget = UnboundedImport::new();
+    let state = CapsuleState::open(&dir, "node-under-test").unwrap();
+    assert!(is_store_layout(&ledger));
+    assert_eq!(chain_lines(&ledger).unwrap(), lines);
+    drop(state);
+    // (Re-export for the checks below.)
+    let lock = crate::data_dir::lock(&dir).unwrap();
+    crate::flat_export::export(&dir).unwrap();
+    drop(lock);
+    // Served as before (padding is not served).
+    assert_eq!(served_flat(&ledger).len(), served_count);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A node already flat has nothing to export, and nothing changes.
+#[test]
+fn export_refuses_a_flat_node() {
+    let dir = flat_node("export-flat-refused", &[4]);
+    let before = tree(&dir.join("ledger"));
+    let lock = crate::data_dir::lock(&dir).unwrap();
+    assert!(crate::flat_export::export(&dir).is_err());
+    drop(lock);
+    assert_eq!(tree(&dir.join("ledger")), before);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// The export holds the data directory's lock: a running node refuses it.
+#[test]
+fn export_cli_refuses_while_the_node_runs() {
+    let dir = flat_node("export-locked", &[4]);
+    let _budget = UnboundedImport::new();
+    let state = CapsuleState::open(&dir, "node-under-test").unwrap();
+    assert_eq!(
+        crate::flat_export::cli(&["--data-dir".into(), dir.display().to_string()]),
+        1
+    );
+    assert!(is_store_layout(&dir.join("ledger")));
+    drop(state);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A run cut short after the flat files moved in but before the shelf was set
+/// aside leaves both: the earlier release reads the flat files, and the next
+/// run sets the shelf aside.
+#[test]
+fn export_resumes_when_the_shelf_is_still_beside_the_flat_files() {
+    let dir = flat_node("export-resume", &[4]);
+    let _budget = UnboundedImport::new();
+    drop(CapsuleState::open(&dir, "node-under-test").unwrap());
+    let ledger = dir.join("ledger");
+    let lines = chain_lines(&ledger).unwrap();
+    let lock = crate::data_dir::lock(&dir).unwrap();
+    let done = crate::flat_export::export(&dir).unwrap();
+    // Put the state a crash before the shelf moved would have left.
+    for name in ["shelf.db", "shelf.db-wal", "shelf.db-shm"] {
+        let from = done.shelf_set_aside.join(name);
+        if from.exists() {
+            fs::rename(from, ledger.join(name)).unwrap();
+        }
+    }
+    fs::rename(
+        done.shelf_set_aside.join("pre-store"),
+        dir.join("archive/pre-store"),
+    )
+    .unwrap();
+    fs::create_dir_all(ledger.join(".flat-export")).unwrap();
+    fs::write(
+        ledger
+            .join(".flat-export")
+            .join(crate::flat_export::ASIDE_NOTE),
+        done.shelf_set_aside.file_name().unwrap().to_str().unwrap(),
+    )
+    .unwrap();
+    let report = crate::flat_export::export(&dir).unwrap();
+    drop(lock);
+    assert_eq!(report.lines, lines.len());
+    assert_eq!(report.checkpoints, done.checkpoints);
+    assert_eq!(report.head, done.head);
+    assert!(report.shelf_set_aside.join("shelf.db").exists());
+    assert!(!ledger.join("shelf.db").exists());
+    assert!(!ledger.join(".flat-export").exists());
+    let (flat, _) =
+        Ledger::open_with_indexer(&ledger, crate::producer::index::record_index_keys).unwrap();
+    assert_eq!(flat.entries() as usize, lines.len());
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A node that has sealed records but cut no checkpoint exports too.
+#[test]
+fn export_works_without_checkpoints() {
+    let dir = temp_dir("export-no-checkpoints");
+    let _budget = UnboundedImport::new();
+    let state = CapsuleState::open(&dir, "node-under-test").unwrap();
+    seal(&state, 0);
+    seal(&state, 1);
+    drop(state);
+    let ledger = dir.join("ledger");
+    let lines = chain_lines(&ledger).unwrap();
+    assert_eq!(lines.len(), 2);
+    let lock = crate::data_dir::lock(&dir).unwrap();
+    let report = crate::flat_export::export(&dir).unwrap();
+    drop(lock);
+    assert_eq!(report.lines, 2);
+    let (flat, _) =
+        Ledger::open_with_indexer(&ledger, crate::producer::index::record_index_keys).unwrap();
+    assert_eq!(flat.entries(), 2);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A run cut short while the files moved in (`capsules.jsonl` still in the
+/// scratch directory, the rest already in `ledger/`) is redone by the next run.
+#[test]
+fn export_redoes_a_run_cut_short_while_the_files_moved_in() {
+    let dir = flat_node("export-midpromote", &[4]);
+    let _budget = UnboundedImport::new();
+    drop(CapsuleState::open(&dir, "node-under-test").unwrap());
+    let ledger = dir.join("ledger");
+    let lines = chain_lines(&ledger).unwrap();
+    let lock = crate::data_dir::lock(&dir).unwrap();
+    let done = crate::flat_export::export(&dir).unwrap();
+    for name in ["shelf.db", "shelf.db-wal", "shelf.db-shm"] {
+        let from = done.shelf_set_aside.join(name);
+        if from.exists() {
+            fs::rename(from, ledger.join(name)).unwrap();
+        }
+    }
+    fs::rename(
+        done.shelf_set_aside.join("pre-store"),
+        dir.join("archive/pre-store"),
+    )
+    .unwrap();
+    fs::remove_dir_all(&done.shelf_set_aside).unwrap();
+    fs::create_dir_all(ledger.join(".flat-export")).unwrap();
+    fs::write(
+        ledger
+            .join(".flat-export")
+            .join(crate::flat_export::ASIDE_NOTE),
+        done.shelf_set_aside.file_name().unwrap().to_str().unwrap(),
+    )
+    .unwrap();
+    fs::rename(
+        ledger.join(FLAT_CAPSULES_FILE),
+        ledger.join(".flat-export").join(FLAT_CAPSULES_FILE),
+    )
+    .unwrap();
+    let report = crate::flat_export::export(&dir).unwrap();
+    drop(lock);
+    assert_eq!(report.lines, lines.len());
+    assert!(!ledger.join(SHELF_FILE).exists());
+    assert_eq!(chain_lines(&ledger).unwrap(), lines);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A run cut short after the files moved in finishes into its own aside
+/// directory, never an earlier export's: export, re-import, export again, cut
+/// short before the shelf moved.
+#[test]
+fn a_cut_short_run_never_uses_an_earlier_exports_directory() {
+    let dir = flat_node("export-aside", &[4]);
+    let _budget = UnboundedImport::new();
+    drop(CapsuleState::open(&dir, "node-under-test").unwrap());
+    let ledger = dir.join("ledger");
+    let lock = crate::data_dir::lock(&dir).unwrap();
+    let first = crate::flat_export::export(&dir).unwrap();
+    drop(lock);
+    drop(CapsuleState::open(&dir, "node-under-test").unwrap());
+    assert!(is_store_layout(&ledger));
+    let first_shelf = fs::read(first.shelf_set_aside.join(SHELF_FILE)).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    let lock = crate::data_dir::lock(&dir).unwrap();
+    let second = crate::flat_export::export(&dir).unwrap();
+    assert_ne!(first.shelf_set_aside, second.shelf_set_aside);
+    for name in ["shelf.db", "shelf.db-wal", "shelf.db-shm"] {
+        let from = second.shelf_set_aside.join(name);
+        if from.exists() {
+            fs::rename(from, ledger.join(name)).unwrap();
+        }
+    }
+    fs::rename(
+        second.shelf_set_aside.join("pre-store"),
+        dir.join("archive/pre-store"),
+    )
+    .unwrap();
+    fs::remove_dir_all(&second.shelf_set_aside).unwrap();
+    fs::create_dir_all(ledger.join(".flat-export")).unwrap();
+    fs::write(
+        ledger
+            .join(".flat-export")
+            .join(crate::flat_export::ASIDE_NOTE),
+        second
+            .shelf_set_aside
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap(),
+    )
+    .unwrap();
+    let resumed = crate::flat_export::export(&dir).unwrap();
+    drop(lock);
+    assert_eq!(resumed.shelf_set_aside, second.shelf_set_aside);
+    assert_eq!(
+        fs::read(first.shelf_set_aside.join(SHELF_FILE)).unwrap(),
+        first_shelf
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A scratch directory that is not a run cut short while the files moved in
+/// proves nothing about the files in `ledger/`: a stray one is refused, kept.
+#[test]
+fn export_refuses_a_stray_flat_file_and_keeps_it() {
+    let dir = flat_node("export-stray", &[4]);
+    let _budget = UnboundedImport::new();
+    drop(CapsuleState::open(&dir, "node-under-test").unwrap());
+    let ledger = dir.join("ledger");
+    fs::create_dir_all(ledger.join(".flat-export")).unwrap();
+    fs::write(ledger.join("mmr_nodes.dat"), b"not ours").unwrap();
+    let lock = crate::data_dir::lock(&dir).unwrap();
+    assert!(crate::flat_export::export(&dir).is_err());
+    drop(lock);
+    assert_eq!(fs::read(ledger.join("mmr_nodes.dat")).unwrap(), b"not ours");
+    assert!(is_store_layout(&ledger));
     let _ = fs::remove_dir_all(&dir);
 }

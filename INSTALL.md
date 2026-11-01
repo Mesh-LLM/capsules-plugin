@@ -615,20 +615,29 @@ every start tries again. To run the node on an earlier release instead, stop
 it and remove `ledger/shelf.db` and `ledger/import-pending.json`, which hold
 only a partial copy. This works only while `archive/pre-store/` holds none of
 those five files. If it holds any, start this release again so it finishes the
-move. From then on the move is one way.
+move. From then on, going back to an earlier release takes `capsules export-flat` (below).
 
 Once the move has finished, do not start an earlier release on that data
-directory: it finds no `capsules.jsonl`, starts a new, empty log under the
-same log id, and its first checkpoints contradict the ones peers already hold
-for that log. Copying the files back from `archive/pre-store/` is not a way
-back either: records sealed since the move are only in `shelf.db`.
+directory as it is: it finds no `capsules.jsonl`, starts a new, empty log under
+the same log id, and its first checkpoints contradict the ones peers already
+hold for that log. Copying the files back from `archive/pre-store/` is not a
+way back either: records sealed since the move are only in `shelf.db`.
 
-So before the first start of this release, stop the node and back up
-`<data dir>/ledger/`. To go back to an earlier release later, stop the node
-and restore that backup; every record sealed since the upgrade is lost. A
-command that exports the shelf back to the flat files an earlier release
-reads, losing nothing, is planned
-([#218](https://github.com/Mesh-LLM/capsules-plugin/issues/218)).
+**Going back to an earlier release.** Stop the node and run
+`capsules export-flat [--data-dir <dir>]`. It writes `capsules.jsonl`,
+`signed-statements/`, `checkpoints.jsonl` and `mmr_nodes.dat` from the shelf
+(every line, padding included, each record's signed statement, and every
+checkpoint with its witness receipts; nothing is signed again, so it needs no
+key), checks in `ledger/.flat-export/` that the earlier release's own loaders
+open them with the same lines, head and latest checkpoint, and only then moves
+them into `ledger/`, then moves `shelf.db` (with its `-wal` and `-shm`) and
+`archive/pre-store/` to `<data dir>/archive/shelf-export-<time>/`. Nothing is deleted. It takes the
+data directory's lock, so it refuses while the node runs; it exits 0 on
+success, 2 for a bad argument and 1 when it refuses or fails, leaving the shelf
+where it was. A run cut short finishes at the next run; until then an earlier release already reads the flat files.
+Then start the earlier release. Starting this release again later moves the
+flat files onto a new shelf as at the first upgrade. Backing up `ledger/`
+before the first start is still wise, but a restore is no longer the way back.
 
 **Owner-maintenance records from earlier releases.** Releases up to 0.1.8
 sealed each owner cleanup (delete stored text, rebuild index, start a new log)
