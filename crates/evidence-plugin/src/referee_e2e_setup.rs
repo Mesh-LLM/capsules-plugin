@@ -75,7 +75,7 @@ fn write_twin_keys() {
 /// (by the answer: the host rewrites a request before the provider seals it).
 fn served_record_of(provider_ledger: &Path, response: &Value) -> Value {
     let digest = crate::capsule_emit::digest_json(response).unwrap();
-    let text = std::fs::read_to_string(provider_ledger.join("capsules.jsonl")).unwrap();
+    let text = crate::chain_store::read_chain_string(provider_ledger).unwrap();
     text.lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
         .filter(|record| {

@@ -120,15 +120,13 @@ fn is_padding_record(record: &Value) -> bool {
         && crate::producer::padding::check_padding_shape(record).is_ok()
 }
 
-/// Every line of `<ledger_dir>/capsules.jsonl`, padding included, in leaf
+/// Every line of the chain under `ledger_dir` (`chain_store::chain_text`:
+/// the chain's stores, or a flat `capsules.jsonl`), padding included, in leaf
 /// order. An unparsable line stays in place as `None`, so no later leaf's
-/// position shifts, and is counted ([`unparsable_line_count`]). A missing
-/// file is no lines, never a panic.
+/// position shifts, and is counted ([`unparsable_line_count`]). No chain is
+/// no lines, never a panic.
 fn read_ledger_lines(ledger_dir: &Path) -> Vec<Option<Value>> {
-    let path = ledger_dir.join("capsules.jsonl");
-    let Ok(text) = std::fs::read_to_string(&path) else {
-        return Vec::new();
-    };
+    let text = crate::chain_store::chain_string(ledger_dir);
     text.lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
@@ -291,16 +289,12 @@ fn read_checkpoint_card_with(
     configured: &[String],
     configured_keys: &std::collections::BTreeMap<String, String>,
 ) -> Value {
-    let path = ledger_dir.join("checkpoints.jsonl");
-    let mut checkpoints: Vec<Value> = match std::fs::read_to_string(&path) {
-        Ok(text) => text
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-            .collect(),
-        Err(_) => Vec::new(),
-    };
+    let mut checkpoints: Vec<Value> = crate::chain_store::checkpoints_string(ledger_dir)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .collect();
     let witness_status =
         crate::witness_status::annotate(&mut checkpoints, configured, configured_keys, ledger_dir);
     let held = |cp: &Value| {

@@ -154,9 +154,19 @@ impl Harness {
             .await
             .expect("POST /v1/chat/completions");
         assert_eq!(resp.status(), reqwest::StatusCode::OK);
-        let checkpoints = self.data_dir.join("ledger").join("checkpoints.jsonl");
+        // The chain's checkpoints are rows of its history on the shelf.
+        let shelf = self.data_dir.join("ledger").join("shelf.db");
+        let cut = || {
+            rusqlite::Connection::open(&shelf)
+                .and_then(|conn| {
+                    conn.query_row("SELECT COUNT(*) FROM chain_checkpoints", [], |row| {
+                        row.get::<_, i64>(0)
+                    })
+                })
+                .is_ok_and(|n| n > 0)
+        };
         timeout(TEST_TIMEOUT, async {
-            while std::fs::metadata(&checkpoints).map_or(true, |m| m.len() == 0) {
+            while !cut() {
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
         })

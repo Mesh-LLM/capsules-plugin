@@ -1378,10 +1378,31 @@ pub const CITATION_PURPOSE_PRIOR_HISTORY: &str = "prior_history";
 /// action's own measured facts (counts, ranges, digests) -- never a path, and
 /// never text the cleanup removed. `prior_history_head` is set only on a new
 /// history's first record and becomes its single `references[]` entry.
+/// `disposer` says who triggered the action, which sets the record's
+/// `disposition.approver` (AAC §5.4).
 pub struct OwnerMaintenance<'a> {
     pub kind: &'a str,
     pub facts: Map<String, Value>,
     pub prior_history_head: Option<&'a str>,
+    pub disposer: Disposer,
+}
+
+/// Who triggered an owner-maintenance action.
+///
+/// Records sealed before this (every release up to 0.1.8) carry
+/// `approver: "owner"`, which AAC §5.4 does not allow (human, policy or
+/// counterparty): they fail Class 1 as `approver_invalid` for any checker,
+/// and are never rewritten (Mesh-LLM/capsules-plugin#208).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Disposer {
+    /// A person asked for it (an owner tool or route call): `approver`
+    /// `human`, `human_disposed` true.
+    Person,
+    /// The plugin did it on its own: `approver` `policy`, `human_disposed`
+    /// false. No owner-maintenance action is plugin-triggered today; an
+    /// automatic one (an index rebuild the plugin starts itself) seals this.
+    #[allow(dead_code)]
+    Plugin,
 }
 
 /// Seal an owner-maintenance record chained onto `chain_head` (`"follows"`,
@@ -1450,8 +1471,11 @@ pub fn seal_owner_maintenance_record(
         "disposition".into(),
         json!({
             "decision": "accept",
-            "approver": "owner",
-            "human_disposed": true,
+            "approver": match action.disposer {
+                Disposer::Person => "human",
+                Disposer::Plugin => "policy",
+            },
+            "human_disposed": action.disposer == Disposer::Person,
             "verdict_class": "executed",
         }),
     );
@@ -2986,6 +3010,7 @@ mod tests {
             kind: "stored_text_deleted",
             facts,
             prior_history_head: None,
+            disposer: Disposer::Person,
         };
         let mut capsule =
             seal_owner_maintenance_record(&action, Some(&head), &key.signing_key).unwrap();
@@ -3032,6 +3057,7 @@ mod tests {
             kind: "history_started",
             facts: Map::new(),
             prior_history_head: Some(&prior),
+            disposer: Disposer::Person,
         };
         let capsule = seal_owner_maintenance_record(&action, None, &key.signing_key).unwrap();
         assert!(capsule.get("chain").is_none());
@@ -3045,6 +3071,56 @@ mod tests {
             capsule["capsule_id"].as_str().unwrap(),
             compute_capsule_id(&capsule).unwrap()
         );
+    }
+
+    /// Every owner-maintenance record sealed now passes AAC Class 1: a
+    /// person's action is approved by `human`, the plugin's own by `policy`
+    /// (#208). One with the old `approver: "owner"` fails it, as every
+    /// record before this did.
+    #[test]
+    fn every_owner_maintenance_record_now_passes_class_1() {
+        let key = crate::producer::keys::KeyPair::generate();
+        let head = "c".repeat(64);
+        let prior = "a".repeat(64);
+        let class1 = |capsule: &Value| {
+            let mut bare = capsule.clone();
+            let object = bare.as_object_mut().unwrap();
+            object.remove("signature");
+            object.remove("key_id");
+            agent_action_capsule::verify::verify(&bare, None)
+        };
+        for kind in [
+            "stored_text_deleted",
+            "index_rebuilt",
+            "history_closing",
+            "history_started",
+        ] {
+            for disposer in [Disposer::Person, Disposer::Plugin] {
+                let started = kind == "history_started";
+                let action = OwnerMaintenance {
+                    kind,
+                    facts: Map::new(),
+                    prior_history_head: started.then_some(prior.as_str()),
+                    disposer,
+                };
+                let chain = (!started).then_some(head.as_str());
+                let capsule =
+                    seal_owner_maintenance_record(&action, chain, &key.signing_key).unwrap();
+                let verdict = class1(&capsule);
+                assert!(verdict.ok, "{kind} {disposer:?}: {:?}", verdict.findings);
+                let (approver, human) = match disposer {
+                    Disposer::Person => ("human", true),
+                    Disposer::Plugin => ("policy", false),
+                };
+                assert_eq!(capsule["disposition"]["approver"], json!(approver));
+                assert_eq!(capsule["disposition"]["human_disposed"], json!(human));
+                let mut old = capsule.clone();
+                old["disposition"]["approver"] = json!("owner");
+                let old = class1(&old);
+                assert!(!old.ok);
+                assert!(old.findings.iter().any(|f| f.code == "approver_invalid"));
+            }
+        }
     }
 
     // -------------------------------------------------------------------

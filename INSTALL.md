@@ -562,10 +562,64 @@ unrecorded.
 
 Under the plugin's data directory: `CAPSULES_DATA_DIR` if set in the
 node's environment (an absolute path), else `$XDG_DATA_HOME/capsules`,
-else `~/.local/share/capsules`. The sealed log is
-`<data dir>/ledger/capsules.jsonl` and its checkpoints are
-`<data dir>/ledger/checkpoints.jsonl`. The node's signing key is under
-`<data dir>/keys/`; it never leaves the node.
+else `~/.local/share/capsules`. The sealed log is kept in one SQLite file,
+`<data dir>/ledger/shelf.db`: the node's EvidenceBook shelf, which holds each
+record's `capsule_id` in order, the log's checkpoints, and each record with its
+signed statement. The node's signing key is under `<data dir>/keys/`; it never
+leaves the node.
+
+To read the sealed log as one record per line, run
+`capsules chain-lines [--data-dir <dir>] [--from <i>] [--to <j>]`. It prints
+lines `i` to `j` (0-based, padding records included; the whole log by
+default) in the `capsules.jsonl` line format earlier releases wrote, and can
+run while the node runs. It exits 0 on success, 2 for a bad argument or a range
+outside the log, and 1 when the log cannot be read. `capsules chain-checkpoints
+[--data-dir <dir>]` prints the log's checkpoints, oldest first, in the
+`checkpoints.jsonl` line format, the same way: it exits 0 (printing nothing
+when there is no checkpoint yet), 2 for a bad argument and 1 when they cannot
+be read.
+
+**A node from an earlier release** kept its log in
+`<data dir>/ledger/capsules.jsonl`, with `signed-statements/`,
+`checkpoints.jsonl`, `mmr_nodes.dat` and `witness-backfill.jsonl` beside it.
+At its first start on this release the plugin moves those records and
+checkpoints into `shelf.db`, as they were (nothing is signed again),
+checks that they match, and then moves only those five to
+`<data dir>/archive/pre-store/`. Nothing is deleted. A start cut short
+during the move finishes it at the next start. Each start spends at most a
+few seconds on the move, so the node starts within mesh-llm's deadline: on a
+node with a long log the move takes more than one start, and until it is done
+the node keeps using its old files, which still hold every record. If the
+files do not match, the node refuses to start, says why, and leaves the old
+files where they were;
+every start tries again. To run the node on an earlier release instead, stop
+it and remove `ledger/shelf.db` and `ledger/import-pending.json`, which hold
+only a partial copy. This works only while `archive/pre-store/` holds none of
+those five files. If it holds any, start this release again so it finishes the
+move. From then on the move is one way.
+
+Once the move has finished, do not start an earlier release on that data
+directory: it finds no `capsules.jsonl`, starts a new, empty log under the
+same log id, and its first checkpoints contradict the ones peers already hold
+for that log. Copying the files back from `archive/pre-store/` is not a way
+back either: records sealed since the move are only in `shelf.db`.
+
+So before the first start of this release, stop the node and back up
+`<data dir>/ledger/`. To go back to an earlier release later, stop the node
+and restore that backup; every record sealed since the upgrade is lost. A
+command that exports the shelf back to the flat files an earlier release
+reads, losing nothing, is planned
+([#218](https://github.com/Mesh-LLM/capsules-plugin/issues/218)).
+
+**Owner-maintenance records from earlier releases.** Releases up to 0.1.8
+sealed each owner cleanup (delete stored text, rebuild index, start a new log)
+with `disposition.approver: "owner"`, which the Agent Action Capsule format
+does not allow. Those records stay as they were sealed and never change, so
+an Agent Action Capsule Class 1 check reports them as `approver_invalid`. The shelf only holds
+records that pass that check, so a node whose log holds such a record keeps
+its log in `capsules.jsonl` as before, and says so at start. The next log
+it starts (Start a new log) uses the shelf. Cleanups sealed from this
+release on name `approver: "human"` when you ask for them.
 
 ## The log's id
 

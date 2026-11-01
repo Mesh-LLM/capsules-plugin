@@ -177,13 +177,32 @@ fn remote(id: &str) -> String {
     format!("Remote(PublicKey({id}))")
 }
 
-/// Every `admission_decision` block the plugin sealed, in ledger order.
+/// The node's chain as `capsules chain-lines` prints it: one record per
+/// line, in the `capsules.jsonl` line format, read from the chain's stores.
+fn chain_lines(data_dir: &std::path::Path) -> String {
+    let out = std::process::Command::new(PLUGIN_BIN)
+        .args(["chain-lines", "--data-dir"])
+        .arg(data_dir)
+        .output()
+        .expect("run capsules chain-lines");
+    assert!(
+        out.status.success(),
+        "chain-lines: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8(out.stdout).expect("chain-lines prints UTF-8")
+}
+
+/// Every `admission_decision` block the plugin sealed, in ledger order: the
+/// chain's records, and any file under `ledger/` that holds records.
 fn sealed_decisions(data_dir: &std::path::Path) -> Vec<Value> {
     let mut decisions = Vec::new();
-    for entry in walk(&data_dir.join("ledger")) {
-        let Ok(text) = std::fs::read_to_string(&entry) else {
-            continue;
-        };
+    let texts = walk(&data_dir.join("ledger"))
+        .iter()
+        .filter_map(|entry| std::fs::read_to_string(entry).ok())
+        .chain([chain_lines(data_dir)])
+        .collect::<Vec<_>>();
+    for text in texts {
         for line in text.lines() {
             let Ok(record) = serde_json::from_str::<Value>(line) else {
                 continue;
@@ -272,6 +291,7 @@ async fn a_denied_peer_gets_no_and_an_allowed_peer_gets_go_through_the_wire_prot
     let ledger_text: String = walk(&data_dir.join("ledger"))
         .iter()
         .filter_map(|p| std::fs::read_to_string(p).ok())
+        .chain([chain_lines(&data_dir)])
         .collect();
     for id in [ALLOWED, DENIED, STRANGER] {
         assert!(!ledger_text.contains(id), "no peer id is sealed in clear");

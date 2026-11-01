@@ -156,11 +156,7 @@ pub fn ledger_json(source: &EvidenceSource) -> Value {
 
 /// `{signed_statement_b64}`: the record's detached COSE_Sign1, or null.
 pub fn signed_statement_json(ledger_dir: &Path, capsule_id: &str) -> Value {
-    let path = ledger_dir
-        .join("signed-statements")
-        .join(format!("{capsule_id}.cose"));
-    let b64 = std::fs::read(path)
-        .ok()
+    let b64 = crate::chain_store::statement(ledger_dir, capsule_id)
         .map(|bytes| base64::engine::general_purpose::STANDARD.encode(bytes));
     json!({ "signed_statement_b64": b64 })
 }

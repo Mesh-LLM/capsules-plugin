@@ -44,7 +44,10 @@ const OLD_APP_DIR: &str = "capsule-emit-mesh";
 /// directory.
 const LEGACY_RELATIVE_DIR: &str = "admission-policy-data";
 const NODE_KEY: &str = "keys/node-key.pem";
+/// The chain, in the flat layout an earlier release wrote and on the node's
+/// shelf (`chain_store`): a data directory holding either is a node.
 const LEDGER: &str = "ledger/capsules.jsonl";
+const LEDGER_SHELF: &str = "ledger/shelf.db";
 /// Holds the advisory lock; its contents (the holder's pid) are only for the
 /// refusal message.
 const LOCK_FILE: &str = "capsules.lock";
@@ -85,7 +88,8 @@ fn check_no_second_key(dir: &Path, chosen: bool, cwd: &Path) -> anyhow::Result<(
     if dir.join(NODE_KEY).exists() {
         return Ok(());
     }
-    let ledger_has_records = std::fs::metadata(dir.join(LEDGER)).is_ok_and(|m| m.len() > 0);
+    let ledger_has_records = std::fs::metadata(dir.join(LEDGER)).is_ok_and(|m| m.len() > 0)
+        || crate::chain_store::line_count(&dir.join("ledger")) > 0;
     if ledger_has_records {
         bail!(
             "{} holds a ledger but no signing key ({NODE_KEY}); refusing to start with a new key, \
@@ -108,7 +112,7 @@ fn check_no_second_key(dir: &Path, chosen: bool, cwd: &Path) -> anyhow::Result<(
 
 /// Whether `dir` holds a node: its signing key or its ledger.
 fn holds_node(dir: &Path) -> bool {
-    dir.join(NODE_KEY).exists() || dir.join(LEDGER).exists()
+    dir.join(NODE_KEY).exists() || dir.join(LEDGER).exists() || dir.join(LEDGER_SHELF).exists()
 }
 
 /// The old default directory to keep using, when this node has one: only
@@ -179,6 +183,11 @@ fn lsof_holders(path: &Path) -> Vec<u32> {
 /// opens the ledger only after this check is not seen; the lock keeps out
 /// every capsules process, so that can only be a plugin from before 0.1.3.
 fn other_holders(path: &Path) -> Vec<u32> {
+    // No file, no holder: and no `lsof` child, whose start would briefly
+    // hold a copy of every file this process has open, locks included.
+    if !path.exists() {
+        return Vec::new();
+    }
     if !cfg!(target_os = "linux") {
         return lsof_holders(path);
     }
@@ -216,6 +225,8 @@ fn other_holders(path: &Path) -> Vec<u32> {
 
 /// Refuse a directory whose ledger another process has open: two writers on
 /// one hash chain break it, and a plugin from before 0.1.3 takes no lock.
+/// Only the flat file: no release that takes no lock ever opened the shelf,
+/// and the shelf's readers (`capsules chain-lines`) hold it open by design.
 fn check_no_other_writer(dir: &Path) -> anyhow::Result<()> {
     let holders = other_holders(&dir.join(LEDGER));
     if let Some(pid) = holders.first() {
@@ -255,6 +266,36 @@ pub fn data_dir() -> anyhow::Result<PathBuf> {
 #[must_use = "the directory is locked only while this is held"]
 pub struct DataDirLock {
     _files: Vec<File>,
+    /// The ledger directory as it really is, while this holds it
+    /// ([`holds_ledger`]).
+    ledger: PathBuf,
+}
+
+/// The ledger directories this process holds a [`DataDirLock`] on, as they
+/// really are: the node's shelf is opened on that held lock and takes none of
+/// its own (evidencebook#254 §2.4), and asks [`holds_ledger`] that it is held.
+static HELD_LEDGERS: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
+
+impl Drop for DataDirLock {
+    fn drop(&mut self) {
+        let mut held = HELD_LEDGERS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(at) = held.iter().position(|l| *l == self.ledger) {
+            held.remove(at);
+        }
+    }
+}
+
+/// Whether this process holds the writer lock covering `ledger_dir`.
+pub fn holds_ledger(ledger_dir: &Path) -> bool {
+    let Ok(real) = std::fs::canonicalize(ledger_dir) else {
+        return false;
+    };
+    HELD_LEDGERS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .contains(&real)
 }
 
 /// One advisory lock on the file at `path` (never through a symlink), or why
@@ -282,6 +323,8 @@ fn take(path: &Path, label: &str) -> anyhow::Result<Result<File, String>> {
             Ok(Ok(file))
         }
         Err(TryLockError::WouldBlock) => {
+            // On Windows the holder's exclusive lock blocks this read, so the
+            // holder is "unknown" there.
             let mut holder = String::new();
             let _ = file.read_to_string(&mut holder);
             let holder = match holder.trim() {
@@ -310,21 +353,48 @@ fn take(path: &Path, label: &str) -> anyhow::Result<Result<File, String>> {
 /// the holder's pid. A writer from before 0.1.3 takes no lock, so the ledger
 /// itself is checked too (`check_no_other_writer`).
 pub fn lock(dir: &Path) -> anyhow::Result<DataDirLock> {
+    lock_waiting(dir, std::time::Duration::ZERO)
+}
+
+/// [`lock`], retried every 50 ms for up to `wait` while another holder has
+/// it (the shelf's own lock rule, evidencebook#254 §2.4). A holder that has
+/// just let go may still be counted for a moment: a child process another
+/// thread is starting holds a copy of every open file until it execs.
+pub fn lock_waiting(dir: &Path, wait: std::time::Duration) -> anyhow::Result<DataDirLock> {
+    let deadline = std::time::Instant::now() + wait;
+    loop {
+        match try_lock(dir)? {
+            Ok(lock) => return Ok(lock),
+            Err(held) if std::time::Instant::now() < deadline => {
+                tracing::debug!(%held, "waiting for the data directory's lock");
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Err(held) => bail!(held),
+        }
+    }
+}
+
+/// One attempt at [`lock`]: `Ok(Err(why))` when another holder has it.
+fn try_lock(dir: &Path) -> anyhow::Result<Result<DataDirLock, String>> {
     std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
-    let dir_lock = take(
+    let dir_lock = match take(
         &dir.join(LOCK_FILE),
         &format!("data directory {}", dir.display()),
-    )?
-    .map_err(anyhow::Error::msg)?;
+    )? {
+        Ok(file) => file,
+        Err(held) => return Ok(Err(held)),
+    };
     let ledger = dir.join("ledger");
     std::fs::create_dir_all(&ledger).with_context(|| format!("create {}", ledger.display()))?;
     let real_ledger =
         std::fs::canonicalize(&ledger).with_context(|| format!("resolve {}", ledger.display()))?;
-    let ledger_lock = take(
+    let ledger_lock = match take(
         &real_ledger.join(LEDGER_LOCK_FILE),
         &format!("ledger {}", real_ledger.display()),
-    )?
-    .map_err(anyhow::Error::msg)?;
+    )? {
+        Ok(file) => file,
+        Err(held) => return Ok(Err(held)),
+    };
     let mut files = vec![dir_lock, ledger_lock];
     // The log of requests made of this node: written only to the directory
     // decided here, and only while this process holds a lock covering it.
@@ -357,7 +427,14 @@ pub fn lock(dir: &Path) -> anyhow::Result<DataDirLock> {
     };
     set_received_log_writable(writable);
     check_no_other_writer(dir)?;
-    Ok(DataDirLock { _files: files })
+    HELD_LEDGERS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .push(real_ledger.clone());
+    Ok(Ok(DataDirLock {
+        _files: files,
+        ledger: real_ledger,
+    }))
 }
 
 /// The one directory this run may write the received log to, decided when
@@ -488,10 +565,7 @@ mod tests {
         let _held = lock(&dir).expect("first lock");
         let message = lock(&dir).err().expect("second lock refused").to_string();
         assert!(message.contains(&dir.display().to_string()), "{message}");
-        assert!(
-            message.contains(&format!("pid {}", std::process::id())),
-            "{message}"
-        );
+        assert_names_this_holder(&message);
         assert!(!message.contains('\n'), "one line: {message}");
     }
 
@@ -507,6 +581,9 @@ mod tests {
         let dir = tmp("lock-stale");
         std::fs::write(dir.join(LOCK_FILE), "999999\n").unwrap();
         let _held = lock(&dir).expect("a stale lock file is not a lock");
+        // Windows keeps every other handle from reading a file under an
+        // exclusive lock, so the pid it holds is read only elsewhere.
+        #[cfg(unix)]
         assert_eq!(
             std::fs::read_to_string(dir.join(LOCK_FILE)).unwrap(),
             format!("{}\n", std::process::id())
@@ -551,14 +628,14 @@ mod tests {
     fn an_existing_node_keeps_its_old_directory_in_place() {
         let (old, new) = old_node("old-in-place", 3);
         let key = std::fs::read(old.join(NODE_KEY)).unwrap();
-        let ledger = std::fs::read(old.join(LEDGER)).unwrap();
+        let ledger = std::fs::read(old.join(LEDGER_SHELF)).unwrap();
         assert_eq!(
             existing_old_default(&new, false).unwrap(),
             Some(old.clone())
         );
         assert!(!new.exists(), "nothing created under the new name");
         assert_eq!(std::fs::read(old.join(NODE_KEY)).unwrap(), key);
-        assert_eq!(std::fs::read(old.join(LEDGER)).unwrap(), ledger);
+        assert_eq!(std::fs::read(old.join(LEDGER_SHELF)).unwrap(), ledger);
     }
 
     #[test]
@@ -621,10 +698,7 @@ mod tests {
         let _held = lock(&a).expect("the first");
         let message = lock(&b).err().expect("the second refused").to_string();
         assert!(message.contains("ledger"), "{message}");
-        assert!(
-            message.contains(&format!("pid {}", std::process::id())),
-            "{message}"
-        );
+        assert_names_this_holder(&message);
     }
 
     #[cfg(unix)]
@@ -642,6 +716,18 @@ mod tests {
         );
     }
 
+    /// The refusal names this process as the holder. On Windows the holder's
+    /// exclusive `LockFileEx` lock keeps every other handle from reading the
+    /// pid it wrote, so the refusal there says "pid unknown".
+    fn assert_names_this_holder(message: &str) {
+        let expected = if cfg!(windows) {
+            "pid unknown".to_string()
+        } else {
+            format!("pid {}", std::process::id())
+        };
+        assert!(message.contains(&expected), "{message}");
+    }
+
     fn tmp(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("data-dir-{label}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -649,6 +735,41 @@ mod tests {
         dir
     }
 
+    /// The shelf opens on this process's lock: held while a lock lives,
+    /// through any spelling of the ledger's path, and not after it is gone.
+    #[test]
+    fn this_process_holds_a_ledger_while_its_lock_lives() {
+        let dir = tmp("lock-held-registry");
+        let ledger = dir.join("ledger");
+        assert!(!holds_ledger(&ledger));
+        let held = lock(&dir).unwrap();
+        assert!(holds_ledger(&ledger));
+        assert!(holds_ledger(&dir.join("ledger/../ledger")));
+        drop(held);
+        assert!(!holds_ledger(&ledger));
+    }
+
+    /// A wait for the lock takes it once the holder lets go within the wait,
+    /// and is refused, naming the holder, when it does not.
+    #[test]
+    fn a_wait_for_the_lock_takes_it_once_the_holder_lets_go() {
+        let dir = tmp("lock-waiting");
+        let held = lock(&dir).unwrap();
+        let message = lock_waiting(&dir, std::time::Duration::from_millis(120))
+            .err()
+            .expect("still held")
+            .to_string();
+        assert_names_this_holder(&message);
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            drop(held);
+        });
+        let _taken = lock_waiting(&dir, std::time::Duration::from_secs(5)).expect("taken");
+        release.join().unwrap();
+    }
+
+    // Unix paths: on Windows `/home/op` has no drive, so is not absolute.
+    #[cfg(unix)]
     #[test]
     fn the_directory_is_absolute_whatever_the_working_directory() {
         let root = Path::new("/");

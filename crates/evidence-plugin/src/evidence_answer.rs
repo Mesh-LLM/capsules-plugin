@@ -2877,7 +2877,6 @@ pub(crate) mod tests {
         use crate::capsule_emit::{CapsuleState, HostProvenance, ObservedHostExchange};
         use crate::lifecycle_channel::DispatchPath;
         use crate::producer::anchor::AnchorClient;
-        use crate::producer::checkpoint::{CheckpointCadenceConfig, CheckpointState};
 
         let data = tempfile::tempdir().unwrap();
         let state = CapsuleState::open(data.path(), RESPONDER).unwrap();
@@ -2904,12 +2903,8 @@ pub(crate) mod tests {
                 response_text_digest: None,
             })
             .unwrap();
-        let (mut checkpoints, _) = CheckpointState::load(
-            state.ledger_dir(),
-            RESPONDER,
-            CheckpointCadenceConfig::default(),
-        )
-        .unwrap();
+        let (mut checkpoints, _) =
+            crate::chain_store::test_load(state.ledger_dir(), RESPONDER).unwrap();
         let covering = checkpoints
             .checkpoint_covering(
                 &emitted.capsule_id,
@@ -2919,7 +2914,7 @@ pub(crate) mod tests {
             .unwrap();
         // An anchor is pinned by the SHA-256 of its checkpoint's COSE
         // statement, as written beside the record in checkpoints.jsonl.
-        let line: Value = std::fs::read_to_string(state.ledger_dir().join("checkpoints.jsonl"))
+        let line: Value = crate::chain_store::read_checkpoints_string(state.ledger_dir())
             .unwrap()
             .lines()
             .last()

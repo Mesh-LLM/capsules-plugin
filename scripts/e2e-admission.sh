@@ -42,7 +42,10 @@ pids=()
 token=
 
 node_home() { echo "$out/nodes/$1"; }
-ledger() { echo "$(node_home "$1")/.local/share/capsules/ledger/capsules.jsonl"; }
+# A node's chain and its checkpoints, in the capsules.jsonl and
+# checkpoints.jsonl line formats, read from its shelf while it runs.
+chain() { "$plugin" chain-lines --data-dir "$(node_home "$1")/.local/share/capsules" 2>/dev/null; }
+checkpoints() { "$plugin" chain-checkpoints --data-dir "$(node_home "$1")/.local/share/capsules" 2>/dev/null; }
 
 on_exit() {
   status=$?
@@ -109,7 +112,7 @@ wait_for() {
 
 status_field() { curl -fsS "http://127.0.0.1:$1/api/status" | jq -er "$2"; }
 lists_model() { curl -fsS "http://127.0.0.1:$1/v1/models" | jq -e --arg m "$MODEL_NAME" 'any(.data[]; .id == $m)'; }
-has_checkpoint() { [ -s "$(node_home provider)/.local/share/capsules/ledger/checkpoints.jsonl" ]; }
+has_checkpoint() { [ -n "$(checkpoints provider)" ]; }
 chat() {
   curl -sS -o "$out/chat-$2.json" -w '%{http_code}' "http://127.0.0.1:$1/v1/chat/completions" \
     -H 'content-type: application/json' \
@@ -117,8 +120,7 @@ chat() {
 }
 # The requester's admission decisions, in ledger order.
 decisions() {
-  [ -f "$(ledger requester)" ] || return 0
-  jq -c '.model_attestation.compute_attestation.admission_decision // empty' "$(ledger requester)"
+  chain requester | jq -c '.model_attestation.compute_attestation.admission_decision // empty'
 }
 decision_count() { decisions | wc -l | tr -d ' '; }
 # The plugin's log line once a card ask came back read (colors stripped).
@@ -185,7 +187,7 @@ echo "$second" | jq -e '.verdict == "GO" and .source == "default"
   || { echo "the second decision is not a GO citing the card" >&2; exit 1; }
 # --- 3. the provider on the deny list: NO, with its rows ---------------------
 # The settings are read at start, so the requester restarts with the list.
-held_half() { jq -e 'select(.model_attestation.compute_attestation.received_half.signature_ok == true)' "$(ledger requester)" | grep -q .; }
+held_half() { [ "$(chain requester | jq -c 'select(.model_attestation.compute_attestation.received_half.signature_ok == true)' | wc -l)" -gt 0 ]; }
 wait_for 60 "the requester holds the provider's half" held_half
 requester_pid=${pids[${#pids[@]}-1]}
 kill -TERM "$requester_pid"
@@ -207,7 +209,9 @@ echo "$third" | jq -e '.verdict == "NO" and .source == "deny_list"
   || { echo "the third decision is not a deny-list NO with its rows" >&2; exit 1; }
 
 # The provider's id never appears in clear in the requester's admission records.
-if decisions | grep -q "$provider_id"; then
+# grep -c reads to the end: a grep -q that stops early would fail chain-lines'
+# write, and pipefail would turn a match into no match.
+if [ "$(decisions | grep -c -- "$provider_id")" -gt 0 ]; then
   echo "an admission record names the provider in clear" >&2
   exit 1
 fi

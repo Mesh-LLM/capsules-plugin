@@ -850,7 +850,7 @@ pub(crate) mod tests {
     }
 
     fn legs_of(dir: &Path) -> Vec<Value> {
-        std::fs::read_to_string(dir.join("ledger").join("capsules.jsonl"))
+        crate::chain_store::read_chain_string(&dir.join("ledger"))
             .unwrap_or_default()
             .lines()
             .map(|l| serde_json::from_str::<Value>(l).unwrap())
@@ -988,7 +988,7 @@ pub(crate) mod tests {
             Some(PROVIDER_PEER),
             Some(RESPONSE),
         );
-        let capsules: Vec<Value> = std::fs::read_to_string(a.path().join("ledger/capsules.jsonl"))
+        let capsules: Vec<Value> = crate::chain_store::read_chain_string(&a.path().join("ledger"))
             .unwrap()
             .lines()
             .map(|l| serde_json::from_str(l).unwrap())
