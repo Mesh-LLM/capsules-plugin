@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.1.11
+
+Pull requests since 0.1.10:
+
+- #213 feat(evidence-plugin)!: keep the chain on the node's EvidenceBook shelf (#206)
+- #224 docs(release): 0.1.10's notes in CHANGELOG and INSTALL
+- #227 ci: the bounded-starts import test moves a small chain; the plugin job gets 40 minutes (#226)
+
 ## 0.1.10
 
 ### Fixed
