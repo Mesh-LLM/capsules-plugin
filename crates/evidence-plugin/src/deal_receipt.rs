@@ -417,7 +417,15 @@ pub struct ReceiptArgs {
     pub capsule_id: Value,
 }
 
-/// The route's answer: `{"state": "bundle", "bundle": ...}`, or
+/// A receipt route's answer for a bundle: `bundle` is the bundle's JSON text,
+/// the exact bytes the node serves, so a page that embeds it hands a verifier
+/// those bytes unchanged (Mesh-LLM/capsules-plugin#96). Shared by the three
+/// receipt routes.
+pub(crate) fn bundle_answer(bundle: &Value) -> Value {
+    json!({"state": "bundle", "bundle": bundle.to_string()})
+}
+
+/// The route's answer: `{"state": "bundle", "bundle": "<JSON text>"}`, or
 /// `{"state": "refused", "why": ...}` for a node state that has no bundle.
 pub fn answer(ledger_dir: &Path, node_key_id: &str, capsule_id: &Value) -> Result<Value, String> {
     let Some(id) = capsule_id.as_str().filter(|s| {
@@ -428,7 +436,7 @@ pub fn answer(ledger_dir: &Path, node_key_id: &str, capsule_id: &Value) -> Resul
         return Err("capsule_id must be 64 lowercase hex".into());
     };
     match bundle(ledger_dir, node_key_id, id) {
-        Ok(bundle) => Ok(json!({"state": "bundle", "bundle": bundle})),
+        Ok(bundle) => Ok(bundle_answer(&bundle)),
         Err(Error::Refused(r)) => Ok(json!({"state": "refused", "why": r.why()})),
         Err(Error::Failed(why)) => Err(why),
     }
@@ -749,6 +757,14 @@ pub(crate) mod tests {
         cut(&state);
         let answered = answer(state.ledger_dir(), &key, &json!(exchange_capsule())).unwrap();
         assert_eq!(answered["state"], "bundle");
+        // The bundle is served as its JSON text, and that text is the bundle.
+        let text = answered["bundle"].as_str().unwrap();
+        let served: Value = serde_json::from_str(text).unwrap();
+        assert_eq!(
+            served,
+            bundle(state.ledger_dir(), &key, &exchange_capsule()).unwrap()
+        );
+        assert_eq!(text, served.to_string());
     }
 
     /// The deal links to a real exchange record on the ledger, and the bundle

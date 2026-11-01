@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
+import { RECEIPT_PAGE_SENTENCE } from '@/features/capsules/components/SaveReceiptPage'
 import { SecurityChecksView } from '@/features/capsules/components/SecurityChecksView'
 import { sharedTheirsDetail } from '@/features/capsules/lib/security-checks-view'
 import type { PaneCRow } from '@/features/capsules/api/sidecarTypes'
@@ -525,15 +526,12 @@ describe('SecurityChecksView — referee verdict follows the asked-and-sealed ru
   })
 })
 
-describe('SecurityChecksView — per-row "Save evidence file"', () => {
-  it('renders the 40-word evidence-file sentence and the save control', () => {
+describe('SecurityChecksView — per-row "Save receipt page"', () => {
+  it('offers the receipt page, with its sentence, in place of the JSON evidence file', () => {
     renderView()
-    expect(screen.getByRole('button', { name: 'Save evidence file' })).toBeInTheDocument()
-    expect(
-      screen.getByText(
-        'A file: what you asked, what you got, which machine and model answered, when it was registered, plus your own copy. Anyone can check it, no account needed. Not included: the text, or proof the answer was right.'
-      )
-    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save receipt page' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save evidence file' })).not.toBeInTheDocument()
+    expect(screen.getByText(RECEIPT_PAGE_SENTENCE)).toBeInTheDocument()
   })
 
   it('p2 item 1: no inert "open in Logs" -- it cannot link yet, so it is not shown', () => {

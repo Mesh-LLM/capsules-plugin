@@ -4,16 +4,17 @@ import { BUNDLE_ELEMENT_ID } from '@/features/capsules/lib/saved-pages'
 
 /** A saved page as a person opens it: no server, no network. jsdom runs the
  *  page's own scripts; the only thing given to it is the platform (`crypto`,
- *  text codecs) a browser has and jsdom lacks. `requested` lists every fetch
+ *  text codecs) a browser has and jsdom lacks; `platform.crypto` stands in
+ *  for a browser's own (one without Ed25519, say). `requested` lists every fetch
  *  or XHR the page tried. */
-export async function openSavedPage(html: string) {
+export async function openSavedPage(html: string, platform: { crypto?: unknown } = {}) {
   const requested: string[] = []
   const dom = new JSDOM(html, {
     runScripts: 'dangerously',
     url: 'file:///saved/page.html',
     beforeParse(window) {
       const w = window as unknown as Record<string, unknown>
-      Object.defineProperty(w, 'crypto', { value: webcrypto, configurable: true })
+      Object.defineProperty(w, 'crypto', { value: platform.crypto ?? webcrypto, configurable: true })
       w.TextEncoder = TextEncoder
       w.TextDecoder = TextDecoder
       w.fetch = (url: string) => {
