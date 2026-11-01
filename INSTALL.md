@@ -583,7 +583,15 @@ checkpoints into `shelf.db`, as they were (nothing is signed again),
 checks that they match, and then moves only those five to
 `<data dir>/archive/pre-store/`. Nothing is deleted. A start cut short
 during the move finishes it at the next start. If the files do not match, the
-node refuses to start, says why, and leaves the old files where they were.
+node refuses to start, says why, and leaves the old files where they were;
+every start tries again. To run the node on an earlier release instead, stop
+it and remove `ledger/shelf.db` and `ledger/import-pending.json`, which hold
+only a partial copy.
+
+The move is one way. Once it has finished, do not start an earlier release on
+that data directory: it finds no `capsules.jsonl`, starts a new, empty log
+under the same log id, and its first checkpoints contradict the ones peers
+already hold for that log.
 
 **Owner-maintenance records from earlier releases.** Releases up to 0.1.8
 sealed each owner cleanup (delete stored text, rebuild index, start a new log)

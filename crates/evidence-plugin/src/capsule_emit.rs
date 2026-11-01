@@ -2684,12 +2684,10 @@ pub(crate) mod tests {
                 crate::producer::capsule::payload_bytes(&emitted.capsule),
             )
             .expect("write capsule");
-            let cose_src = dir
-                .join("ledger")
-                .join("signed-statements")
-                .join(format!("{}.cose", emitted.capsule_id));
-            std::fs::copy(&cose_src, export.join("SEALED-with-generation-params.cose"))
-                .expect("copy cose");
+            let cose = crate::chain_store::statement(&dir.join("ledger"), &emitted.capsule_id)
+                .expect("the record's signed statement");
+            std::fs::write(export.join("SEALED-with-generation-params.cose"), cose)
+                .expect("write cose");
             std::fs::copy(
                 dir.join("keys").join("node-key.pub.pem"),
                 export.join("node-key.pub.pem"),
@@ -3058,12 +3056,9 @@ pub(crate) mod tests {
                 serde_json::to_vec_pretty(&emitted.capsule).unwrap(),
             )
             .expect("write capsule");
-            let cose_src = dir
-                .join("ledger")
-                .join("signed-statements")
-                .join(format!("{}.cose", emitted.capsule_id));
-            std::fs::copy(&cose_src, export.join("SEALED-with-tool-calls.cose"))
-                .expect("copy cose");
+            let cose = crate::chain_store::statement(&dir.join("ledger"), &emitted.capsule_id)
+                .expect("the record's signed statement");
+            std::fs::write(export.join("SEALED-with-tool-calls.cose"), cose).expect("write cose");
             std::fs::copy(
                 dir.join("keys").join("node-key.pub.pem"),
                 export.join("node-key.pub.pem"),

@@ -100,9 +100,14 @@ pub const PRE_STORE_ARCHIVE: &str = "pre-store";
 /// timeout, §2.2).
 const BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(5000);
 
-/// Whether `ledger_dir` keeps its chain on the shelf.
+/// Whether `ledger_dir` keeps its chain on the shelf: it has one, and no
+/// import onto it is unfinished. While an import runs, or after one was
+/// refused, the flat `capsules.jsonl` still holds the whole chain and the
+/// shelf only part of it, so readers read the flat files.
 pub fn is_store_layout(ledger_dir: &Path) -> bool {
     ledger_dir.join(SHELF_FILE).exists()
+        && !ledger_dir.join(FLAT_CAPSULES_FILE).exists()
+        && !ledger_dir.join(IMPORT_JOURNAL).exists()
 }
 
 fn other(error: impl std::fmt::Display) -> io::Error {
@@ -280,7 +285,8 @@ pub struct ChainLog {
     behind: AtomicBool,
     /// The shelf the chain is a host log of, open while this lives; `None`
     /// for a shelf this process does not hold (an archived history read
-    /// back), which is opened as it is and never written as a shelf.
+    /// back), which is opened as it is: no schema, history or shelf rows are
+    /// written to it.
     _shelf: Option<evidencebook::shelf::Shelf>,
 }
 
@@ -301,12 +307,16 @@ impl ChainLog {
         shelf: Option<evidencebook::shelf::Shelf>,
     ) -> anyhow::Result<Self> {
         let history = connect(path, false)?;
-        history_schema(&history)?;
+        // Only the shelf's writer adds to it; an unheld shelf is read as it is.
+        let writer = shelf.is_some();
+        if writer {
+            history_schema(&history)?;
+        }
         let chain = Self {
             log,
             history: Mutex::new(history),
             log_id: log_id.to_owned(),
-            behind: AtomicBool::new(true),
+            behind: AtomicBool::new(writer),
             _shelf: shelf,
         };
         chain.catch_up()?;
@@ -499,14 +509,18 @@ impl ChainStores {
         let mut open = OPEN.lock().unwrap_or_else(PoisonError::into_inner);
         let open = open.get_or_insert_with(HashMap::new);
         open.retain(|_, (log, artifacts)| log.strong_count() > 0 && artifacts.strong_count() > 0);
-        if let Some((log, artifacts)) = open.get(ledger_dir) {
+        // Keyed by the directory as it really is, so every spelling of one
+        // ledger shares one set of stores.
+        fs::create_dir_all(ledger_dir)?;
+        let key = fs::canonicalize(ledger_dir)?;
+        if let Some((log, artifacts)) = open.get(&key) {
             if let (Some(log), Some(artifacts)) = (log.upgrade(), artifacts.upgrade()) {
                 return Ok(Self { log, artifacts });
             }
         }
         let stores = Self::open_new(ledger_dir, log_id, keys)?;
         open.insert(
-            ledger_dir.to_path_buf(),
+            key,
             (
                 Arc::downgrade(&stores.log),
                 Arc::downgrade(&stores.artifacts),
@@ -518,8 +532,17 @@ impl ChainStores {
     fn open_new(ledger_dir: &Path, log_id: &str, keys: &[SigningKey]) -> anyhow::Result<Self> {
         fs::create_dir_all(ledger_dir)?;
         let path = ledger_dir.join(SHELF_FILE);
+        // The node's own shelf, on the data directory's lock; anything else is
+        // read as it is.
+        let held = crate::data_dir::holds_ledger(ledger_dir);
+        if !held && !path.exists() {
+            anyhow::bail!(
+                "{} holds no chain, and this process does not hold its lock to start one",
+                path.display()
+            );
+        }
         let conn =
-            connect(&path, true).map_err(|e| anyhow::anyhow!("shelf {}: {e}", path.display()))?;
+            connect(&path, held).map_err(|e| anyhow::anyhow!("shelf {}: {e}", path.display()))?;
         let held_id = chain_log_id(&conn)?;
         if let Some(held) = held_id.as_deref().filter(|held| *held != log_id) {
             tracing::info!(
@@ -533,10 +556,12 @@ impl ChainStores {
             capsule_emit_artifact::sqlite::SqliteStore::new(conn, NAMESPACE, trusted(keys))
                 .map_err(|e| anyhow::anyhow!("chain records {}: {e}", path.display()))?,
         );
-        artifacts
-            .init()
-            .map_err(|e| anyhow::anyhow!("chain records {}: {e}", path.display()))?;
-        let (shelf, log) = if crate::data_dir::holds_ledger(ledger_dir) {
+        if held {
+            artifacts
+                .init()
+                .map_err(|e| anyhow::anyhow!("chain records {}: {e}", path.display()))?;
+        }
+        let (shelf, log) = if held {
             // The node's own shelf, on the data directory's lock: the chain
             // is its one host log, outside any cadence (§7.1).
             let key = keys
@@ -766,6 +791,10 @@ fn checkpoint_lines(view: &ShelfView, keys: &[SigningKey]) -> io::Result<Vec<Val
     for cose in &checkpoints {
         let verified = verify_checkpoint_cose_offline(cose);
         let Some(decoded) = verified.decoded else {
+            tracing::warn!(
+                log_id = view.log_id,
+                "a checkpoint in the chain's history does not decode; it is left out"
+            );
             continue;
         };
         let mut record = decoded.to_checkpoint_record();
@@ -805,21 +834,27 @@ fn checkpoint_lines(view: &ShelfView, keys: &[SigningKey]) -> io::Result<Vec<Val
 }
 
 /// One snapshot per ledger directory, kept current across reads.
-static SNAPSHOTS: Mutex<Option<HashMap<PathBuf, Snapshot>>> = Mutex::new(None);
+/// Most recently read first, at most [`SNAPSHOTS_KEPT`]: the node's own
+/// ledger stays, and an archived history read once (`is_archived`) is let go.
+static SNAPSHOTS: Mutex<Vec<(PathBuf, Snapshot)>> = Mutex::new(Vec::new());
+const SNAPSHOTS_KEPT: usize = 4;
 
 fn with_snapshot<T>(
     ledger_dir: &Path,
     view: &ShelfView,
     f: impl FnOnce(&Snapshot) -> T,
 ) -> io::Result<T> {
-    let mut guard = SNAPSHOTS.lock().unwrap_or_else(PoisonError::into_inner);
-    let snapshots = guard.get_or_insert_with(HashMap::new);
-    let snapshot = snapshots.entry(ledger_dir.to_path_buf()).or_default();
-    if let Err(e) = snapshot.refresh(view) {
-        snapshots.remove(ledger_dir);
-        return Err(e);
-    }
-    Ok(f(snapshot))
+    let key = fs::canonicalize(ledger_dir)?;
+    let mut snapshots = SNAPSHOTS.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut snapshot = match snapshots.iter().position(|(dir, _)| *dir == key) {
+        Some(at) => snapshots.remove(at).1,
+        None => Snapshot::default(),
+    };
+    snapshot.refresh(view)?;
+    let out = f(&snapshot);
+    snapshots.insert(0, (key, snapshot));
+    snapshots.truncate(SNAPSHOTS_KEPT);
+    Ok(out)
 }
 
 /// The chain's lines under `ledger_dir`, each ended by `\n`, in today's
@@ -1090,7 +1125,10 @@ fn select(count: u64, from: Option<u64>, to: Option<u64>) -> Result<Option<(u64,
 pub fn stays_flat(ledger_dir: &Path) -> anyhow::Result<Option<String>> {
     let path = ledger_dir.join(FLAT_CAPSULES_FILE);
     // An import under way, or a node already on the stores, goes on there.
-    if !path.exists() || ledger_dir.join(IMPORT_JOURNAL).exists() || is_store_layout(ledger_dir) {
+    if !path.exists()
+        || ledger_dir.join(IMPORT_JOURNAL).exists()
+        || ledger_dir.join(SHELF_FILE).exists()
+    {
         return Ok(None);
     }
     let text = fs::read(&path)?;
@@ -1230,9 +1268,13 @@ pub fn import_flat(
     let refuse = |why: String| {
         anyhow::anyhow!(
             "the flat ledger in {} cannot move onto the chain stores: {why}. Nothing was deleted: \
-             {} and its files are where they were",
+             {} and its files are where they were. Every start tries again; to run this node on \
+             an earlier release instead, stop it and remove {} and {} (they hold only a partial \
+             copy)",
             ledger_dir.display(),
-            FLAT_CAPSULES_FILE
+            FLAT_CAPSULES_FILE,
+            SHELF_FILE,
+            IMPORT_JOURNAL
         )
     };
     let report = copy_flat(ledger_dir, stores, keys).map_err(|e| refuse(format!("{e:#}")))?;

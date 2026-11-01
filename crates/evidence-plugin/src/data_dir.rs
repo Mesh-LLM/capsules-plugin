@@ -183,6 +183,11 @@ fn lsof_holders(path: &Path) -> Vec<u32> {
 /// opens the ledger only after this check is not seen; the lock keeps out
 /// every capsules process, so that can only be a plugin from before 0.1.3.
 fn other_holders(path: &Path) -> Vec<u32> {
+    // No file, no holder: and no `lsof` child, whose start would briefly
+    // hold a copy of every file this process has open, locks included.
+    if !path.exists() {
+        return Vec::new();
+    }
     if !cfg!(target_os = "linux") {
         return lsof_holders(path);
     }
@@ -318,6 +323,8 @@ fn take(path: &Path, label: &str) -> anyhow::Result<Result<File, String>> {
             Ok(Ok(file))
         }
         Err(TryLockError::WouldBlock) => {
+            // On Windows the holder's exclusive lock blocks this read, so the
+            // holder is "unknown" there.
             let mut holder = String::new();
             let _ = file.read_to_string(&mut holder);
             let holder = match holder.trim() {
@@ -558,10 +565,7 @@ mod tests {
         let _held = lock(&dir).expect("first lock");
         let message = lock(&dir).err().expect("second lock refused").to_string();
         assert!(message.contains(&dir.display().to_string()), "{message}");
-        assert!(
-            message.contains(&format!("pid {}", std::process::id())),
-            "{message}"
-        );
+        assert_names_this_holder(&message);
         assert!(!message.contains('\n'), "one line: {message}");
     }
 
@@ -691,10 +695,7 @@ mod tests {
         let _held = lock(&a).expect("the first");
         let message = lock(&b).err().expect("the second refused").to_string();
         assert!(message.contains("ledger"), "{message}");
-        assert!(
-            message.contains(&format!("pid {}", std::process::id())),
-            "{message}"
-        );
+        assert_names_this_holder(&message);
     }
 
     #[cfg(unix)]
@@ -710,6 +711,18 @@ mod tests {
             "keep me",
             "never truncated through the link"
         );
+    }
+
+    /// The refusal names this process as the holder. On Windows the holder's
+    /// exclusive `LockFileEx` lock keeps every other handle from reading the
+    /// pid it wrote, so the refusal there says "pid unknown".
+    fn assert_names_this_holder(message: &str) {
+        let expected = if cfg!(windows) {
+            "pid unknown".to_string()
+        } else {
+            format!("pid {}", std::process::id())
+        };
+        assert!(message.contains(&expected), "{message}");
     }
 
     fn tmp(label: &str) -> PathBuf {
@@ -743,10 +756,7 @@ mod tests {
             .err()
             .expect("still held")
             .to_string();
-        assert!(
-            message.contains(&format!("pid {}", std::process::id())),
-            "{message}"
-        );
+        assert_names_this_holder(&message);
         let release = std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(150));
             drop(held);

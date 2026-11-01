@@ -516,6 +516,14 @@ fn a_mismatch_refuses_to_start_and_deletes_nothing() {
         assert_eq!(after.get(path), Some(bytes), "{} kept", path.display());
     }
     assert!(!dir.join("archive").exists(), "nothing moved");
+    // Readers keep reading the flat chain, which still holds all of it.
+    assert!(!is_store_layout(&ledger));
+    assert_eq!(
+        chain_text(&ledger).unwrap().unwrap().as_slice(),
+        fs::read(ledger.join(FLAT_CAPSULES_FILE))
+            .unwrap()
+            .as_slice()
+    );
     let _ = fs::remove_dir_all(&other);
     let _ = fs::remove_dir_all(&dir);
 
@@ -1094,5 +1102,45 @@ fn the_chain_is_a_host_log_of_the_nodes_shelf() {
         .expect_err("refused without the lock")
         .to_string();
     assert!(error.contains("does not hold its lock"), "{error}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A checkpoint whose history row fails in a running node (CLL's commit
+/// succeeded) is added before the next commit, so it is never lost when the
+/// next checkpoint lands.
+#[test]
+fn a_history_row_that_failed_is_added_before_the_next_commit() {
+    let dir = temp_dir("history-behind");
+    let ledger = dir.join("ledger");
+    let state = CapsuleState::open(&dir, "node-under-test").unwrap();
+    seal(&state, 0);
+    let conn = rusqlite::Connection::open(ledger.join(SHELF_FILE)).unwrap();
+    conn.execute_batch(&format!(
+        "CREATE TRIGGER refuse_history BEFORE INSERT ON {HISTORY_TABLE} \
+         BEGIN SELECT RAISE(ABORT, 'refused by the test'); END"
+    ))
+    .unwrap();
+    let first = cut(&state);
+    let rows = |conn: &rusqlite::Connection| -> Vec<i64> {
+        let mut statement = conn
+            .prepare(&format!("SELECT size FROM {HISTORY_TABLE} ORDER BY size"))
+            .unwrap();
+        statement
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap()
+    };
+    assert!(rows(&conn).is_empty(), "the first row failed");
+    conn.execute_batch("DROP TRIGGER refuse_history").unwrap();
+    seal(&state, 1);
+    seal(&state, 2);
+    let second = cut(&state);
+    assert_eq!(
+        rows(&conn),
+        vec![first.mmr_size as i64, second.mmr_size as i64]
+    );
+    drop(conn);
+    drop(state);
     let _ = fs::remove_dir_all(&dir);
 }
