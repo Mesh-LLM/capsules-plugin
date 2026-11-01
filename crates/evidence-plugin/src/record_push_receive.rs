@@ -566,7 +566,7 @@ fn append_capped(
 /// Each line of a held store that parses as JSON. A line that does not (a
 /// write torn by a crash) is skipped, counted and logged, never allowed to
 /// fail every later push.
-fn json_lines(ledger_dir: &Path, filename: &str) -> std::io::Result<Vec<Value>> {
+pub(crate) fn json_lines(ledger_dir: &Path, filename: &str) -> std::io::Result<Vec<Value>> {
     let file = match std::fs::File::open(ledger_dir.join(filename)) {
         Ok(file) => file,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -596,7 +596,7 @@ fn already_held(ledger_dir: &Path, capsule_id: &str) -> std::io::Result<bool> {
         .any(|row| row["capsule_id"] == capsule_id))
 }
 
-fn append(ledger_dir: &Path, filename: &str, entry: &Value) -> std::io::Result<()> {
+pub(crate) fn append(ledger_dir: &Path, filename: &str, entry: &Value) -> std::io::Result<()> {
     use std::io::{Read, Seek, SeekFrom};
     std::fs::create_dir_all(ledger_dir)?;
     let mut file = std::fs::OpenOptions::new()
@@ -626,7 +626,7 @@ fn append(ledger_dir: &Path, filename: &str, entry: &Value) -> std::io::Result<(
 // The record itself
 // ---------------------------------------------------------------------------
 
-fn is_lower_hex(value: &str, len: usize) -> bool {
+pub(crate) fn is_lower_hex(value: &str, len: usize) -> bool {
     value.len() == len
         && value
             .bytes()
@@ -636,7 +636,7 @@ fn is_lower_hex(value: &str, len: usize) -> bool {
 /// The record's `capsule_id`, when `half` passes the Class 1 checks on its
 /// own bytes (capsule-emit's `structure`: the reference verifier's gating
 /// checks, including that the `capsule_id` recomputes).
-fn record_id(half: &Value) -> Option<&str> {
+pub(crate) fn record_id(half: &Value) -> Option<&str> {
     let carried = half.as_object()?.get("capsule_id")?.as_str()?;
     // The checks refuse a malformed id and any profile but format 4 with
     // JCS, and under that profile they recompute the id: passing them means
@@ -647,7 +647,7 @@ fn record_id(half: &Value) -> Option<&str> {
 
 /// Whether `half`'s producer envelope verifies and was made by `key_id`.
 /// The caller has already required `half["key_id"] == key_id`.
-fn signed_by(half: &Value, key_id: &str) -> bool {
+pub(crate) fn signed_by(half: &Value, key_id: &str) -> bool {
     capsule_emit_lib::cose::verify_producer_envelope(half).is_ok_and(|signer| signer == key_id)
 }
 
@@ -1027,7 +1027,7 @@ fn own_requested_records(ledger_dir: &Path, request_digest: &str) -> std::io::Re
 /// The claim checks on a signature-verified served half. The signature only
 /// proves who signed; this checks what the signer claims about the exchange
 /// (who served it, which model) against this node's own record of it.
-fn claims_verdict(
+pub(crate) fn claims_verdict(
     ledger_dir: &Path,
     half: &Value,
     servers: &[&str],

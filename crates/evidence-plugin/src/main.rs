@@ -17,6 +17,7 @@ mod controller_binding;
 mod controller_binding_e2e_setup;
 mod data_dir;
 mod deal_flow;
+mod deal_half_receive;
 mod deal_receipt;
 mod deal_records;
 mod decision;
@@ -1494,6 +1495,24 @@ fn with_evidence_operations(
                 move |args, _context| {
                     Box::pin(settlement_adapter::handle(args, capsules.clone()))
                 }
+            }),
+    );
+    builder = builder.mcp_item(
+        mcp::tool(deal_half_receive::RECEIVE_DEAL_HALF_OPERATION)
+            .description(
+                "Receive a Goose node's x-deal-v0 deal half (a goose-deal-half/1 file's text) and \
+                 verify it under the keys the operator admitted for that counterparty in \
+                 CAPSULES_PEER_KEYS (never a host-announced key): its signing key under its name, \
+                 and its checkpoint key under the same name plus \
+                 \"/checkpoint\". Checks every step's Capsule, signature, deal step, chain and \
+                 x-deal-v0 record, and that the half's checkpoint commits exactly those steps. A \
+                 verified half is held as received evidence and each step gets a citing record; a \
+                 refusal names the failed check and keeps nothing.",
+            )
+            .input::<deal_half_receive::ReceiveDealHalfArgs>()
+            .handle({
+                let capsules = capsules_for_delivery.clone();
+                move |args, _context| Box::pin(deal_half_receive::handle(args, capsules.clone()))
             }),
     );
     builder = builder.mcp_item(

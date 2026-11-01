@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### Added
+
+- **`receive_deal_half`: a Goose node's deal half, received and verified (action-state-group/evidencebook#291).**
+  A Goose node is not a mesh peer, so its operator hands its `goose-deal-half/1` file to this node.
+  The half is checked only under the keys the operator admitted in `CAPSULES_PEER_KEYS`, never a
+  host-announced key: the signing key under the counterparty's name, and the checkpoint key under the
+  same name plus `/checkpoint`. Each step's Capsule, signature, deal step and book, chain and x-deal-v0
+  record are checked, and so is the checkpoint, which must commit exactly those steps. A step making a
+  serving claim the record-push receiver would refuse is refused too.
+  Both forms of a Goose half are accepted for an overlap window: the current one, whose close step
+  cites only its chain parent, and the new one, whose close step also cites the counterparty's
+  checkpoint (evidencebook#303). A baseline may also cite its admission (evidencebook#307). The
+  reply and the held line say which form arrived (`form`) and list the checkpoints it cites. They
+  are cited, not verified: this node does not hold the counterparty's checkpoint. The window
+  closes with the first capsules-plugin release tagged at least 30 days after the first
+  evidencebook release whose Goose reference sends halves in the new form. From that release on,
+  a half in the current form is refused (`record_unverified`). The profile's chain stage is not run (the
+  reply says `chain_stage: not_checked`). A verified half is held as received evidence
+  (`received-capsules.jsonl`, `received-deal-halves.jsonl`), and each step gets a citing record.
+  A refusal names the failed check and keeps nothing.
+
 ## 0.1.11
 
 Pull requests since 0.1.10:
