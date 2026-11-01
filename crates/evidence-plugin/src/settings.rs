@@ -475,30 +475,43 @@ mod tests {
     /// Reading a setting from its old name says so, once, naming both names.
     #[test]
     fn reading_the_old_name_is_logged_once_naming_both() {
-        #[derive(Clone, Default)]
-        struct Captured(std::sync::Arc<Mutex<Vec<u8>>>);
+        // A scoped subscriber (`with_default`) races other tests' reads of an
+        // old name: a callsite first hit with no subscriber caches as
+        // disabled and never logs here (#214). Only this test installs a
+        // subscriber, so install it process-wide, once, and pick this test's
+        // lines out by its own setting name.
+        #[derive(Clone)]
+        struct Captured;
+        static CAPTURED: Mutex<Vec<u8>> = Mutex::new(Vec::new());
         impl std::io::Write for Captured {
             fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-                self.0.lock().unwrap().extend_from_slice(buf);
+                CAPTURED.lock().unwrap().extend_from_slice(buf);
                 Ok(buf.len())
             }
             fn flush(&mut self) -> std::io::Result<()> {
                 Ok(())
             }
         }
-        let captured = Captured::default();
-        let writer = captured.clone();
-        let subscriber = tracing_subscriber::fmt()
-            .with_writer(move || writer.clone())
-            .with_ansi(false)
-            .finish();
+        static INSTALLED: OnceLock<()> = OnceLock::new();
+        INSTALLED.get_or_init(|| {
+            tracing::subscriber::set_global_default(
+                tracing_subscriber::fmt()
+                    .with_writer(|| Captured)
+                    .with_ansi(false)
+                    .finish(),
+            )
+            .expect("no other test installs a subscriber");
+        });
         let name = "CAPSULES_TEST_SETTINGS_LOGGED";
         let env = env(&[("CAPSULE_EMIT_MESH_TEST_SETTINGS_LOGGED", "old")]);
-        tracing::subscriber::with_default(subscriber, || {
-            assert_eq!(var(name, &env).as_deref(), Ok("old"));
-            assert_eq!(var(name, &env).as_deref(), Ok("old"));
-        });
-        let log = String::from_utf8(captured.0.lock().unwrap().clone()).unwrap();
+        assert_eq!(var(name, &env).as_deref(), Ok("old"));
+        assert_eq!(var(name, &env).as_deref(), Ok("old"));
+        let all = String::from_utf8(CAPTURED.lock().unwrap().clone()).unwrap();
+        let log: String = all
+            .lines()
+            .filter(|l| l.contains(name))
+            .collect::<Vec<_>>()
+            .join("\n");
         assert_eq!(log.lines().count(), 1, "{log}");
         assert!(
             log.contains("CAPSULE_EMIT_MESH_TEST_SETTINGS_LOGGED"),
