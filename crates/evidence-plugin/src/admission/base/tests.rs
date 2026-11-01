@@ -869,3 +869,142 @@ fn no_count_exceeds_the_peers_exchanges() {
         );
     }
 }
+
+/// A ledger as an appending writer leaves it: every line ended by `\n`.
+fn append_lines(dir: &Path, records: &[Value]) {
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join("capsules.jsonl"))
+        .unwrap();
+    for record in records {
+        writeln!(file, "{record}").unwrap();
+    }
+}
+
+fn history() -> Vec<Value> {
+    vec![
+        exchange(PEER, "ex-paid"),
+        exchange(PEER, "ex-unpaid"),
+        settlement("ex-paid", "input_invoice_issued"),
+        citing(KEY, "half-1", true),
+        exchange(OTHER, "ex-other"),
+        settlement("ex-paid", "input_settlement_observed"),
+        verdict(
+            &format!("contradicted:{PEER}"),
+            "v-recent",
+            "2026-10-20T00:00Z",
+        ),
+        citing(KEY, "half-2", true),
+    ]
+}
+
+fn facts_of(base: &Base) -> Option<Facts> {
+    base.facts.read().unwrap().clone()
+}
+
+#[test]
+fn rows_after_incremental_refreshes_equal_one_full_read_of_the_same_chain() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = Base::new(dir.path().to_path_buf());
+    for record in history() {
+        append_lines(dir.path(), &[record]);
+        base.refresh();
+        assert_eq!(
+            facts_of(&base),
+            local_facts(dir.path()),
+            "after each append the incremental read equals a whole read"
+        );
+    }
+    assert!(facts_of(&base).unwrap().by_peer[PEER]
+        .settled
+        .contains("ex-paid"));
+    let scan = base.scan.lock().unwrap();
+    assert_eq!(scan.records.len(), history().len(), "each line parsed once");
+}
+
+#[test]
+fn a_refresh_parses_only_the_lines_appended_since() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = Base::new(dir.path().to_path_buf());
+    append_lines(dir.path(), &history()[..3]);
+    base.refresh();
+    // Damage the middle line, keeping its length, which the identity check does not look at: an
+    // incremental read never parses it again, a whole read would fail on it.
+    let path = dir.path().join("capsules.jsonl");
+    let text = std::fs::read_to_string(&path).unwrap();
+    let damaged = text.replacen("\"ex-unpaid\"", "\"ex-unpaid~", 1);
+    assert_ne!(damaged, text);
+    std::fs::write(&path, damaged).unwrap();
+    append_lines(dir.path(), &history()[3..4]);
+    base.refresh();
+    assert!(
+        facts_of(&base).is_some(),
+        "only the appended line was parsed"
+    );
+    assert_eq!(
+        local_facts(dir.path()),
+        None,
+        "a whole read does fail on it"
+    );
+}
+
+#[test]
+fn a_shrunk_or_replaced_chain_is_read_again_whole() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = Base::new(dir.path().to_path_buf());
+    append_lines(dir.path(), &history());
+    base.refresh();
+    std::fs::remove_file(dir.path().join("capsules.jsonl")).unwrap();
+    append_lines(dir.path(), &history()[..2]);
+    base.refresh();
+    assert_eq!(facts_of(&base), local_facts(dir.path()), "shrunk");
+    assert_eq!(base.scan.lock().unwrap().records.len(), 2);
+    // Replaced by a chain that is longer than the one read.
+    let other = vec![exchange(OTHER, "ex-1"); 5];
+    std::fs::remove_file(dir.path().join("capsules.jsonl")).unwrap();
+    append_lines(dir.path(), &other);
+    base.refresh();
+    assert_eq!(facts_of(&base), local_facts(dir.path()), "replaced");
+    assert!(!facts_of(&base).unwrap().by_peer.contains_key(PEER));
+}
+
+#[test]
+fn a_torn_last_line_leaves_the_rows_not_read_and_reads_once_it_is_whole() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = Base::new(dir.path().to_path_buf());
+    append_lines(dir.path(), &history()[..2]);
+    base.refresh();
+    let line = history()[2].to_string();
+    let (head, rest) = line.split_at(line.len() / 2);
+    let path = dir.path().join("capsules.jsonl");
+    let mut text = std::fs::read_to_string(&path).unwrap();
+    text.push_str(head);
+    std::fs::write(&path, &text).unwrap();
+    base.refresh();
+    assert_eq!(facts_of(&base), None, "a torn line could hide a verdict");
+    text.push_str(rest);
+    text.push('\n');
+    std::fs::write(&path, &text).unwrap();
+    base.refresh();
+    assert!(facts_of(&base).is_some());
+    assert_eq!(facts_of(&base), local_facts(dir.path()));
+    assert_eq!(base.scan.lock().unwrap().records.len(), 3);
+}
+
+#[test]
+fn an_unparsable_complete_line_stays_unread_until_the_chain_is_read_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = Base::new(dir.path().to_path_buf());
+    append_lines(dir.path(), &history()[..1]);
+    let path = dir.path().join("capsules.jsonl");
+    let mut text = std::fs::read_to_string(&path).unwrap();
+    text.push_str("{bad\n");
+    std::fs::write(&path, &text).unwrap();
+    base.refresh();
+    assert_eq!(facts_of(&base), None);
+    append_lines(dir.path(), &history()[1..2]);
+    base.refresh();
+    assert_eq!(facts_of(&base), None, "later lines do not undo it");
+}
