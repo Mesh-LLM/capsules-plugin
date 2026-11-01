@@ -224,6 +224,8 @@ pub struct Base {
     /// `None` until a refresh read the chain whole: the local rows are then
     /// not read.
     facts: RwLock<Option<Facts>>,
+    /// What the refreshes have read of the chain so far.
+    scan: Mutex<ChainScan>,
     asks: OnceLock<tokio::sync::mpsc::UnboundedSender<String>>,
 }
 
@@ -233,6 +235,7 @@ impl Base {
             ledger_dir,
             cards: Mutex::default(),
             facts: RwLock::new(None),
+            scan: Mutex::default(),
             asks: OnceLock::new(),
         }
     }
@@ -414,8 +417,15 @@ impl Base {
 
     /// Recompute the local rows' inputs from this node's own chain. A chain
     /// that doesn't read whole leaves them not read rather than empty.
+    ///
+    /// Only what was appended to the chain since the last refresh is read; a
+    /// chain that shrank or was replaced is read again whole ([`ChainScan`]).
     pub fn refresh(&self) {
-        let facts = local_facts(&self.ledger_dir);
+        let facts = self
+            .scan
+            .lock()
+            .expect("the scan lock is never poisoned")
+            .facts(&self.ledger_dir);
         if facts.is_none() {
             tracing::warn!(
                 "admission could not read this node's chain whole; the local rows read not_read"
@@ -524,91 +534,206 @@ pub fn read_card(
     }
 }
 
-/// The local rows' inputs from this node's own chain at `ledger_dir`, or
-/// `None` when the chain, or the list of adjudications it asked for, is there
-/// but doesn't read whole: a torn or unreadable line could hide an adverse
-/// verdict, so it is never read as "none".
+/// The local rows' inputs from this node's own chain at `ledger_dir`, read
+/// whole, or `None` when the chain, or the list of adjudications it asked for,
+/// is there but doesn't read whole: a torn or unreadable line could hide an
+/// adverse verdict, so it is never read as "none".
+#[cfg(test)]
 pub fn local_facts(ledger_dir: &Path) -> Option<Facts> {
-    // Every line must read: `read_requested` skips a request line that
-    // doesn't parse or lacks its referee and two halves, and the verdict it
-    // asked for would then count nowhere.
-    let request_line = |line: &Value| {
-        line.get("referee").and_then(Value::as_str).is_some()
-            && line
-                .get("halves")
-                .and_then(Value::as_array)
-                .is_some_and(|halves| halves.len() == 2 && halves.iter().all(Value::is_string))
-    };
-    let whole = |file: &str, line_reads: &dyn Fn(&Value) -> bool| match std::fs::read_to_string(
-        ledger_dir.join(file),
-    ) {
-        Ok(text) => text
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-            .all(|line| serde_json::from_str::<Value>(line).is_ok_and(|v| line_reads(&v))),
-        Err(error) => error.kind() == std::io::ErrorKind::NotFound,
-    };
-    let chain_whole = crate::chain_store::chain_text(ledger_dir).is_ok_and(|text| {
-        text.is_none_or(|text| {
-            String::from_utf8_lossy(&text)
+    ChainScan::default().facts(ledger_dir)
+}
+
+/// The chain's records as far as they have been read, so a refresh parses
+/// only the lines appended since (the chain is append-only; #118). The text
+/// itself comes from `chain_store::chain_text`, whose snapshot is already
+/// shared and incremental on the store layout. The parsed records stay in
+/// memory for the life of the scan (settlement records twice, once in the
+/// settled index): the facts are derived from all of them each refresh.
+#[derive(Default)]
+struct ChainScan {
+    /// The bytes of the chain read: through the end of the last line taken.
+    consumed: usize,
+    /// The first line taken, and the last with where it starts. A chain that
+    /// no longer holds them at those places is not this one grown, and is
+    /// read again from the start.
+    first_line: Vec<u8>,
+    last_line: Vec<u8>,
+    last_line_at: usize,
+    /// The last line taken had no `\n` yet. Whatever follows it must start
+    /// with one, or it is glued to it and the line was never whole.
+    open_tail: bool,
+    /// A complete line did not parse. Nothing later undoes that, so the
+    /// local rows stay not read until the chain is read again whole.
+    unreadable: bool,
+    /// The records (padding left out), in chain order.
+    records: Vec<Value>,
+    settled: crate::evidence_panes::SettledIndex,
+}
+
+impl ChainScan {
+    /// Take in what was appended since the last call. `false` when the chain
+    /// does not read whole.
+    fn advance(&mut self, ledger_dir: &Path) -> bool {
+        let text = match crate::chain_store::chain_text(ledger_dir) {
+            Ok(Some(text)) => text,
+            // No chain is an empty book.
+            Ok(None) => {
+                *self = Self::default();
+                return true;
+            }
+            Err(_) => {
+                *self = Self::default();
+                return false;
+            }
+        };
+        if !self.continues(&text) {
+            *self = Self::default();
+        }
+        let rest = &text[self.consumed..];
+        if self.open_tail
+            && !rest.is_empty()
+            && !rest.starts_with(b"\n")
+            && !rest.starts_with(b"\r")
+        {
+            self.unreadable = true;
+        }
+        // A last line with no `\n` yet may be torn: it is taken only when it
+        // is a whole object, which no further bytes can extend into another
+        // value.
+        let complete = rest.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
+        let mut end = complete;
+        let tail = String::from_utf8_lossy(&rest[complete..]);
+        let tail = tail.trim();
+        let mut torn = false;
+        if !tail.is_empty() {
+            match serde_json::from_str::<Value>(tail) {
+                Ok(value) if value.is_object() => end = rest.len(),
+                _ => torn = true,
+            }
+        }
+        for line in String::from_utf8_lossy(&rest[..end]).lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            match crate::evidence_panes::parse_record_line(line) {
+                Ok(Some(record)) => {
+                    self.settled.push(&record);
+                    self.records.push(record);
+                }
+                Ok(None) => {}
+                Err(()) => self.unreadable = true,
+            }
+        }
+        if end > 0 {
+            let taken = &rest[..end];
+            let body = taken.strip_suffix(b"\n").unwrap_or(taken);
+            let from = body.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
+            if self.consumed == 0 {
+                let first = taken
+                    .iter()
+                    .position(|&b| b == b'\n')
+                    .map_or(end, |i| i + 1);
+                self.first_line = taken[..first].to_vec();
+            }
+            self.last_line_at = self.consumed + from;
+            self.last_line = body[from..].to_vec();
+            self.open_tail = !taken.ends_with(b"\n");
+            self.consumed += end;
+        }
+        !self.unreadable && !torn
+    }
+
+    /// Whether `text` is the chain read so far with more after it.
+    fn continues(&self, text: &[u8]) -> bool {
+        self.consumed == 0
+            || (text.len() >= self.consumed
+                && text.starts_with(&self.first_line)
+                && text[self.last_line_at..].starts_with(&self.last_line)
+                && self.last_line_at + self.last_line.len() <= self.consumed)
+    }
+
+    /// The local rows' inputs from the chain as it stands, or `None` when it
+    /// does not read whole.
+    fn facts(&mut self, ledger_dir: &Path) -> Option<Facts> {
+        // Every line must read: `read_requested` skips a request line that
+        // doesn't parse or lacks its referee and two halves, and the verdict
+        // it asked for would then count nowhere.
+        let request_line = |line: &Value| {
+            line.get("referee").and_then(Value::as_str).is_some()
+                && line
+                    .get("halves")
+                    .and_then(Value::as_array)
+                    .is_some_and(|halves| halves.len() == 2 && halves.iter().all(Value::is_string))
+        };
+        let requests_whole = match std::fs::read_to_string(
+            ledger_dir.join(crate::verdict_counts::REQUESTED_FILENAME),
+        ) {
+            Ok(text) => text
                 .lines()
                 .map(str::trim)
                 .filter(|line| !line.is_empty())
-                .all(|line| serde_json::from_str::<Value>(line).is_ok())
-        })
-    });
-    if !chain_whole || !whole(crate::verdict_counts::REQUESTED_FILENAME, &request_line) {
-        return None;
-    }
-    let records = crate::evidence_panes::read_capsule_records(ledger_dir);
-    let settled_ids = crate::evidence_panes::settled_exchange_ids(&records);
-    // This node's own records by capsule id, for the exchange a held half
-    // is the counterpart of.
-    let exchange_of: HashMap<&str, &str> = records
-        .iter()
-        .filter_map(|record| {
-            Some((
-                record.get("capsule_id")?.as_str()?,
-                crate::evidence_panes::record_exchange_id(record)?,
-            ))
-        })
-        .collect();
-    let mut facts = Facts::default();
-    for record in &records {
-        if let (Some(peer), Some(exchange)) = (
-            crate::evidence_panes::full_counterparty_node_id(record),
-            crate::evidence_panes::record_exchange_id(record),
-        ) {
-            let book = facts.by_peer.entry(peer.to_ascii_lowercase()).or_default();
-            book.exchanges.insert(exchange.to_string());
-            if settled_ids.contains(exchange) {
-                book.settled.insert(exchange.to_string());
-            }
+                .all(|line| serde_json::from_str::<Value>(line).is_ok_and(|v| request_line(&v))),
+            Err(error) => error.kind() == std::io::ErrorKind::NotFound,
+        };
+        if !self.advance(ledger_dir) || !requests_whole {
+            return None;
         }
-        if let Some((key, half, own)) = held_half(record) {
-            let exchange = own
-                .and_then(|own| exchange_of.get(own.as_str()).copied())
-                .map_or(half, str::to_string);
-            facts.halves_by_key.entry(key).or_default().insert(exchange);
-        }
+        Some(self.derive(ledger_dir))
     }
-    let verdicts =
-        crate::verdict_counts::fold(&records, &crate::verdict_counts::read_requested(ledger_dir));
-    for (peer, verdicts) in verdicts {
-        facts
-            .by_peer
-            .entry(peer.to_ascii_lowercase())
-            .or_default()
-            .verdicts = verdicts
+
+    fn derive(&self, ledger_dir: &Path) -> Facts {
+        let records = &self.records;
+        let settled_ids = self.settled.settled_exchange_ids();
+        // This node's own records by capsule id, for the exchange a held
+        // half is the counterpart of.
+        let exchange_of: HashMap<&str, &str> = records
             .iter()
-            .map(|v| HeldVerdict {
-                at: v.recorded_at.as_deref().and_then(parse_minute),
-                adverse: v.bucket == crate::verdict_counts::CONTRADICTED,
+            .filter_map(|record| {
+                Some((
+                    record.get("capsule_id")?.as_str()?,
+                    crate::evidence_panes::record_exchange_id(record)?,
+                ))
             })
             .collect();
+        let mut facts = Facts::default();
+        for record in records {
+            if let (Some(peer), Some(exchange)) = (
+                crate::evidence_panes::full_counterparty_node_id(record),
+                crate::evidence_panes::record_exchange_id(record),
+            ) {
+                let book = facts.by_peer.entry(peer.to_ascii_lowercase()).or_default();
+                book.exchanges.insert(exchange.to_string());
+                if settled_ids.contains(exchange) {
+                    book.settled.insert(exchange.to_string());
+                }
+            }
+            if let Some((key, half, own)) = held_half(record) {
+                let exchange = own
+                    .and_then(|own| exchange_of.get(own.as_str()).copied())
+                    .map_or(half, str::to_string);
+                facts.halves_by_key.entry(key).or_default().insert(exchange);
+            }
+        }
+        let verdicts = crate::verdict_counts::fold(
+            records,
+            &crate::verdict_counts::read_requested(ledger_dir),
+        );
+        for (peer, verdicts) in verdicts {
+            facts
+                .by_peer
+                .entry(peer.to_ascii_lowercase())
+                .or_default()
+                .verdicts = verdicts
+                .iter()
+                .map(|v| HeldVerdict {
+                    at: v.recorded_at.as_deref().and_then(parse_minute),
+                    adverse: v.bucket == crate::verdict_counts::CONTRADICTED,
+                })
+                .collect();
+        }
+        facts
     }
-    Some(facts)
 }
 
 /// The evaluator's view of this node's own book with a peer: `local` as its

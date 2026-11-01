@@ -1612,13 +1612,30 @@ fn settlement_summaries(
 /// The exchange ids whose book on this node, as payer or as provider, reads
 /// `settled`: every invoice it saw issued has a settlement its own wallet
 /// reported. Admission's performed-and-settled row reads this
-/// (`crate::admission::base`), never a sum or an amount.
-pub(crate) fn settled_exchange_ids(records: &[Value]) -> BTreeSet<String> {
-    let mut settlements = SettlementIndex::default();
-    for record in records.iter().filter(|record| is_settlement_record(record)) {
-        settlements.push(record.clone());
+/// (`crate::admission::base`), never a sum or an amount. Built one record at
+/// a time, so a reader that holds a growing chain feeds it only the records
+/// appended since.
+#[derive(Default)]
+pub(crate) struct SettledIndex(SettlementIndex);
+
+impl SettledIndex {
+    /// Take `record` in if it is a settlement record; any other is ignored.
+    pub(crate) fn push(&mut self, record: &Value) {
+        if is_settlement_record(record) {
+            self.0.push(record.clone());
+        }
     }
-    settlements.settled_exchange_ids()
+
+    pub(crate) fn settled_exchange_ids(&self) -> BTreeSet<String> {
+        self.0.settled_exchange_ids()
+    }
+}
+
+/// One chain line as a record: `Err` when it does not parse, `Ok(None)` for
+/// a padding record, which parses but is no record.
+pub(crate) fn parse_record_line(line: &str) -> Result<Option<Value>, ()> {
+    let value = serde_json::from_str::<Value>(line).map_err(|_| ())?;
+    Ok((!is_padding_record(&value)).then_some(value))
 }
 
 /// [`build_pane_b`] with the receiver's claim refusals, so a peer's row counts the
