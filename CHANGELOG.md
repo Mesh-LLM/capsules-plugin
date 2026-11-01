@@ -33,6 +33,14 @@
   node seals the typed seller side. When the node holds no receipt, or the row names no paid
   deal, the page says so and holds no evidence. The integrity, peers and CSV exports are
   unchanged.
+- **The Exchanges tab's "What happened" row (#96, buttons 1 to 3).** "Narrated by your agent"
+  says narration needs your agent. "EvidenceBook report (sealed and checked)" saves the node's
+  latest sealed settlement report, checked against its seal at hand-over, or a page saying why
+  there is none. "Stamped: History page" replaces "Save History page". The new
+  `scripts/settlement-report.sh` builds and seals the report into a capsulectl book under the
+  node's key while the node runs. The new `settlement-report` route serves it, with
+  `CAPSULES_SETTLEMENT_REPORT_DIR` and `CAPSULES_CAPSULECTL` (INSTALL, "Your settlement
+  report").
 - **The receipt routes serve the bundle as its JSON text (breaking for any other caller).**
   `deal-receipt-bundle`, `provider-receipt-bundle` and `deal-composition` answer
   `{"state": "bundle", "bundle": "<JSON text>"}`, so a page can embed the exact bytes the node

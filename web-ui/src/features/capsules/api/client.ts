@@ -18,7 +18,8 @@ export const PLUGIN_ROUTES = {
   ledger: 'http/ledger',
   signedStatement: (capsuleId: string) => `http/ledger/signed-statement?capsule_id=${encodeURIComponent(capsuleId)}`,
   disclosure: (capsuleId: string) => `http/ledger/disclosure?capsule_id=${encodeURIComponent(capsuleId)}`,
-  historyPage: 'http/history-page'
+  historyPage: 'http/history-page',
+  settlementReport: 'http/settlement-report'
 } as const
 
 type LedgerBody = { records?: unknown; node_pub_key_pem?: unknown }
@@ -95,4 +96,25 @@ export function servedHistoryFrom(raw: unknown): ServedHistory {
     outcome: body.outcome,
     form: body.form === 'service_history/1' ? 'service_history' : 'history_card'
   }
+}
+
+export type SettlementReport =
+  | { kind: 'report'; page: string; sealedAt: string | null; date: string | null }
+  | { kind: 'refused'; why: string }
+
+/** The node's latest sealed settlement report, checked against its seal when
+ *  the node handed it over (`settlement_report.rs`), or its reason for having
+ *  none. Throws for a body that is neither. */
+export async function fetchSettlementReport(): Promise<SettlementReport> {
+  return settlementReportFrom(await getPluginJson<unknown>(PLUGIN_ROUTES.settlementReport))
+}
+
+export function settlementReportFrom(raw: unknown): SettlementReport {
+  const body = (isRecord(raw) ? raw : {}) as { state?: unknown; page?: unknown; why?: unknown; sealed_at?: unknown; date?: unknown }
+  const text = (v: unknown) => (typeof v === 'string' ? v : null)
+  if (body.state === 'report' && typeof body.page === 'string') {
+    return { kind: 'report', page: body.page, sealedAt: text(body.sealed_at), date: text(body.date) }
+  }
+  if (body.state === 'refused' && typeof body.why === 'string') return { kind: 'refused', why: body.why }
+  throw new Error('this node did not answer for its settlement report')
 }

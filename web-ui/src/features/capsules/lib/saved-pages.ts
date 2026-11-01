@@ -41,10 +41,10 @@ ul{padding-left:1.25rem}table{border-collapse:collapse;width:100%}td,th{border-b
 button{font:inherit;padding:.25rem .75rem}code{font-family:ui-monospace,monospace;font-size:.9em;overflow-wrap:anywhere}
 `
 
-/** What the Settlement page says until the node has a settlement report to
- *  give: the refusal, never an empty page. */
+/** What the Settlement page says when the node has no sealed settlement report
+ *  to give, before the node's own reason: the refusal, never an empty page. */
 export const SETTLEMENT_REFUSAL_WORDS =
-  'This node cannot give a settlement report yet: no terms pack for settlement is in place on it, so there are no figures to show, and none are made up.'
+  'This node gave no settlement report, so there are no figures to show, and none are made up.'
 
 // The page's own script: reads the embedded bytes, checks them, and draws the
 // result with textContent only (nothing from the bundle is ever parsed as HTML).
@@ -92,9 +92,10 @@ const RUNTIME = `
     return}
   if(kind==='settlement-refusal'){
     var doc;try{doc=JSON.parse(text)}catch(e){doc=null}
-    if(doc&&doc.source==='dashboard'&&doc.reason==='no_terms_pack'&&doc.words===${JSON.stringify(SETTLEMENT_REFUSAL_WORDS)}){
+    if(doc&&doc.source==='dashboard'&&doc.reason==='no_report'&&doc.words===${JSON.stringify(SETTLEMENT_REFUSAL_WORDS)}&&typeof doc.why==='string'){
       out.appendChild(el('p','warn','No report: this page holds no evidence from the node.'));
-      out.appendChild(el('p',null,doc.words))}
+      out.appendChild(el('p',null,doc.words));
+      out.appendChild(el('p',null,'Its reason: '+doc.why))}
     else out.appendChild(el('p','bad','This page could not read its own note, so it shows nothing.'));
     return}
   CapsulesSavedPage.verifyHistoryReply(text).then(show,function(e){show({kind:'unreadable',verified:false,checks:[{status:'fail',detail:'The check itself failed: '+String(e&&e.message||e)}],checkpoints:[]})});
@@ -177,11 +178,11 @@ export function historyPage(
 }
 
 
-/** The Settlement page. Until the settlement terms pack exists
- *  (action-state-group/evidencebook-skills#71) the node gives the refusal. */
-export function settlementPage(savedAt: string): SavedPage {
+/** The Settlement page when the node has no sealed report to give: a note
+ *  with the node's own reason (`settlement-report`'s refusal), word for word. */
+export function settlementPage(savedAt: string, why: string): SavedPage {
   const name = `mesh-settlement-${stamp(savedAt)}`
-  const refusal = `${JSON.stringify({ source: 'dashboard', reason: 'no_terms_pack', words: SETTLEMENT_REFUSAL_WORDS })}\n`
+  const refusal = `${JSON.stringify({ source: 'dashboard', reason: 'no_report', words: SETTLEMENT_REFUSAL_WORDS, why })}\n`
   return {
     fileName: `${name}.html`,
     html: shell({
@@ -193,6 +194,14 @@ export function settlementPage(savedAt: string): SavedPage {
       inside: 'Written by this dashboard when you saved the page. It is not from the node, and it holds no evidence.'
     })
   }
+}
+
+/** The node's sealed EvidenceBook settlement report, as `settlement-report`
+ *  served it after `book report check` said it matches its seal: capsulectl's
+ *  own page, which embeds its bundle, renders only from the verified bundle,
+ *  and gives the bundle back from its JSON element. Handed over unchanged. */
+export function sealedSettlementPage(page: string, savedAt: string): SavedPage {
+  return { fileName: `mesh-settlement-${stamp(savedAt)}.html`, html: page }
 }
 
 /** What the receipt page carries: the bundle the node served, or the reason

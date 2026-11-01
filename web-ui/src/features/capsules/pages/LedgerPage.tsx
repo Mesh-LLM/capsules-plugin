@@ -21,8 +21,16 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { TabPanel } from '@/components/ui/TabPanel'
 import { AttackCards } from '@/features/capsules/components/AttackCards'
 import { buildAttackCards } from '@/features/capsules/lib/attack-cards'
-import { fetchCapsuleLedger, fetchServedHistory } from '@/features/capsules/api/client'
-import { historyPage, settlementPage } from '@/features/capsules/lib/saved-pages'
+import { fetchCapsuleLedger, fetchServedHistory, fetchSettlementReport } from '@/features/capsules/api/client'
+import { historyPage, sealedSettlementPage, settlementPage } from '@/features/capsules/lib/saved-pages'
+import {
+  NARRATED_LABEL,
+  NARRATION_NEEDS_AGENT,
+  SEALED_LABEL,
+  STAMPED_LABEL,
+  noReportNote,
+  sealedNote
+} from '@/features/capsules/lib/what-happened'
 import { announcedKeyFor, askForHistory, askForRecord } from '@/features/capsules/api/evidenceRequestClient'
 import {
   judgeAskReply,
@@ -511,8 +519,8 @@ function ExchangesSection({
   // Per row, the latest reply and the latest verified one (`settleRowAsk`):
   // a failed retry never erases what an earlier reply proved.
   const [askOutcomes, setAskOutcomes] = useState<ReadonlyMap<string, RowAsk>>(() => new Map())
-  // "Save History page" / "Save Settlement page": the node's own answer to a
-  // stranger, saved as a page that checks itself (`saved-pages.ts`).
+  // The "What happened" row (`what-happened.ts`): the sealed report and the
+  // History page, each saved as a page that checks itself (`saved-pages.ts`).
   const [savingPage, setSavingPage] = useState<'history' | 'settlement' | null>(null)
   const [pageNote, setPageNote] = useState<string | null>(null)
   const savePage = useCallback(async (which: 'history' | 'settlement') => {
@@ -521,12 +529,22 @@ function ExchangesSection({
     try {
       const savedAt = new Date().toISOString().replace(/\.\d+Z$/, 'Z')
       let page
-      if (which === 'settlement') page = settlementPage(savedAt)
-      else {
+      let note: string | null = null
+      if (which === 'settlement') {
+        const report = await fetchSettlementReport()
+        if (report.kind === 'report') {
+          page = sealedSettlementPage(report.page, savedAt)
+          note = sealedNote(report.sealedAt, report.date)
+        } else {
+          page = settlementPage(savedAt, report.why)
+          note = noReportNote(report.why)
+        }
+      } else {
         const served = await fetchServedHistory()
         page = historyPage(served.replyText, savedAt, served.form)
       }
       if (!saveTextFile(page.fileName, page.html, 'text/html')) setPageNote('This browser could not save the page.')
+      else if (note) setPageNote(note)
     } catch (error) {
       setPageNote(`Could not save the page: ${error instanceof Error ? error.message : 'this node did not answer'}.`)
     } finally {
@@ -993,19 +1011,25 @@ function ExchangesSection({
           >
             Export view (CSV)
           </Button>
-          {/* For an outside party: one .html page each, carrying its own
-             bundle and checking it when it opens (saved-pages.ts). */}
+          {/* "What happened", one button per grade (what-happened.ts). The
+             sealed report and the History page are for an outside party: one
+             .html page each, carrying its own bundle and checking it when it
+             opens (saved-pages.ts). */}
+          <span className="text-xs text-fg-faint" id="what-happened-label">
+            What happened:
+          </span>
           <Button
+            aria-describedby="what-happened-label"
             className="ui-control h-8 gap-1.5 rounded-[var(--radius)] px-2.5 text-[length:var(--density-type-caption)]"
-            disabled={savingPage !== null}
-            onClick={() => void savePage('history')}
+            onClick={() => setPageNote(NARRATION_NEEDS_AGENT)}
             size="sm"
             type="button"
             variant="outline"
           >
-            Save History page
+            {NARRATED_LABEL}
           </Button>
           <Button
+            aria-describedby="what-happened-label"
             className="ui-control h-8 gap-1.5 rounded-[var(--radius)] px-2.5 text-[length:var(--density-type-caption)]"
             disabled={savingPage !== null}
             onClick={() => void savePage('settlement')}
@@ -1013,7 +1037,18 @@ function ExchangesSection({
             type="button"
             variant="outline"
           >
-            Save Settlement page
+            {SEALED_LABEL}
+          </Button>
+          <Button
+            aria-describedby="what-happened-label"
+            className="ui-control h-8 gap-1.5 rounded-[var(--radius)] px-2.5 text-[length:var(--density-type-caption)]"
+            disabled={savingPage !== null}
+            onClick={() => void savePage('history')}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {STAMPED_LABEL}
           </Button>
           {pageNote ? (
             <span className="text-xs text-fg-faint" role="status">
