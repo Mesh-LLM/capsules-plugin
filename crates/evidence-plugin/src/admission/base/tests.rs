@@ -1008,3 +1008,42 @@ fn an_unparsable_complete_line_stays_unread_until_the_chain_is_read_again() {
     base.refresh();
     assert_eq!(facts_of(&base), None, "later lines do not undo it");
 }
+
+#[test]
+fn a_record_glued_to_an_unterminated_one_does_not_read_whole() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = Base::new(dir.path().to_path_buf());
+    let path = dir.path().join("capsules.jsonl");
+    std::fs::write(&path, history()[0].to_string()).unwrap();
+    base.refresh();
+    assert!(
+        facts_of(&base).is_some(),
+        "a whole object with no newline yet reads"
+    );
+    let mut text = std::fs::read_to_string(&path).unwrap();
+    text.push_str(&history()[1].to_string());
+    text.push('\n');
+    std::fs::write(&path, &text).unwrap();
+    base.refresh();
+    assert_eq!(
+        local_facts(dir.path()),
+        None,
+        "a whole read sees one bad line"
+    );
+    assert_eq!(facts_of(&base), None, "so does the incremental read");
+}
+
+#[test]
+fn a_bad_requested_file_leaves_the_rows_not_read_but_the_chain_is_still_taken_in() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = Base::new(dir.path().to_path_buf());
+    std::fs::write(
+        dir.path().join(crate::verdict_counts::REQUESTED_FILENAME),
+        "{not json\n",
+    )
+    .unwrap();
+    append_lines(dir.path(), &history()[..2]);
+    base.refresh();
+    assert_eq!(facts_of(&base), None);
+    assert_eq!(base.scan.lock().unwrap().records.len(), 2);
+}

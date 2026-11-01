@@ -546,7 +546,9 @@ pub fn local_facts(ledger_dir: &Path) -> Option<Facts> {
 /// The chain's records as far as they have been read, so a refresh parses
 /// only the lines appended since (the chain is append-only; #118). The text
 /// itself comes from `chain_store::chain_text`, whose snapshot is already
-/// shared and incremental on the store layout.
+/// shared and incremental on the store layout. The parsed records stay in
+/// memory for the life of the scan (settlement records twice, once in the
+/// settled index): the facts are derived from all of them each refresh.
 #[derive(Default)]
 struct ChainScan {
     /// The bytes of the chain read: through the end of the last line taken.
@@ -557,6 +559,9 @@ struct ChainScan {
     first_line: Vec<u8>,
     last_line: Vec<u8>,
     last_line_at: usize,
+    /// The last line taken had no `\n` yet. Whatever follows it must start
+    /// with one, or it is glued to it and the line was never whole.
+    open_tail: bool,
     /// A complete line did not parse. Nothing later undoes that, so the
     /// local rows stay not read until the chain is read again whole.
     unreadable: bool,
@@ -585,6 +590,13 @@ impl ChainScan {
             *self = Self::default();
         }
         let rest = &text[self.consumed..];
+        if self.open_tail
+            && !rest.is_empty()
+            && !rest.starts_with(b"\n")
+            && !rest.starts_with(b"\r")
+        {
+            self.unreadable = true;
+        }
         // A last line with no `\n` yet may be torn: it is taken only when it
         // is a whole object, which no further bytes can extend into another
         // value.
@@ -626,6 +638,7 @@ impl ChainScan {
             }
             self.last_line_at = self.consumed + from;
             self.last_line = body[from..].to_vec();
+            self.open_tail = !taken.ends_with(b"\n");
             self.consumed += end;
         }
         !self.unreadable && !torn
