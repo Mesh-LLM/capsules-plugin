@@ -272,12 +272,16 @@ fn history(conn: &Connection, log_id: &str) -> io::Result<Vec<Vec<u8>>> {
 /// next commit add it first, and since commits are sequential no checkpoint
 /// but the latest can ever be missing.
 pub struct ChainLog {
-    log: LogSqlite,
+    log: Arc<LogSqlite>,
     history: Mutex<Connection>,
     log_id: String,
     /// A commit succeeded but its history row did not: added before the next
     /// commit.
     behind: AtomicBool,
+    /// The shelf the chain is a host log of, open while this lives; `None`
+    /// for a shelf this process does not hold (an archived history read
+    /// back), which is opened as it is and never written as a shelf.
+    _shelf: Option<evidencebook::shelf::Shelf>,
 }
 
 impl std::fmt::Debug for ChainLog {
@@ -289,11 +293,13 @@ impl std::fmt::Debug for ChainLog {
 }
 
 impl ChainLog {
-    fn open(path: &Path, log_id: &str) -> anyhow::Result<Self> {
-        LogSqlite::init(path, log_id)
-            .map_err(|e| anyhow::anyhow!("chain log {}: {e}", path.display()))?;
-        let log = LogSqlite::open(path, log_id)
-            .map_err(|e| anyhow::anyhow!("chain log {}: {e}", path.display()))?;
+    /// `log` is the chain's CLL log on the shelf at `path`.
+    fn open(
+        path: &Path,
+        log: Arc<LogSqlite>,
+        log_id: &str,
+        shelf: Option<evidencebook::shelf::Shelf>,
+    ) -> anyhow::Result<Self> {
         let history = connect(path, false)?;
         history_schema(&history)?;
         let chain = Self {
@@ -301,6 +307,7 @@ impl ChainLog {
             history: Mutex::new(history),
             log_id: log_id.to_owned(),
             behind: AtomicBool::new(true),
+            _shelf: shelf,
         };
         chain.catch_up()?;
         Ok(chain)
@@ -446,6 +453,23 @@ pub struct ChainStores {
     artifacts: Arc<capsule_emit_artifact::sqlite::SqliteStore>,
 }
 
+/// The data directory's writer lock, as the shelf asks for it (§2.4): held
+/// while this process holds the `DataDirLock` covering the ledger directory.
+struct HeldLedger(PathBuf);
+
+impl evidencebook::shelf::HeldLock for HeldLedger {
+    fn held(&self) -> Result<(), String> {
+        if crate::data_dir::holds_ledger(&self.0) {
+            Ok(())
+        } else {
+            Err(format!(
+                "this process does not hold the writer lock of {}",
+                self.0.display()
+            ))
+        }
+    }
+}
+
 impl std::fmt::Debug for ChainStores {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ChainStores")
@@ -496,24 +520,66 @@ impl ChainStores {
         let path = ledger_dir.join(SHELF_FILE);
         let conn =
             connect(&path, true).map_err(|e| anyhow::anyhow!("shelf {}: {e}", path.display()))?;
-        let held = chain_log_id(&conn)?;
-        if let Some(held) = held.as_deref().filter(|held| *held != log_id) {
+        let held_id = chain_log_id(&conn)?;
+        if let Some(held) = held_id.as_deref().filter(|held| *held != log_id) {
             tracing::info!(
                 held,
                 log_id,
                 "the shelf keeps the chain under the id it was started with"
             );
         }
-        let log = ChainLog::open(&path, held.as_deref().unwrap_or(log_id))?;
-        let artifacts =
+        let log_id = held_id.as_deref().unwrap_or(log_id);
+        let artifacts = Arc::new(
             capsule_emit_artifact::sqlite::SqliteStore::new(conn, NAMESPACE, trusted(keys))
-                .map_err(|e| anyhow::anyhow!("chain records {}: {e}", path.display()))?;
+                .map_err(|e| anyhow::anyhow!("chain records {}: {e}", path.display()))?,
+        );
         artifacts
             .init()
             .map_err(|e| anyhow::anyhow!("chain records {}: {e}", path.display()))?;
+        let (shelf, log) = if crate::data_dir::holds_ledger(ledger_dir) {
+            // The node's own shelf, on the data directory's lock: the chain
+            // is its one host log, outside any cadence (§7.1).
+            let key = keys
+                .first()
+                .ok_or_else(|| anyhow::anyhow!("no node key to open the shelf with"))?
+                .clone();
+            let shelf = evidencebook::shelf::Shelf::open_sqlite(evidencebook::shelf::ShelfConfig {
+                path: path.clone(),
+                lock_path: None,
+                held_lock: Some(Box::new(HeldLedger(ledger_dir.to_path_buf()))),
+                lock_timeout: None,
+                random: None,
+                operator: "capsules".into(),
+                developer: String::new(),
+                signer: Arc::new(key.clone()),
+                checkpoint_key: key,
+                originals: artifacts.clone(),
+                now: None,
+                authenticated_indexes: None,
+                correlation_key: None,
+            })
+            .map_err(|e| anyhow::anyhow!("shelf {}: {e}", path.display()))?;
+            let stores = shelf
+                .host_log(log_id, false)
+                .and_then(|host| host.stores())
+                .map_err(|e| anyhow::anyhow!("chain log {}: {e}", path.display()))?;
+            (Some(shelf), stores.log)
+        } else {
+            // A ledger this process holds no lock on (an archived history
+            // read back): its shelf as it is, never provisioned.
+            if held_id.is_none() {
+                anyhow::bail!(
+                    "{} holds no chain, and this process does not hold its lock to start one",
+                    path.display()
+                );
+            }
+            let log = LogSqlite::open(&path, log_id)
+                .map_err(|e| anyhow::anyhow!("chain log {}: {e}", path.display()))?;
+            (None, Arc::new(log))
+        };
         Ok(Self {
-            log: Arc::new(log),
-            artifacts: Arc::new(artifacts),
+            log: Arc::new(ChainLog::open(&path, log, log_id, shelf)?),
+            artifacts,
         })
     }
 

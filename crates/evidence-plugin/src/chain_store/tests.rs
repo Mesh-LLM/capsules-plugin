@@ -438,6 +438,8 @@ fn an_import_killed_while_moving_finishes_the_move() {
     let ledger = dir.join("ledger");
     let flat_text = fs::read(ledger.join(FLAT_CAPSULES_FILE)).unwrap();
     {
+        // Under the data directory's lock, as a starting node holds it.
+        let _lock = crate::data_dir::lock(&dir).unwrap();
         let stores = ChainStores::open(&ledger, LOG_ID, &keys_beside(&ledger)).unwrap();
         write_import_journal(
             &ledger,
@@ -1058,5 +1060,39 @@ fn a_reader_follows_a_new_shelf_at_the_same_path() {
     let lines = chain_lines(&ledger).unwrap();
     assert_eq!(lines.len(), 1, "the new shelf's chain only");
     assert_eq!(chain_lines(&archived).unwrap().len(), 2);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// The node's shelf is an EvidenceBook shelf: its chain is recorded as a
+/// host log there, so no book can ever take its id, and a shelf this process
+/// holds no lock on is never started.
+#[test]
+fn the_chain_is_a_host_log_of_the_nodes_shelf() {
+    let dir = temp_dir("host-log");
+    let ledger = dir.join("ledger");
+    {
+        let state = CapsuleState::open(&dir, "node-under-test").unwrap();
+        seal(&state, 0);
+    }
+    let conn = rusqlite::Connection::open(ledger.join(SHELF_FILE)).unwrap();
+    let log_id = chain_log_id(&conn).unwrap().unwrap();
+    let kind: String = conn
+        .query_row(
+            "SELECT kind FROM shelf_logs WHERE log_id=?",
+            [&log_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(kind, "host");
+    let version: i64 = conn
+        .query_row("SELECT version FROM shelf_meta", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, 1);
+    drop(conn);
+    let fresh = temp_dir("host-log-unheld").join("ledger");
+    let error = ChainStores::open(&fresh, LOG_ID, &keys_beside(&ledger))
+        .expect_err("refused without the lock")
+        .to_string();
+    assert!(error.contains("does not hold its lock"), "{error}");
     let _ = fs::remove_dir_all(&dir);
 }

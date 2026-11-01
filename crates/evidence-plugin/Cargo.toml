@@ -161,9 +161,9 @@ capsule-emit-lib = { package = "capsule-emit", git = "https://github.com/action-
 cll = { package = "checkpointed-local-log", version = "0.4.0", features = ["sqlite"] }
 # The chain's records: capsule-emit's artifact store (SQLite backend), the
 # layer its `Ledger` keeps each line in beside the CLL log, both on the node's
-# shelf, `ledger/shelf.db` (`chain_store`). capsule-emit main's, until a
-# release on checkpointed-local-log 0.4.0 (evidencebook#254 C1).
-capsule-emit-artifact = { git = "https://github.com/action-state-group/capsule-emit", rev = "c91e2f7692e61b69d5fa6d63d78f481d506b6a4c", features = ["sqlite"] }
+# shelf, `ledger/shelf.db` (`chain_store`). Taken from capsule-emit main
+# below (`[patch.crates-io]`), until a release on agent-action-capsule 0.8.0.
+capsule-emit-artifact = { version = "0.0.1", features = ["sqlite"] }
 # The shelf's host table beside CLL's and the artifact store's tables (the
 # chain's checkpoint history, `chain_store::ChainLog`) and the readers'
 # connections: the rusqlite both of those build, with its bundled SQLite.
@@ -187,7 +187,9 @@ evidence-request = { version = "=0.4.1", features = ["cll", "receipt", "acceptan
 # digest (exchange corroboration). Receipts are checked with
 # agent-action-capsule 0.5's witness verifier. Same checkpointed-local-log
 # and evidence-request lines as above.
-evidencebook = { version = "0.0.11", features = ["deal"] }
+# The node's shelf (`shelf`, evidencebook#254 §7): the chain is one host log
+# on it. The shelf's branch (evidencebook PR #272) until its release.
+evidencebook = { git = "https://github.com/action-state-group/evidencebook", rev = "58b81f59de92d81e9dbebb5e8fa9b6039257f907", features = ["deal", "shelf"] }
 # Admission's price rule (#105) is decided by capsule-engine's guard with its
 # asg/inference terms pack (capsule-engine#265, `rust/capsule-engine`), the
 # evaluator Muse's Go guard shares vectors with, so the plugin runs no second
@@ -258,4 +260,7 @@ opt-level = 3
 # 0.78.1 predates it. Taken from the commit the hosts run until a release
 # carries it; then this goes and the requirement above moves to that release.
 [patch.crates-io]
+# The artifact store on agent-action-capsule 0.8.0 that capsule-emit main and
+# the shelf both pass records through: one crate for both, until its release.
+capsule-emit-artifact = { git = "https://github.com/action-state-group/capsule-emit", rev = "c91e2f7692e61b69d5fa6d63d78f481d506b6a4c" }
 mesh-llm-plugin = { git = "https://github.com/Mesh-LLM/mesh-llm", rev = "a39211e78f3dd73cf9a94b08417c0da17e5fa5d9" }
