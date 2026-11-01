@@ -436,6 +436,52 @@ mod tests {
     }
 
     #[test]
+    fn a_window_that_runs_past_the_split_token_is_an_upper_bound() {
+        let report = analyse(&[answer(vec![
+            at("Go", ["Go", "Go"], [9.0, 9.0]),
+            // a's " de" is a byte prefix of b's " deep": the departure runs
+            // past a's token, so a's window stops there (an upper bound).
+            at(" de", [" de", " deep"], [1.5, 0.4]),
+        ])]);
+        let reads = &report["sets"][0]["referee_reads"];
+        assert_eq!(reads["window_stops_at_the_split_token"], json!(1));
+        assert_eq!(
+            report["referee_margin_word_window_max"]["margin"],
+            json!(1.5)
+        );
+    }
+
+    #[test]
+    fn a_text_that_ends_where_the_other_has_another_word_is_read_at_its_end() {
+        let report = analyse(&[answer(vec![
+            at("Go", ["Go", "Go"], [9.0, 9.0]),
+            // a's "Go " has no second word; b's "Go now" does. a is read at
+            // its last token, as an upper bound.
+            at(" ", [" ", " now"], [0.8, 0.3]),
+        ])]);
+        let reads = &report["sets"][0]["referee_reads"];
+        assert_eq!(reads["window_stops_at_the_split_token"], json!(1));
+        assert_eq!(
+            report["referee_margin_word_window_max"]["margin"],
+            json!(0.8)
+        );
+    }
+
+    #[test]
+    fn a_gap_of_at_least_t_that_flips_fails_the_rule() {
+        let q = at(" b", [" b", " c"], [1.0, 0.2]);
+        // T = 2.0; a 5.0 gap (above 2T) that the other referee reads at
+        // -0.5 flips: it shrinks by more than its whole size.
+        let mut r = at("d", ["d", "d"], [5.0, 5.0]);
+        r.gap_in_other = [Some(-0.5), Some(5.0)];
+        let report = analyse(&[answer(vec![q, r])]);
+        assert_eq!(report["threshold_2x_referee_margin"], json!(2.0));
+        assert_eq!(report["shrink"]["largest_at_gaps_from_t_to_2t"], json!(0.0));
+        assert_eq!(report["shrink"]["flips_at_gaps_from_t"], json!(1));
+        assert_eq!(report["shrink"]["holds"], json!(false));
+    }
+
+    #[test]
     fn a_shrink_that_reaches_t_below_2t_fails_the_rule() {
         let mut p = at("a", ["a", "a"], [2.0, 2.0]);
         let mut q = at(" b", [" b", " c"], [1.0, 0.2]);

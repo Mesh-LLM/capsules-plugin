@@ -43,8 +43,9 @@ pub const INCONCLUSIVE_SPLIT_MARGIN_UNAVAILABLE: &str = "split_margin_unavailabl
 /// is `inconclusive`. A margin equal to it names the twin. It is at least
 /// twice the largest referee-side margin (read over the word window, as
 /// [`least_margin`] reads it) at any top-1 disagreement between honest
-/// backends measured, and no gap shrink seen between them at a gap of at
-/// least it reaches it (`vectors/parity/referee/margin-measurement/README.md`,
+/// backends measured; and between them no gap of at least it is seen to
+/// flip, nor one below twice it to shrink by as much
+/// (`vectors/parity/referee/margin-measurement/README.md`,
 /// "The rule"; Sherlock2 on #159). A change is a CHANGELOG line. There is no
 /// operator setting: a lower value charges honest nodes more readily.
 pub const SPLIT_MARGIN_THRESHOLD_NATS: f64 = 4.41;

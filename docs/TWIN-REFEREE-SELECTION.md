@@ -48,8 +48,9 @@ twins' own margins, when their answers carry them, are sealed beside it
 
 The value is at least twice the largest margin a referee read, the same way,
 at any top-1 disagreement between honest backends measured (CUDA, Metal and
-CPU), and no gap of at least the value was seen to shrink by as much between
-them (see "The rule" in `vectors/parity/referee/margin-measurement/README.md`).
+CPU); and between them no gap of at least the value was seen to flip, nor one
+below twice the value to shrink by as much (see "The rule" in
+`vectors/parity/referee/margin-measurement/README.md`).
 One split is one
 token, so a near-identical model (another quantization of the same weights)
 mostly comes out `inconclusive` here; telling those apart needs many tokens
