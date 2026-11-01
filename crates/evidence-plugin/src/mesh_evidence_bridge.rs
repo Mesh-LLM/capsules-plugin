@@ -790,6 +790,19 @@ fn referee_answer(
             tracing::warn!(%error, "a verdict was issued but its record did not seal; nothing sent");
             return Some(None);
         }
+    } else {
+        // The refusal is signed and sent; the operator also sees why here.
+        tracing::info!(
+            reason = reply
+                .get("reason")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("none"),
+            detail = reply
+                .get("detail")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            "an adjudicate request was refused"
+        );
     }
     Some(serde_json::to_vec(&reply).ok())
 }
