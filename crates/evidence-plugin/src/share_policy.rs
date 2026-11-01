@@ -101,7 +101,7 @@ const DEPRECATED_PROSPECTIVE: &str = "prospective";
 /// `peers`. Unset is the documented default, `counterparties`; `prospective`
 /// is read as `counterparties`; an unknown value is `off`, never wider.
 pub fn history_segments() -> &'static str {
-    history_segments_for(crate::settings::var(ENV_HISTORY_SEGMENTS).ok().as_deref())
+    history_segments_for(var_or_unreadable(ENV_HISTORY_SEGMENTS).as_deref())
 }
 
 pub(crate) fn history_segments_for(raw: Option<&str>) -> &'static str {
@@ -214,9 +214,9 @@ pub fn adjudications_delivered() -> bool {
     adjudications_delivered_for(var_or_unreadable(ENV_ADJUDICATIONS).as_deref())
 }
 
-/// A setting's value for the readers whose default is on: a value that is not
-/// valid Unicode is one the operator set and this plugin cannot read, so it
-/// reads as an unknown value (off), never as unset (the default).
+/// A setting's value for the readers whose default is on or wide: a value that
+/// is not valid Unicode is one the operator set and this plugin cannot read, so
+/// it reads as an unknown value (off), never as unset (the default).
 pub(crate) fn var_or_unreadable(env: &str) -> Option<String> {
     match crate::settings::var(env) {
         Ok(raw) => Some(raw),

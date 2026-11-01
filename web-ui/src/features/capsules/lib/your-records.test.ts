@@ -27,8 +27,9 @@ function status(overrides: Partial<RecordsStatus> = {}): RecordsStatus {
       record_at_completion: { value: 'counterparty', source: 'default' },
       history_segments: { value: 'counterparties', source: 'default' },
       adjudications: { value: 'deliver_to_subjects', source: 'default' },
+      exchange_corroboration: { value: 'on', source: 'default' },
       witness: { value: null, source: 'default' }
-    },
+    } as RecordsStatus['sharing'],
     ...overrides
   }
 }

@@ -765,7 +765,10 @@ fn sharing_status() -> Value {
             switch(crate::share_policy::ENV_RECORD_AT_COMPLETION, Some("counterparty")),
             crate::share_policy::record_at_completion_is_off(),
         ),
-        "history_segments": switch("CAPSULES_SHARE_HISTORY_SEGMENTS", Some("counterparties")),
+        "history_segments": record_at_completion_status(
+            switch("CAPSULES_SHARE_HISTORY_SEGMENTS", Some("counterparties")),
+            crate::share_policy::history_segments() == "off",
+        ),
         "standard_history": switch(crate::share_policy::ENV_STANDARD_HISTORY, Some("off")),
         "advertise_evidence_requests": switch(crate::share_policy::ENV_ADVERTISE_EVIDENCE_REQUESTS, Some("off")),
         "adjudications": record_at_completion_status(
@@ -787,11 +790,14 @@ fn sharing_status() -> Value {
 mod tests {
     #[test]
     fn the_unset_sharing_status_shows_the_ruled_defaults() {
+        use crate::share_policy::{ENV_ADJUDICATIONS, ENV_EXCHANGE_CORROBORATION};
         let sharing = super::sharing_status();
-        if std::env::var("CAPSULES_SHARE_ADJUDICATIONS").is_err() {
+        // Guard on the same read the status makes (legacy names and the
+        // console file included), so a developer's own setting never fails it.
+        if crate::settings::var(ENV_ADJUDICATIONS).is_err() {
             assert_eq!(sharing["adjudications"]["value"], "deliver_to_subjects");
         }
-        if std::env::var("CAPSULES_SHARE_EXCHANGE_CORROBORATION").is_err() {
+        if crate::settings::var(ENV_EXCHANGE_CORROBORATION).is_err() {
             assert_eq!(sharing["exchange_corroboration"]["value"], "on");
         }
     }

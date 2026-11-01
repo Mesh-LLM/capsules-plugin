@@ -12,7 +12,7 @@ import { pluginHost } from '@/plugin-host/host'
 
 export type SharingSwitchKey = 'record_at_completion' | 'history_segments' | 'adjudications' | 'witness'
 
-export type SharingSwitchState = { value: string | null; source: 'set' | 'default' }
+export type SharingSwitchState = { value: string | null; source: 'set' | 'default' | 'unreadable' }
 
 export type RecordsStatus = {
   records_path: string
