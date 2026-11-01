@@ -667,14 +667,13 @@ static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
 /// reader that keeps what it parsed (`agreement_bridge`'s session cache)
 /// knows when to read again. Per root, so a write to one store never
 /// invalidates another's cache.
-static GENERATIONS: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, u64>>> =
-    std::sync::Mutex::new(None);
+static GENERATIONS: std::sync::Mutex<std::collections::BTreeMap<PathBuf, u64>> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
 
 fn bump_generation(root: &Path) {
-    let mut g = GENERATIONS
+    *GENERATIONS
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    *g.get_or_insert_with(Default::default)
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
         .entry(root.to_path_buf())
         .or_insert(0) += 1;
 }
@@ -691,8 +690,8 @@ pub fn generation(root: &Path) -> u64 {
     GENERATIONS
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .as_ref()
-        .and_then(|g| g.get(root).copied())
+        .get(root)
+        .copied()
         .unwrap_or(0)
 }
 

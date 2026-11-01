@@ -1605,9 +1605,9 @@ pub(crate) mod tests {
     /// The wait is bounded: a pushed half whose own half never seals is cited
     /// untied once `OWN_HALF_WAIT` has passed, well inside the pusher's reply
     /// timeout, and an asked half does not wait at all. "Does not wait" is
-    /// asserted as finishing inside `OWN_HALF_WAIT`: a wait would add the full
-    /// bound to the seal's own work, whereas a tighter bound on the work alone
-    /// fails when parallel tests load the CPU.
+    /// asserted as finishing inside `OWN_HALF_WAIT - OWN_HALF_POLL`: any real
+    /// wait lasts at least that long, whereas a tighter bound on the seal's
+    /// own work fails when parallel tests load the CPU.
     #[tokio::test]
     async fn a_pushed_half_waits_at_most_the_bound_and_an_asked_one_not_at_all() {
         let peer = "peer-own-half-bound";
@@ -1638,7 +1638,11 @@ pub(crate) mod tests {
                 .await
                 .unwrap()
         );
-        assert!(started.elapsed() < OWN_HALF_WAIT, "{:?}", started.elapsed());
+        assert!(
+            started.elapsed() < OWN_HALF_WAIT - OWN_HALF_POLL,
+            "{:?}",
+            started.elapsed()
+        );
 
         let cited = received_halves(&mine);
         assert_eq!(cited.len(), 2, "{cited:?}");
@@ -1658,7 +1662,11 @@ pub(crate) mod tests {
         )
         .await
         .unwrap();
-        assert!(started.elapsed() < OWN_HALF_WAIT, "{:?}", started.elapsed());
+        assert!(
+            started.elapsed() < OWN_HALF_WAIT - OWN_HALF_POLL,
+            "{:?}",
+            started.elapsed()
+        );
     }
 
     /// The look and the seal are not one step: an own half sealed between

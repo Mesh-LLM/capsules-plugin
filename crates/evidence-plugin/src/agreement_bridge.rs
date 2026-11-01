@@ -1412,6 +1412,13 @@ mod tests {
             Arc::ptr_eq(&once, &complete_sessions(&p.rstore)),
             "unchanged: cached"
         );
+        // Another store's change leaves this store's cache alone (#214: one
+        // process-wide counter let parallel tests invalidate each other).
+        agreement::bump_generation_for_tests(&p.pstore);
+        assert!(
+            Arc::ptr_eq(&once, &complete_sessions(&p.rstore)),
+            "another store's change: cached"
+        );
         let (_, second, _) = p.agree(NOW + 100);
         let again = complete_sessions(&p.rstore);
         assert!(!Arc::ptr_eq(&once, &again));
