@@ -293,7 +293,7 @@ glibc 2.35 or newer (x86_64 or arm64).
 and set `VERSION` to the release (without the leading `v`):
 
 ```bash
-VERSION=0.1.10
+VERSION=0.1.11
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64)  TARGET=aarch64-apple-darwin ;;
   Linux-x86_64)  TARGET=x86_64-unknown-linux-gnu ;;
