@@ -365,6 +365,7 @@ mod tests {
             &agent_action_capsule::bundle::StrictOptions {
                 require_signature: true,
                 witness_directory: None,
+                ..Default::default()
             },
         );
         let statuses: Vec<_> = checked

@@ -52,9 +52,12 @@ pub(crate) enum Refusal {
     PayloadMissing(String),
     /// No signed checkpoint covers the deal's records yet.
     NotCheckpointed,
-    /// An interval-complete bundle would cross a padding record, which an
-    /// Evidence Bundle cannot carry yet (agent-action-capsule#339): it is not
-    /// a Capsule, so the producer refuses it.
+    /// An interval-complete bundle would cross a padding record. A padding
+    /// record is not a Capsule; agent-action-capsule 0.7 carries it only as a
+    /// `non_record_leaves` entry (Bundle -02, #339), and that emission stays
+    /// off (`carry_non_record_leaves`) until capsulectl, the hosted verify
+    /// page and evidencebook check it (Steven's ruling u532, on the Q3
+    /// rollout gate), so the producer refuses such an interval.
     PaddingInInterval,
 }
 
@@ -65,8 +68,9 @@ impl Refusal {
             Refusal::NotReported => "the deal has no report yet".into(),
             Refusal::PayloadMissing(id) => format!("the payload of deal record {id} is not kept"),
             Refusal::NotCheckpointed => "no signed checkpoint covers the deal yet".into(),
-            Refusal::PaddingInInterval => "the ledger holds a padding record in the interval, \
-                which an Evidence Bundle cannot carry yet (agent-action-capsule#339)"
+            Refusal::PaddingInInterval => "the ledger holds a padding record in the interval; \
+                this plugin does not yet put padding in an Evidence Bundle (non_record_leaves, \
+                Bundle -02), so the receipt waits until the verifiers can check it"
                 .into(),
         }
     }
@@ -650,6 +654,7 @@ pub(crate) mod tests {
             &agent_action_capsule::bundle::StrictOptions {
                 require_signature: true,
                 witness_directory: None,
+                ..Default::default()
             },
         );
         let statuses: Vec<_> = checked
@@ -817,6 +822,7 @@ pub(crate) mod tests {
             &agent_action_capsule::bundle::StrictOptions {
                 require_signature: true,
                 witness_directory: None,
+                ..Default::default()
             },
         );
         let failed: Vec<_> = checked

@@ -283,6 +283,7 @@ pub fn verify(
         &StrictOptions {
             require_signature: true,
             witness_directory: None,
+            ..Default::default()
         },
     );
     if !result.ok() {

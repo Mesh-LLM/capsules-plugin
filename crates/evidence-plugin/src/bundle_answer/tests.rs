@@ -219,6 +219,7 @@ fn a_counterparty_gets_the_half_to_the_earliest_covering_checkpoint_as_a_bundle(
         &StrictOptions {
             require_signature: false,
             witness_directory: None,
+            ..Default::default()
         },
     );
     assert!(strict.ok(), "{:?}", strict.claims);
@@ -413,12 +414,12 @@ fn the_requester_refuses_a_bundle_that_is_not_the_canonical_interval_under_the_a
         .contains("rooted"));
 }
 
-/// A padding record is not a Capsule, so no Evidence Bundle carries a range
-/// over one yet (action-state-group/agent-action-capsule#339), and the
-/// checkpoint cadence pads before each checkpoint by default. Until AAC
-/// carries non-record leaves, such an interval is declined as a limit of
-/// this node's own (`capacity_exceeded`, `policy_declined` under /0), never
-/// answered with a bundle that does not verify.
+/// A padding record is not a Capsule. agent-action-capsule 0.7 carries it as
+/// a `non_record_leaves` entry (Bundle -02, #339), but this plugin keeps
+/// that emission off until the verifiers check it, and the checkpoint
+/// cadence pads by default. Until then such an interval is declined as a
+/// limit of this node's own (`capacity_exceeded`, `policy_declined` under
+/// /0), never answered with a bundle that does not verify.
 #[test]
 fn an_interval_over_padding_is_declined_until_bundles_carry_it() {
     use Seal::*;
