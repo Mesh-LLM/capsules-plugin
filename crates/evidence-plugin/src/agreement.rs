@@ -663,21 +663,37 @@ pub struct Store {
 
 static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
 
-/// Counts every object a [`Store`] in this process published, so a reader
-/// that keeps what it parsed (`agreement_bridge`'s session cache) knows when
-/// to read again.
-static GENERATION: AtomicU64 = AtomicU64::new(0);
+/// Counts the objects each [`Store`] root published in this process, so a
+/// reader that keeps what it parsed (`agreement_bridge`'s session cache)
+/// knows when to read again. Per root, so a write to one store never
+/// invalidates another's cache.
+static GENERATIONS: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, u64>>> =
+    std::sync::Mutex::new(None);
+
+fn bump_generation(root: &Path) {
+    let mut g = GENERATIONS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    *g.get_or_insert_with(Default::default)
+        .entry(root.to_path_buf())
+        .or_insert(0) += 1;
+}
 
 /// Count a change made other than through [`Store::put`] (a test that
 /// removes files).
 #[cfg(test)]
-pub fn bump_generation_for_tests() {
-    GENERATION.fetch_add(1, Ordering::AcqRel);
+pub fn bump_generation_for_tests(store: &Store) {
+    bump_generation(&store.root);
 }
 
-/// The current publication count (see [`GENERATION`]).
-pub fn generation() -> u64 {
-    GENERATION.load(Ordering::Acquire)
+/// The publication count of the store at `root` (see [`GENERATIONS`]).
+pub fn generation(root: &Path) -> u64 {
+    GENERATIONS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .as_ref()
+        .and_then(|g| g.get(root).copied())
+        .unwrap_or(0)
 }
 
 impl Store {
@@ -723,7 +739,7 @@ impl Store {
                 Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => Err(e),
                 Err(_) => Ok(()),
                 Ok(()) => {
-                    GENERATION.fetch_add(1, Ordering::AcqRel);
+                    bump_generation(&self.root);
                     Ok(())
                 }
             }

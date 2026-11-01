@@ -448,7 +448,7 @@ fn complete_sessions(store: &Store) -> Arc<Vec<Complete>> {
     type Cache = std::collections::HashMap<std::path::PathBuf, (u64, Arc<Vec<Complete>>)>;
     static CACHE: std::sync::OnceLock<Mutex<Cache>> = std::sync::OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(Cache::new()));
-    let generation = agreement::generation();
+    let generation = agreement::generation(store.root());
     if let Some((seen, sessions)) = cache
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -1299,7 +1299,7 @@ mod tests {
         // proposes again rather than relying on a session it cannot order.
         let receipts = p.rstore.root_for_tests().join("receipts");
         std::fs::remove_dir_all(&receipts).unwrap();
-        agreement::bump_generation_for_tests();
+        agreement::bump_generation_for_tests(&p.rstore);
         assert_eq!(p.session(&p.rstore, MODEL, NOW + 10), None);
         assert!(p.session(&p.pstore, MODEL, NOW + 10).is_some());
         let _ = session;
