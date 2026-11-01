@@ -1322,3 +1322,50 @@ fn a_long_flat_chain_starts_within_the_load_deadline() {
     }
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// The move is one way. Once a node on the shelf seals a record, the flat
+/// files in `archive/pre-store/` lack it, so restoring them loses it; and an
+/// earlier release, which reads `ledger/capsules.jsonl` and a statement file
+/// per line in `ledger/signed-statements/`, finds neither: the chain's lines
+/// laid out flat do not open without those files. Every line's signed
+/// statement is still on the shelf.
+#[test]
+fn the_move_is_one_way() {
+    let dir = flat_node("one-way", &[4]);
+    let ledger = dir.join("ledger");
+    let sealed = {
+        let state = CapsuleState::open(&dir, "node-under-test").unwrap();
+        assert!(state.chain_stores().is_some(), "moved in one start");
+        seal(&state, 77)
+    };
+    let archived =
+        fs::read_to_string(dir.join("archive/pre-store").join(FLAT_CAPSULES_FILE)).unwrap();
+    assert!(
+        !archived.contains(&sealed),
+        "the archive is the chain as it was"
+    );
+    assert!(!ledger.join(FLAT_CAPSULES_FILE).exists());
+    assert!(!ledger.join("signed-statements").exists());
+    let flat = temp_dir("one-way-flat");
+    fs::write(
+        flat.join(FLAT_CAPSULES_FILE),
+        chain_text(&ledger).unwrap().unwrap().as_slice(),
+    )
+    .unwrap();
+    assert!(
+        Ledger::open_with_indexer(&flat, crate::producer::index::record_index_keys).is_err(),
+        "a flat ledger without its statement files does not open"
+    );
+    for line in chain_lines(&ledger).unwrap() {
+        let id = serde_json::from_slice::<Value>(&line).unwrap()["capsule_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(
+            statement(&ledger, &id).is_some(),
+            "the shelf holds {id}'s statement"
+        );
+    }
+    let _ = fs::remove_dir_all(&dir);
+    let _ = fs::remove_dir_all(&flat);
+}

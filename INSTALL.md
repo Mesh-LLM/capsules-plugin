@@ -603,6 +603,10 @@ same log id, and its first checkpoints contradict the ones peers already hold
 for that log. Copying the files back from `archive/pre-store/` is not a way
 back either: records sealed since the move are only in `shelf.db`.
 
+So before the first start of this release, stop the node and back up
+`<data dir>/ledger/`. To go back to an earlier release later, stop the node
+and restore that backup; every record sealed since the upgrade is lost.
+
 **Owner-maintenance records from earlier releases.** Releases up to 0.1.8
 sealed each owner cleanup (delete stored text, rebuild index, start a new log)
 with `disposition.approver: "owner"`, which the Agent Action Capsule format
