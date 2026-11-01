@@ -11,8 +11,8 @@
   replied, and the referee rules only on a re-answer it holds a record of, so the first ask was
   refused `referee_record_not_found`. The asker now asks again after 0.1, 0.2, 0.4, 0.8 and 1.6
   seconds while that refusal comes back; any other refusal still ends the call. The referee logs
-  why it refuses an adjudicate request, and the asker logs why a call ended `referee_cannot_sign`
-  or `referee_unreachable`.
+  why it refuses an adjudicate request, and the asker logs why the referee's reply, or the stream
+  to it, ended a call `referee_cannot_sign` or `referee_unreachable`.
 
 ### Tested
 
