@@ -288,13 +288,14 @@ async fn a_denied_peer_gets_no_and_an_allowed_peer_gets_go_through_the_wire_prot
     for block in &decisions {
         assert_eq!(block["reads"][0]["kind"], "operator_policy", "{block}");
     }
-    let ledger_text: String = walk(&data_dir.join("ledger"))
-        .iter()
-        .filter_map(|p| std::fs::read_to_string(p).ok())
-        .chain([chain_lines(&data_dir)])
-        .collect();
+    // The ask book (loop step 7) names the responder of each card ask in
+    // clear, like every ask record; the admission decisions never do.
+    let decisions_text = serde_json::to_string(&decisions).expect("decisions serialize");
     for id in [ALLOWED, DENIED, STRANGER] {
-        assert!(!ledger_text.contains(id), "no peer id is sealed in clear");
+        assert!(
+            !decisions_text.contains(id),
+            "no peer id is sealed in clear in an admission decision"
+        );
     }
     let _ = std::fs::remove_dir_all(&data_dir);
 }
