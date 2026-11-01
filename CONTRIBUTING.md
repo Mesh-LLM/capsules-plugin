@@ -90,9 +90,10 @@ tested in their own repositories and reach this one as version bumps.
 
 ### Tier 2: nightly, and on the `run-e2e` label
 
-`.github/workflows/e2e.yml` runs two nodes of a pinned, unmodified mesh-llm
+`.github/workflows/e2e.yml` runs nodes of a pinned, unmodified mesh-llm
 release on one Linux runner, each with this plugin: one serves a small model,
-the other joins its mesh and sends it three chat completions.
+another joins its mesh and sends it three chat completions, and a third joins
+afterwards and corroborates one of those exchanges with both sides.
 `scripts/e2e-two-node.sh` runs the nodes; once they have stopped, the checks
 in `crates/evidence-plugin/src/two_node_e2e.rs` run over what each node wrote:
 
@@ -143,6 +144,12 @@ in `crates/evidence-plugin/src/two_node_e2e.rs` run over what each node wrote:
   `web-ui/src/features/capsules/lib/history-page.e2e.test.ts` builds the
   History page from each `reply`, opens it offline, and checks it verifies
   (or shows the refusal) and hands back the served bytes unchanged.
+- a third node, party to no exchange, runs `historical_reference` on the
+  first one: keyed on the client nonce the requester's record binds, the
+  requester's half verifies under its key; the provider, with
+  `share_exchange_corroboration` off, answers with a signed `policy_declined`,
+  and with it on, its half verifies under its key and agrees. Independence
+  stays `not_established` (action-state-group/evidencebook#47, T1).
 - the real-host tests (`tests/host_runtime_e2e.rs`, see
   [docs/REAL-HOST-VERIFICATION.md](docs/REAL-HOST-VERIFICATION.md)) pass, and
   fail on a build that serves a blocked model.

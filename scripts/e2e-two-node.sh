@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Tier 2: two unmodified mesh-llm nodes on this machine, each running the
 # plugin. The provider serves the model; the requester serves nothing, joins
-# the provider's mesh, and sends it chat completions over the mesh. Once both
-# nodes have stopped, the scenario checks (crates/evidence-plugin/src/
-# two_node_e2e.rs) run over what each node wrote, and the History pages built
-# from what each node's history-page route served are opened offline
+# the provider's mesh, and sends it chat completions over the mesh. A third
+# node, the corroborator, joins afterwards, is party to no exchange, and asks
+# each of the two for its half of one of them. Once all the nodes have
+# stopped, the scenario checks (crates/evidence-plugin/src/two_node_e2e.rs)
+# run over what each node wrote, and the History pages built from what each
+# node's history-page route served are opened offline
 # (web-ui/src/features/capsules/lib/history-page.e2e.test.ts).
 #
 # Usage: scripts/e2e-two-node.sh MESH_LLM_BIN PLUGIN_BIN MODEL_GGUF OUT_DIR
@@ -32,6 +34,7 @@ EXCHANGES=${E2E_EXCHANGES:-3}
 MODEL_NAME=e2e-model
 PROVIDER_API=9401 PROVIDER_CONSOLE=9411
 REQUESTER_API=9402 REQUESTER_CONSOLE=9412
+CORROBORATOR_API=9403 CORROBORATOR_CONSOLE=9413
 
 mkdir -p "$out/logs" "$out/nodes"
 out=$(realpath "$out")
@@ -137,6 +140,11 @@ halves() {
   jq -c --arg r "$2" 'select(.model_attestation.compute_attestation["x-mesh-poc-v1"].role? == $r)' "$file" | wc -l
 }
 has_halves() { [ "$(halves "$1" "$2")" -ge "$EXCHANGES" ]; }
+# node_key NODE: the node plugin's raw Ed25519 public key, hex.
+node_key() {
+  openssl pkey -pubin -in "$(plugin_data "$1")/keys/node-key.pub.pem" -outform DER \
+    | tail -c 32 | od -An -v -tx1 | tr -d ' \n'
+}
 # setting NODE LINE: add a line to the node's [plugin.settings] (the last table).
 setting() { printf '%s\n' "$2" >> "$(node_home "$1")/config.toml"; }
 # tool CONSOLE OPERATION BODY: POST to one of the plugin's operations.
@@ -202,7 +210,7 @@ setting provider "join_reporter = \"$provider_id\""
 # The requester accepts the provider's record under the provider's own key
 # (its raw Ed25519 public key, hex). The provider cannot be given the
 # requester's: a client node's id is new each time it starts.
-provider_key=$(openssl pkey -pubin -in "$(plugin_data provider)/keys/node-key.pub.pem" -outform DER | tail -c 32 | od -An -v -tx1 | tr -d ' \n')
+provider_key=$(node_key provider)
 [ ${#provider_key} = 64 ] || { echo "could not read the provider's public key" >&2; exit 1; }
 CAPSULES_PEER_KEYS=$(jq -cn --arg id "$provider_id" --arg k "$provider_key" --argjson twins "$twin_keys" \
   '{($id): $k} + $twins')
@@ -409,6 +417,35 @@ wait_for 30 "the requester sealed its adjudication_received record" sealed
 absent() { grep -q '"recorded_absence"' "$(plugin_data requester)/ledger/capsules.jsonl"; }
 wait_for 180 "the requester sealed the absence of its unanswered ask" absent
 
+# --- a third node corroborates one exchange with both sides -----------------
+# The corroborator (Z) asks the requester (X) for its half of the run's first
+# exchange, keyed on the client nonce X's record binds, then the provider (Y)
+# for Y's half, and checks each answer under that node's key. It is given
+# X's record and both nodes' keys; both nodes now run, so the requester's id
+# is known. First with the provider declining (the default), then with it
+# answering.
+requester_key=$(node_key requester)
+[ ${#requester_key} = 64 ] || { echo "could not read the requester's public key" >&2; exit 1; }
+setting requester 'share_exchange_corroboration = "on"'
+NODE_ENV=(CAPSULES_PEER_KEYS="$(jq -cn --arg p "$provider_id" --arg pk "$provider_key" \
+  --arg r "$requester_id" --arg rk "$requester_key" '{($p): $pk, ($r): $rk}')")
+start_node corroborator "$CORROBORATOR_API" "$CORROBORATOR_CONSOLE" --client --join "$token"
+wait_for 300 "the corroborator has joined the mesh" lists_model "$CORROBORATOR_API"
+jq -cn 'first(inputs | select(.model_attestation.compute_attestation["x-mesh-poc-v1"].role? == "requested"))' \
+  "$(plugin_data requester)/ledger/capsules.jsonl" > "$out/x-record.json"
+# corroborate NAME Y_STATE: one historical reference, kept as NAME.json; it
+# passes when X's half was obtained and the provider's outcome is Y_STATE.
+corroborate() {
+  tool "$CORROBORATOR_CONSOLE" historical_reference "$(jq -cn --arg x "$requester_id" \
+    --arg y "$provider_id" --slurpfile rec "$out/x-record.json" '{x_peer: $x, x_record: $rec[0],
+    ys: [{peer_id: $y, frame: {basis: "x_record_names_y"}}]}')" > "$out/$1.json" \
+    && jq -e --arg s "$2" '.x.outcome.state == "half_obtained" and .ys[0].outcome.state == $s' \
+      "$out/$1.json"
+}
+wait_for 60 "the provider declines, under its key" corroborate corroboration-declined signed_refusal
+setting provider 'share_exchange_corroboration = "on"'
+wait_for 60 "both halves agree, each under its node's key" corroborate corroboration-agreed agree
+
 # --- join again after the first exchange: now it is complete ----------------
 wait_for 120 "join on the requester says it has joined" joined
 
@@ -455,11 +492,12 @@ stop_nodes
 mkdir -p "$out/data"
 cp -a "$(plugin_data requester)" "$out/data/requester"
 cp -a "$(plugin_data provider)" "$out/data/provider"
+cp -a "$(plugin_data corroborator)" "$out/data/corroborator"
 # Built with test-period-policy (CAPSULES_TEST_PERIOD_LENGTH_S is exported
 # above), so the checks know the Service History definition the nodes ran.
 cd "$repo/crates/evidence-plugin"
 E2E_REQUESTER_DIR=$out/data/requester E2E_PROVIDER_DIR=$out/data/provider E2E_EXCHANGES=$EXCHANGES \
-  E2E_JOIN_DIR=$out E2E_UNANSWERED_PEER=$unanswered_peer \
+  E2E_JOIN_DIR=$out E2E_UNANSWERED_PEER=$unanswered_peer E2E_CORROBORATOR_DIR=$out/data/corroborator \
   cargo test --locked --bin capsules --features test-period-policy -- --ignored --test-threads=1 two_node_e2e::
 
 # --- the History pages the live nodes served, built and opened offline ------

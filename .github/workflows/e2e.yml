@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
-# Tier 2: two real mesh-llm nodes on one runner, each running this plugin,
+# Tier 2: real mesh-llm nodes on one runner (two, then a third that
+# corroborates one of their exchanges), each running this plugin,
 # nightly and on pull requests labelled `run-e2e`. See CONTRIBUTING.md.
 #
 # The mesh-llm release and the model are pinned by SHA-256 below and checked
@@ -126,7 +127,7 @@ jobs:
         working-directory: web-ui
         run: pnpm install --frozen-lockfile
 
-      - name: Two nodes, three exchanges, then the scenario checks
+      - name: Two nodes, three exchanges, a third node corroborates, then the scenario checks
         env:
           E2E_OUT: ${{ runner.temp }}/e2e
         run: |
