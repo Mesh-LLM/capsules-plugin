@@ -501,17 +501,28 @@ async fn ask_card(
     peer: &str,
     capsules: Option<&Arc<crate::capsule_emit::CapsuleState>>,
 ) -> CardOutcome {
-    let Ok(crate::mesh_evidence_bridge::Answered { sent, answer, .. }) =
-        crate::mesh_evidence_bridge::send_evidence_request(
-            context,
-            peer,
-            &card_request(),
-            capsules,
-        )
-        .await
-    else {
-        return CardOutcome::NotRead;
+    let answered = match crate::mesh_evidence_bridge::send_evidence_request(
+        context,
+        peer,
+        &card_request(),
+        capsules,
+    )
+    .await
+    {
+        Ok(answered) => answered,
+        Err(error) => {
+            // A local failure to seal the ask must not look like an
+            // unreachable peer.
+            if matches!(
+                error,
+                crate::mesh_evidence_bridge::SendError::NotRecorded(_)
+            ) {
+                tracing::warn!(%peer, ?error, "admission's history card ask was not sent: it could not be sealed");
+            }
+            return CardOutcome::NotRead;
+        }
     };
+    let crate::mesh_evidence_bridge::Answered { sent, answer, .. } = answered;
     let registry = crate::peer_keys::registry();
     read_card(
         &sent,
