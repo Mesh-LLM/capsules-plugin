@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # The node's EvidenceBook settlement report (Mesh-LLM/capsules-plugin#96,
 # button 2): run by the node's owner on the node's machine, by hand or on a
-# schedule, while the node runs. The Evidence page's "Save Settlement page"
-# hands over the page this leaves; the node never builds one itself.
+# schedule, while the node runs. The Exchanges tab's "EvidenceBook report
+# (sealed and checked)" hands over the page this leaves; the node never
+# builds one itself.
 #
 #   1. Read the node's chain with `capsules chain-lines` (no lock; the node's
 #      shelf is never written).
@@ -74,18 +75,46 @@ KEY="$DATA_DIR/keys/node-key.pem"
 mkdir -p "$REPORT_DIR"
 chmod 700 "$REPORT_DIR"
 REPORT_DIR=$(cd "$REPORT_DIR" && pwd)
-# capsulectl keeps its profiles under XDG_CONFIG_HOME; the node's route reads
-# the same one, so both name the book the same way.
-export XDG_CONFIG_HOME="$REPORT_DIR/config"
-export CAPSULECTL_PLUGIN_ROOTS=${CAPSULECTL_PLUGIN_ROOTS:-$(dirname "$CAPSULECTL")}
-PROFILE=settlement
+# One run at a time: two runs would publish the same records twice
+# (capsulectl publish does not refuse a repeat). mkdir is atomic everywhere.
+LOCK="$REPORT_DIR/.lock"
+mkdir "$LOCK" 2>/dev/null || fail "another run holds $LOCK (remove it if no run is going)"
+WORK=""
+trap 'rm -rf "$LOCK" ${WORK:+"$WORK"}' EXIT
 WORK=$(mktemp -d "$REPORT_DIR/run.XXXXXX")
+
+# capsulectl keeps its profiles under XDG_CONFIG_HOME, and finds capsulectl-book
+# under CAPSULECTL_PLUGIN_ROOTS. The node's route runs `book report check` with
+# the same two, read from book.json, so both open the same book the same way.
+export XDG_CONFIG_HOME="$REPORT_DIR/config"
+export CAPSULECTL_PLUGIN_ROOTS=${CAPSULECTL_PLUGIN_ROOTS:-$(cd "$(dirname "$CAPSULECTL")" && pwd)}
+PROFILE=settlement
+BOOK="$REPORT_DIR/book.json"
 # The book's signing seed, the node's own key, as the profile names it. It
 # stays (0600, in this 0700 directory) because capsulectl-book's `book report
 # check`, which the node runs at hand-over, opens the profile only with its
 # signing secret (action-state-group/evidencebook#324).
 SEED="$REPORT_DIR/node.seed"
-trap 'rm -rf "$WORK"' EXIT
+
+# book.json's fields, read and written in one place.
+book() { python3 "$WORK/book.py" "$BOOK" "$@"; }
+cat >"$WORK/book.py" <<'EOF'
+import json, os, sys
+path, op, args = sys.argv[1], sys.argv[2], sys.argv[3:]
+book = json.load(open(path)) if os.path.exists(path) else {}
+if op == "get":
+    value = book.get(args[0])
+    print("" if value is None else (json.dumps(value) if isinstance(value, dict) else value))
+    sys.exit(0)
+# set KEY=JSON ...: replaced whole, so a run killed mid-write leaves the old file.
+for pair in args:
+    key, value = pair.split("=", 1)
+    book[key] = json.loads(value)
+tmp = path + ".tmp"
+with open(tmp, "w") as f:
+    json.dump(book, f, sort_keys=True)
+os.replace(tmp, path)
+EOF
 
 # The node's key as the 32-byte seed capsulectl reads, first in the run's own
 # directory: it replaces the book's seed only once it is the book's key.
@@ -100,36 +129,73 @@ with os.fdopen(fd, "w") as f:
     f.write(der[16:].hex())
 EOF
 NODE_PUB=$("$CAPSULECTL" key show-public "$WORK/node.seed" | python3 -c 'import json,sys; print(json.load(sys.stdin)["public_key"])')
-if [ -f "$REPORT_DIR/book.json" ]; then
-  python3 - "$REPORT_DIR/book.json" "$NODE_PUB" <<'EOF' || exit 1
-import json, sys
-book = json.load(open(sys.argv[1]))
-if book["node_key"] != sys.argv[2]:
-    sys.exit(f"settlement-report: this reporting book is under key {book['node_key'][:12]}, not this node's ({sys.argv[2][:12]}); use a new --report-dir")
-EOF
+BOOK_KEY=$(book get node_key)
+if [ -n "$BOOK_KEY" ] && [ "$BOOK_KEY" != "$NODE_PUB" ]; then
+  fail "this reporting book is under key ${BOOK_KEY:0:12}, not this node's (${NODE_PUB:0:12}); use a new --report-dir"
 fi
 mv "$WORK/node.seed" "$SEED"
 
-if [ ! -f "$REPORT_DIR/book.json" ]; then
-  # First run: a book under the node's key, for its records and checkpoints.
+if [ -z "$BOOK_KEY" ]; then
+  # First run. book.json names the key first, so a run cut short here resumes:
+  # an existing profile is kept and `store init` is idempotent.
+  book set node_key="\"$NODE_PUB\"" published_lines=0 last_capsule_id=null book_sequence=0 pending=null
+fi
+book set plugin_roots="\"$CAPSULECTL_PLUGIN_ROOTS\""
+if ! "$CAPSULECTL" profile list | python3 -c 'import json,sys; sys.exit(sys.argv[1] not in json.load(sys.stdin)["profiles"])' "$PROFILE"; then
   "$CAPSULECTL" profile create --name "$PROFILE" --type jsonl --jsonl-path "$REPORT_DIR/book" \
     --namespace settlement --log-id "settlement-$NODE_PUB" --log book --operator "$NODE_PUB" \
     --signing-key-file "$SEED" --trusted-key "$NODE_PUB" \
-    --checkpoint-signing-key-file "$SEED" --checkpoint-trusted-key "$NODE_PUB" >/dev/null
-  "$CAPSULECTL" store init --profile "$PROFILE" >/dev/null
-  printf '{"node_key":"%s","published_lines":0,"last_capsule_id":null}\n' "$NODE_PUB" >"$REPORT_DIR/book.json"
+    --checkpoint-signing-key-file "$SEED" --checkpoint-trusted-key "$NODE_PUB" >/dev/null \
+    || fail "capsulectl profile create failed"
+fi
+"$CAPSULECTL" store init --profile "$PROFILE" >/dev/null || fail "capsulectl store init failed"
+
+# A run killed between a publish and its watermark: find out from the book
+# whether that record was published, by its ActionID, before going on.
+PENDING=$(book get pending)
+if [ -n "$PENDING" ]; then
+  python3 - "$CAPSULECTL" "$PROFILE" "$(book get book_sequence)" "$PENDING" "$WORK/resolved" <<'EOF' || exit 1
+import json, subprocess, sys
+ctl, profile, after, pending, out = sys.argv[1], sys.argv[2], int(sys.argv[3]), json.loads(sys.argv[4]), sys.argv[5]
+want = "urn:mesh-record:" + pending["capsule_id"]
+found = None
+while found is None:
+    page = json.loads(subprocess.run([ctl, "cll", "list", "--profile", profile, "--after", str(after), "--limit", "1000"],
+                                     check=True, capture_output=True, text=True).stdout)
+    for entry in page["entries"]:
+        if entry.get("record_type") != "own_capsule":
+            continue
+        got = json.loads(subprocess.run([ctl, "get", "--profile", profile, "--capsule-id", entry["capsule_id"]],
+                                        check=True, capture_output=True, text=True).stdout)
+        if got.get("capsule", {}).get("action_id") == want:
+            found = entry["sequence"]
+            break
+    if found is None and not page.get("next_after"):
+        break
+    after = page.get("next_after") or after
+with open(out, "w") as f:
+    f.write("" if found is None else str(found))
+EOF
+  if [ -s "$WORK/resolved" ]; then
+    book set published_lines="$(( $(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["line"])' "$PENDING") + 1 ))" \
+      last_capsule_id="$(python3 -c 'import json,sys; print(json.dumps(json.loads(sys.argv[1])["capsule_id"]))' "$PENDING")" \
+      book_sequence="$(cat "$WORK/resolved")" pending=null
+  else
+    book set pending=null
+  fi
 fi
 
 # Publish the chain's new records, in order, from the watermark on.
 "$CAPSULES" chain-lines --data-dir "$DATA_DIR" >"$WORK/chain.jsonl" || fail "capsules chain-lines could not read the node's chain"
-python3 - "$WORK/chain.jsonl" "$REPORT_DIR/book.json" "$WORK/requests" "$NODE_PUB" <<'EOF' || exit 1
+python3 - "$WORK/chain.jsonl" "$BOOK" "$WORK/requests" "$NODE_PUB" <<'EOF' || exit 1
 import json, os, sys
 lines = [l for l in open(sys.argv[1], encoding="utf-8").read().splitlines() if l]
 book = json.load(open(sys.argv[2]))
 done, last = book["published_lines"], book["last_capsule_id"]
 if len(lines) < done:
     sys.exit(f"settlement-report: the chain has {len(lines)} records but {done} are published; the node started a new history, so use a new --report-dir")
-if done and json.loads(lines[done - 1]).get("capsule_id") != last:
+prior = [c for c in (json.loads(l).get("capsule_id") for l in lines[:done]) if isinstance(c, str)]
+if last is not None and (not prior or prior[-1] != last):
     sys.exit("settlement-report: the chain's record at the watermark is not the one published; use a new --report-dir")
 os.makedirs(sys.argv[3])
 for i, line in enumerate(lines[done:], start=done):
@@ -143,34 +209,23 @@ for i, line in enumerate(lines[done:], start=done):
                "payload": capsule}
     with open(os.path.join(sys.argv[3], f"{i:09d}.json"), "w") as f:
         json.dump(request, f, sort_keys=True)
-print(len(lines), json.loads(lines[-1]).get("capsule_id") if lines else None, file=open(sys.argv[3] + ".next", "w"))
+with open(sys.argv[3] + ".total", "w") as f:
+    f.write(str(len(lines)))
 EOF
 for request in "$WORK/requests"/*.json; do
   [ -e "$request" ] || break
-  "$CAPSULECTL" publish --profile "$PROFILE" --request "$request" >/dev/null \
-    || fail "capsulectl publish refused $(basename "$request"); the watermark is unchanged"
-  # The watermark moves one record at a time, so a run cut short resumes
-  # after the last record it published.
-  python3 - "$REPORT_DIR/book.json" "$request" <<'EOF'
-import json, os, sys
-book = json.load(open(sys.argv[1]))
-request = json.load(open(sys.argv[2]))
-book["published_lines"] = int(os.path.basename(sys.argv[2]).split(".")[0]) + 1
-book["last_capsule_id"] = request["payload"]["capsule_id"]
-tmp = sys.argv[1] + ".tmp"
-json.dump(book, open(tmp, "w"))
-os.replace(tmp, sys.argv[1])
-EOF
+  line=$((10#$(basename "$request" .json)))
+  id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["payload"]["capsule_id"])' "$request")
+  # The watermark moves one record at a time, around a pending marker, so a
+  # run cut short resumes after the last record it published, never twice.
+  book set pending="{\"line\": $line, \"capsule_id\": \"$id\"}"
+  sequence=$("$CAPSULECTL" publish --profile "$PROFILE" --request "$request" \
+    | python3 -c 'import json,sys; print(json.loads(sys.stdin.read().strip().splitlines()[-1])["sequence"])') \
+    || fail "capsulectl publish refused record $line; the next run checks whether it landed"
+  book set published_lines=$((line + 1)) last_capsule_id="\"$id\"" book_sequence="$sequence" pending=null
 done
 # Padding records after the last capsule move the watermark too.
-python3 - "$REPORT_DIR/book.json" "$WORK/requests.next" <<'EOF'
-import json, os, sys
-book = json.load(open(sys.argv[1]))
-total, last = open(sys.argv[2]).read().split()
-book["published_lines"], book["last_capsule_id"] = int(total), (None if last == "None" else last)
-json.dump(book, open(sys.argv[1] + ".tmp", "w"))
-os.replace(sys.argv[1] + ".tmp", sys.argv[1])
-EOF
+book set published_lines="$(cat "$WORK/requests.total")"
 
 # The report, sealed and checked by report.sh; it leaves no page unless
 # `book report check` said match.
@@ -191,7 +246,9 @@ meta = {"date": sys.argv[2],
         "check": check}
 json.dump(meta, open(sys.argv[3], "w"), sort_keys=True)
 EOF
-# The page first, then its note, each replaced whole.
-mv "$WORK/settlement.html" "$REPORT_DIR/settlement.html"
+# The note first, then the page. The route takes the note's fields only when
+# its page digest is the one it just checked, so a page and an older note are
+# never shown together.
 mv "$WORK/settlement.json" "$REPORT_DIR/settlement.json"
+mv "$WORK/settlement.html" "$REPORT_DIR/settlement.html"
 echo "settlement-report: sealed and checked, $REPORT_DIR/settlement.html (report up to $DATE)"

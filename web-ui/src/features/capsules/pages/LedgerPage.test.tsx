@@ -787,6 +787,9 @@ describe('LedgerPageContent', () => {
 describe('LedgerPageContent — Part 3: Exchanges two-sided stream + row inspector', () => {
   afterEach(() => {
     vi.clearAllMocks()
+    // The toolbar test stubs URL and spies on anchor clicks to see saves.
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
 
@@ -1054,7 +1057,6 @@ describe('LedgerPageContent — Part 3: Exchanges two-sided stream + row inspect
     await user.click(settlementButton)
     expect(await screen.findByRole('status')).toHaveTextContent(noReportNote('no settlement report has been sealed yet'))
     expect(await saved[1].text()).toContain('This node’s settlement report')
-    vi.unstubAllGlobals()
   })
 
   it('§3A sticky day headers: one per calendar day, tallying the whole day', async () => {

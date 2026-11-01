@@ -1,6 +1,6 @@
 //! `GET settlement-report`: the node's latest EvidenceBook settlement report,
-//! for the Evidence page's "Save Settlement page" (Mesh-LLM/capsules-plugin#96,
-//! button 2).
+//! for the Exchanges tab's "EvidenceBook report (sealed and checked)"
+//! (Mesh-LLM/capsules-plugin#96, button 2).
 //!
 //! The node never builds the report. Its owner runs
 //! `scripts/settlement-report.sh`, which publishes the node's records into a
@@ -17,6 +17,10 @@
 //! bytes it checked are the bytes it serves. Every other case is the honest
 //! refusal, with its reason: no reporting book is set, no report is sealed
 //! yet, or the page did not check.
+//!
+//! The note's `sealed_at` and `date` are given only when the note's own
+//! check names the page digest this check found, so a page is never shown
+//! with an older run's note.
 //!
 //! The route answers `{"state": "report", "page": "<the page, as text>",
 //! "sealed_at", "date", "check"}` or `{"state": "refused", "why"}`.
@@ -67,27 +71,31 @@ fn refused(why: impl Into<String>) -> Value {
     json!({"state": "refused", "why": why.into()})
 }
 
+/// The plugin roots the script ran capsulectl with, which it records in
+/// `book.json`.
+async fn plugin_roots(report_dir: &Path) -> Option<String> {
+    let book: Value =
+        serde_json::from_slice(&tokio::fs::read(report_dir.join("book.json")).await.ok()?).ok()?;
+    book.get("plugin_roots")?.as_str().map(str::to_string)
+}
+
 /// `book report check` on `page`, run the way the script ran it: the
-/// reporting book's capsulectl config, the plugin roots beside capsulectl.
+/// reporting book's capsulectl config and the script's plugin roots.
 async fn report_check(capsulectl: &Path, report_dir: &Path, page: &Path) -> Result<Value, String> {
-    let roots = capsulectl
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_default();
-    let output = tokio::time::timeout(
-        CHECK_TIMEOUT,
-        tokio::process::Command::new(capsulectl)
-            .args(["book", "report", "check", "--profile", PROFILE, "--page"])
-            .arg(page)
-            .env("XDG_CONFIG_HOME", report_dir.join("config"))
-            .env("CAPSULECTL_PLUGIN_ROOTS", roots)
-            .stdin(std::process::Stdio::null())
-            .kill_on_drop(true)
-            .output(),
-    )
-    .await
-    .map_err(|_| "book report check did not finish in time".to_string())?
-    .map_err(|e| format!("capsulectl could not be run: {e}"))?;
+    let mut command = tokio::process::Command::new(capsulectl);
+    command
+        .args(["book", "report", "check", "--profile", PROFILE, "--page"])
+        .arg(page)
+        .env("XDG_CONFIG_HOME", report_dir.join("config"))
+        .stdin(std::process::Stdio::null())
+        .kill_on_drop(true);
+    if let Some(roots) = plugin_roots(report_dir).await {
+        command.env("CAPSULECTL_PLUGIN_ROOTS", roots);
+    }
+    let output = tokio::time::timeout(CHECK_TIMEOUT, command.output())
+        .await
+        .map_err(|_| "book report check did not finish in time".to_string())?
+        .map_err(|e| format!("capsulectl could not be run: {e}"))?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let last = stdout.lines().rev().find(|l| !l.trim().is_empty());
     match last.and_then(|l| serde_json::from_str::<Value>(l).ok()) {
@@ -147,6 +155,10 @@ pub async fn answer(setup: &Setup) -> Value {
         .await
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
+        .filter(|note: &Value| {
+            note.pointer("/check/page_digest").is_some()
+                && note.pointer("/check/page_digest") == check.get("page_digest")
+        })
         .unwrap_or(Value::Null);
     json!({
         "state": "report",
@@ -164,7 +176,7 @@ pub fn with_route(builder: DeclarativePluginBuilder) -> DeclarativePluginBuilder
             .binding_id("evidence_settlement_report")
             .description(
                 "The node's latest sealed EvidenceBook settlement report, checked with the \
-                 owner's capsulectl at hand-over, for the Evidence page's Settlement download.",
+                 owner's capsulectl at hand-over, for the Exchanges tab's EvidenceBook report.",
             )
             .input::<NoArgs>()
             .handle(move |_args, _context| {
@@ -203,7 +215,7 @@ mod tests {
         std::fs::write(report.join(PAGE_FILE), "<!doctype html><p>report</p>").unwrap();
         std::fs::write(
             report.join(NOTE_FILE),
-            r#"{"date":"2026-11-01","sealed_at":"2026-11-01T19:45:33Z"}"#,
+            r#"{"date":"2026-11-01","sealed_at":"2026-11-01T19:45:33Z","check":{"page_digest":"sha256:00"}}"#,
         )
         .unwrap();
         report
@@ -224,6 +236,46 @@ mod tests {
         assert_eq!(answered["sealed_at"], "2026-11-01T19:45:33Z");
         assert_eq!(answered["date"], "2026-11-01");
         assert_eq!(answered["check"]["page"], "match");
+    }
+
+    #[tokio::test]
+    async fn an_older_note_is_not_shown_with_a_newer_page() {
+        let dir = tempfile::tempdir().unwrap();
+        let newer = r#"{"page":"match","verification":"VALID","page_digest":"sha256:11"}"#;
+        let setup = Setup {
+            report_dir: Some(report_dir(dir.path())),
+            capsulectl: Some(fake_capsulectl(dir.path(), newer)),
+        };
+        let answered = answer(&setup).await;
+        assert_eq!(answered["state"], "report");
+        assert_eq!(answered["sealed_at"], Value::Null);
+        assert_eq!(answered["date"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn runs_capsulectl_with_the_plugin_roots_the_script_used() {
+        let dir = tempfile::tempdir().unwrap();
+        let report = report_dir(dir.path());
+        std::fs::write(
+            report.join("book.json"),
+            r#"{"plugin_roots":"/opt/capsulectl-plugins"}"#,
+        )
+        .unwrap();
+        let ctl = dir.path().join("capsulectl");
+        std::fs::write(
+            &ctl,
+            format!(
+                "#!/bin/sh\n[ \"$CAPSULECTL_PLUGIN_ROOTS\" = /opt/capsulectl-plugins ] || exit 7\necho '{MATCH}'\n"
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&ctl, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let answered = answer(&Setup {
+            report_dir: Some(report),
+            capsulectl: Some(ctl),
+        })
+        .await;
+        assert_eq!(answered["state"], "report", "{answered}");
     }
 
     #[tokio::test]
@@ -312,6 +364,9 @@ mod tests {
             answered["page"].as_str().unwrap().as_bytes(),
             std::fs::read(source.join(PAGE_FILE)).unwrap()
         );
+
+        // The note the script wrote names this page, so its seal time shows.
+        assert!(answered["sealed_at"].is_string(), "{answered}");
 
         let mut page = std::fs::read(copy.join(PAGE_FILE)).unwrap();
         let at = page.len() - 20;
