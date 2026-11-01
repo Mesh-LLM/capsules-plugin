@@ -1653,6 +1653,13 @@ fn export_redoes_a_run_cut_short_while_the_files_moved_in() {
     .unwrap();
     fs::remove_dir_all(&done.shelf_set_aside).unwrap();
     fs::create_dir_all(ledger.join(".flat-export")).unwrap();
+    fs::write(
+        ledger
+            .join(".flat-export")
+            .join(crate::flat_export::ASIDE_NOTE),
+        done.shelf_set_aside.file_name().unwrap().to_str().unwrap(),
+    )
+    .unwrap();
     fs::rename(
         ledger.join(FLAT_CAPSULES_FILE),
         ledger.join(".flat-export").join(FLAT_CAPSULES_FILE),
@@ -1717,5 +1724,23 @@ fn a_cut_short_run_never_uses_an_earlier_exports_directory() {
         fs::read(first.shelf_set_aside.join(SHELF_FILE)).unwrap(),
         first_shelf
     );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A scratch directory that is not a run cut short while the files moved in
+/// proves nothing about the files in `ledger/`: a stray one is refused, kept.
+#[test]
+fn export_refuses_a_stray_flat_file_and_keeps_it() {
+    let dir = flat_node("export-stray", &[4]);
+    let _budget = UnboundedImport::new();
+    drop(CapsuleState::open(&dir, "node-under-test").unwrap());
+    let ledger = dir.join("ledger");
+    fs::create_dir_all(ledger.join(".flat-export")).unwrap();
+    fs::write(ledger.join("mmr_nodes.dat"), b"not ours").unwrap();
+    let lock = crate::data_dir::lock(&dir).unwrap();
+    assert!(crate::flat_export::export(&dir).is_err());
+    drop(lock);
+    assert_eq!(fs::read(ledger.join("mmr_nodes.dat")).unwrap(), b"not ours");
+    assert!(is_store_layout(&ledger));
     let _ = fs::remove_dir_all(&dir);
 }

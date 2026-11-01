@@ -141,10 +141,12 @@ pub fn export(data_dir: &Path) -> anyhow::Result<ExportReport> {
     if !chain_store::is_store_layout(&ledger_dir) {
         bail!("{} holds no {SHELF_FILE}", ledger_dir.display());
     }
-    // A run cut short while the files moved in: those in `ledger/` that the
-    // scratch directory no longer holds are its own, renamed. Put them back
-    // and build afresh.
-    if staging.exists() {
+    // A run cut short while the files moved in (it moves `capsules.jsonl`
+    // last, after writing the note): those in `ledger/` that the scratch
+    // directory no longer holds are its own, renamed. Put them back and build
+    // afresh. Any other scratch directory proves nothing about `ledger/`'s
+    // files, which the check below refuses.
+    if staging.join(ASIDE_NOTE).exists() && staging.join(FLAT_CAPSULES_FILE).exists() {
         for name in STAGED {
             let (staged, moved) = (staging.join(name), ledger_dir.join(name));
             if !staged.exists() && moved.exists() {
