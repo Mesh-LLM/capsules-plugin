@@ -586,18 +586,21 @@ during the move finishes it at the next start. If the files do not match, the
 node refuses to start, says why, and leaves the old files where they were;
 every start tries again. To run the node on an earlier release instead, stop
 it and remove `ledger/shelf.db` and `ledger/import-pending.json`, which hold
-only a partial copy.
+only a partial copy. This works only while `archive/pre-store/` holds none of
+those five files. If it holds any, start this release again so it finishes the
+move. From then on the move is one way.
 
-The move is one way. Once it has finished, do not start an earlier release on
-that data directory: it finds no `capsules.jsonl`, starts a new, empty log
-under the same log id, and its first checkpoints contradict the ones peers
-already hold for that log.
+Once the move has finished, do not start an earlier release on that data
+directory: it finds no `capsules.jsonl`, starts a new, empty log under the
+same log id, and its first checkpoints contradict the ones peers already hold
+for that log. Copying the files back from `archive/pre-store/` is not a way
+back either: records sealed since the move are only in `shelf.db`.
 
 **Owner-maintenance records from earlier releases.** Releases up to 0.1.8
 sealed each owner cleanup (delete stored text, rebuild index, start a new log)
 with `disposition.approver: "owner"`, which the Agent Action Capsule format
 does not allow. Those records stay as they were sealed and never change, so
-any checker reports them as `approver_invalid`. The shelf only holds
+an Agent Action Capsule Class 1 check reports them as `approver_invalid`. The shelf only holds
 records that pass that check, so a node whose log holds such a record keeps
 its log in `capsules.jsonl` as before, and says so at start. The next log
 it starts (Start a new log) uses the shelf. Cleanups sealed from this
