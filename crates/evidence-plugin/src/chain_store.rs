@@ -35,9 +35,11 @@
 //! history from before the shelf, or a node not yet imported, is.
 //!
 //! **Import.** A node written by an earlier release keeps its chain in the flat
-//! layout. [`import_flat`] moves it onto the shelf on the first start of this
-//! one, journalled and resumable, and archives only the chain's flat files to
-//! `archive/pre-store/` (see the function).
+//! layout. [`import_flat`] moves it onto the shelf over one start or more,
+//! each bounded so the node starts within the host's plugin-load deadline,
+//! journalled and resumable, and archives only the chain's flat files to
+//! `archive/pre-store/` (see the function). Until the move is done, the node
+//! and the readers use the flat files.
 
 use std::collections::HashMap;
 use std::fs;
@@ -384,14 +386,6 @@ impl EntrySource for ChainLog {
 impl cll::log::EntryCounter for ChainLog {
     fn entry_count(&self) -> cll::log::Result<u64> {
         self.log.entry_count()
-    }
-}
-
-impl ChainLog {
-    /// Append `inputs` in order, each in its own commit (CLL has no batch
-    /// append); the import's budget bounds what that costs a start.
-    fn append_each(&self, inputs: &[AppendInput]) -> cll::log::Result<Vec<AppendResult>> {
-        inputs.iter().map(|input| self.log.append(input)).collect()
     }
 }
 
@@ -926,6 +920,20 @@ pub fn chain_lines(ledger_dir: &Path) -> io::Result<Vec<Vec<u8>>> {
         .unwrap_or_default())
 }
 
+/// The chain's lines on the shelf under `ledger_dir`, whatever the layout
+/// readers use: for the import's check of a shelf it is still writing.
+fn shelf_lines(ledger_dir: &Path) -> io::Result<Vec<Vec<u8>>> {
+    let view = ShelfView::open(ledger_dir)?.ok_or_else(|| other("the shelf holds no chain log"))?;
+    let mut snapshot = Snapshot::default();
+    snapshot.refresh(&view)?;
+    Ok(snapshot
+        .text
+        .split(|&b| b == b'\n')
+        .filter(|l| !l.is_empty())
+        .map(<[u8]>::to_vec)
+        .collect())
+}
+
 /// The chain's checkpoints under `ledger_dir`, each ended by `\n`, in today's
 /// `checkpoints.jsonl` line format: from the shelf's checkpoint history, or
 /// the flat `checkpoints.jsonl` where there is no shelf. `None` when there
@@ -1287,6 +1295,8 @@ pub(crate) mod import_faults {
     use std::cell::Cell;
     thread_local! {
         pub(crate) static FAIL_AFTER_APPENDS: Cell<Option<u64>> = const { Cell::new(None) };
+        /// Stop after a chunk's records are stored, before its appends.
+        pub(crate) static FAIL_BEFORE_APPENDS: Cell<bool> = const { Cell::new(false) };
         /// Lines per chunk instead of `IMPORT_CHUNK`.
         pub(crate) static CHUNK: Cell<Option<usize>> = const { Cell::new(None) };
         /// The import's budget instead of `IMPORT_BUDGET`.
@@ -1525,8 +1535,14 @@ fn copy_flat(
         Ok(hex::encode(root_from_peaks(&peak_hashes)))
     };
 
-    // 3. The checkpoints.
+    // 3. The checkpoints, each committed with only its new nodes (a resumed
+    // start skips those already held), with the deadline checked between
+    // them like the chunks above.
     let checkpoints = flat_checkpoints(ledger_dir)?;
+    let state = stores.log.load_cll()?;
+    let mut held_size = state.size;
+    let mut held_checkpoint = state.checkpoint.map(|c| (c.size, c.bytes));
+    let mut committed = 0usize;
     for (cp, cose) in &checkpoints {
         let leaves = leaf_count(cp.mmr_size)?;
         if leaves > total {
@@ -1545,13 +1561,12 @@ fn copy_flat(
                 root_at(cp.mmr_size)?
             );
         }
-        let current = stores.log.load_cll()?;
-        if let Some(held) = &current.checkpoint {
-            if held.size > cp.mmr_size {
+        if let Some((size, bytes)) = &held_checkpoint {
+            if *size > cp.mmr_size {
                 continue;
             }
-            if held.size == cp.mmr_size {
-                if held.bytes != *cose {
+            if *size == cp.mmr_size {
+                if bytes != cose {
                     anyhow::bail!(
                         "the chain log already holds another checkpoint at size {}",
                         cp.mmr_size
@@ -1559,6 +1574,17 @@ fn copy_flat(
                 }
                 continue;
             }
+        }
+        if held_size > cp.mmr_size {
+            anyhow::bail!(
+                "the chain log's state is at size {held_size}, past the flat checkpoint at {}",
+                cp.mmr_size
+            );
+        }
+        if (wrote > 0 || committed > 0) && std::time::Instant::now() >= deadline {
+            return Ok(Copied::Pending {
+                copied: cll::log::EntryCounter::entry_count(&*stores.log)?,
+            });
         }
         let mut rows = Vec::new();
         for witness in &cp.witnesses {
@@ -1601,9 +1627,10 @@ fn copy_flat(
                 last_error: None,
             });
         }
-        let next = LogState {
-            size: cp.mmr_size,
-            nodes: (0..cp.mmr_size).map(|p| nodes.node(p).to_vec()).collect(),
+        let update = StateAppend {
+            nodes: (held_size..cp.mmr_size)
+                .map(|p| nodes.node(p).to_vec())
+                .collect(),
             indexed_seq: leaves,
             first_pending_at: None,
             checkpoint: Some(LogCheckpointState {
@@ -1617,45 +1644,53 @@ fn copy_flat(
             }),
             witnesses: rows,
         };
-        stores.log.commit_cll(
-            current.size,
-            current.checkpoint.as_ref().map(|c| c.bytes.as_slice()),
-            &next,
+        stores.log.append_cll(
+            held_size,
+            held_checkpoint.as_ref().map(|(_, bytes)| bytes.as_slice()),
+            &update,
         )?;
+        held_size = cp.mmr_size;
+        held_checkpoint = Some((cp.mmr_size, cose.clone()));
+        committed += 1;
+    }
+    if (wrote > 0 || committed > 0) && std::time::Instant::now() >= deadline {
+        return Ok(Copied::Pending {
+            copied: cll::log::EntryCounter::entry_count(&*stores.log)?,
+        });
     }
 
-    // 4. The whole: entries, tip and head; the checkpoint state loads.
-    let (ledger, _) = stores.open_ledger()?;
-    let (flat_ledger, _) =
-        Ledger::open_with_indexer(ledger_dir, crate::producer::index::record_index_keys)?;
-    if ledger.lines().len() as u64 != total || flat_ledger.lines().len() as u64 != total {
+    // 4. The whole: every line, in order, reads back from the shelf as the
+    // flat line (parsed, as both ledgers' `read_line` give them); the
+    // checkpoint state loads. One pass over each, no ledger replay: the
+    // records were checked as they were stored, and the node's own open
+    // replays the shelf next.
+    let moved = shelf_lines(ledger_dir)?;
+    let flat = fs::read(ledger_dir.join(FLAT_CAPSULES_FILE))?;
+    let complete = flat.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
+    let flat: Vec<&[u8]> = flat[..complete]
+        .split(|&b| b == b'\n')
+        .filter(|l| !l.is_empty())
+        .collect();
+    if moved.len() as u64 != total || flat.len() as u64 != total {
         anyhow::bail!(
             "the moved chain holds {} lines, the flat ledger {}",
-            ledger.lines().len(),
-            flat_ledger.lines().len()
+            moved.len(),
+            flat.len()
         );
     }
-    if ledger.lines().last().map(|l| &l.capsule_id)
-        != flat_ledger.lines().last().map(|l| &l.capsule_id)
-        || ledger.chain_head() != flat_ledger.chain_head()
-    {
-        anyhow::bail!(
-            "the moved chain ends at {:?} (head {:?}), the flat ledger at {:?} (head {:?})",
-            ledger.lines().last().map(|l| &l.capsule_id),
-            ledger.chain_head(),
-            flat_ledger.lines().last().map(|l| &l.capsule_id),
-            flat_ledger.chain_head()
-        );
-    }
-    for (moved, flat) in ledger.lines().iter().zip(flat_ledger.lines()) {
-        if ledger.read_line(moved.offset)? != flat_ledger.read_line(flat.offset)? {
+    for (n, (moved, flat)) in moved.iter().zip(&flat).enumerate() {
+        let moved: Value = serde_json::from_slice(moved)?;
+        let flat: Value = serde_json::from_slice(flat)?;
+        if moved != flat {
             anyhow::bail!(
-                "line {} does not read back as the flat line",
-                moved.capsule_id
+                "line {} ({}) does not read back as the flat line",
+                n + 1,
+                flat.get("capsule_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("?")
             );
         }
     }
-    drop(ledger);
     if let Some((latest, _)) = checkpoints.last() {
         load_checkpoint_state(
             stores,
@@ -1704,15 +1739,15 @@ fn copy_chunk(
         })?;
     }
     tx.commit()?;
-    let inputs: Vec<AppendInput> = pending
-        .iter()
-        .map(|(entry, _)| AppendInput {
+    #[cfg(test)]
+    if import_faults::FAIL_BEFORE_APPENDS.with(|f| f.get()) {
+        anyhow::bail!("injected fault before a chunk's appends");
+    }
+    for (entry, record) in pending.iter() {
+        let appended = stores.log.append(&AppendInput {
             value: entry.value.clone(),
             appended_at: entry.appended_at,
-        })
-        .collect();
-    let appended = stores.log.append_each(&inputs)?;
-    for ((entry, record), appended) in pending.iter().zip(&appended) {
+        })?;
         if appended.outcome != AppendOutcome::Inserted || appended.entry.seq != entry.seq {
             anyhow::bail!(
                 "line {}: {} is already in the chain log, at {}",

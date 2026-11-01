@@ -397,15 +397,34 @@ fn ledger_fetch_returns_the_same_records_before_and_after_the_import() {
 /// clean import's.
 #[test]
 fn an_import_killed_midway_resumes() {
-    let dir = flat_node("resume", &[4, 8]);
+    // Killed partway through a chunk's appends: the shelf holds a prefix that
+    // ends inside the chunk, and the chunk's later records without entries.
+    killed_and_resumed("resume", |kill| {
+        import_faults::FAIL_AFTER_APPENDS.with(|f| f.set(kill.then_some(6)));
+    });
+}
+
+/// A start killed between a chunk's records and its appends resumes.
+#[test]
+fn an_import_killed_before_a_chunks_appends_resumes() {
+    killed_and_resumed("resume-records", |kill| {
+        import_faults::FAIL_BEFORE_APPENDS.with(|f| f.set(kill));
+    });
+}
+
+/// Kill the first start of a flat node's import with `fault(true)`, in chunks
+/// of 4 lines, then start again and check the moved chain.
+fn killed_and_resumed(tag: &str, fault: impl Fn(bool)) {
+    let dir = flat_node(tag, &[4, 8]);
     let ledger = dir.join("ledger");
     let flat_text = fs::read(ledger.join(FLAT_CAPSULES_FILE)).unwrap();
     let before = served_flat(&ledger);
     let flat_tree: BTreeMap<_, _> = tree(&ledger);
 
-    import_faults::FAIL_AFTER_APPENDS.with(|f| f.set(Some(3)));
+    import_faults::CHUNK.with(|c| c.set(Some(4)));
+    fault(true);
     let killed = CapsuleState::open(&dir, "node-under-test");
-    import_faults::FAIL_AFTER_APPENDS.with(|f| f.set(None));
+    fault(false);
     let error = format!("{:#}", killed.err().expect("the import stopped"));
     assert!(error.contains("injected fault"), "{error}");
     assert!(ledger.join(IMPORT_JOURNAL).exists(), "the journal stays");
@@ -420,6 +439,7 @@ fn an_import_killed_midway_resumes() {
     assert!(!dir.join("archive/pre-store").exists());
 
     let state = CapsuleState::open(&dir, "node-under-test").unwrap();
+    import_faults::CHUNK.with(|c| c.set(None));
     assert!(!ledger.join(IMPORT_JOURNAL).exists());
     assert_eq!(
         chain_text(&ledger).unwrap().unwrap().as_slice(),
@@ -1250,7 +1270,9 @@ fn a_flat_chain_moves_over_bounded_starts_and_the_node_runs_meanwhile() {
     let mut sealed_meanwhile = None;
     loop {
         starts += 1;
-        assert!(starts <= 12, "the move never finished");
+        // With no budget each start does one unit: a chunk of 64 lines, one
+        // checkpoint, or the final checks.
+        assert!(starts <= 30, "the move never finished");
         let t = std::time::Instant::now();
         let state = CapsuleState::open(&dir, "node-under-test").unwrap();
         assert!(
