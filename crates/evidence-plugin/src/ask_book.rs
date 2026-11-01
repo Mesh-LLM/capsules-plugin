@@ -449,12 +449,12 @@ fn keep_reply(ledger_dir: &Path, digest: &str, reply: &[u8]) -> std::io::Result<
 /// directory through `File::open` (std passes no `FILE_FLAG_BACKUP_SEMANTICS`),
 /// and NTFS journals directory metadata itself, so there is nothing to flush.
 #[cfg(unix)]
-fn sync_dir(dir: &Path) -> std::io::Result<()> {
+pub(crate) fn sync_dir(dir: &Path) -> std::io::Result<()> {
     std::fs::File::open(dir)?.sync_all()
 }
 
 #[cfg(not(unix))]
-fn sync_dir(_dir: &Path) -> std::io::Result<()> {
+pub(crate) fn sync_dir(_dir: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
