@@ -10,17 +10,17 @@
 //! **Routing-companion finding (2026-09-06): this is broader than that.** The
 //! host-served (real-weights) local-routing branch in `ingress.rs` — the one
 //! that serves a node's own loaded GGUF model directly, used whether the
-//! caller is this node's sidecar or a mesh-routed peer hitting the node's
+//! caller is a local client of this node or a mesh-routed peer hitting the node's
 //! advertised API port directly — now publishes the same effective/terminal
 //! pair on this channel (`feat/serving-provenance-host-served-terminal`;
 //! previously that branch published nothing). Proven empirically in
 //! `REAL-HOST-VERIFICATION.md`'s real-GGUF test: the captured exchange's
 //! model (`local-gguf/sha256-...`) is not a plugin-advertised name, yet the
 //! plugin's own lifecycle-events log recorded it. So a mesh-routed peer that
-//! bypasses this node's sidecar entirely is still sealed by this plugin
+//! bypasses this node's own proxy is still sealed by this plugin
 //! (real hardware citation) via this channel — the routing gap that remains
-//! is sidecar-side only: that traffic has no sidecar I/O capsule to join
-//! against, since the sidecar's reverse proxy never saw it. This module is
+//! is on the capture side only: that traffic has no I/O capsule from a
+//! local proxy to join against, since no proxy saw it. This module is
 //! independent proof, either way, that the plugin observed the same exchange
 //! the host itself terminal-logged, not just its own view of the call.
 //!

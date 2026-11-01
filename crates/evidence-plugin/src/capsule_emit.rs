@@ -3600,7 +3600,7 @@ pub(crate) mod tests {
 
     /// The admitted path is where the plugin decided: `decide`, `confirmed`
     /// over the digests of the bodies it held; the nonce fallback names this
-    /// plugin, not a sidecar that isn't there.
+    /// plugin.
     #[test]
     fn admitted_path_is_decide_and_confirmed_with_plugin_generated_fallback() {
         let dir = std::env::temp_dir().join(format!("cap-adm-{}", std::process::id()));
@@ -3937,8 +3937,8 @@ pub(crate) mod tests {
 
     /// The 2026-09-06 role ruling: `x-mesh-poc-v1.role`/`observation_point`
     /// live TOP-LEVEL, siblings of `serving_provenance` -- NOT nested inside
-    /// it (that block has its own unrelated `role`-shaped fields on the
-    /// Python sidecar path; colliding with them was the whole reason this
+    /// it (that block has its own unrelated `role`-shaped fields in the
+    /// Python reference emitter; colliding with them was the whole reason this
     /// ruling called out "deliberately top-level siblings").
     fn poc_block(capsule: &Value) -> &Value {
         &capsule["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"]

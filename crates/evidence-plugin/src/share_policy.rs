@@ -94,7 +94,8 @@ pub const ENV_HISTORY_SEGMENTS: &str = "CAPSULES_SHARE_HISTORY_SEGMENTS";
 
 /// `prospective`, deprecated: it never served anyone `counterparties` does
 /// not, so it is read as `counterparties` and a log line says so. The one
-/// place the old value is resolved.
+/// place the old value is resolved. The value stops being read in 0.2.0, where
+/// it becomes an unknown value (`off`).
 const DEPRECATED_PROSPECTIVE: &str = "prospective";
 
 /// Who may read one of this node's records back: `off`, `counterparties` or
@@ -112,7 +113,7 @@ pub(crate) fn history_segments_for(raw: Option<&str>) -> &'static str {
             ONCE.call_once(|| {
                 tracing::warn!(
                     setting = ENV_HISTORY_SEGMENTS,
-                    "prospective is deprecated and read as counterparties, which it always behaved as; set counterparties"
+                    "prospective is deprecated and read as counterparties, which it always behaved as; set counterparties; prospective stops being read in 0.2.0"
                 );
             });
             "counterparties"

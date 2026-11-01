@@ -682,8 +682,9 @@ node.
 - **Records and key.** `capsules` keeps using the old default directory
   (`$XDG_DATA_HOME/capsule-emit-mesh` or `~/.local/share/capsule-emit-mesh`)
   where it is, under its old name: nothing is moved or copied. A directory you
-  chose with `CAPSULES_DATA_DIR` (or the old `CAPSULE_EMIT_MESH_DATA_DIR`) is
-  used as it is.
+  chose with `CAPSULES_DATA_DIR` is used as it is. The old
+  `CAPSULE_EMIT_MESH_DATA_DIR` is no longer read; with only it set, the plugin
+  refuses to start.
 - **Stop the old plugin first.** On Linux the plugin refuses to start while
   another process has the log open (capsule-emit-mesh before 0.1.3 takes no
   lock), and says which process; two writers on one log would break its chain.
@@ -694,11 +695,11 @@ node.
   node's witness history continues. A new node's log id is
   `capsules/<key id>`.
 - **Settings.** Every setting in the node's environment is now named
-  `CAPSULES_*`. For this release the plugin still reads the old
-  `CAPSULE_EMIT_MESH_*` name of a setting whose new name is unset, and logs a
-  warning naming both; when both are set, the new name wins. Console settings
-  saved under the old plugin name are read the same way. Rename yours now: the
-  old names stop working in the next release.
+  `CAPSULES_*`. The old `CAPSULE_EMIT_MESH_*` names are no longer read, and
+  neither are console settings saved under the old plugin name
+  `capsule-emit-mesh`; the plugin logs a warning naming each old variable it
+  finds and each key saved under the old plugin name. Rename yours to
+  `CAPSULES_*` and save console settings again under `capsules`.
 - **Bookmarks.** The page moved from `/plugins/capsule-emit-mesh/evidence` to
   `/plugins/capsules/evidence`.
 
