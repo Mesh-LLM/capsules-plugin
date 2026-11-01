@@ -227,6 +227,9 @@ pub struct Base {
     /// What the refreshes have read of the chain so far.
     scan: Mutex<ChainScan>,
     asks: OnceLock<tokio::sync::mpsc::UnboundedSender<String>>,
+    /// The node's book of asks: each card ask is sealed in it before it is
+    /// sent (loop step 7). `None` only where no node state exists (tests).
+    capsules: Option<Arc<crate::capsule_emit::CapsuleState>>,
 }
 
 impl Base {
@@ -237,6 +240,15 @@ impl Base {
             facts: RwLock::new(None),
             scan: Mutex::default(),
             asks: OnceLock::new(),
+            capsules: None,
+        }
+    }
+
+    /// A base whose card asks are sealed in `capsules`' book of asks.
+    pub fn with_capsules(capsules: Arc<crate::capsule_emit::CapsuleState>) -> Self {
+        Self {
+            capsules: Some(capsules.clone()),
+            ..Self::new(capsules.ledger_dir().to_path_buf())
         }
     }
 
@@ -445,10 +457,11 @@ impl Base {
             return;
         }
         let base = self.clone();
+        let capsules = self.capsules.clone();
         tokio::spawn(async move {
             let mut context = context;
             while let Some(peer) = asks.recv().await {
-                let outcome = ask_card(&mut context, &peer).await;
+                let outcome = ask_card(&mut context, &peer, capsules.as_ref()).await;
                 let read = match &outcome {
                     CardOutcome::Read(_) => "read",
                     CardOutcome::Unverifiable => "unverifiable",
@@ -479,13 +492,23 @@ pub fn card_request() -> Value {
     })
 }
 
-async fn ask_card(context: &mut mesh_llm_plugin::PluginContext<'_>, peer: &str) -> CardOutcome {
-    // No book of asks (`None`): this is the behavior the call had before
-    // #110 added that argument; whether an admission card ask belongs in
-    // the book is for #116's owner.
+/// Ask `peer` for its history card, sealing the ask in `capsules`' book
+/// first (loop step 7). The queue sends an ask only when a read is due
+/// (`CARD_TTL`, `ASK_RETRY`), which bounds what is booked per peer. If the
+/// ask cannot be sealed, nothing is sent and the card reads `NotRead`.
+async fn ask_card(
+    context: &mut mesh_llm_plugin::PluginContext<'_>,
+    peer: &str,
+    capsules: Option<&Arc<crate::capsule_emit::CapsuleState>>,
+) -> CardOutcome {
     let Ok(crate::mesh_evidence_bridge::Answered { sent, answer, .. }) =
-        crate::mesh_evidence_bridge::send_evidence_request(context, peer, &card_request(), None)
-            .await
+        crate::mesh_evidence_bridge::send_evidence_request(
+            context,
+            peer,
+            &card_request(),
+            capsules,
+        )
+        .await
     else {
         return CardOutcome::NotRead;
     };
