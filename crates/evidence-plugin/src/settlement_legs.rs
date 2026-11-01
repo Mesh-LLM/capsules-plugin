@@ -1542,7 +1542,7 @@ pub(crate) mod tests {
             .lines()
             .map(|l| serde_json::from_str::<Value>(l).unwrap())
             .filter(|l| l["record_type"] == "outcome")
-            .last()
+            .next_back()
             .expect("an outcome");
         assert_eq!(outcome["payload"]["body"]["outcome"], "completed");
     }
