@@ -1,6 +1,6 @@
 [package]
 name = "evidence-plugin"
-version = "0.1.11"
+version = "0.1.12"
 edition = "2021"
 license = "Apache-2.0"
 description = "The capsules mesh-llm plugin: a signed, hash-chained record of every exchange and the Evidence page."
