@@ -1627,9 +1627,9 @@ pub(crate) mod tests {
         let waited = started.elapsed();
         assert!(waited >= OWN_HALF_WAIT - OWN_HALF_POLL, "{waited:?}");
         assert!(
-            // Inside the pusher's 8 s reply timeout (see OWN_HALF_WAIT); a
+            // Inside the pusher's reply timeout (see OWN_HALF_WAIT); a
             // tighter bound only measures the CPU load of parallel tests.
-            waited < Duration::from_secs(8),
+            waited < Duration::from_millis(requester_idle_timeout_ms()),
             "{waited:?}"
         );
 
