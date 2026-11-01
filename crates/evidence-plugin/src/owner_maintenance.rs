@@ -737,7 +737,8 @@ pub(crate) fn without_credentials(url: &str) -> String {
 
 /// `switch` reads a value that is not valid Unicode as unset, so it would show
 /// the default, on, while the plugin treats that value as off
-/// (`share_policy::record_at_completion_is_off`). Show what the plugin does.
+/// (`share_policy::record_at_completion_is_off`, and the same for the other
+/// switches that default to on). Show what the plugin does.
 fn record_at_completion_status(shown: Value, plugin_is_off: bool) -> Value {
     if plugin_is_off && shown["source"] == "default" {
         return json!({ "value": "off", "source": "unreadable" });
@@ -764,10 +765,22 @@ fn sharing_status() -> Value {
             switch(crate::share_policy::ENV_RECORD_AT_COMPLETION, Some("counterparty")),
             crate::share_policy::record_at_completion_is_off(),
         ),
-        "history_segments": switch("CAPSULES_SHARE_HISTORY_SEGMENTS", Some("counterparties")),
+        "history_segments": record_at_completion_status(
+            switch("CAPSULES_SHARE_HISTORY_SEGMENTS", Some("counterparties")),
+            crate::share_policy::history_segments() == "off",
+        ),
         "standard_history": switch(crate::share_policy::ENV_STANDARD_HISTORY, Some("off")),
         "advertise_evidence_requests": switch(crate::share_policy::ENV_ADVERTISE_EVIDENCE_REQUESTS, Some("off")),
-        "adjudications": switch("CAPSULES_SHARE_ADJUDICATIONS", Some("off")),
+        "adjudications": record_at_completion_status(
+            switch(crate::share_policy::ENV_ADJUDICATIONS, Some("deliver_to_subjects")),
+            !crate::share_policy::adjudications_delivered(),
+        ),
+        "exchange_corroboration": record_at_completion_status(
+            switch(crate::share_policy::ENV_EXCHANGE_CORROBORATION, Some("on")),
+            !crate::share_policy::shares_exchange_corroboration_for(
+                crate::share_policy::var_or_unreadable(crate::share_policy::ENV_EXCHANGE_CORROBORATION).as_deref(),
+            ),
+        ),
         "adjudicate_differing_twins": switch(crate::referee::request::ENV_ADJUDICATE_DIFFERING_TWINS, Some("off")),
         "witness": witness_switch(),
     })
@@ -775,6 +788,20 @@ fn sharing_status() -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_unset_sharing_status_shows_the_ruled_defaults() {
+        use crate::share_policy::{ENV_ADJUDICATIONS, ENV_EXCHANGE_CORROBORATION};
+        let sharing = super::sharing_status();
+        // Guard on the same read the status makes (legacy names and the
+        // console file included), so a developer's own setting never fails it.
+        if crate::settings::var(ENV_ADJUDICATIONS).is_err() {
+            assert_eq!(sharing["adjudications"]["value"], "deliver_to_subjects");
+        }
+        if crate::settings::var(ENV_EXCHANGE_CORROBORATION).is_err() {
+            assert_eq!(sharing["exchange_corroboration"]["value"], "on");
+        }
+    }
+
     #[test]
     fn an_unreadable_record_at_completion_value_is_shown_off_not_the_default() {
         use super::record_at_completion_status as status;

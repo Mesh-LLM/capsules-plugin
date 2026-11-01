@@ -9,6 +9,11 @@ needed.
 
 ## Not yet released
 
+- **Two sharing settings now default to on (#163).** `share_adjudications` defaults to
+  `deliver_to_subjects` and `share_exchange_corroboration` to `on`: a node that never set either now
+  delivers a referee's verdict to the node it judges (a delivered verdict cannot be recalled) and
+  answers a node that asks whether it holds its half of one exchange. Set either to `off` to keep the
+  old behavior.
 - **`served_summary/1` is no longer answered.** Now that the weekly Service History cells are
   published, the summary minus those cells would reveal a withheld week's count. Every requester is
   refused it: `derivation_unsupported`, or `policy_declined` (as for any gated derivation) from a
@@ -201,17 +206,19 @@ Details in [CHANGELOG.md](https://github.com/Mesh-LLM/capsules-plugin/blob/main/
 
 Records are kept on this node. **With the default settings the only thing the
 plugin sends to a peer on its own is this node's sealed record of a completed
-exchange, to the other side of that exchange**; it also accepts that peer's
-record the same way. It sends nothing else while idle or serving, and answers a
-peer that asks it for one of its records. Everything else that reaches a peer
-is off until you turn it on. Set `share_record_at_completion = "off"` to send
+exchange, to the other side of that exchange**, and, when a referee has judged a
+pair, that verdict to the nodes it judges; it also accepts that peer's record
+the same way. It sends nothing else while idle or serving, and answers a peer
+that asks it for one of its records, or whether it holds its half of one
+exchange. Everything else that reaches a peer is off until you turn it on. Set `share_record_at_completion = "off"` to send
 and accept no pushed record. The public checkpoint list shows when this node's
 exchanges ended; the record itself goes only to the counterparty:
 
 | What | To whom | Default | To turn it on (or off) |
 | --- | --- | --- | --- |
 | This node's own sealed record of a completed exchange (a push) | the peer in that exchange | **on** | `share_record_at_completion = "off"` |
-| A verdict a referee signed, delivered to the nodes it judges | those nodes | **off** | `share_adjudications = "deliver_to_subjects"` |
+| A verdict a referee signed, delivered to the nodes it judges (a delivered verdict cannot be recalled) | those nodes | **on** | `share_adjudications = "off"` |
+| Whether this node holds its half of one exchange, when any node asks by the exchange's nonce (ids and digests only, never the other side) | the asking node | **on** | `share_exchange_corroboration = "off"` |
 | Asking a referee when two twins of a client-marked pair answered differently. **This sends the twins' request (the prompt's `messages`) and both twins' answers to the referee peer**, which answers the request with its own inference | one eligible peer | **off** | `adjudicate_differing_twins = "on"` |
 | Stopping routing to a peer after N contradictions | (a request to your own host) | **off** | set `stop_routing_after_contradictions`, and `allow_peer_blocks = true` for this plugin in mesh-llm's config |
 | One of this node's records, when a peer asks for it by id | the peer that record names as the other side | on: an answer, never a push | `share_history_segments = "off"` |

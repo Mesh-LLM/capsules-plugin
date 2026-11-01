@@ -89,9 +89,9 @@ fn every_switch_changes_the_policy_and_its_digest() {
         (share_policy::ENV_HISTORY_SEGMENTS, "peers"),
         (share_policy::ENV_HISTORY_SEGMENTS, "off"),
         (share_policy::ENV_STANDARD_HISTORY, "on"),
-        (share_policy::ENV_EXCHANGE_CORROBORATION, "on"),
+        (share_policy::ENV_EXCHANGE_CORROBORATION, "off"),
         (share_policy::ENV_ADVERTISE_EVIDENCE_REQUESTS, "on"),
-        (share_policy::ENV_ADJUDICATIONS, "deliver_to_subjects"),
+        (share_policy::ENV_ADJUDICATIONS, "off"),
     ] {
         let policy = Policy::from_settings(|e| (e == env).then(|| value.to_string()));
         assert_ne!(policy, defaults(), "{env}={value}");

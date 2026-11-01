@@ -5,7 +5,9 @@
 //! message or a bulk transfer, or ask for a peer block. With the default
 //! settings (the push is on, #68) the same exchange opens a mesh stream to
 //! the counterparty and nothing else: no stream to any other peer, no channel
-//! message, no bulk transfer, no peer block. The default run therefore also
+//! message, no bulk transfer, no peer block. (Verdict delivery is on by default
+//! too, but there is no verdict to deliver unless a referee judged a pair, which
+//! the referee switch, off by default, gates.) The default run therefore also
 //! shows the quiet run can see a push when one happens.
 //!
 //! Besides a 5-second look while idle, no fixed window decides a result. The plugin handles channel

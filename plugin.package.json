@@ -61,13 +61,13 @@
         "value_schema": {
           "kind": "enum",
           "enum_values": [
-            "off",
-            "on"
+            "on",
+            "off"
           ],
           "allow_additional_properties": false
         },
         "required": false,
-        "default_json": "\"off\"",
+        "default_json": "\"on\"",
         "apply_mode": "static_on_load",
         "restart_scope": "none",
         "visibility": "user",
@@ -96,7 +96,7 @@
         "apply_mode": "static_on_load",
         "restart_scope": "none",
         "visibility": "user",
-        "description": "This version advertises nothing; no node reads this yet.",
+        "description": "Coming: this version advertises nothing and no node reads this yet.",
         "presentation": {
           "label": "Advertise evidence requests",
           "category_id": "show",
@@ -198,17 +198,17 @@
         "value_schema": {
           "kind": "enum",
           "enum_values": [
-            "off",
-            "deliver_to_subjects"
+            "deliver_to_subjects",
+            "off"
           ],
           "allow_additional_properties": false
         },
         "required": false,
-        "default_json": "\"off\"",
+        "default_json": "\"deliver_to_subjects\"",
         "apply_mode": "static_on_load",
         "restart_scope": "none",
         "visibility": "user",
-        "description": "They ack or dispute on their own side. Delivery only, never a standing.",
+        "description": "They ack or dispute on their own side. Delivery only, never a standing. A verdict already delivered cannot be recalled by turning this off.",
         "presentation": {
           "label": "Deliver verdicts to the nodes judged",
           "category_id": "differ",

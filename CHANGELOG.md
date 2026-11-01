@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Changed
+
+- **Two sharing settings now default to on (#163).** "Deliver verdicts to the nodes judged"
+  (`share_adjudications`) now defaults to `deliver_to_subjects`, and "Exchange corroboration"
+  (`share_exchange_corroboration`) to `on`. A node that never set either now delivers a verdict to
+  the node it judges (who can ack or dispute it; a delivered verdict cannot be recalled) and
+  answers a stranger who asks, by nonce, whether it holds its half of one exchange (ids and
+  digests only, never the counterparty). Set either to `off` to keep the old behavior.
+  "Advertise evidence requests" stays off and is shown as coming: nothing reads it yet.
+
 ## 0.1.8
 
 ### Added
