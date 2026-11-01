@@ -1260,21 +1260,23 @@ fn large_flat_node(tag: &str, lines: u64, every: usize) -> PathBuf {
 /// Each of them runs the node on the flat ledger (which serves every line,
 /// and takes new ones), and the last one switches to the shelf with every
 /// line, the new ones included. (How long a start takes is
-/// `a_long_flat_chain_starts_within_the_load_deadline`'s.)
+/// `a_long_flat_chain_starts_within_the_load_deadline`'s.) Each start reads
+/// the whole flat chain again, so the chain is kept small: a few chunks are
+/// enough to take several starts (capsules-plugin#226).
 #[test]
 fn a_flat_chain_moves_over_bounded_starts_and_the_node_runs_meanwhile() {
-    let dir = large_flat_node("bounded", 300, 50);
+    let dir = large_flat_node("bounded", 64, 32);
     let ledger = dir.join("ledger");
-    // No time at all, and 64 entries a start whatever the disk: the move
+    // No time at all, and 16 entries a start whatever the disk: the move
     // goes in fixed steps.
-    import_faults::CHUNK.with(|c| c.set(Some(64)));
-    import_faults::MIN_APPENDS.with(|m| m.set(Some(64)));
+    import_faults::CHUNK.with(|c| c.set(Some(16)));
+    import_faults::MIN_APPENDS.with(|m| m.set(Some(16)));
     import_faults::BUDGET.with(|b| b.set(Some(std::time::Duration::ZERO)));
     let mut starts = 0;
     let mut sealed_meanwhile = None;
     loop {
         starts += 1;
-        // With no budget each start does one unit: a chunk of 64 lines, one
+        // With no budget each start does one unit: a chunk of 16 lines, one
         // checkpoint, or the final checks.
         assert!(starts <= 30, "the move never finished");
         let state = CapsuleState::open(&dir, "node-under-test").unwrap();
@@ -1298,7 +1300,7 @@ fn a_flat_chain_moves_over_bounded_starts_and_the_node_runs_meanwhile() {
     import_faults::BUDGET.with(|b| b.set(None));
     assert!(
         starts >= 4,
-        "300 lines in chunks of 64 take several starts: {starts}"
+        "64 lines in chunks of 16 take several starts: {starts}"
     );
     let archived = fs::read(dir.join("archive/pre-store").join(FLAT_CAPSULES_FILE)).unwrap();
     assert_eq!(
