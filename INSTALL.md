@@ -7,6 +7,17 @@ each exchange, and whether this node's log still verifies. It installs and
 runs on an unmodified mesh-llm release (0.77 or newer). No other runtime is
 needed.
 
+## What's new in 0.1.10
+
+**Upgrading from 0.1.9 needs nothing installed on the other node.** A twin pair's referee call
+adjudicates again: on 0.1.9 it ended `referee_cannot_sign`, because the asker asked before the
+referee had sealed its record of its own re-answer. The asker now asks again for up to about three
+seconds while the referee refuses `referee_record_not_found`. Upgrade the node that asks; a referee
+on 0.1.9 answers a 0.1.10 asker. A 0.1.10 referee also logs why it refuses an adjudicate request,
+and a 0.1.10 asker logs why the referee's reply, or the stream to it, ended a call.
+
+Details in [CHANGELOG.md](https://github.com/Mesh-LLM/capsules-plugin/blob/main/CHANGELOG.md).
+
 ## What's new in 0.1.9
 
 **Upgrading from 0.1.8 needs nothing installed on the other node.** One answer changes for peers:
