@@ -30,10 +30,10 @@ fn round6(x: f64) -> f64 {
 /// One answer position, read by referees `a` and `b`.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Position {
-    /// The answer's token text.
-    pub token: String,
-    /// Each referee's top-1 token text.
-    pub top1: [String; 2],
+    /// The answer's token bytes (a token can end inside a UTF-8 character).
+    pub token: Vec<u8>,
+    /// Each referee's top-1 token bytes.
+    pub top1: [Vec<u8>; 2],
     /// Each referee's own top-1 minus top-2 logprob, nats.
     pub gap: [f64; 2],
     /// The same two tokens' gap read in the other referee, when its top 5
@@ -53,23 +53,25 @@ pub(crate) struct Answer {
 /// with `last` as its token at the final one: its chosen token, its top-1
 /// (at logprob 0) and a runner-up `gap` below. A chosen token that is not
 /// its top-1 is then unreadable, as [`least_margin`] reads a real one.
-fn body(positions: &[Position], side: usize, last: &str) -> Value {
+fn body(positions: &[Position], side: usize, last: &[u8]) -> Value {
+    let token = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
     let n = positions.len();
     let content: Vec<Value> = positions
         .iter()
         .enumerate()
         .map(|(i, p)| {
-            let token = if i + 1 == n { last } else { &p.token };
-            let chosen = if *token == p.top1[side] {
+            let chosen_bytes = if i + 1 == n { last } else { &p.token };
+            let chosen = if *chosen_bytes == p.top1[side] {
                 0.0
             } else {
                 -p.gap[side] - 1.0
             };
             json!({
-                "token": token,
+                "token": token(chosen_bytes),
+                "bytes": chosen_bytes,
                 "logprob": chosen,
                 "top_logprobs": [
-                    {"token": p.top1[side], "logprob": 0.0},
+                    {"token": token(&p.top1[side]), "bytes": p.top1[side], "logprob": 0.0},
                     {"token": "\u{0}runner-up", "logprob": -p.gap[side]},
                 ],
             })
@@ -88,13 +90,22 @@ enum Read {
     SameWords,
     /// A token in the window was not the referee's own top-1.
     Unreadable,
+    /// The referee's text ends inside a UTF-8 character, which a word
+    /// window cannot be read on; its split token's own gap bounds it.
+    CutsACharacter,
 }
 
 fn read(positions: &[Position], side: usize) -> Read {
     let (last, prefix) = positions.split_last().expect("a position");
-    let prefix: String = prefix.iter().map(|p| p.token.as_str()).collect();
-    let mine = format!("{prefix}{}", last.top1[side]);
-    let theirs = format!("{prefix}{}", last.top1[1 - side]);
+    let prefix: Vec<u8> = prefix
+        .iter()
+        .flat_map(|p| p.token.iter().copied())
+        .collect();
+    let text = |top1: &[u8]| String::from_utf8([&prefix[..], top1].concat());
+    let (Ok(mine), theirs) = (text(&last.top1[side]), text(&last.top1[1 - side])) else {
+        return Read::CutsACharacter;
+    };
+    let theirs = theirs.unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned());
     let Some(index) = compare_transcripts(&mine, &theirs).divergence_index else {
         return Read::SameWords;
     };
@@ -146,11 +157,12 @@ pub(crate) fn analyse(answers: &[Answer]) -> Value {
         by_answers.entry(&a.answers).or_default().push(a);
     }
     let (mut worst_token, mut worst_window): (Option<Value>, Option<Value>) = (None, None);
-    let (mut max_token, mut max_window) = (0.0_f64, 0.0_f64);
+    let (mut max_token, mut max_window, mut max_cut) = (0.0_f64, 0.0_f64, 0.0_f64);
     let mut sets = Vec::new();
     let mut shrinks = Vec::new();
     for (name, list) in &by_answers {
         let (mut disagreements, mut same_words, mut unreadable, mut stopped) = (0, 0, 0, 0);
+        let (mut cut, mut cut_bound) = (0, 0.0_f64);
         let (mut set_token, mut set_window) = (0.0_f64, 0.0_f64);
         for answer in list {
             for (i, p) in answer.positions.iter().enumerate() {
@@ -183,10 +195,15 @@ pub(crate) fn analyse(answers: &[Answer]) -> Value {
                         }
                         Read::SameWords => same_words += 1,
                         Read::Unreadable => unreadable += 1,
+                        Read::CutsACharacter => {
+                            cut += 1;
+                            cut_bound = cut_bound.max(g);
+                        }
                     }
                 }
             }
         }
+        max_cut = max_cut.max(cut_bound);
         sets.push(json!({
             "answers": name,
             "answer_count": list.len(),
@@ -195,11 +212,17 @@ pub(crate) fn analyse(answers: &[Answer]) -> Value {
                 "whitespace_only": same_words,
                 "window_unreadable": unreadable,
                 "window_stops_at_the_split_token": stopped,
+                "split_cuts_a_character": cut,
+                "split_cuts_a_character_token_margin_max": round6(cut_bound),
             },
             "referee_margin_per_token_max": round6(set_token),
             "referee_margin_word_window_max": round6(set_window),
         }));
     }
+    assert!(
+        max_cut <= max_window,
+        "a split inside a character could set the window maximum"
+    );
     let threshold = twice(max_window);
     let shrink_below_2t = shrinks
         .iter()
@@ -263,7 +286,22 @@ fn fields(mut input: &str) -> Option<(Vec<String>, &str)> {
     }
 }
 
-/// The answers of a positions file, in file order.
+/// A token piece: its `_hex` column when set (the piece is not UTF-8 on its
+/// own), its JSON string otherwise.
+fn piece(json: &str, hex: Option<&str>) -> Vec<u8> {
+    match hex.filter(|h| !h.is_empty()) {
+        Some(h) => (0..h.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&h[i..i + 2], 16).expect("hex bytes"))
+            .collect(),
+        None => serde_json::from_str::<String>(json)
+            .unwrap_or_else(|_| panic!("not a JSON string: {json:?}"))
+            .into_bytes(),
+    }
+}
+
+/// The answers of a positions file, in file order. Token pieces are JSON
+/// strings, with optional `token_hex`, `top1_a_hex` and `top1_b_hex`.
 pub(crate) fn parse(csv: &str) -> Vec<Answer> {
     let (header, mut rest) = fields(csv).expect("a header");
     let col = |name: &str| {
@@ -285,6 +323,7 @@ pub(crate) fn parse(csv: &str) -> Vec<Answer> {
         "b_top2_in_a",
     ]
     .map(col);
+    let hex = ["token_hex", "top1_a_hex", "top1_b_hex"].map(|h| header.iter().position(|x| x == h));
     let num = |s: &str| {
         s.parse::<f64>()
             .unwrap_or_else(|_| panic!("not a number: {s:?}"))
@@ -308,8 +347,11 @@ pub(crate) fn parse(csv: &str) -> Vec<Answer> {
         let answer = answers.last_mut().unwrap();
         assert_eq!(answer.positions.len(), position, "positions in order");
         answer.positions.push(Position {
-            token: row[c[3]].clone(),
-            top1: [row[c[4]].clone(), row[c[5]].clone()],
+            token: piece(&row[c[3]], hex[0].map(|h| row[h].as_str())),
+            top1: [
+                piece(&row[c[4]], hex[1].map(|h| row[h].as_str())),
+                piece(&row[c[5]], hex[2].map(|h| row[h].as_str())),
+            ],
             gap: [num(&row[c[6]]), num(&row[c[7]])],
             gap_in_other: [opt(&row[c[8]]), opt(&row[c[9]])],
         });
@@ -324,7 +366,7 @@ mod tests {
     fn at(token: &str, top1: [&str; 2], gap: [f64; 2]) -> Position {
         Position {
             token: token.into(),
-            top1: top1.map(String::from),
+            top1: top1.map(|t| t.as_bytes().to_vec()),
             gap,
             gap_in_other: [Some(gap[1]), Some(gap[0])],
         }
@@ -411,13 +453,29 @@ mod tests {
     #[test]
     fn csv_fields_may_quote_commas_quotes_and_line_breaks() {
         let csv =
-            "answers,prompt,position,token,top1_a,top1_b,gap_a,gap_b,a_top2_in_b,b_top2_in_a\n\
-                   cuda,7,0,\"a,\"\"b\"\"\",\"\n\",x,1.5,2,,0.5\r\n";
+            "answers,prompt,position,token,top1_a,top1_b,gap_a,gap_b,a_top2_in_b,b_top2_in_a,top1_b_hex\n\
+                   cuda,7,0,\"\"\"a,\\\"\"b\"\"\",\"\"\"\\n\"\"\",\"\"\"\\ufffd\"\"\",1.5,2,,0.5,e4b8\r\n";
         let answers = parse(csv);
         let p = &answers[0].positions[0];
-        assert_eq!(p.token, "a,\"b\"");
-        assert_eq!(p.top1, ["\n".to_string(), "x".to_string()]);
+        assert_eq!(p.token, b"a,\"b");
+        assert_eq!(p.top1, [b"\n".to_vec(), vec![0xe4, 0xb8]]);
         assert_eq!(p.gap_in_other, [None, Some(0.5)]);
+    }
+
+    #[test]
+    fn a_split_inside_a_character_is_bounded_by_its_token() {
+        let mut p = at("x", ["x", "x"], [4.0, 4.0]);
+        p.top1 = [vec![0xe4, 0xb8], vec![0xe4, 0xba]];
+        p.gap = [0.3, 0.2];
+        let report = analyse(&[answer(vec![
+            at(" a", [" a", " a"], [9.0, 9.0]),
+            at(" b", [" b", " c"], [1.0, 0.5]),
+            p,
+        ])]);
+        let reads = &report["sets"][0]["referee_reads"];
+        assert_eq!(reads["split_cuts_a_character"], json!(2));
+        assert_eq!(reads["split_cuts_a_character_token_margin_max"], json!(0.3));
+        assert_eq!(report["threshold_2x_referee_margin"], json!(2.0));
     }
 
     /// The analysis behind the committed `results.json` of the scored runs.

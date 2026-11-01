@@ -44,17 +44,42 @@ The analysis is `crates/evidence-plugin/src/referee/margin_measurement.rs`. It w
   | Qwen3.5-9B Q4_K_M | 1.18 | 1.18 | 1.40 | 4.76 |
 
 - **Positions not read.** A position is skipped when two of its top-5 tokens share a text (they cannot be told apart by text) or when the other run's top 5 lacks one of this run's top 2: 60 of 201,260 on the 0.5B Q8_0, none on the 0.5B Q4_K_M, 115 of 35,144 on the 9B (`positions_skipped` per pair).
-- **The 2x rule.** The least T from which on every T' is at least twice the largest drift among positions whose gap is under T' comes out at **2.37 nats** (9B), 1.11 (0.5B Q4_K_M) and 0.8 (0.5B Q8_0).
+- **The old drift rule.** The least T from which on every T' is at least twice the largest drift among positions whose gap is under T' comes out at **2.37 nats** (9B), 1.11 (0.5B Q4_K_M) and 0.8 (0.5B Q8_0). It is replaced by "The rule" below: on the CUDA data it asks for 19.19, set by one 9.6-nat drift on a 19-nat gap that could never flip a choice.
 
-## The value: 3.0 nats
+## CUDA against CPU: scored runs (`cuda-cpu/`)
 
-- 3.0 is above the 2.37 the 2x rule needs on every backend measured. It is 2.5x the largest drift seen at any gap under 5 nats (1.18), and 4.6x the widest honest split margin (0.648).
-- **CUDA is not measured here:** no GPU machine was available. Mesh-LLM/mesh-llm#2548 measured CUDA (RTX 4070 Ti, with batch, flash-attention and offload variants), CPU and Vulkan on Qwen3-8B Q4_K_M:
-  - 96 to 98.7 % of top choices were identical across honest variants;
-  - mean KL from the reference was 0.002 to 0.007 per token;
-  - one honest CPU token reached KL 1.97.
+Virgile-pct measured CUDA (RTX 4070 Ti) against CPU (Ryzen 7 7800X3D) on Qwen3-8B Q4_K_M (the file of Mesh-LLM/mesh-llm#2548), on #159:
 
-  That shows the same picture: drift is mostly small, with rare large single tokens. The extra headroom above 2.37 is for that gap.
-- **Only these models are measured:** two dense families, 9B and under, at Q4_K_M and Q8_0. The needed value grew with the model, from 0.8 (0.5B Q8_0) to 2.37 (9B), and larger or mixture-of-experts models are unmeasured. For a model family or size outside these, rerun `measure.sh` before relying on 3.0 there.
-- Rerun `measure.sh` on CUDA when a GPU machine is available, add its output here, and raise the value if the rule asks for more. A change is a CHANGELOG line.
-- **What it costs.** At 3.0 nats, a split at a token whose gap is under 3 nats is never charged. On the 9B that is about 41 % of positions (14,457 of 35,029 read), so a near-identical model (another quantization of the same weights) mostly comes out `inconclusive`. A single split cannot tell those apart; it needs many tokens pooled (Mesh-LLM/mesh-llm#2548). The twin referee catches only confident divergences.
+- 194 prompts, greedy answers of at most 200 tokens generated on CUDA, on CPU and (prompts 0 to 47) on a second x86 CPU: 436 answers.
+- Every answer scored by both referees, CUDA and CPU, on the same answer tokens, so both always share the context: one row per answer position, 81,249 rows, with each referee's top-1 token, its top-2 gap, and the same two tokens' gap read in the other referee.
+- The data, the tool that made it (`genscore.cpp`, on the llama.cpp C API with mesh-llm's patches) and its README are the gist [`Virgile-pct/798f1fcd`](https://gist.github.com/Virgile-pct/798f1fcd3fdc90704d39175dd3ff08ae), commit `086ed7303e39e16aae63914dbbd7262329ff3e3b`; `qwen3-8b-q4km_cuda-vs-cpu_positions.csv` has sha256 `c54617a67caec21618ec867c1720d0701ca4c41a5fc0a2464ab067aec124de1a`. It is not copied here.
+
+`cuda-cpu/results.json` is the plugin's analysis of that file (`crates/evidence-plugin/src/referee/margin_scored.rs`); from the repository root:
+
+```
+SPLIT_MARGIN_SCORED="$PWD/vectors/parity/referee/margin-measurement/cuda-cpu/qwen3-8b-q4km_cuda-vs-cpu_positions.csv" cargo test --manifest-path crates/evidence-plugin/Cargo.toml --bin capsules writes_the_scored_margin_results -- --ignored
+```
+
+with the CSV downloaded there first. It shows:
+
+- **1,696 top-1 disagreements** between the two referees (737 on the CUDA answers, 771 on the CPU ones, 188 on the second CPU's).
+- **The largest margin a referee read at one, over the word window, is 2.202012 nats** (CPU referee, CUDA answer, prompt 154, position 71). Per token alone it is 3.33 (a dash whose word began at a near-tie, which the window reads instead).
+- Not used: reads where the two texts differ only in whitespace (68), where a window token was not that referee's own top-1 (34), and 37 reads whose split token cuts a UTF-8 character, whose own gaps (at most 0.40) bound them. 112 reads stop at the split token, since the other side's token runs on: those are upper bounds.
+- **No gap of 4.41 nats or more shrinks by 4.41 between the two referees** at gaps up to 8.82 (the largest is 3.32), and no gap of at least 4.41 flips.
+
+## The rule
+
+The value T must satisfy both, on every backend pair measured:
+
+1. T is at least twice the largest margin a referee reads, over the word window (as `least_margin` reads it), at any top-1 disagreement between honest backends.
+2. No gap of at least T is seen to shrink, from one honest backend to another, by T or more below 2T, nor by its whole size anywhere.
+
+The first bounds what an honest split can look like to a referee; the second, how far a confident choice moves between honest backends. Sherlock2 set it on #159 after the old drift rule failed on the CUDA data.
+
+## The value: 4.41 nats
+
+- **CUDA against CPU** (scored runs): the rule asks for 4.41 (twice 2.202012, to 0.01 nat up). The shrink part holds at 4.41 (3.32 below 8.82, no flip).
+- **Metal and CPU** (the generation runs above): the widest honest split margin is 0.648 and the largest drift under 5 nats 1.18, both far under 4.41.
+- **What it catches** (Virgile-pct's count on the same file, CUDA referee, first split per answer, word window, of 194 prompts): Q2_K 43 (40 to 43: three are upper bounds), Q3_K_M 7, Q4_K_S 1. The counts are the same at 4.4 and 4.41.
+- **What it costs.** A split at a token whose gap is under 4.41 nats is never charged: 42 % of the referee positions in the CUDA file (68,842 of 162,498). A near-identical model (another quantization of the same weights) mostly comes out `inconclusive`; telling those apart needs many tokens pooled (Mesh-LLM/mesh-llm#2548). The twin referee catches only confident divergences.
+- **Only these models are measured:** dense families, 9B and under, at Q4_K_M and Q8_0, on Metal, CUDA and CPU. Metal against CUDA directly, larger or mixture-of-experts models, and runs generated by Skippy itself are not. For those, rerun one of the measurements above and raise the value if the rule asks for more. A change is a CHANGELOG line.

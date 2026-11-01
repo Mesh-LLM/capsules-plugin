@@ -31,7 +31,7 @@ settings) computes slightly different next-word scores, so where the top two
 are nearly tied, temperature 0 can choose differently on two honest twins. So
 the referee asks its own server for the top-2 logprobs of every token of its
 re-answer, and its word names a twin only when its own margin (top-1 minus
-top-2 logprob, in nats) is at least `SPLIT_MARGIN_THRESHOLD_NATS` (4.4 nats;
+top-2 logprob, in nats) is at least `SPLIT_MARGIN_THRESHOLD_NATS` (4.41 nats;
 `referee/verdict.rs`) at every token from the space before the word where it
 departs from the other twin through the token where they part: the other twin
 may cut the same text into other tokens, so any of them may be where it chose
@@ -130,7 +130,7 @@ and no further call follows on its own.
   referee did (a non-canonical tokenization, which greedy decoding rarely
   produces) could have parted from the referee at a near-tie there, and that
   token is not read. Reading every token back to the start would leave almost
-  every split `inconclusive`: at 4.4 nats, about 42 % of tokens in the
+  every split `inconclusive`: at 4.41 nats, about 42 % of tokens in the
   CUDA measurement fall under the threshold. The twins' own tokens are not used to
   find the point, since a judged twin could then choose where its referee is
   read.

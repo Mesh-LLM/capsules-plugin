@@ -47,7 +47,7 @@ pub const INCONCLUSIVE_SPLIT_MARGIN_UNAVAILABLE: &str = "split_margin_unavailabl
 /// least it reaches it (`vectors/parity/referee/margin-measurement/README.md`,
 /// "The rule"; Sherlock2 on #159). A change is a CHANGELOG line. There is no
 /// operator setting: a lower value charges honest nodes more readily.
-pub const SPLIT_MARGIN_THRESHOLD_NATS: f64 = 4.4;
+pub const SPLIT_MARGIN_THRESHOLD_NATS: f64 = 4.41;
 
 /// [`SPLIT_MARGIN_THRESHOLD_NATS`] in the micro-nats the rule compares.
 pub fn split_margin_threshold() -> i64 {

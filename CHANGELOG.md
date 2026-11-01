@@ -33,7 +33,7 @@
   departs from the other twin through the token where they part, and each twin's
   own margin when its answer carries logprobs (evidence only; it never changes the ruling).
   Values are exact decimal strings in nats. Below `SPLIT_MARGIN_THRESHOLD_NATS`
-  (4.4 nats: twice the largest margin a referee read at an honest top-1 disagreement on CUDA,
+  (4.41 nats: twice the largest margin a referee read at an honest top-1 disagreement on CUDA,
   Metal and CPU, measured in `vectors/parity/referee/margin-measurement/`; CUDA data by
   Virgile-pct), the ruling is
   `inconclusive` with `inconclusive_because: split_within_margin`; with no margin to read (no
