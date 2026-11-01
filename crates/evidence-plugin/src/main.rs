@@ -32,6 +32,7 @@ mod evidence_request_parity;
 mod evidence_routes;
 mod exchange_corroboration;
 mod exchange_text;
+mod flat_export;
 mod history_page;
 mod host_status;
 mod ledger_checkpoints;
@@ -1713,6 +1714,12 @@ async fn main() -> anyhow::Result<()> {
     if std::env::args().nth(1).as_deref() == Some("chain-checkpoints") {
         let args: Vec<String> = std::env::args().skip(2).collect();
         std::process::exit(chain_store::checkpoints_cli(&args));
+    }
+    // The shelf exported back to the flat layout earlier releases read, for a
+    // rollback (`flat_export`); takes the data directory's lock.
+    if std::env::args().nth(1).as_deref() == Some("export-flat") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        std::process::exit(flat_export::cli(&args));
     }
     // The join quickstart INSTALL.md carries, from the tools' own constants.
     if std::env::args().nth(1).as_deref() == Some("--print-join-quickstart") {

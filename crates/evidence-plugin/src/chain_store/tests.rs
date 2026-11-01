@@ -1420,3 +1420,142 @@ fn past_the_deadline_a_start_stops_after_one_entry() {
         .is_some());
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// The import finishes in one start whatever the machine's load (the default
+/// budget is a few seconds, which parallel tests can exceed).
+fn unbounded_import() {
+    import_faults::BUDGET.with(|b| b.set(Some(std::time::Duration::from_secs(600))));
+}
+
+/// #218: a flat fixture imports, the node seals more records on the shelf,
+/// and the export leaves a flat ledger the earlier release opens with every
+/// line, statement and checkpoint the shelf had; `shelf.db` is set aside, not
+/// deleted.
+#[test]
+fn the_shelf_exports_to_the_flat_layout_losslessly() {
+    let dir = flat_node("export", &[4, 8]);
+    unbounded_import();
+    let ledger = dir.join("ledger");
+    let state = CapsuleState::open(&dir, "node-under-test").unwrap();
+    for n in 20..24 {
+        seal(&state, n);
+    }
+    state.pad_ledger_to_bucket(8).unwrap();
+    seal(&state, 24);
+    drop(state);
+    assert!(is_store_layout(&ledger));
+    let lines = chain_lines(&ledger).unwrap();
+    let ids = ids_of(&ledger);
+    let statements: Vec<Vec<u8>> = ids
+        .iter()
+        .map(|id| statement(&ledger, id).unwrap())
+        .collect();
+    let checkpoints = checkpoints_text(&ledger).unwrap().unwrap();
+    assert!(!checkpoints.is_empty());
+    let other_file = ledger.join("deal-links.jsonl");
+    fs::write(&other_file, b"{}\n").unwrap();
+
+    let lock = crate::data_dir::lock(&dir).unwrap();
+    let report = crate::flat_export::export(&dir).unwrap();
+    drop(lock);
+
+    assert!(!is_store_layout(&ledger));
+    assert!(!ledger.join(SHELF_FILE).exists());
+    assert!(report.shelf_set_aside.join(SHELF_FILE).exists());
+    assert!(!ledger.join(".flat-export").exists());
+    assert!(other_file.exists());
+    assert_eq!(report.lines, lines.len());
+    // The flat files, byte for byte.
+    let mut text = Vec::new();
+    for line in &lines {
+        text.extend_from_slice(line);
+        text.push(b'\n');
+    }
+    assert_eq!(fs::read(ledger.join(FLAT_CAPSULES_FILE)).unwrap(), text);
+    assert_eq!(
+        fs::read(ledger.join(FLAT_CHECKPOINTS_FILE)).unwrap(),
+        checkpoints
+    );
+    for (id, statement) in ids.iter().zip(&statements) {
+        assert_eq!(
+            &fs::read(ledger.join("signed-statements").join(format!("{id}.cose"))).unwrap(),
+            statement
+        );
+    }
+    // What v0.1.8 does: the flat Ledger and CheckpointState open it.
+    let (flat, _) =
+        Ledger::open_with_indexer(&ledger, crate::producer::index::record_index_keys).unwrap();
+    assert_eq!(flat.entries() as usize, lines.len());
+    let log_id =
+        serde_json::from_slice::<Value>(checkpoints.split(|&b| b == b'\n').next().unwrap())
+            .unwrap()["log_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+    let (cp, _) =
+        CheckpointState::load(&ledger, log_id, CheckpointCadenceConfig::default()).unwrap();
+    assert_eq!(cp.leaf_count() as usize, lines.len());
+    // Served as before (padding is not served).
+    assert_eq!(
+        served_flat(&ledger).len(),
+        flat.lines().iter().filter(|l| !l.padding).count()
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A node already flat has nothing to export, and nothing changes.
+#[test]
+fn export_refuses_a_flat_node() {
+    let dir = flat_node("export-flat-refused", &[4]);
+    let before = tree(&dir.join("ledger"));
+    let lock = crate::data_dir::lock(&dir).unwrap();
+    assert!(crate::flat_export::export(&dir).is_err());
+    drop(lock);
+    assert_eq!(tree(&dir.join("ledger")), before);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// The export holds the data directory's lock: a running node refuses it.
+#[test]
+fn export_cli_refuses_while_the_node_runs() {
+    let dir = flat_node("export-locked", &[4]);
+    unbounded_import();
+    let state = CapsuleState::open(&dir, "node-under-test").unwrap();
+    assert_eq!(
+        crate::flat_export::cli(&["--data-dir".into(), dir.display().to_string()]),
+        1
+    );
+    assert!(is_store_layout(&dir.join("ledger")));
+    drop(state);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A run cut short after the shelf moved is finished by the next run.
+#[test]
+fn export_resumes_after_the_shelf_moved() {
+    let dir = flat_node("export-resume", &[4]);
+    unbounded_import();
+    drop(CapsuleState::open(&dir, "node-under-test").unwrap());
+    let ledger = dir.join("ledger");
+    let lines = chain_lines(&ledger).unwrap();
+    let lock = crate::data_dir::lock(&dir).unwrap();
+    crate::flat_export::export(&dir).unwrap();
+    // Undo only the final promotion, as a crash before it would have left it.
+    let staging = ledger.join(".flat-export");
+    fs::create_dir_all(&staging).unwrap();
+    for name in [
+        "signed-statements",
+        "checkpoints.jsonl",
+        "mmr_nodes.dat",
+        "capsules.jsonl",
+    ] {
+        fs::rename(ledger.join(name), staging.join(name)).unwrap();
+    }
+    let report = crate::flat_export::export(&dir).unwrap();
+    drop(lock);
+    assert_eq!(report.lines, lines.len());
+    let (flat, _) =
+        Ledger::open_with_indexer(&ledger, crate::producer::index::record_index_keys).unwrap();
+    assert_eq!(flat.entries() as usize, lines.len());
+    let _ = fs::remove_dir_all(&dir);
+}
