@@ -162,7 +162,7 @@ export type SharingRow = {
   /** The setting in words, or null when this view doesn't have it. */
   state: string | null
   /** Where it was set: by the owner, or the default. */
-  source: 'set' | 'default' | null
+  source: 'set' | 'default' | 'unreadable' | null
   whatLeaves: string
 }
 
