@@ -144,14 +144,15 @@ async function checkReceiptBundleUnguarded(bundleText: string): Promise<ReceiptV
   }
 }
 
+/** A route's refusal, by its words: "no record", or a state that can change. */
+export function refusalView(why: string): { kind: 'no_record' | 'no_receipt_yet'; why: string } {
+  return { kind: NO_RECORD_REASONS.includes(why) ? 'no_record' : 'no_receipt_yet', why }
+}
+
 /** Fetch result to the view; a route refusal is "no record", a route failure
  *  is an error line, neither is a verdict on the bundle. */
 export async function receiptView(fetched: ReceiptFetch): Promise<ReceiptView> {
-  if (fetched.kind === 'refused') {
-    return NO_RECORD_REASONS.includes(fetched.why)
-      ? { kind: 'no_record', why: fetched.why }
-      : { kind: 'no_receipt_yet', why: fetched.why }
-  }
+  if (fetched.kind === 'refused') return refusalView(fetched.why)
   if (fetched.kind === 'unavailable') return { kind: 'error', message: fetched.message }
   return checkReceiptBundle(fetched.bundleText)
 }

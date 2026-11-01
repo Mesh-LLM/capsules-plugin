@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { SaveReceiptPage } from '@/features/capsules/components/SaveReceiptPage'
 import type { PaneCRow } from '@/features/capsules/api/sidecarTypes'
-import { NO_PAID_DEAL_WHY } from '@/features/capsules/lib/saved-pages'
+import { NO_PAID_DEAL_WHY, UNNAMED_DEAL_WHY } from '@/features/capsules/lib/saved-pages'
 import producerSelected from '@/features/capsules/lib/receipt-fixtures/producer-selected.bundle.json'
 import { embeddedBundle } from '@/lib/test/open-saved-page'
 
@@ -68,6 +68,22 @@ describe('SaveReceiptPage', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
     const note = JSON.parse(Buffer.from(embeddedBundle(await saved[0].blob.text())).toString('utf8'))
     expect(note).toEqual({ source: 'dashboard', case: 'no_record', why: NO_PAID_DEAL_WHY })
+  })
+
+  it('says "no receipt yet", not "no record", for a paid row that names no single deal', async () => {
+    const fetchSpy = routeAnswers({})
+    const saved = capture()
+    const row = {
+      role_tag: 'SERVED',
+      mine: { state: 'ok', capsule_id: null },
+      provider_settlement: { observed_by: 'provider', state: 'settled', terms_digests: [], entries: [], exchange_ids: ['a', 'b'] }
+    } as unknown as PaneCRow
+    render(<SaveReceiptPage exchangeKey="ex-5" row={row} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Save receipt page' }))
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(fetchSpy).not.toHaveBeenCalled()
+    const note = JSON.parse(Buffer.from(embeddedBundle(await saved[0].blob.text())).toString('utf8'))
+    expect(note).toEqual({ source: 'dashboard', case: 'no_receipt_yet', why: UNNAMED_DEAL_WHY })
   })
 
   it('carries the node\'s refusal word for word, as "no record" or "no receipt yet"', async () => {

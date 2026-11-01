@@ -1555,7 +1555,7 @@ describe('LedgerPageContent — Part T6: Integrity section completion', () => {
     expect(tile('Disagreements')).toHaveTextContent('not checked')
   })
 
-  it('offers a range-wide "Save evidence file" action, distinct from the Exchanges one', async () => {
+  it('offers a range-wide "Save evidence file" action on Integrity', async () => {
     const user = userEvent.setup()
     render(<LedgerPageContent />, { wrapper: makeWrapper() })
     await user.click(screen.getByRole('tab', { name: /integrity/i }))
