@@ -111,7 +111,8 @@ jobs:
   # lock (LockFileEx there), and moves an earlier release's flat ledger onto
   # it like any other (evidencebook#254 §2.4, §7.3). This runs the import
   # tests (a fixture import, an import killed and resumed, a mismatch that
-  # refuses to start) and the data directory's lock tests on Windows.
+  # refuses to start) and the data directory's lock tests on Windows,
+  # and the ask book's, whose reply keeping syncs a directory only on unix.
   rust-windows:
     name: plugin (windows-x86_64, chain store and lock)
     runs-on: windows-2025
@@ -137,7 +138,7 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('crates/evidence-plugin/Cargo.lock') }}
 
       - name: Chain store, import and lock tests
-        run: 'cargo test --locked --bin capsules -- chain_store:: data_dir::'
+        run: 'cargo test --locked --bin capsules -- chain_store:: data_dir:: ask_book::'
 
   web-ui:
     name: web UI (${{ matrix.name }})
