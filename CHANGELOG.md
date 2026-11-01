@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.1.10
+
+Pull requests since 0.1.9:
+
+- #217 test(evidence-plugin): fix tests that race when run in parallel
+- #222 fix(referee): ask again while the referee's record of its re-answer is not sealed yet (#221)
+
 ## 0.1.9
 
 ### Changed
