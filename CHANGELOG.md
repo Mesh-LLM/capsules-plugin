@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.12
+
 ### Added
 
 - **`receive_deal_half`: a Goose node's deal half, received and verified (action-state-group/evidencebook#291).**
@@ -22,6 +24,16 @@
   reply says `chain_stage: not_checked`). A verified half is held as received evidence
   (`received-capsules.jsonl`, `received-deal-halves.jsonl`), and each step gets a citing record.
   A refusal names the failed check and keeps nothing.
+
+Pull requests since 0.1.11:
+
+- #216 fix(evidence-plugin): the ask book syncs its directory on unix only
+- #219 feat(evidence-plugin): capsules export-flat, the shelf back to the flat layout for a rollback
+- #220 feat(evidence): receive_deal_half, a Goose node's deal half received and verified
+- #229 fix(evidence-plugin): Pane B no longer counts settlement legs as exchange halves
+- #236 perf(evidence-plugin): admission's refresh reads only the chain lines appended since
+- #237 fix(requester_auth): a nonce held before a restart stays refused after it (evidencebook#206 row 1)
+- #239 fix(mesh_evidence_bridge): one key holds at most half the proven pool (evidencebook#206 row 3)
 
 ## 0.1.11
 
