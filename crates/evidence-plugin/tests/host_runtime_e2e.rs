@@ -414,9 +414,9 @@ async fn allowed_exchange_emits_a_signed_chained_ledgered_capsule_and_publishes_
     let verifying_key = capsule_emit_lib::keys::load_verifying_key_pem(&pubkey_pem)
         .expect("parse persisted public key");
 
-    // The running node holds the chain log's writer lock: read its lines
-    // with `capsules chain-lines` and the statement from the record store,
-    // which takes no lock.
+    // The running node is the shelf's writer: read its lines with
+    // `capsules chain-lines` and the statement from the shelf's record
+    // store through a connection of this test's own, which waits on no lock.
     let ledger_dir = host.capsule_data_dir().join("ledger");
     let lines = chain_lines(host.capsule_data_dir());
     assert!(!lines.is_empty(), "ledger must contain the emitted capsule");
@@ -425,8 +425,8 @@ async fn allowed_exchange_emits_a_signed_chained_ledgered_capsule_and_publishes_
         .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
         .find(|c| c["capsule_id"] == capsule_id)
         .expect("capsule_id from the HTTP response must be in the ledger");
-    let records = capsule_emit_artifact::jsonl::JsonlStore::new(
-        ledger_dir.join("artifacts.jsonl"),
+    let records = capsule_emit_artifact::sqlite::SqliteStore::new(
+        rusqlite::Connection::open(ledger_dir.join("shelf.db")).expect("open the shelf"),
         "chain",
         [verifying_key.to_bytes()],
     )

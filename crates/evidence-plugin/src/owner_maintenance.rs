@@ -1010,7 +1010,7 @@ mod tests {
         finish_pending_after_open(&dir, &state, &log_id).unwrap();
         assert!(dir
             .join("archive/1")
-            .join(crate::chain_store::LOG_FILE)
+            .join(crate::chain_store::SHELF_FILE)
             .exists());
         let first = reopen_clean(&dir);
         let first = first
@@ -1257,15 +1257,7 @@ mod tests {
         let dir = temp_dir("rebuild-tamper");
         let (m, ids) = maintenance(&dir, 2);
         // One byte of the first stored record's capsule changed in place.
-        let path = dir.join("ledger").join(crate::chain_store::ARTIFACTS_FILE);
-        let mut bytes = fs::read(&path).unwrap();
-        let at = bytes
-            .windows(11)
-            .position(|w| w == b"\"capsule\":\"")
-            .unwrap()
-            + 20;
-        bytes[at] = if bytes[at] == b'A' { b'B' } else { b'A' };
-        fs::write(&path, bytes).unwrap();
+        crate::chain_store::tests::tamper_first_record(&dir.join("ledger"));
         assert!(m.rebuild_index().is_err());
         assert_eq!(m.capsules.chain_head().as_deref(), Some(ids[1].as_str()));
         let _ = fs::remove_dir_all(&dir);

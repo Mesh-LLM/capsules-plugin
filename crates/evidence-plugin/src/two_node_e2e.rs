@@ -59,9 +59,9 @@ impl Node {
             .unwrap_or_else(|_| panic!("{var} must name a node's plugin data directory"));
         let data_dir = PathBuf::from(dir);
         assert!(
-            data_dir.join("ledger").join("log.jsonl").is_file()
+            data_dir.join("ledger").join("shelf.db").is_file()
                 || data_dir.join("ledger").join("capsules.jsonl").is_file(),
-            "{var}: no chain (ledger/log.jsonl or ledger/capsules.jsonl) under {}",
+            "{var}: no chain (ledger/shelf.db or ledger/capsules.jsonl) under {}",
             data_dir.display()
         );
         Self { data_dir }
@@ -161,10 +161,8 @@ fn scratch_ledger(node: &Node) -> tempfile::TempDir {
     copy_dir(&node.ledger_dir(), dir.path());
     let ledger = node.ledger_dir();
     if crate::chain_store::is_store_layout(&ledger) {
-        for name in [
-            crate::chain_store::LOG_FILE,
-            crate::chain_store::ARTIFACTS_FILE,
-        ] {
+        for suffix in ["", "-wal", "-shm"] {
+            let name = format!("{}{suffix}", crate::chain_store::SHELF_FILE);
             let _ = std::fs::remove_file(dir.path().join(name));
         }
         let statements = dir.path().join("signed-statements");

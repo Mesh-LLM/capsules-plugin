@@ -154,12 +154,17 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 # build, which the deal records are sealed with) and leaves Class 1 checks to
 # agent-action-capsule (`structure` is gone). Its canonicalizer turns on serde_json's
 # `arbitrary_precision` for the whole binary (see `strict_json`).
-capsule-emit-lib = { package = "capsule-emit", version = "0.0.9" }
-cll = { package = "checkpointed-local-log", version = "0.3.1" }
-# The chain's records: capsule-emit's artifact store, the layer its `Ledger`
-# keeps each line in beside the CLL entry log (`chain_store`). The version
-# capsule-emit 0.0.9 itself uses.
-capsule-emit-artifact = "0.0.1"
+capsule-emit-lib = { package = "capsule-emit", git = "https://github.com/action-state-group/capsule-emit", rev = "c91e2f7692e61b69d5fa6d63d78f481d506b6a4c" }
+cll = { package = "checkpointed-local-log", version = "0.4.0", features = ["sqlite"] }
+# The chain's records: capsule-emit's artifact store (SQLite backend), the
+# layer its `Ledger` keeps each line in beside the CLL log, both on the node's
+# shelf, `ledger/shelf.db` (`chain_store`). capsule-emit main's, until a
+# release on checkpointed-local-log 0.4.0 (evidencebook#254 C1).
+capsule-emit-artifact = { git = "https://github.com/action-state-group/capsule-emit", rev = "c91e2f7692e61b69d5fa6d63d78f481d506b6a4c", features = ["sqlite"] }
+# The shelf's host table beside CLL's and the artifact store's tables (the
+# chain's checkpoint history, `chain_store::ChainLog`) and the readers'
+# connections: the rusqlite both of those build, with its bundled SQLite.
+rusqlite = { version = "0.40", features = ["bundled"] }
 # Evidence requests are answered in-process (`evidence_answer`): parsing,
 # resolution and signed refusals come from the protocol crate
 # (draft-mih-agent-evidence-request-00), `evidence-request`, which is what
@@ -168,7 +173,7 @@ capsule-emit-artifact = "0.0.1"
 # check of Checkpointed Local Log material (`cll`) and witness receipts
 # (`receipt`). The artifact is built by evidencebook (below).
 # Pinned exactly: a new release may change what verifies.
-evidence-request = { version = "=0.3.0", features = ["cll", "receipt", "acceptance"] }
+evidence-request = { version = "=0.4.1", features = ["cll", "receipt", "acceptance"] }
 # The "asked of you" log (`evidence_answer::log_received`) is evidencebook's
 # `received` (evidencebook#35), and a ledger line is read into its
 # `served_summary` facts (`evidence_log::leaf_facts`), whose model Service
@@ -188,7 +193,7 @@ evidencebook = { version = "0.0.11", features = ["deal"] }
 # merge commit.
 capsule-engine = { git = "https://github.com/action-state-group/capsule-engine", rev = "c7701385b87b68c631803e5d0adeee4d617ff5d4" }
 # Class 1 verification of a received half (capsule-emit main moved it here).
-agent-action-capsule = { version = "0.7.0", features = ["strict"] }
+agent-action-capsule = { version = "0.8.0", features = ["strict"] }
 # The witness's own record of this log (`witness_status`): one blocking GET,
 # no redirects, a capped body. Already in the tree through capsule-emit.
 ureq = { version = "2", features = ["json"] }

@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use base64::Engine as _;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
@@ -429,7 +430,7 @@ fn an_import_killed_while_moving_finishes_the_move() {
     let ledger = dir.join("ledger");
     let flat_text = fs::read(ledger.join(FLAT_CAPSULES_FILE)).unwrap();
     {
-        let stores = ChainStores::open(&ledger, &keys_beside(&ledger)).unwrap();
+        let stores = ChainStores::open(&ledger, LOG_ID, &keys_beside(&ledger)).unwrap();
         write_import_journal(
             &ledger,
             &ImportJournal {
@@ -481,9 +482,12 @@ fn a_mismatch_refuses_to_start_and_deletes_nothing() {
         let state = CapsuleState::open(&other, "node-under-test").unwrap();
         seal(&state, 42);
     }
-    for name in [LOG_FILE, ARTIFACTS_FILE] {
-        fs::copy(other.join("ledger").join(name), ledger.join(name)).unwrap();
-    }
+    // The other node's shelf, closed, so its WAL is folded back in.
+    fs::copy(
+        other.join("ledger").join(SHELF_FILE),
+        ledger.join(SHELF_FILE),
+    )
+    .unwrap();
     copy_dir(&other.join("keys"), &dir.join("keys"));
     let before = tree(&dir);
     let error = format!(
@@ -593,7 +597,7 @@ fn a_node_with_an_old_owner_record_stays_flat_until_a_new_history() {
     let log_id = resolve_log_id(&dir, "node-under-test", "old-shared", &key_id, None).unwrap();
     let state = Arc::new(CapsuleState::open(&dir, "node-under-test").unwrap());
     assert!(state.chain_stores().is_none());
-    assert!(!ledger.join(LOG_FILE).exists() && !ledger.join(ARTIFACTS_FILE).exists());
+    assert!(!ledger.join(SHELF_FILE).exists());
     assert_eq!(tree(&ledger), before_files, "the flat files are untouched");
     assert_eq!(served(&state, &ids), before);
     // The flat checkpoint state, as today.
@@ -623,7 +627,7 @@ fn a_node_with_an_old_owner_record_stays_flat_until_a_new_history() {
         state.chain_stores().is_some(),
         "the new history is on the stores"
     );
-    assert!(ledger.join(LOG_FILE).exists());
+    assert!(ledger.join(SHELF_FILE).exists());
     assert!(dir.join("archive/1").join(FLAT_CAPSULES_FILE).exists());
     assert!(
         !dir.join("archive").join(PRE_STORE_ARCHIVE).exists(),
@@ -664,7 +668,7 @@ fn the_first_new_history_after_an_import_is_h2() {
     assert!(log_id.ends_with("/h2"), "{log_id}");
     let state = CapsuleState::open(&dir, "node-under-test").unwrap();
     finish_pending_after_open(&dir, &state, &log_id).unwrap();
-    assert!(dir.join("archive/1").join(LOG_FILE).exists());
+    assert!(dir.join("archive/1").join(SHELF_FILE).exists());
     assert!(
         ids.iter().all(|id| is_archived(&dir, id)),
         "an earlier history now"
@@ -902,4 +906,149 @@ fn find_nodes(dir: &Path, out: &mut Vec<PathBuf>) {
             find_nodes(&entry.path(), out);
         }
     }
+}
+
+/// Change one byte of the first stored record's capsule in the shelf under
+/// `ledger_dir`, in place, as a tamper on disk would.
+pub(crate) fn tamper_first_record(ledger_dir: &Path) {
+    let conn = rusqlite::Connection::open(ledger_dir.join(SHELF_FILE)).unwrap();
+    let (id, mut bytes): (String, Vec<u8>) = conn
+        .query_row(
+            "SELECT capsule_id, capsule_bytes FROM capsule_store_capsules ORDER BY rowid LIMIT 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    let at = bytes.len() / 2;
+    bytes[at] = if bytes[at] == b'A' { b'B' } else { b'A' };
+    conn.execute(
+        "UPDATE capsule_store_capsules SET capsule_bytes=? WHERE capsule_id=?",
+        rusqlite::params![bytes, id],
+    )
+    .unwrap();
+}
+
+/// While this lives, the shelf under its ledger directory refuses every new
+/// record (a trigger aborts the insert), so a seal fails as a full or broken
+/// disk would make it.
+pub(crate) struct RefuseRecords(rusqlite::Connection);
+
+pub(crate) fn refuse_records(ledger_dir: &Path) -> RefuseRecords {
+    let conn = rusqlite::Connection::open(ledger_dir.join(SHELF_FILE)).unwrap();
+    conn.execute_batch(
+        "CREATE TRIGGER refuse_records BEFORE INSERT ON capsule_store_capsules \
+         BEGIN SELECT RAISE(ABORT, 'refused by the test'); END",
+    )
+    .unwrap();
+    RefuseRecords(conn)
+}
+
+impl Drop for RefuseRecords {
+    fn drop(&mut self) {
+        self.0.execute_batch("DROP TRIGGER refuse_records").unwrap();
+    }
+}
+
+/// Cut a checkpoint of the chain `state` keeps, as the cadence does on a
+/// reconnect.
+fn cut(state: &CapsuleState) -> crate::producer::checkpoint::CheckpointRecord {
+    let mut cp_state = load_checkpoint_state(
+        state.chain_stores().unwrap(),
+        LOG_ID,
+        CheckpointCadenceConfig::default(),
+        &state.node_signing_keys(),
+    )
+    .unwrap()
+    .0;
+    cp_state
+        .reconnect(
+            state.signing_key(),
+            &crate::checkpoint_cadence::anchor_for(),
+        )
+        .unwrap()
+        .expect("a cut")
+}
+
+/// CLL's SQLite backend keeps only the latest checkpoint; the shelf's
+/// history keeps every one the chain committed, linked from the first, and
+/// a history row a crash left out (the latest) is added again on the next
+/// open.
+#[test]
+fn the_shelf_keeps_every_checkpoint_and_restores_a_lost_latest_row() {
+    let dir = temp_dir("history");
+    let ledger = dir.join("ledger");
+    let (first, second) = {
+        let state = CapsuleState::open(&dir, "node-under-test").unwrap();
+        seal(&state, 0);
+        let first = cut(&state);
+        seal(&state, 1);
+        seal(&state, 2);
+        let second = cut(&state);
+        (first, second)
+    };
+    let read = |ledger: &Path| -> Vec<crate::producer::checkpoint::CheckpointRecord> {
+        checkpoint_lines_of(&checkpoints_string(ledger))
+            .into_iter()
+            .map(|line| serde_json::from_value(line).unwrap())
+            .collect()
+    };
+    let held = read(&ledger);
+    assert_eq!(held.len(), 2, "{held:?}");
+    assert_eq!(held[0].mmr_size, first.mmr_size);
+    assert_eq!((held[0].prev_size, held[0].prev_root.as_str()), (0, ""));
+    assert_eq!(held[1].mmr_size, second.mmr_size);
+    assert_eq!(
+        (held[1].prev_size, held[1].prev_root.as_str()),
+        (first.mmr_size, first.root.as_str())
+    );
+    // CLL itself holds only the latest.
+    let conn = rusqlite::Connection::open(ledger.join(SHELF_FILE)).unwrap();
+    let log_id = chain_log_id(&conn).unwrap().unwrap();
+    let latest = LogSqlite::open(ledger.join(SHELF_FILE), &log_id)
+        .unwrap()
+        .load_cll()
+        .unwrap()
+        .checkpoint
+        .unwrap();
+    assert_eq!(latest.size, second.mmr_size);
+
+    // A crash between CLL's commit and the history row.
+    conn.execute(
+        &format!("DELETE FROM {HISTORY_TABLE} WHERE size=?"),
+        [second.mmr_size as i64],
+    )
+    .unwrap();
+    drop(conn);
+    assert_eq!(read(&ledger).len(), 1);
+    drop(CapsuleState::open(&dir, "node-under-test").unwrap());
+    let restored = read(&ledger);
+    assert_eq!(
+        restored.iter().map(|c| c.mmr_size).collect::<Vec<_>>(),
+        vec![first.mmr_size, second.mmr_size]
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A reader opened on a shelf that is then moved away (a new history moves
+/// the whole `ledger/`) reads the new shelf, not the moved one.
+#[test]
+fn a_reader_follows_a_new_shelf_at_the_same_path() {
+    let dir = temp_dir("reader-moved");
+    let ledger = dir.join("ledger");
+    {
+        let state = CapsuleState::open(&dir, "node-under-test").unwrap();
+        seal(&state, 0);
+        seal(&state, 1);
+    }
+    assert_eq!(chain_lines(&ledger).unwrap().len(), 2);
+    let archived = dir.join("archived-ledger");
+    fs::rename(&ledger, &archived).unwrap();
+    {
+        let state = CapsuleState::open(&dir, "node-under-test").unwrap();
+        seal(&state, 7);
+    }
+    let lines = chain_lines(&ledger).unwrap();
+    assert_eq!(lines.len(), 1, "the new shelf's chain only");
+    assert_eq!(chain_lines(&archived).unwrap().len(), 2);
+    let _ = fs::remove_dir_all(&dir);
 }

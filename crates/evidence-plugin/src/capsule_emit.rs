@@ -531,7 +531,19 @@ impl CapsuleState {
                 )
             }
             None => {
-                let stores = crate::chain_store::ChainStores::open(&ledger_dir, &node_keys)?;
+                // The id a shelf with no chain yet starts its log under: the
+                // node's log id (`owner_maintenance::resolve_log_id`, recorded
+                // before this runs), else its default. A shelf that holds the
+                // chain keeps the id it started with.
+                let log_id = crate::owner_maintenance::current_log_id(
+                    data_dir,
+                    &crate::owner_maintenance::default_log_id(
+                        "capsules",
+                        &hex::encode(keys.verifying_key().to_bytes()),
+                    ),
+                );
+                let stores =
+                    crate::chain_store::ChainStores::open(&ledger_dir, &log_id, &node_keys)?;
                 // A node an earlier release wrote keeps its chain in the flat
                 // layout until this moves it onto the stores (once,
                 // resumable).
@@ -3635,17 +3647,13 @@ pub(crate) mod tests {
         let dir = std::env::temp_dir().join(format!("cap-noseq-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let state = CapsuleState::open(&dir, "node-under-test").expect("open state");
-        // Make the ledger write fail: the record store becomes a directory.
-        let records = dir.join("ledger").join(crate::chain_store::ARTIFACTS_FILE);
-        let kept = std::fs::read(&records).expect("the record store exists");
-        std::fs::remove_file(&records).unwrap();
-        std::fs::create_dir_all(&records).unwrap();
+        // Make the ledger write fail: the record store refuses every record.
+        let refuse = crate::chain_store::tests::refuse_records(&dir.join("ledger"));
         let observed = observed_with(DispatchPath::RawProxy, None);
         assert!(state.emit_for_observed_host_exchange(&observed).is_err());
         assert_eq!(state.observed_not_sealed(), 1);
 
-        std::fs::remove_dir_all(&records).unwrap();
-        std::fs::write(&records, kept).unwrap();
+        drop(refuse);
         let c = state
             .emit_for_observed_host_exchange(&observed)
             .expect("seal")

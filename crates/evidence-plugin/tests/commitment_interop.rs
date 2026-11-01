@@ -154,12 +154,19 @@ impl Harness {
             .await
             .expect("POST /v1/chat/completions");
         assert_eq!(resp.status(), reqwest::StatusCode::OK);
-        // The chain's checkpoints are commits in its CLL journal.
-        let journal = self.data_dir.join("ledger").join("log.jsonl");
+        // The chain's checkpoints are rows of its history on the shelf.
+        let shelf = self.data_dir.join("ledger").join("shelf.db");
+        let cut = || {
+            rusqlite::Connection::open(&shelf)
+                .and_then(|conn| {
+                    conn.query_row("SELECT COUNT(*) FROM chain_checkpoints", [], |row| {
+                        row.get::<_, i64>(0)
+                    })
+                })
+                .is_ok_and(|n| n > 0)
+        };
         timeout(TEST_TIMEOUT, async {
-            while !std::fs::read_to_string(&journal)
-                .is_ok_and(|text| text.contains("\"type\":\"cll.commit\""))
-            {
+            while !cut() {
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
         })

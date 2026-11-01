@@ -1,67 +1,80 @@
-//! Where this node's chain is kept: a Checkpointed Local Log entry log
-//! (`ledger/log.jsonl`, CLL's JSONL v4 journal) plus capsule-emit's artifact
-//! store (`ledger/artifacts.jsonl`), the two standard layers capsule-emit's
-//! [`Ledger`] keeps a ledger on (`Ledger::open_stores_with_indexer`). The
-//! journal holds each line's `capsule_id` in log order and, in the same file,
-//! the checkpoint state (`CheckpointState::load_log`): the MMR nodes, every
-//! committed checkpoint and the witness rows. The artifact store holds each
-//! line as a record: the line without its inline `signature`/`key_id`, its
-//! producer envelope, and its signed statement.
+//! Where this node's chain is kept: one host log on the node's EvidenceBook
+//! shelf, `ledger/shelf.db` (evidencebook `docs/design/254-shelf.md` §7). The
+//! file holds the chain's Checkpointed Local Log (CLL's SQLite tables: each
+//! line's `capsule_id` in log order, the MMR nodes, the current checkpoint and
+//! the witness rows) and capsule-emit's SQLite artifact store under the
+//! namespace [`NAMESPACE`] (each line as a record: the line without its
+//! inline `signature`/`key_id`, its producer envelope, and its signed
+//! statement). capsule-emit's [`Ledger`] (`Ledger::open_stores_with_indexer`)
+//! and checkpoint state (`CheckpointState::load_log`) run on them.
 //!
-//! **One writer, readers without the lock.** The journal is opened once, by
-//! [`ChainStores::open`], under CLL's writer lock (`flock`), and the node's
-//! [`Ledger`] and checkpoint state share that handle. Every other reader (the
-//! Evidence pages, the evidence responder's index, `capsules chain-lines`)
-//! reads the two files as they are, complete lines only, without the lock:
-//! [`chain_text`] gives the chain's lines in today's `capsules.jsonl` line
-//! format (the kept `Ledger` lines: the stored record with `signature` and
-//! `key_id` put back, padding included), and [`checkpoints_text`] the chain's
-//! checkpoints in today's `checkpoints.jsonl` line format. Nothing here keeps
-//! a second copy on disk: both are read from the stores on demand.
+//! **Checkpoint history.** CLL's SQLite backend keeps only the latest
+//! checkpoint, and the chain's readers need every one from the first (the
+//! evidence index's checkpoint chain, the Evidence pages, `witness_status`).
+//! So the chain's log is wrapped in [`ChainLog`], which records every
+//! checkpoint the backend commits in the host table [`HISTORY_TABLE`] beside
+//! CLL's (§2.2: host tables live beside the shelf's).
 //!
-//! **Either layout.** A ledger directory that holds no `log.jsonl` is read in
+//! **One writer, readers without the lock.** The writer is this process,
+//! under the data directory's lock (`data_dir::lock`), which is the shelf's
+//! writer lock too: the shelf takes none of its own on a host-held lock
+//! (§2.4). In this process the stores are opened once, by
+//! [`ChainStores::open`], and the node's [`Ledger`] and checkpoint state share
+//! them. Every other reader (the Evidence pages, the evidence responder's
+//! index, `capsules chain-lines` in another process) reads the file through
+//! its own SQLite connections, which WAL lets run beside the writer without
+//! any lock: [`chain_text`] gives the chain's lines in today's
+//! `capsules.jsonl` line format (the kept `Ledger` lines: the stored record
+//! with `signature` and `key_id` put back, padding included), and
+//! [`checkpoints_text`] the chain's checkpoints in today's `checkpoints.jsonl`
+//! line format. Nothing here keeps a second copy: both are read from the
+//! file on demand.
+//!
+//! **Either layout.** A ledger directory that holds no `shelf.db` is read in
 //! the flat layout (`capsules.jsonl`, `checkpoints.jsonl`), as an archived
-//! history from before the stores, or a node not yet imported, is.
+//! history from before the shelf, or a node not yet imported, is.
 //!
 //! **Import.** A node written by an earlier release keeps its chain in the flat
-//! layout. [`import_flat`] moves it onto the stores on the first start of this
+//! layout. [`import_flat`] moves it onto the shelf on the first start of this
 //! one, journalled and resumable, and archives only the chain's flat files to
 //! `archive/pre-store/` (see the function).
 
 use std::collections::HashMap;
 use std::fs;
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use base64::Engine as _;
 use capsule_emit_artifact::{Record, Store};
 use cll::checkpoint::{
     try_sign_checkpoint_digest, verify_checkpoint_cose_offline, CheckpointRecord,
     WitnessRecord as CheckpointWitness,
 };
+use cll::log::sqlite::SqliteStore as LogSqlite;
 use cll::log::{
-    AppendInput, AppendOutcome, CheckpointState as LogCheckpointState, CheckpointStateStore,
-    EntrySource, EntryStore, State as LogState, Timestamp, WitnessReceiptState, WitnessState,
-    MAX_SCAN_LIMIT,
+    AppendInput, AppendOutcome, AppendResult, CheckpointState as LogCheckpointState,
+    CheckpointStateStore, Entry, EntrySource, EntryStore, State as LogState, StateAppend,
+    Timestamp, WitnessReceiptState, WitnessState, WitnessStateStore, MAX_SCAN_LIMIT,
 };
 use cll::mmr::{
     add_leaf, leaf_count, leaf_hash, peaks, root_from_peaks, MemoryNodeStore, NodeReader,
 };
 use ed25519_dalek::SigningKey;
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::producer::checkpoint::{CheckpointCadenceConfig, CheckpointLog, CheckpointSigner};
 use crate::producer::ledger::{Ledger, LedgerError, RecoveryReport};
 
-/// The CLL entry log (and checkpoint state) of the chain.
-pub const LOG_FILE: &str = "log.jsonl";
-/// The artifact store of the chain's records.
-pub const ARTIFACTS_FILE: &str = "artifacts.jsonl";
-/// The artifact store's namespace. A JSONL store keeps none per line; it only
-/// has to be a valid name.
+/// The node's shelf: the chain's log, its records and its checkpoint history.
+pub const SHELF_FILE: &str = "shelf.db";
+/// The shelf's artifact store namespace (a host parameter, §2.5).
 pub const NAMESPACE: &str = "chain";
+/// The host table that keeps every checkpoint the chain's log committed, in
+/// size order (see the module docs).
+pub const HISTORY_TABLE: &str = "chain_checkpoints";
 /// The flat layout's chain: one JSON record per line.
 pub const FLAT_CAPSULES_FILE: &str = "capsules.jsonl";
 /// The flat layout's checkpoints: one checkpoint record per line, with its
@@ -76,16 +89,20 @@ pub const FLAT_CHAIN_FILES: [&str; 5] = [
     "witness-backfill.jsonl",
     FLAT_CAPSULES_FILE,
 ];
-/// The import's journal, beside the stores while an import runs.
+/// The import's journal, beside the shelf while an import runs.
 pub const IMPORT_JOURNAL: &str = "import-pending.json";
 /// Where an import keeps the flat files it moved, under the data directory's
 /// `archive/`. Not numeric, so it is never an archive slot of an earlier
 /// history (`owner_maintenance::next_archive_slot`).
 pub const PRE_STORE_ARCHIVE: &str = "pre-store";
 
-/// Whether `ledger_dir` keeps its chain on the stores.
+/// How long one connection waits for another's write (the shelf's busy
+/// timeout, §2.2).
+const BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(5000);
+
+/// Whether `ledger_dir` keeps its chain on the shelf.
 pub fn is_store_layout(ledger_dir: &Path) -> bool {
-    ledger_dir.join(LOG_FILE).exists()
+    ledger_dir.join(SHELF_FILE).exists()
 }
 
 fn other(error: impl std::fmt::Display) -> io::Error {
@@ -127,65 +144,343 @@ pub fn node_signing_keys(keys_dir: &Path) -> Vec<SigningKey> {
 /// `<data dir>/keys` for its `<data dir>/ledger`, and for an archived history
 /// `<data dir>/archive/<slot>`.
 pub(crate) fn keys_beside(ledger_dir: &Path) -> Vec<SigningKey> {
-    ledger_dir
+    #[allow(unused_mut)]
+    let mut keys = ledger_dir
         .ancestors()
         .skip(1)
         .take(2)
         .map(|dir| dir.join("keys"))
         .find(|keys| keys.join("node-key.pem").exists())
         .map(|keys| node_signing_keys(&keys))
-        .unwrap_or_default()
+        .unwrap_or_default();
+    // The fixed keys tests seal with when a test node keeps no key on disk.
+    #[cfg(test)]
+    for seed in [3u8, 9u8] {
+        keys.push(SigningKey::from_bytes(&[seed; 32]));
+    }
+    keys
+}
+
+fn trusted(keys: &[SigningKey]) -> Vec<[u8; 32]> {
+    keys.iter().map(|k| k.verifying_key().to_bytes()).collect()
+}
+
+// ---------------------------------------------------------------------------
+// The shelf file
+// ---------------------------------------------------------------------------
+
+/// A connection to the shelf at `path` with the shelf's settings (§2.2):
+/// WAL, a 5000 ms busy timeout, `synchronous=FULL`, foreign keys on.
+/// `create` makes the file when it is absent.
+fn connect(path: &Path, create: bool) -> io::Result<Connection> {
+    let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+    if create {
+        flags |= OpenFlags::SQLITE_OPEN_CREATE;
+    }
+    let conn = Connection::open_with_flags(path, flags).map_err(other)?;
+    conn.busy_timeout(BUSY_TIMEOUT).map_err(other)?;
+    conn.execute_batch("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL")
+        .map_err(other)?;
+    if create {
+        conn.pragma_update(None, "journal_mode", "WAL")
+            .map_err(other)?;
+    }
+    Ok(conn)
+}
+
+/// The id of the one CLL log the shelf at `path` holds, `None` when it holds
+/// none yet. The node's shelf holds exactly one: its chain (§7.1).
+fn chain_log_id(conn: &Connection) -> io::Result<Option<String>> {
+    let has_meta: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='cll_meta'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(other)?
+        > 0;
+    if !has_meta {
+        return Ok(None);
+    }
+    let mut statement = conn
+        .prepare("SELECT log_id FROM cll_meta ORDER BY log_id")
+        .map_err(other)?;
+    let ids = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(other)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(other)?;
+    match ids.as_slice() {
+        [] => Ok(None),
+        [id] => Ok(Some(id.clone())),
+        _ => Err(other(format!(
+            "the shelf holds {} logs ({}); a node's shelf holds only its chain",
+            ids.len(),
+            ids.join(", ")
+        ))),
+    }
+}
+
+fn history_schema(conn: &Connection) -> io::Result<()> {
+    conn.execute_batch(&format!(
+        "CREATE TABLE IF NOT EXISTS {HISTORY_TABLE} (
+  log_id TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  checkpoint BLOB NOT NULL,
+  PRIMARY KEY(log_id, size)
+)"
+    ))
+    .map_err(other)
+}
+
+/// Every checkpoint the history holds for `log_id`, in size order. A shelf
+/// without the table holds none.
+fn history(conn: &Connection, log_id: &str) -> io::Result<Vec<Vec<u8>>> {
+    let exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
+            [HISTORY_TABLE],
+            |row| row.get(0),
+        )
+        .map_err(other)?;
+    if exists == 0 {
+        return Ok(Vec::new());
+    }
+    let mut statement = conn
+        .prepare(&format!(
+            "SELECT checkpoint FROM {HISTORY_TABLE} WHERE log_id=? ORDER BY size"
+        ))
+        .map_err(other)?;
+    let rows = statement
+        .query_map([log_id], |row| row.get::<_, Vec<u8>>(0))
+        .map_err(other)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(other);
+    rows
+}
+
+// ---------------------------------------------------------------------------
+// The chain's log: CLL's SQLite backend, recording every checkpoint
+// ---------------------------------------------------------------------------
+
+/// The chain's CLL log on the shelf, as capsule-emit's [`Ledger`] and
+/// checkpoint state use it: CLL's SQLite backend, unchanged, plus the
+/// checkpoint history. After each commit that leaves a checkpoint, that
+/// checkpoint is added to [`HISTORY_TABLE`] (an identical row again is a
+/// no-op). The row is a second write after CLL's own transaction, so a crash
+/// between them leaves the latest checkpoint out; [`ChainLog::open`] and the
+/// next commit add it first, and since commits are sequential no checkpoint
+/// but the latest can ever be missing.
+pub struct ChainLog {
+    log: LogSqlite,
+    history: Mutex<Connection>,
+    log_id: String,
+    /// A commit succeeded but its history row did not: added before the next
+    /// commit.
+    behind: AtomicBool,
+}
+
+impl std::fmt::Debug for ChainLog {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ChainLog")
+            .field("log_id", &self.log_id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl ChainLog {
+    fn open(path: &Path, log_id: &str) -> anyhow::Result<Self> {
+        LogSqlite::init(path, log_id)
+            .map_err(|e| anyhow::anyhow!("chain log {}: {e}", path.display()))?;
+        let log = LogSqlite::open(path, log_id)
+            .map_err(|e| anyhow::anyhow!("chain log {}: {e}", path.display()))?;
+        let history = connect(path, false)?;
+        history_schema(&history)?;
+        let chain = Self {
+            log,
+            history: Mutex::new(history),
+            log_id: log_id.to_owned(),
+            behind: AtomicBool::new(true),
+        };
+        chain.catch_up()?;
+        Ok(chain)
+    }
+
+    fn record(&self, checkpoint: &LogCheckpointState) -> io::Result<()> {
+        let conn = self.history.lock().unwrap_or_else(PoisonError::into_inner);
+        conn.execute(
+            &format!("INSERT OR IGNORE INTO {HISTORY_TABLE}(log_id,size,checkpoint) VALUES(?,?,?)"),
+            params![self.log_id, checkpoint.size as i64, checkpoint.bytes],
+        )
+        .map_err(other)?;
+        let held: Option<Vec<u8>> = conn
+            .query_row(
+                &format!("SELECT checkpoint FROM {HISTORY_TABLE} WHERE log_id=? AND size=?"),
+                params![self.log_id, checkpoint.size as i64],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(other)?;
+        if held.as_deref() != Some(checkpoint.bytes.as_slice()) {
+            return Err(other(format!(
+                "{HISTORY_TABLE} holds another checkpoint at size {}",
+                checkpoint.size
+            )));
+        }
+        Ok(())
+    }
+
+    /// Add the stored checkpoint to the history if a commit left it out.
+    fn catch_up(&self) -> io::Result<()> {
+        if !self.behind.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+        if let Some(checkpoint) = self.log.load_cll().map_err(other)?.checkpoint {
+            self.record(&checkpoint)?;
+        }
+        self.behind.store(false, Ordering::SeqCst);
+        Ok(())
+    }
+
+    /// After a commit that succeeded: record its checkpoint, or remember to.
+    fn committed(&self, checkpoint: Option<&LogCheckpointState>) {
+        if let Some(checkpoint) = checkpoint {
+            if let Err(error) = self.record(checkpoint) {
+                tracing::warn!(%error, size = checkpoint.size, "the chain's checkpoint history is behind; it is added before the next commit");
+                self.behind.store(true, Ordering::SeqCst);
+            }
+        }
+    }
+
+    fn before_commit(&self) -> cll::log::Result<()> {
+        self.catch_up()
+            .map_err(|e| cll::log::Error::with_source(cll::log::ErrorCode::Storage, "history", e))
+    }
+}
+
+impl EntrySource for ChainLog {
+    fn scan_entries(&self, after_seq: u64, limit: usize) -> cll::log::Result<Vec<Entry>> {
+        self.log.scan_entries(after_seq, limit)
+    }
+}
+
+impl cll::log::EntryCounter for ChainLog {
+    fn entry_count(&self) -> cll::log::Result<u64> {
+        self.log.entry_count()
+    }
+}
+
+impl EntryStore for ChainLog {
+    fn append(&self, input: &AppendInput) -> cll::log::Result<AppendResult> {
+        self.log.append(input)
+    }
+
+    fn get_entry(&self, value: &[u8]) -> cll::log::Result<Entry> {
+        self.log.get_entry(value)
+    }
+}
+
+impl CheckpointStateStore for ChainLog {
+    fn load_cll(&self) -> cll::log::Result<LogState> {
+        self.log.load_cll()
+    }
+
+    fn commit_cll(
+        &self,
+        expected_size: u64,
+        expected_checkpoint: Option<&[u8]>,
+        next: &LogState,
+    ) -> cll::log::Result<()> {
+        self.before_commit()?;
+        self.log
+            .commit_cll(expected_size, expected_checkpoint, next)?;
+        self.committed(next.checkpoint.as_ref());
+        Ok(())
+    }
+
+    fn append_cll(
+        &self,
+        expected_size: u64,
+        expected_checkpoint: Option<&[u8]>,
+        update: &StateAppend,
+    ) -> cll::log::Result<()> {
+        self.before_commit()?;
+        self.log
+            .append_cll(expected_size, expected_checkpoint, update)?;
+        self.committed(update.checkpoint.as_ref());
+        Ok(())
+    }
+}
+
+impl WitnessStateStore for ChainLog {
+    fn pending_witnesses(
+        &self,
+        now: Timestamp,
+        limit: usize,
+    ) -> cll::log::Result<Vec<WitnessState>> {
+        self.log.pending_witnesses(now, limit)
+    }
+
+    fn get_witness(
+        &self,
+        witness_id: &str,
+        checkpoint_size: u64,
+    ) -> cll::log::Result<Option<WitnessState>> {
+        self.log.get_witness(witness_id, checkpoint_size)
+    }
+
+    fn commit_witness(&self, expected_attempts: u32, next: &WitnessState) -> cll::log::Result<()> {
+        self.log.commit_witness(expected_attempts, next)
+    }
 }
 
 // ---------------------------------------------------------------------------
 // The writer's stores
 // ---------------------------------------------------------------------------
 
-/// The chain's two stores, opened once per process: the node's [`Ledger`]
-/// and its checkpoint state share them.
+/// The chain's two stores on the shelf, opened once per process: the node's
+/// [`Ledger`] and its checkpoint state share them.
 #[derive(Clone)]
 pub struct ChainStores {
-    log: Arc<cll::log::jsonl::JsonlStore>,
-    artifacts: Arc<capsule_emit_artifact::jsonl::JsonlStore>,
-    /// The journal's length cut back by `init`, when its last line was torn.
-    torn_write_cut_at: Option<u64>,
+    log: Arc<ChainLog>,
+    artifacts: Arc<capsule_emit_artifact::sqlite::SqliteStore>,
 }
 
 impl std::fmt::Debug for ChainStores {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ChainStores").finish_non_exhaustive()
+        f.debug_struct("ChainStores")
+            .field("log", &self.log)
+            .finish_non_exhaustive()
     }
 }
 
 /// The stores this process holds open, by ledger directory: a second open of
-/// a directory whose stores are live shares them, since the journal admits
-/// one writer handle (`flock`) and two artifact-store handles would each keep
-/// their own index.
+/// a directory whose stores are live shares them, since the [`Ledger`] keeps
+/// its index in memory and two handles on one log could give two records one
+/// position (§2.3).
 type OpenStores = (
-    std::sync::Weak<cll::log::jsonl::JsonlStore>,
-    std::sync::Weak<capsule_emit_artifact::jsonl::JsonlStore>,
+    std::sync::Weak<ChainLog>,
+    std::sync::Weak<capsule_emit_artifact::sqlite::SqliteStore>,
 );
 static OPEN: Mutex<Option<HashMap<PathBuf, OpenStores>>> = Mutex::new(None);
 
 impl ChainStores {
-    /// Provision (first start) or open the stores under `ledger_dir`, the
-    /// artifact store trusting `keys`. Takes the journal's writer lock, so
-    /// another process cannot open them while these live; in this process a
-    /// second open shares these.
-    pub fn open(ledger_dir: &Path, keys: &[SigningKey]) -> anyhow::Result<Self> {
+    /// Provision (first start) or open the shelf under `ledger_dir`, the
+    /// artifact store trusting `keys`. The caller holds the data directory's
+    /// writer lock (`data_dir::lock`), which the shelf takes as its own
+    /// (§2.4). A shelf that already holds the chain's log opens it under its
+    /// id; a new one starts it under `log_id`, the node's log id. In this
+    /// process a second open shares these stores.
+    pub fn open(ledger_dir: &Path, log_id: &str, keys: &[SigningKey]) -> anyhow::Result<Self> {
         let mut open = OPEN.lock().unwrap_or_else(PoisonError::into_inner);
         let open = open.get_or_insert_with(HashMap::new);
         open.retain(|_, (log, artifacts)| log.strong_count() > 0 && artifacts.strong_count() > 0);
         if let Some((log, artifacts)) = open.get(ledger_dir) {
             if let (Some(log), Some(artifacts)) = (log.upgrade(), artifacts.upgrade()) {
-                return Ok(Self {
-                    log,
-                    artifacts,
-                    torn_write_cut_at: None,
-                });
+                return Ok(Self { log, artifacts });
             }
         }
-        let stores = Self::open_new(ledger_dir, keys)?;
+        let stores = Self::open_new(ledger_dir, log_id, keys)?;
         open.insert(
             ledger_dir.to_path_buf(),
             (
@@ -196,49 +491,43 @@ impl ChainStores {
         Ok(stores)
     }
 
-    fn open_new(ledger_dir: &Path, keys: &[SigningKey]) -> anyhow::Result<Self> {
+    fn open_new(ledger_dir: &Path, log_id: &str, keys: &[SigningKey]) -> anyhow::Result<Self> {
         fs::create_dir_all(ledger_dir)?;
-        let log_path = ledger_dir.join(LOG_FILE);
-        let before = fs::metadata(&log_path).map(|m| m.len()).ok();
-        cll::log::jsonl::JsonlStore::init(&log_path)
-            .map_err(|e| anyhow::anyhow!("chain log {}: {e}", log_path.display()))?;
-        let after = fs::metadata(&log_path).map(|m| m.len()).ok();
-        let torn_write_cut_at = match (before, after) {
-            (Some(before), Some(after)) if after < before => Some(after),
-            _ => None,
-        };
-        let log = cll::log::jsonl::JsonlStore::open(&log_path)
-            .map_err(|e| anyhow::anyhow!("chain log {}: {e}", log_path.display()))?;
-        let trusted: Vec<[u8; 32]> = keys.iter().map(|k| k.verifying_key().to_bytes()).collect();
-        let artifacts = capsule_emit_artifact::jsonl::JsonlStore::new(
-            ledger_dir.join(ARTIFACTS_FILE),
-            NAMESPACE,
-            trusted,
-        )
-        .map_err(|e| anyhow::anyhow!("chain records {}: {e}", ARTIFACTS_FILE))?;
+        let path = ledger_dir.join(SHELF_FILE);
+        let conn =
+            connect(&path, true).map_err(|e| anyhow::anyhow!("shelf {}: {e}", path.display()))?;
+        let held = chain_log_id(&conn)?;
+        if let Some(held) = held.as_deref().filter(|held| *held != log_id) {
+            tracing::info!(
+                held,
+                log_id,
+                "the shelf keeps the chain under the id it was started with"
+            );
+        }
+        let log = ChainLog::open(&path, held.as_deref().unwrap_or(log_id))?;
+        let artifacts =
+            capsule_emit_artifact::sqlite::SqliteStore::new(conn, NAMESPACE, trusted(keys))
+                .map_err(|e| anyhow::anyhow!("chain records {}: {e}", path.display()))?;
         artifacts
             .init()
-            .map_err(|e| anyhow::anyhow!("chain records {}: {e}", ARTIFACTS_FILE))?;
+            .map_err(|e| anyhow::anyhow!("chain records {}: {e}", path.display()))?;
         Ok(Self {
             log: Arc::new(log),
             artifacts: Arc::new(artifacts),
-            torn_write_cut_at,
         })
     }
 
     /// The chain as capsule-emit's [`Ledger`] over these stores, under this
     /// plugin's index (`producer::index::record_index_keys`).
     pub fn open_ledger(&self) -> Result<(Ledger, RecoveryReport), LedgerError> {
-        let (ledger, mut report) = Ledger::open_stores_with_indexer(
+        Ledger::open_stores_with_indexer(
             self.log.clone(),
             self.artifacts.clone(),
             crate::producer::index::record_index_keys,
-        )?;
-        report.truncated_torn_write_at = self.torn_write_cut_at;
-        Ok((ledger, report))
+        )
     }
 
-    /// The CLL backend the checkpoint state is kept in: the same journal.
+    /// The CLL backend the checkpoint state is kept in: the chain's log.
     pub fn checkpoint_log(&self) -> Arc<dyn CheckpointLog> {
         self.log.clone()
     }
@@ -293,267 +582,174 @@ pub fn line_of(record: &Record) -> io::Result<Vec<u8>> {
     serde_json::to_vec(&parsed).map_err(other)
 }
 
-/// One event of the journal, as far as a reader needs it (CLL
-/// docs/backend-contract.md, "JSONL v4").
-#[derive(Deserialize)]
-struct JournalEvent {
-    #[serde(rename = "type")]
-    kind: String,
-    #[serde(default)]
-    entry: Option<JournalEntry>,
-    #[serde(default)]
-    state: Option<JournalState>,
-    #[serde(default)]
-    witness: Option<JournalWitness>,
-}
-
-#[derive(Deserialize)]
-struct JournalEntry {
-    seq: String,
-    value: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct JournalState {
-    #[serde(default)]
-    checkpoint: Option<String>,
-    #[serde(default)]
-    witnesses: Vec<JournalWitness>,
-}
-
-#[derive(Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct JournalWitness {
-    witness_id: String,
-    checkpoint_size: String,
-    #[serde(default)]
-    receipt: Option<String>,
-    #[serde(default)]
-    entry_hash: Option<String>,
-    #[serde(default)]
-    leaf_index: Option<i64>,
-    #[serde(default)]
-    tree_size: Option<i64>,
-}
-
 fn b64(text: &str) -> io::Result<Vec<u8>> {
+    use base64::Engine as _;
     base64::engine::general_purpose::STANDARD
         .decode(text)
         .map_err(other)
 }
 
-/// What a reader has taken from one ledger directory's two files so far.
+/// A reader's view of one shelf, opened for one read: its own connections,
+/// so it never waits on the writer (WAL) and never holds a file the writer
+/// has since moved (a new history moves the whole `ledger/`).
+struct ShelfView {
+    log: LogSqlite,
+    artifacts: capsule_emit_artifact::sqlite::SqliteStore,
+    history: Connection,
+    log_id: String,
+}
+
+impl ShelfView {
+    /// `None` when the shelf holds no chain yet.
+    fn open(ledger_dir: &Path) -> io::Result<Option<Self>> {
+        let path = ledger_dir.join(SHELF_FILE);
+        let conn = connect(&path, false)?;
+        let Some(log_id) = chain_log_id(&conn)? else {
+            return Ok(None);
+        };
+        let log = LogSqlite::open(&path, &log_id).map_err(other)?;
+        let keys = keys_beside(ledger_dir);
+        let artifacts = capsule_emit_artifact::sqlite::SqliteStore::new(
+            connect(&path, false)?,
+            NAMESPACE,
+            trusted(&keys),
+        )
+        .map_err(|e| {
+            other(format!(
+                "the shelf's record store needs the node's keys: {e}"
+            ))
+        })?;
+        Ok(Some(Self {
+            log,
+            artifacts,
+            history: conn,
+            log_id,
+        }))
+    }
+}
+
+/// What a reader has taken from one ledger directory's shelf so far.
 #[derive(Default)]
 struct Snapshot {
-    /// The journal file this was read from (dev, inode), so a replaced
-    /// directory (a new history) is read again from the start.
-    identity: Option<(u64, u64)>,
-    journal_consumed: u64,
-    artifacts_consumed: u64,
     /// The log's entries, in order.
     ids: Vec<String>,
-    /// Each committed checkpoint's COSE, in commit order.
-    checkpoints: Vec<Vec<u8>>,
-    /// Witness rows by (witness_id, checkpoint size), in insertion order.
-    rows: Vec<JournalWitness>,
-    /// capsule_id to (offset, length) of its record line in the artifacts file.
-    spans: HashMap<String, (u64, usize)>,
-    /// The chain's lines, each with its `\n`, for `ids[..text_lines]`.
+    /// The chain's lines, each with its `\n`, for `ids`.
     text: Arc<Vec<u8>>,
-    text_lines: usize,
-}
-
-#[cfg(unix)]
-fn identity(meta: &fs::Metadata) -> Option<(u64, u64)> {
-    use std::os::unix::fs::MetadataExt;
-    Some((meta.dev(), meta.ino()))
-}
-
-#[cfg(not(unix))]
-fn identity(_: &fs::Metadata) -> Option<(u64, u64)> {
-    None
-}
-
-/// The complete lines of `path` from byte `from`, each with its offset, and
-/// where the last complete line ends. A missing file is an empty one.
-/// Complete lines, each with its offset.
-type Lines = Vec<(u64, Vec<u8>)>;
-
-fn complete_lines_from(path: &Path, from: u64) -> io::Result<(Lines, u64)> {
-    let mut file = match fs::File::open(path) {
-        Ok(file) => file,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok((Vec::new(), from)),
-        Err(e) => return Err(e),
-    };
-    file.seek(SeekFrom::Start(from))?;
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes)?;
-    let mut lines = Vec::new();
-    let mut start = 0usize;
-    while let Some(relative) = bytes[start..].iter().position(|&b| b == b'\n') {
-        let end = start + relative;
-        lines.push((from + start as u64, bytes[start..end].to_vec()));
-        start = end + 1;
-    }
-    Ok((lines, from + start as u64))
 }
 
 impl Snapshot {
-    /// Bring this up to date with the files under `ledger_dir`.
-    fn refresh(&mut self, ledger_dir: &Path) -> io::Result<()> {
-        let journal = ledger_dir.join(LOG_FILE);
-        let artifacts = ledger_dir.join(ARTIFACTS_FILE);
-        let meta = fs::metadata(&journal)?;
-        let artifacts_len = fs::metadata(&artifacts).map(|m| m.len()).unwrap_or(0);
-        if identity(&meta) != self.identity
-            || meta.len() < self.journal_consumed
-            || artifacts_len < self.artifacts_consumed
-        {
-            *self = Snapshot {
-                identity: identity(&meta),
-                ..Snapshot::default()
+    /// Bring this up to date with the shelf under `ledger_dir`. A shelf whose
+    /// log no longer starts with what this holds (a new history) is read
+    /// again from the start.
+    fn refresh(&mut self, view: &ShelfView) -> io::Result<()> {
+        if let Some(last) = self.ids.last() {
+            let held = view
+                .log
+                .scan_entries(self.ids.len() as u64 - 1, 1)
+                .map_err(other)?;
+            let first = view.log.scan_entries(0, 1).map_err(other)?;
+            let same = |entries: &[Entry], id: &str| {
+                entries.first().is_some_and(|e| hex::encode(&e.value) == id)
             };
-        }
-        // Records first: an entry is appended only after its record is
-        // written, so every entry read below has its record by then.
-        let (lines, consumed) = complete_lines_from(&artifacts, self.artifacts_consumed)?;
-        for (offset, line) in lines {
-            #[derive(Deserialize)]
-            struct Peek {
-                capsule_id: String,
-            }
-            if let Ok(peek) = serde_json::from_slice::<Peek>(&line) {
-                // The first line of an id is its record: the store admits
-                // an id once (`put` accepts only an identical retry).
-                self.spans
-                    .entry(peek.capsule_id)
-                    .or_insert((offset, line.len()));
+            if !same(&held, last) || !same(&first, &self.ids[0]) {
+                *self = Snapshot::default();
             }
         }
-        self.artifacts_consumed = consumed;
-        let (events, consumed) = complete_lines_from(&journal, self.journal_consumed)?;
-        for (offset, line) in events {
-            let event: JournalEvent = serde_json::from_slice(&line)
-                .map_err(|e| other(format!("{LOG_FILE} at byte {offset}: {e}")))?;
-            match event.kind.as_str() {
-                "entry.append" => {
-                    let entry = event
-                        .entry
-                        .ok_or_else(|| other(format!("{LOG_FILE} at byte {offset}: no entry")))?;
-                    let seq: usize = entry.seq.parse().map_err(other)?;
-                    if seq != self.ids.len() + 1 {
-                        return Err(other(format!(
-                            "{LOG_FILE} at byte {offset}: entry {seq} after {}",
-                            self.ids.len()
-                        )));
-                    }
-                    self.ids.push(hex::encode(b64(&entry.value)?));
-                }
-                "cll.commit" => {
-                    let state = event
-                        .state
-                        .ok_or_else(|| other(format!("{LOG_FILE} at byte {offset}: no state")))?;
-                    if let Some(cose) = state.checkpoint.as_deref() {
-                        let cose = b64(cose)?;
-                        if self.checkpoints.last() != Some(&cose) {
-                            self.checkpoints.push(cose);
-                        }
-                    }
-                    self.rows.extend(state.witnesses);
-                }
-                "witness.commit" => {
-                    if let Some(row) = event.witness {
-                        match self.rows.iter_mut().find(|r| {
-                            r.witness_id == row.witness_id
-                                && r.checkpoint_size == row.checkpoint_size
-                        }) {
-                            Some(stored) => *stored = row,
-                            None => self.rows.push(row),
-                        }
-                    }
-                }
-                _ => {}
+        // An entry is appended only after its record is stored, so every
+        // entry read here has its record.
+        loop {
+            let page = view
+                .log
+                .scan_entries(self.ids.len() as u64, MAX_SCAN_LIMIT)
+                .map_err(other)?;
+            if page.is_empty() {
+                break;
             }
-        }
-        self.journal_consumed = consumed;
-        // The chain's text, for the entries not yet in it.
-        if self.text_lines < self.ids.len() {
-            let mut file = fs::File::open(&artifacts)?;
             let text = Arc::make_mut(&mut self.text);
-            for id in &self.ids[self.text_lines..] {
-                let &(offset, len) = self.spans.get(id).ok_or_else(|| {
+            for entry in page {
+                if entry.seq != self.ids.len() as u64 + 1 {
+                    return Err(other(format!(
+                        "the chain log gives entry {} after {}",
+                        entry.seq,
+                        self.ids.len()
+                    )));
+                }
+                let id = hex::encode(&entry.value);
+                let record = view.artifacts.get(&id).map_err(|e| {
                     other(format!(
-                        "the chain log names {id} but {ARTIFACTS_FILE} holds no record of it"
+                        "the chain log names {id} but the shelf holds no readable record of it: {e}"
                     ))
                 })?;
-                let mut bytes = vec![0u8; len];
-                file.seek(SeekFrom::Start(offset))?;
-                file.read_exact(&mut bytes)?;
-                let record = capsule_emit_artifact::decode_record(&bytes).map_err(other)?;
                 text.extend_from_slice(&line_of(&record)?);
                 text.push(b'\n');
+                self.ids.push(id);
             }
-            self.text_lines = self.ids.len();
         }
         Ok(())
     }
+}
 
-    /// The checkpoint lines, as `checkpoints.jsonl` holds them: each record
-    /// (its JSON signature made again with the key that signed its COSE,
-    /// which is deterministic Ed25519, so it is the record first cut), its
-    /// witnesses from the rows with a receipt, and its `checkpoint_cose`.
-    fn checkpoint_lines(&self, keys: &[SigningKey]) -> Vec<Value> {
-        let mut lines = Vec::new();
-        for cose in &self.checkpoints {
-            let verified = verify_checkpoint_cose_offline(cose);
-            let Some(decoded) = verified.decoded else {
-                continue;
-            };
-            let mut record = decoded.to_checkpoint_record();
-            if let Some(key) = keys
-                .iter()
-                .find(|k| hex::encode(k.verifying_key().to_bytes()) == record.key_id)
-            {
-                if let Ok(signature) = try_sign_checkpoint_digest(&record, key) {
-                    record.signature = signature;
-                }
+/// The checkpoint lines, as `checkpoints.jsonl` holds them: each recorded
+/// checkpoint (its JSON signature made again with the key that signed its
+/// COSE, which is deterministic Ed25519, so it is the record first cut), its
+/// witnesses from the rows with a receipt, and its `checkpoint_cose`.
+fn checkpoint_lines(view: &ShelfView, keys: &[SigningKey]) -> io::Result<Vec<Value>> {
+    let checkpoints = history(&view.history, &view.log_id)?;
+    let rows = view.log.load_cll().map_err(other)?.witnesses;
+    let mut lines = Vec::new();
+    for cose in &checkpoints {
+        let verified = verify_checkpoint_cose_offline(cose);
+        let Some(decoded) = verified.decoded else {
+            continue;
+        };
+        let mut record = decoded.to_checkpoint_record();
+        if let Some(key) = keys
+            .iter()
+            .find(|k| hex::encode(k.verifying_key().to_bytes()) == record.key_id)
+        {
+            if let Ok(signature) = try_sign_checkpoint_digest(&record, key) {
+                record.signature = signature;
             }
-            let size = record.mmr_size.to_string();
-            record.witnesses = self
-                .rows
-                .iter()
-                .filter(|r| r.checkpoint_size == size)
-                .filter_map(|r| {
-                    let receipt = r.receipt.as_deref()?;
-                    Some(CheckpointWitness {
-                        ts_url: r.witness_id.clone(),
-                        entry_hash: r.entry_hash.clone().unwrap_or_default(),
-                        receipt_b64: receipt.to_string(),
-                        leaf_index: r.leaf_index.unwrap_or_default(),
-                        tree_size: r.tree_size.unwrap_or_default(),
-                        is_stub: false,
-                    })
-                })
-                .collect();
-            let Ok(mut line) = serde_json::to_value(&record) else {
-                continue;
-            };
-            line["checkpoint_cose"] = Value::String(hex::encode(cose));
-            lines.push(line);
         }
-        lines
+        record.witnesses = rows
+            .iter()
+            .filter(|r| r.checkpoint_size == record.mmr_size)
+            .filter_map(|r| {
+                let receipt = r.receipt.as_ref()?;
+                Some(CheckpointWitness {
+                    ts_url: r.witness_id.clone(),
+                    entry_hash: receipt.entry_hash.clone().unwrap_or_default(),
+                    receipt_b64: {
+                        use base64::Engine as _;
+                        base64::engine::general_purpose::STANDARD.encode(&receipt.bytes)
+                    },
+                    leaf_index: receipt.leaf_index.unwrap_or_default(),
+                    tree_size: receipt.tree_size.unwrap_or_default(),
+                    is_stub: false,
+                })
+            })
+            .collect();
+        let Ok(mut line) = serde_json::to_value(&record) else {
+            continue;
+        };
+        line["checkpoint_cose"] = Value::String(hex::encode(cose));
+        lines.push(line);
     }
+    Ok(lines)
 }
 
 /// One snapshot per ledger directory, kept current across reads.
 static SNAPSHOTS: Mutex<Option<HashMap<PathBuf, Snapshot>>> = Mutex::new(None);
 
-fn with_snapshot<T>(ledger_dir: &Path, f: impl FnOnce(&Snapshot) -> T) -> io::Result<T> {
+fn with_snapshot<T>(
+    ledger_dir: &Path,
+    view: &ShelfView,
+    f: impl FnOnce(&Snapshot) -> T,
+) -> io::Result<T> {
     let mut guard = SNAPSHOTS.lock().unwrap_or_else(PoisonError::into_inner);
     let snapshots = guard.get_or_insert_with(HashMap::new);
     let snapshot = snapshots.entry(ledger_dir.to_path_buf()).or_default();
-    if let Err(e) = snapshot.refresh(ledger_dir) {
+    if let Err(e) = snapshot.refresh(view) {
         snapshots.remove(ledger_dir);
         return Err(e);
     }
@@ -561,13 +757,16 @@ fn with_snapshot<T>(ledger_dir: &Path, f: impl FnOnce(&Snapshot) -> T) -> io::Re
 }
 
 /// The chain's lines under `ledger_dir`, each ended by `\n`, in today's
-/// `capsules.jsonl` line format: from the stores (complete lines only), or
+/// `capsules.jsonl` line format: from the shelf (committed lines only), or
 /// the flat `capsules.jsonl` as it is, a torn last line included, where
-/// there are none, so a flat reader sees what it always did. `None` when the
+/// there is none, so a flat reader sees what it always did. `None` when the
 /// directory holds no chain.
 pub fn chain_text(ledger_dir: &Path) -> io::Result<Option<Arc<Vec<u8>>>> {
     if is_store_layout(ledger_dir) {
-        return with_snapshot(ledger_dir, |s| Some(s.text.clone()));
+        let Some(view) = ShelfView::open(ledger_dir)? else {
+            return Ok(Some(Arc::new(Vec::new())));
+        };
+        return with_snapshot(ledger_dir, &view, |s| Some(s.text.clone()));
     }
     match fs::read(ledger_dir.join(FLAT_CAPSULES_FILE)) {
         Ok(bytes) => Ok(Some(Arc::new(bytes))),
@@ -618,14 +817,17 @@ pub fn chain_lines(ledger_dir: &Path) -> io::Result<Vec<Vec<u8>>> {
 }
 
 /// The chain's checkpoints under `ledger_dir`, each ended by `\n`, in today's
-/// `checkpoints.jsonl` line format: from the chain log's commits, or the flat
-/// `checkpoints.jsonl` where there are no stores. `None` when there are none.
+/// `checkpoints.jsonl` line format: from the shelf's checkpoint history, or
+/// the flat `checkpoints.jsonl` where there is no shelf. `None` when there
+/// are none.
 pub fn checkpoints_text(ledger_dir: &Path) -> io::Result<Option<Vec<u8>>> {
     if is_store_layout(ledger_dir) {
+        let Some(view) = ShelfView::open(ledger_dir)? else {
+            return Ok(Some(Vec::new()));
+        };
         let keys = keys_beside(ledger_dir);
-        let lines = with_snapshot(ledger_dir, |s| s.checkpoint_lines(&keys))?;
         let mut text = Vec::new();
-        for line in lines {
+        for line in checkpoint_lines(&view, &keys)? {
             text.extend_from_slice(line.to_string().as_bytes());
             text.push(b'\n');
         }
@@ -666,6 +868,8 @@ pub fn holds_record(ledger_dir: &Path, capsule_id: &str) -> bool {
 /// The signed statement (the detached COSE_Sign1) stored for `capsule_id`
 /// under `ledger_dir`: the record's unbound `signed-statement` attachment, or
 /// the flat `signed-statements/<capsule_id>.cose`. `None` when there is none.
+/// On the shelf only a committed line's record counts (a record stored but
+/// not yet in the log is pending, §2.3).
 pub fn statement(ledger_dir: &Path, capsule_id: &str) -> Option<Vec<u8>> {
     if !is_store_layout(ledger_dir) {
         return fs::read(
@@ -675,12 +879,11 @@ pub fn statement(ledger_dir: &Path, capsule_id: &str) -> Option<Vec<u8>> {
         )
         .ok();
     }
-    let span = with_snapshot(ledger_dir, |s| s.spans.get(capsule_id).copied()).ok()??;
-    let mut file = fs::File::open(ledger_dir.join(ARTIFACTS_FILE)).ok()?;
-    let mut bytes = vec![0u8; span.1];
-    file.seek(SeekFrom::Start(span.0)).ok()?;
-    file.read_exact(&mut bytes).ok()?;
-    capsule_emit_artifact::decode_record(&bytes)
+    let view = ShelfView::open(ledger_dir).ok()??;
+    let value = hex::decode(capsule_id).ok()?;
+    view.log.get_entry(&value).ok()?;
+    view.artifacts
+        .get(capsule_id)
         .ok()?
         .artifacts
         .into_iter()
@@ -1334,10 +1537,7 @@ pub(crate) fn test_checkpoint_state(
     ledger_dir: &Path,
     log_id: &str,
 ) -> crate::producer::checkpoint::CheckpointState {
-    let mut keys = keys_beside(ledger_dir);
-    for seed in [3u8, 9u8] {
-        keys.push(SigningKey::from_bytes(&[seed; 32]));
-    }
+    let keys = keys_beside(ledger_dir);
     if !is_store_layout(ledger_dir) {
         return crate::producer::checkpoint::CheckpointState::load(
             ledger_dir,
@@ -1347,7 +1547,7 @@ pub(crate) fn test_checkpoint_state(
         .expect("load the flat checkpoint state")
         .0;
     }
-    let stores = ChainStores::open(ledger_dir, &keys).expect("open the chain stores");
+    let stores = ChainStores::open(ledger_dir, log_id, &keys).expect("open the chain stores");
     load_checkpoint_state(&stores, log_id, CheckpointCadenceConfig::default(), &keys)
         .expect("load the checkpoint state")
         .0

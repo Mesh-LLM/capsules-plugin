@@ -94,7 +94,11 @@ pub fn record_index_keys(capsule: &Value) -> Vec<String> {
 pub fn open_ledger(ledger_dir: &Path) -> anyhow::Result<(Ledger, RecoveryReport)> {
     if crate::chain_store::is_store_layout(ledger_dir) {
         let keys = crate::chain_store::keys_beside(ledger_dir);
-        return Ok(crate::chain_store::ChainStores::open(ledger_dir, &keys)?.open_ledger()?);
+        // A shelf without a chain yet starts one under a placeholder id; the
+        // node's own chain is started by `CapsuleState` under its log id.
+        return Ok(
+            crate::chain_store::ChainStores::open(ledger_dir, "chain", &keys)?.open_ledger()?,
+        );
     }
     Ok(Ledger::open_with_indexer(ledger_dir, record_index_keys)?)
 }
