@@ -106,10 +106,14 @@ if op == "get":
     value = book.get(args[0])
     print("" if value is None else (json.dumps(value) if isinstance(value, dict) else value))
     sys.exit(0)
-# set KEY=JSON ...: replaced whole, so a run killed mid-write leaves the old file.
+# set KEY=JSON or KEY:=TEXT (stored as a string) ...: the file is replaced
+# whole, so a run killed mid-write leaves the old one.
 for pair in args:
     key, value = pair.split("=", 1)
-    book[key] = json.loads(value)
+    if key.endswith(":"):
+        book[key[:-1]] = value
+    else:
+        book[key] = json.loads(value)
 tmp = path + ".tmp"
 with open(tmp, "w") as f:
     json.dump(book, f, sort_keys=True)
@@ -138,9 +142,9 @@ mv "$WORK/node.seed" "$SEED"
 if [ -z "$BOOK_KEY" ]; then
   # First run. book.json names the key first, so a run cut short here resumes:
   # an existing profile is kept and `store init` is idempotent.
-  book set node_key="\"$NODE_PUB\"" published_lines=0 last_capsule_id=null book_sequence=0 pending=null
+  book set node_key:="$NODE_PUB" published_lines=0 last_capsule_id=null book_sequence=0 pending=null
 fi
-book set plugin_roots="\"$CAPSULECTL_PLUGIN_ROOTS\""
+book set plugin_roots:="$CAPSULECTL_PLUGIN_ROOTS"
 if ! "$CAPSULECTL" profile list | python3 -c 'import json,sys; sys.exit(sys.argv[1] not in json.load(sys.stdin)["profiles"])' "$PROFILE"; then
   "$CAPSULECTL" profile create --name "$PROFILE" --type jsonl --jsonl-path "$REPORT_DIR/book" \
     --namespace settlement --log-id "settlement-$NODE_PUB" --log book --operator "$NODE_PUB" \
@@ -222,7 +226,7 @@ for request in "$WORK/requests"/*.json; do
   sequence=$("$CAPSULECTL" publish --profile "$PROFILE" --request "$request" \
     | python3 -c 'import json,sys; print(json.loads(sys.stdin.read().strip().splitlines()[-1])["sequence"])') \
     || fail "capsulectl publish refused record $line; the next run checks whether it landed"
-  book set published_lines=$((line + 1)) last_capsule_id="\"$id\"" book_sequence="$sequence" pending=null
+  book set published_lines=$((line + 1)) last_capsule_id:="$id" book_sequence="$sequence" pending=null
 done
 # Padding records after the last capsule move the watermark too.
 book set published_lines="$(cat "$WORK/requests.total")"
