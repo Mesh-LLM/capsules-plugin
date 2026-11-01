@@ -210,7 +210,8 @@ struct Delivered {
 pub struct Legs {
     inner: Mutex<Inner>,
     /// Where `inner` is kept; `None` keeps it in memory only. The mutex
-    /// serializes writes, so the file is always some event's complete state.
+    /// serializes writes and each snapshots `inner` under it, so a later write
+    /// never leaves an older state behind.
     file: Option<Mutex<PathBuf>>,
 }
 
