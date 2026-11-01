@@ -4,6 +4,24 @@
 
 ## 0.1.11
 
+### Changed
+
+- **The chain is kept on the node's EvidenceBook shelf (breaking, #206, #213).** One SQLite file,
+  `<data dir>/ledger/shelf.db`, replaces `capsules.jsonl`, `signed-statements/`,
+  `checkpoints.jsonl`, `mmr_nodes.dat` and `witness-backfill.jsonl`. The first start on this
+  release moves the records and checkpoints into it as they were, checks that they match, and then
+  moves the old files to `<data dir>/archive/pre-store/`; a long log takes more than one start.
+  A checkpoint saved without its signed statement is not moved; it stays in
+  `archive/pre-store/checkpoints.jsonl`. A log with owner approvals from 0.1.8 or earlier (#208)
+  cannot move without loss: it stays in the flat files until its owner starts a new history. The
+  upgrade is one way: stop the node and back up `<data dir>/ledger/` before the first start (a
+  lossless export is planned, #218).
+
+### Added
+
+- **`capsules chain-lines` and `capsules chain-checkpoints` (#213)** print the log and its
+  checkpoints in the line formats earlier releases wrote.
+
 Pull requests since 0.1.10:
 
 - #213 feat(evidence-plugin)!: keep the chain on the node's EvidenceBook shelf (#206)
