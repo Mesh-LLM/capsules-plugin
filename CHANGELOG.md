@@ -6,8 +6,8 @@
 
 - **The commitment's staple is L0 only, on every setting.** It was already so; no preset or
   setting is added. `docs/SHARING-POLICY.md` now says the staple is the `history_card/1` answer
-  and never a standard card, and a test holds it with standard history and advertising on
-  (#241).
+  and never the Service History (`service_history/1`), and a test holds the staple byte for byte
+  across the default settings and standard history and advertising on (#241).
 
 ### Removed
 
