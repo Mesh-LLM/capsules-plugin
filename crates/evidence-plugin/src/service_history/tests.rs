@@ -100,12 +100,12 @@ fn the_definition_carries_the_standard_frame_and_nothing_else() {
         .iter()
         .map(|m| m["name"].as_str().unwrap())
         .collect();
-    assert_eq!(names, DECLARED);
+    assert_eq!(names, ["history_card", "period_counts"]);
     assert!(members.iter().all(|m| m["required"] == json!(true)));
     assert_eq!(members[0]["derivation"], json!("history_card/1"));
     assert_eq!(
         members[1]["units"],
-        json!([{"where": "periods[].cells[]", "unit": UNIT}])
+        json!([{"where": "periods[].cells[]", "unit": "exchanges_served"}])
     );
     // `reads` is the ordered union of the members', and reads no latency
     // and no requester-identity field.
@@ -513,27 +513,35 @@ fn every_case_the_definition_refuses_is_policy_declined() {
 // ---------------------------------------------------------------------
 
 /// The answered artifact at week 2, and the card's checkpoint times.
-fn checked_parts() -> (Map<String, Value>, Vec<String>, String) {
+fn checked_parts() -> (Map<String, Value>, Vec<(String, u64)>, String) {
     let dir = node();
     let anchor = checkpoints()[3].anchor();
     let art = artifact_of(&answered(ask(dir.path(), &history_request(&anchor))));
     let times = checkpoints()
         .iter()
-        .map(|c| c.record.timestamp.clone())
+        .map(|c| {
+            (
+                c.record.timestamp.clone(),
+                cll::mmr::leaf_count(c.record.mmr_size).unwrap(),
+            )
+        })
         .collect();
     (art, times, anchor)
 }
 
-fn check(art: &Map<String, Value>, times: &[String], anchor: &str) -> Result<Counts, String> {
-    let times: Vec<&str> = times.iter().map(String::as_str).collect();
-    check_artifact(
-        Definition::active(),
-        art,
-        &times,
-        anchor,
-        "corpus-node-log",
-        30,
-    )
+fn check(
+    art: &Map<String, Value>,
+    times: &[(String, u64)],
+    anchor: &str,
+) -> Result<Counts, String> {
+    let chain: Vec<Cut<'_>> = times
+        .iter()
+        .map(|(timestamp, leaves)| Cut {
+            timestamp,
+            leaves: *leaves,
+        })
+        .collect();
+    check_artifact(Definition::active(), art, &chain, anchor, "corpus-node-log")
 }
 
 #[test]
@@ -703,7 +711,7 @@ fn a_tampered_history_does_not_check() {
 #[test]
 fn an_anchor_off_a_boundary_does_not_check() {
     let (art, mut times, anchor) = checked_parts();
-    *times.last_mut().unwrap() = "2026-01-19T00:01:00Z".into();
+    times.last_mut().unwrap().0 = "2026-01-19T00:01:00Z".into();
     let why = check(&art, &times, &anchor).unwrap_err();
     assert!(why.starts_with("period_anchor"), "{why}");
 }

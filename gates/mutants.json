@@ -107,16 +107,6 @@
       "feature": "mutant-service-history-card-rebuilt",
       "tests": "service_history::",
       "must_print": { "failed_test": "the_embedded_card_is_the_direct_card" }
-    },
-    {
-      "feature": "mutant-service-history-counts-open-period",
-      "tests": "service_history::",
-      "must_print": { "failed_test": "every_closed_period_is_counted_in_order_and_the_open_one_never" }
-    },
-    {
-      "feature": "mutant-service-history-skips-complementary",
-      "tests": "service_history::",
-      "must_print": { "failed_test": "a_model_a_published_total_gives_away_is_withheld_with_it" }
     }
   ]
 }

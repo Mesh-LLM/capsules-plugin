@@ -568,17 +568,24 @@ pub fn check(
                 .ok_or_else(|| CheckError::Answer("the artifact carries no history card".into()))?;
             let (served, listed) = card_chain(card, key)?;
             check_names(&art, &served)?;
-            let times: Vec<&str> = listed.iter().map(|s| s.cp.timestamp.as_str()).collect();
-            let log_size = leaf_count(served.cp.mmr_size)
-                .map_err(|_| CheckError::Answer("the anchor's size is not an MMR size".into()))?;
+            let chain: Vec<crate::service_history::Cut<'_>> = listed
+                .iter()
+                .map(|s| {
+                    Ok(crate::service_history::Cut {
+                        timestamp: s.cp.timestamp.as_str(),
+                        leaves: leaf_count(s.cp.mmr_size).map_err(|_| {
+                            CheckError::Answer("a checkpoint's size is not an MMR size".into())
+                        })?,
+                    })
+                })
+                .collect::<Result<_, CheckError>>()?;
             history = Some(
                 crate::service_history::check_artifact(
                     crate::service_history::Definition::active(),
                     &art,
-                    &times,
+                    &chain,
                     &served.digest,
                     &served.cp.log_id,
-                    log_size,
                 )
                 .map_err(CheckError::Answer)?,
             );
