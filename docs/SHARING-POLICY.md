@@ -436,7 +436,8 @@ change with it.
   commitment would be larger than a peer reads (1 MiB).
 - **The staple is L0, always.** It is the `history_card/1` answer: signed
   checkpoints that show the node's records are continuous and unedited, how
-  old its key is and which witness holds them, and no record or counterparty.
+  old its key is and, when a witness is configured, which witness holds them.
+  It carries no record, counterparty, deal count or service count.
   No setting turns it off or widens it. `share_standard_history` decides who
   is answered the node's L1, the Service History (`service_history/1`): a
   proven counterparty, or anyone when it is on. `advertise_evidence_requests`
