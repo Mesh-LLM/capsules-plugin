@@ -880,15 +880,15 @@ fn the_referees_verdict_is_sealed_on_both_nodes() {
             "{side}: {record:#}"
         );
     }
-    let contradicted = format!(
-        "{}{}",
-        crate::referee::verdict::VERDICT_CONTRADICTED_PREFIX,
-        TWINS[1]
-    );
+    // Stock mesh-llm (0.78.x) rejects `logprobs`, so the referee's answer
+    // carries none and it has no margin at the split to name a twin by
+    // (#155): the ruling is `inconclusive`, sealed with why. A server that
+    // serves logprobs (Mesh-LLM/mesh-llm#2565, in no stable release yet)
+    // would rule `contradicted:<twin B>` here.
     assert_eq!(
         issued["verdict"],
-        json!(contradicted),
-        "the referee's answer is twin A's"
+        json!(crate::referee::verdict::VERDICT_INCONCLUSIVE),
+        "no logprobs, no margin: the referee names no twin"
     );
     assert_eq!(received["verdict"], issued["verdict"]);
     for (node, role) in [(&run.requester, "requester"), (&run.provider, "provider")] {
@@ -914,6 +914,13 @@ fn the_referees_verdict_is_sealed_on_both_nodes() {
             .filter(|h| h["verdict_capsule_id"] == json!(verdict_id))
             .collect();
         assert_eq!(held.len(), 1, "{file}: {held:#?}");
+        assert!(
+            held[0]["verdict_capsule"]
+                .to_string()
+                .contains(crate::referee::verdict::INCONCLUSIVE_SPLIT_MARGIN_UNAVAILABLE),
+            "{file}: the sealed ruling says why it names no twin: {:#}",
+            held[0]["verdict_capsule"]
+        );
         let facts = crate::referee::hold::verdict_facts(&held[0]["verdict_capsule"], Some(&keys))
             .unwrap_or_else(|| {
                 panic!("{file}: the verdict does not verify under the referee's key")
@@ -926,12 +933,10 @@ fn the_referees_verdict_is_sealed_on_both_nodes() {
     let records: Vec<Value> = run.requester.ledger_lines();
     let asked = crate::verdict_counts::read_requested(&run.requester.ledger_dir());
     let by_peer = crate::verdict_counts::fold(&records, &asked);
-    // The ruling the admission pack's disputes row reads: twin B contradicted.
-    let buckets = [
-        crate::verdict_counts::CORROBORATED,
-        crate::verdict_counts::CONTRADICTED,
-    ];
-    for (twin, bucket) in TWINS.into_iter().zip(buckets) {
+    // The ruling the admission pack's disputes row reads: neither twin is
+    // counted against.
+    for twin in TWINS {
+        let bucket = crate::verdict_counts::INCONCLUSIVE;
         let verdicts = by_peer
             .get(twin)
             .unwrap_or_else(|| panic!("no verdict counted for {twin}"));

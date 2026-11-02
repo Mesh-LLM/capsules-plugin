@@ -64,8 +64,9 @@
   float positionally (`0.000009071672138816211`) where the host's digest uses Python's `repr`
   (`9.071672138816211e-06`), so a body carrying token logprobs never matched its sealed
   `response_digest`. A referee asked for logprobs (#155) found no served record of its own
-  answer (`own_referee_record`), so the service treated it as unreachable. The two-node e2e now asks its first exchange
-  for logprobs, so its referee step covers the margin rule.
+  answer (`own_referee_record`), so the service treated it as unreachable. The two-node e2e
+  now expects what stock mesh-llm, which serves no logprobs, gives: an `inconclusive` ruling
+  sealed with `split_margin_unavailable`, counted against neither twin (#155).
 
 ## 0.1.12
 
