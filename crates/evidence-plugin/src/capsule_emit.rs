@@ -99,11 +99,10 @@ fn role_and_observation_point(
 /// the JSON-DIGEST (spec §5.1) refuses any float in a digest-bearing value
 /// (float serialization isn't cross-implementation deterministic), and
 /// OpenAI-shaped chat request/response bodies are full of floats
-/// (temperature, top_p, penalties, ...). `python_repr_f64` is not a claim of
-/// byte-parity with Python's `repr()` for every float (neither the Python
-/// docstring it mirrors makes that claim) -- it is deterministic for this
-/// plugin's own digest and matches Python for the ordinary decimal range
-/// chat-completion parameters actually use.
+/// (temperature, top_p, penalties, ...). `python_repr_f64` spells every
+/// finite float as Python's `repr()` does, because the host seals its own
+/// digests from that spelling and the two must agree (token logprobs are
+/// small floats, `9.07e-06`).
 fn stringify_floats(value: Value) -> Value {
     match value {
         Value::Number(n) => match n.as_f64() {

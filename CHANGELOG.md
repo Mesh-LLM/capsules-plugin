@@ -58,6 +58,15 @@
   byte changes (Mesh-LLM/capsules-plugin#242).
 - Comments that described the Python sidecar now describe the Rust plugin.
 
+### Fixed
+
+- **A float below 1e-4 or from 1e16 digests as the host seals it.** The plugin spelled such a
+  float positionally (`0.000009071672138816211`) where the host's digest uses Python's `repr`
+  (`9.071672138816211e-06`), so a body carrying token logprobs never matched its sealed
+  `response_digest`. A referee asked for logprobs (#155) found no served record of its own
+  answer (`own_referee_record`), so the service treated it as unreachable. The two-node e2e now asks its first exchange
+  for logprobs, so its referee step covers the margin rule.
+
 ## 0.1.12
 
 ### Added
@@ -102,13 +111,6 @@ Pull requests since 0.1.10:
 ## 0.1.10
 
 ### Fixed
-
-- **A float below 1e-4 or from 1e16 digests as the host seals it.** The plugin spelled such a
-  float positionally (`0.000009071672138816211`) where the host's digest uses Python's `repr`
-  (`9.071672138816211e-06`), so a body carrying token logprobs never matched its sealed
-  `response_digest`. A referee asked for logprobs (#155) found no served record of its own
-  answer (`own_referee_record`), so the service treated it as unreachable. The two-node e2e now asks its first exchange for
-  logprobs, so its referee step covers the margin rule.
 
 - **A twin pair's referee call adjudicates again (#221, #222).** On 0.1.9 it ended
   `referee_cannot_sign`. The referee seals its record of its re-answer only after its host has
