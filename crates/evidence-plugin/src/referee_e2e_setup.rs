@@ -125,8 +125,7 @@ fn twin_half(template: &Value, twin: &str, request: &Value, response: &Value) ->
 ///
 /// The twins were asked the first exchange's request, at temperature 0.
 /// Twin A answered what the provider did; twin B answered otherwise from
-/// the first word, so the verdict contradicts twin B. The
-/// referee answer is the provider's own answer to that exchange, which its
+/// the first word. The referee answer is the provider's own answer to that exchange, which its
 /// chain records. Reads `E2E_PROVIDER_DIR` and `E2E_REQUESTER_DIR` (the
 /// running nodes' plugin data), and `E2E_FIRST_EXCHANGE` (the script's saved
 /// request and response).
@@ -147,7 +146,8 @@ fn put_twin_halves_on_the_requester() {
         .and_then(Value::as_str)
         .expect("the provider answered with text");
     // Twin B differs at the first word, so the referee's answer, which is
-    // twin A's, decides: the verdict contradicts twin B.
+    // twin A's, decides: with a margin at the split the verdict would
+    // contradict twin B; stock mesh-llm serves none, so it is inconclusive.
     let answers = [text.to_string(), format!("twin-b {text}")];
     let pem = std::fs::read_to_string(requester_dir.join("keys").join("node-key.pem")).unwrap();
     let requester_key = capsule_emit_lib::keys::load_signing_key_pem(&pem).unwrap();

@@ -99,11 +99,10 @@ fn role_and_observation_point(
 /// the JSON-DIGEST (spec §5.1) refuses any float in a digest-bearing value
 /// (float serialization isn't cross-implementation deterministic), and
 /// OpenAI-shaped chat request/response bodies are full of floats
-/// (temperature, top_p, penalties, ...). `python_repr_f64` is not a claim of
-/// byte-parity with Python's `repr()` for every float (neither the Python
-/// docstring it mirrors makes that claim) -- it is deterministic for this
-/// plugin's own digest and matches Python for the ordinary decimal range
-/// chat-completion parameters actually use.
+/// (temperature, top_p, penalties, ...). `python_repr_f64` spells every
+/// finite float as Python's `repr()` does, because the host seals its own
+/// digests from that spelling and the two must agree (token logprobs are
+/// small floats, `9.07e-06`).
 fn stringify_floats(value: Value) -> Value {
     match value {
         Value::Number(n) => match n.as_f64() {
@@ -123,12 +122,23 @@ fn stringify_floats(value: Value) -> Value {
 }
 
 fn python_repr_f64(f: f64) -> String {
-    let s = format!("{f}");
-    if s.contains('.') || s.contains('e') || s.contains('E') {
-        s
-    } else {
-        format!("{s}.0")
+    // Python's `repr` writes a float in positional form for decimal exponents
+    // -4..=15 and in scientific form (`1e-05`, `9.07e-06`, `1e+16`) outside
+    // them. The host seals its digests from that spelling, so a body with a
+    // small float (a token logprob) digests the same here only if this does.
+    let scientific = format!("{f:e}");
+    let (mantissa, exponent) = scientific.split_once('e').expect("{:e} has an exponent");
+    let exponent: i32 = exponent.parse().expect("{:e} exponent is an integer");
+    if (-4..16).contains(&exponent) {
+        let s = format!("{f}");
+        return if s.contains('.') || s.contains('e') || s.contains('E') {
+            s
+        } else {
+            format!("{s}.0")
+        };
     }
+    let sign = if exponent < 0 { '-' } else { '+' };
+    format!("{mantissa}e{sign}{:02}", exponent.abs())
 }
 
 /// The JSON-DIGEST of a value, floats stringified first: the digest a signed
@@ -3375,6 +3385,24 @@ pub(crate) mod tests {
         assert_eq!(python_repr_f64(1.0), "1.0");
         assert_eq!(python_repr_f64(0.0), "0.0");
         assert_eq!(python_repr_f64(0.7), "0.7");
+    }
+
+    /// Python's `repr` switches to scientific form below 1e-4 and from 1e16,
+    /// with a signed two-digit exponent. A token logprob like the host's
+    /// `-9.071672138816211e-06` must digest as the host sealed it (the
+    /// referee finds its own served record by that digest).
+    #[test]
+    fn python_repr_f64_spells_small_and_large_floats_as_python_does() {
+        assert_eq!(
+            python_repr_f64(-9.071672138816211e-06),
+            "-9.071672138816211e-06"
+        );
+        assert_eq!(python_repr_f64(1e-5), "1e-05");
+        assert_eq!(python_repr_f64(0.0001), "0.0001");
+        assert_eq!(python_repr_f64(1.5e-10), "1.5e-10");
+        assert_eq!(python_repr_f64(1e15), "1000000000000000.0");
+        assert_eq!(python_repr_f64(1e16), "1e+16");
+        assert_eq!(python_repr_f64(-2.5e100), "-2.5e+100");
     }
 
     /// [B3, extended by rung 3a] The runtime/binary-attestation rung: a real
