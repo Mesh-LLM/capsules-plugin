@@ -240,6 +240,52 @@ fn the_checkpoint_is_the_latest_and_the_staple_is_what_a_stranger_gets() {
     assert_eq!(staple["anchor"]["digest"], latest);
 }
 
+/// The staple is L0 (`history_card/1`) on every setting (Steven, 2026-11-01:
+/// a node staples L0 in its commitment and serves L1 to an asker who signs;
+/// plugin#241). No switch turns it off or widens it: with standard history
+/// and advertising both on, the commitment still carries the same members
+/// and its staple is the `history_card/1` answer, never a standard card.
+#[test]
+fn the_staple_is_the_history_card_on_every_setting() {
+    let on = Policy::from_settings(|env| {
+        [
+            share_policy::ENV_STANDARD_HISTORY,
+            share_policy::ENV_ADVERTISE_EVIDENCE_REQUESTS,
+        ]
+        .contains(&env)
+        .then(|| "on".to_string())
+    });
+    assert!(on.share_standard_history && on.advertise_evidence_requests);
+    for policy in [defaults(), on] {
+        let signed = built(&policy);
+        assert_eq!(verify(&signed), Vec::<String>::new());
+        let mut members: Vec<&str> = signed
+            .commitment
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        members.sort_unstable();
+        let mut schema: Vec<&str> = SCHEMA.iter().map(|(n, _)| *n).collect();
+        schema.sort_unstable();
+        assert_eq!(members, schema);
+        assert_eq!(
+            signed.commitment["history_card"]["derivation"],
+            "history_card/1"
+        );
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(signed.commitment["history_card"]["bytes"].as_str().unwrap())
+            .unwrap();
+        let staple: Value = serde_json::from_slice(&raw).unwrap();
+        assert_eq!(staple["derivation"], "history_card/1");
+        assert!(
+            !String::from_utf8(raw).unwrap().contains("standard_history"),
+            "the staple carries no standard card"
+        );
+    }
+}
+
 #[test]
 fn no_checkpoint_means_no_commitment() {
     let dir = tempfile::tempdir().unwrap();

@@ -434,6 +434,14 @@ change with it.
   (the staple). A node has no commitment while it has no checkpoint, while
   its `history_card/1` is refused (past 1024 checkpoints, #76), or while the
   commitment would be larger than a peer reads (1 MiB).
+- **The staple is L0, always.** It is the `history_card/1` answer: proof the
+  node's records are continuous and unedited, how old its key is and which
+  witness holds them, with no counts. No setting turns it off or widens it;
+  `share_standard_history` and `advertise_evidence_requests` change who is
+  answered, never what is stapled. The standard card (`standard_history/1`, L1)
+  is never stapled: a node serves it to an asker who signs, when
+  `share_standard_history` allows, and anything more (L2) is the operator's
+  call, request by request. (Steven's 2026-11-01 staple ruling.)
 - **A refusal names the policy.** Every signed refusal the evidence
   responder gives carries a `policy_digest` member (an `adjudicate` request,
   answered by the referee on the same channel, is not under this policy and
