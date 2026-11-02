@@ -138,7 +138,7 @@ fn a_fresh_node_names_its_checkpoint_missing_and_checks_no_probe() {
     let dir = tempfile::tempdir().unwrap();
     let found = doctor(dir.path(), Some(NODE), true);
     assert_eq!(state(&found, CHECKPOINT).state, STATE_MISSING);
-    assert_eq!(state(&found, POLICY_IN_COMMITMENT).state, STATE_MISSING);
+    assert_eq!(state(&found, POLICY_IN_COMMITMENT).state, STATE_NOT_CHECKED);
     assert_eq!(state(&found, WITNESS).state, STATE_UNWITNESSED);
     for check in [PROBE_CHECKPOINTS, PROBE_HISTORY_CARD] {
         assert_eq!(state(&found, check).state, STATE_NOT_CHECKED);
@@ -157,7 +157,7 @@ fn with_no_commitment_served_the_probe_checks_under_the_nodes_own_key() {
     let dir = corpus();
     let found = doctor(dir.path(), None, true);
     let f = state(&found, POLICY_IN_COMMITMENT);
-    assert_eq!(f.state, STATE_MISSING);
+    assert_eq!(f.state, STATE_NOT_CHECKED);
     assert!(f.detail.contains("mesh id"), "{}", f.detail);
     for check in [PROBE_CHECKPOINTS, PROBE_HISTORY_CARD] {
         let f = state(&found, check);
@@ -184,6 +184,30 @@ fn a_served_commitment_under_another_policy_is_not_the_policy_in_commitment() {
         "{}",
         f.detail
     );
+}
+
+#[test]
+fn a_served_commitment_that_verifies_under_this_policy_is_present() {
+    let dir = corpus();
+    let served = serve(dir.path(), &defaults(), Some(NODE));
+    let found = with(dir.path(), &defaults(), |r| {
+        findings(r, &defaults(), &served, &Witnesses::default(), None, false).unwrap()
+    });
+    assert_eq!(state(&found, POLICY_IN_COMMITMENT).state, STATE_PRESENT);
+}
+
+#[test]
+fn a_served_commitment_that_does_not_verify_is_missing() {
+    let dir = corpus();
+    let mut signed = serve(dir.path(), &defaults(), Some(NODE)).unwrap();
+    signed.policy.push(0);
+    let served: Served = Ok(signed);
+    let found = with(dir.path(), &defaults(), |r| {
+        findings(r, &defaults(), &served, &Witnesses::default(), None, false).unwrap()
+    });
+    let f = state(&found, POLICY_IN_COMMITMENT);
+    assert_eq!(f.state, STATE_MISSING);
+    assert!(f.detail.contains("does not verify"), "{}", f.detail);
 }
 
 #[test]
@@ -220,7 +244,7 @@ fn a_book_past_the_answer_cap_names_the_issue_that_owns_it() {
         let refused: Served =
             Err("this node refused its own history_card/1: policy_declined".into());
         let f = policy_in_commitment(r, &refused, &long);
-        assert_eq!(f.state, STATE_MISSING);
+        assert_eq!(f.state, STATE_NOT_CHECKED);
         assert!(f.detail.contains(LONG_LOG_ISSUE), "{}", f.detail);
         let short = read_book(r).unwrap();
         assert!(!policy_in_commitment(r, &refused, &short)

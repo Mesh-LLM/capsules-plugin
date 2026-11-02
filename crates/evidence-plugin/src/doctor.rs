@@ -567,11 +567,14 @@ fn policy_in_commitment(responder: &Responder<'_>, served: &Served, book: &Book)
     let missing = |detail: String| Finding::new(POLICY_IN_COMMITMENT, STATE_MISSING, detail);
     let signed = match served {
         Ok(signed) => signed,
+        // Nothing served is not a failed check: there is no commitment to
+        // judge, so the finding is not checked, not missing.
         Err(why) => {
-            return missing(format!(
-                "no commitment is served: {why}{}",
-                long_log_note(book)
-            ))
+            return Finding::new(
+                POLICY_IN_COMMITMENT,
+                STATE_NOT_CHECKED,
+                format!("no commitment is served: {why}{}", long_log_note(book)),
+            )
         }
     };
     let problems = commitment::verify(signed);
