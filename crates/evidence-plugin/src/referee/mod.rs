@@ -3,6 +3,8 @@
 //!
 //! - [`half`], [`verdict`]: two halves checked and compared; the ruling a
 //!   referee's re-answer gives.
+//! - [`margin`]: the referee's top-2 margin at the split, which must reach a
+//!   pinned threshold before its word names a twin (#155).
 //! - [`service`]: the referee's side: it checks both halves and its own
 //!   answer, then signs the verdict (sealing the tier it was asked from and
 //!   the model) or a refusal.
@@ -26,6 +28,7 @@ pub mod bar;
 pub mod half;
 pub mod hold;
 pub mod live;
+pub mod margin;
 pub mod request;
 pub mod select;
 pub mod service;
@@ -33,4 +36,10 @@ pub mod supplied;
 pub mod verdict;
 
 #[cfg(test)]
+mod margin_measurement;
+#[cfg(test)]
+mod margin_scored;
+#[cfg(test)]
 pub(crate) mod parity;
+#[cfg(test)]
+mod parity_margin;

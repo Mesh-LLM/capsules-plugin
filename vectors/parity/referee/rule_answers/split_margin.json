@@ -1,0 +1,1818 @@
+{
+  "path": "split_margin",
+  "source": "rule (#155): stated per case in referee::parity_margin and checked before writing",
+  "v": 1,
+  "answers": {
+    "margin_well_above": [
+      {
+        "reply": {
+          "adjudication_verdict": 1,
+          "verdict": "contradicted:node-b",
+          "twin_bracket_id": "bracket-1",
+          "half_node_ids": [
+            "node-a",
+            "node-b"
+          ],
+          "referee_node_id": "node-c",
+          "referee_capsule_id": "b1880b17a8972d320aebb8d808f27a5218134ce7b7a2e0386b311c98cb1b9344",
+          "halves": [
+            "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+            "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d"
+          ],
+          "verdict_capsule_id": "verdict-1",
+          "verdict_capsule_id_is_the_records": true,
+          "verdict_capsule": {
+            "block": {
+              "schema": "capsule-emit-mesh/adjudication/v1",
+              "source": "twin_comparison",
+              "capture_method": "deterministic_replay",
+              "verdict": "contradicted:node-b",
+              "status": "CONTRADICTED",
+              "divergence_index": 3,
+              "prefix_digest": "0ec7db901e57f96f8d195aa69bbdbd858eb13d125021a24c90972a5ce35d587b",
+              "twin_owner_distinct": true,
+              "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+              "half_a_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+              "half_b_capsule_id": "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d",
+              "referee_capsule_id": "b1880b17a8972d320aebb8d808f27a5218134ce7b7a2e0386b311c98cb1b9344",
+              "referee_id": "node-c",
+              "selection_tier": 1,
+              "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+              "referee_node_id": "node-c",
+              "half_a_node_id": "node-a",
+              "half_b_node_id": "node-b",
+              "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+              "referee_prompt": "requester_attested",
+              "referee_answer_digest": "4f02f13d3d98168083931359e738d2552deaeaf6bd4743997cd0c6c5018bd2fa",
+              "split_margin": {
+                "unit": "nats",
+                "threshold": "4.410000",
+                "referee": {
+                  "token_index": 6,
+                  "top1": {
+                    "token": " 4",
+                    "logprob": "-0.050000"
+                  },
+                  "top2": {
+                    "token": "‖",
+                    "logprob": "-13.280000"
+                  },
+                  "margin": "13.230000"
+                }
+              },
+              "twin_bracket_id": "bracket-1"
+            },
+            "epistemic_type": "adjudication",
+            "chain": {
+              "parent_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+              "relation": "confirms"
+            },
+            "provenance": "referee",
+            "signed_by_node": true
+          },
+          "issued_at_is_now": true
+        },
+        "appended": {
+          "issued-adjudications.jsonl": [
+            {
+              "verdict": "contradicted:node-b",
+              "twin_bracket_id": "bracket-1",
+              "half_node_ids": [
+                "node-a",
+                "node-b"
+              ],
+              "referee_node_id": "node-c",
+              "referee_capsule_id": "b1880b17a8972d320aebb8d808f27a5218134ce7b7a2e0386b311c98cb1b9344",
+              "halves": [
+                "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d"
+              ],
+              "verdict_capsule_id": "verdict-1",
+              "verdict_capsule_id_is_the_records": true,
+              "verdict_capsule": {
+                "block": {
+                  "schema": "capsule-emit-mesh/adjudication/v1",
+                  "source": "twin_comparison",
+                  "capture_method": "deterministic_replay",
+                  "verdict": "contradicted:node-b",
+                  "status": "CONTRADICTED",
+                  "divergence_index": 3,
+                  "prefix_digest": "0ec7db901e57f96f8d195aa69bbdbd858eb13d125021a24c90972a5ce35d587b",
+                  "twin_owner_distinct": true,
+                  "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+                  "half_a_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                  "half_b_capsule_id": "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d",
+                  "referee_capsule_id": "b1880b17a8972d320aebb8d808f27a5218134ce7b7a2e0386b311c98cb1b9344",
+                  "referee_id": "node-c",
+                  "selection_tier": 1,
+                  "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+                  "referee_node_id": "node-c",
+                  "half_a_node_id": "node-a",
+                  "half_b_node_id": "node-b",
+                  "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+                  "referee_prompt": "requester_attested",
+                  "referee_answer_digest": "4f02f13d3d98168083931359e738d2552deaeaf6bd4743997cd0c6c5018bd2fa",
+                  "split_margin": {
+                    "unit": "nats",
+                    "threshold": "4.410000",
+                    "referee": {
+                      "token_index": 6,
+                      "top1": {
+                        "token": " 4",
+                        "logprob": "-0.050000"
+                      },
+                      "top2": {
+                        "token": "‖",
+                        "logprob": "-13.280000"
+                      },
+                      "margin": "13.230000"
+                    }
+                  },
+                  "twin_bracket_id": "bracket-1"
+                },
+                "epistemic_type": "adjudication",
+                "chain": {
+                  "parent_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                  "relation": "confirms"
+                },
+                "provenance": "referee",
+                "signed_by_node": true
+              },
+              "issued_at_is_now": true
+            }
+          ]
+        }
+      }
+    ],
+    "margin_well_below": [
+      {
+        "reply": {
+          "adjudication_verdict": 1,
+          "verdict": "inconclusive",
+          "twin_bracket_id": "bracket-1",
+          "half_node_ids": [
+            "node-a",
+            "node-b"
+          ],
+          "referee_node_id": "node-c",
+          "referee_capsule_id": "0a95c11d6bb591881511d81617e151281c62b28b7ea9c9cd3a29d0eb8dafba56",
+          "halves": [
+            "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+            "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d"
+          ],
+          "verdict_capsule_id": "verdict-1",
+          "verdict_capsule_id_is_the_records": true,
+          "verdict_capsule": {
+            "block": {
+              "schema": "capsule-emit-mesh/adjudication/v1",
+              "source": "twin_comparison",
+              "capture_method": "deterministic_replay",
+              "verdict": "inconclusive",
+              "status": "UNKNOWN",
+              "divergence_index": 3,
+              "prefix_digest": "0ec7db901e57f96f8d195aa69bbdbd858eb13d125021a24c90972a5ce35d587b",
+              "twin_owner_distinct": true,
+              "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+              "half_a_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+              "half_b_capsule_id": "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d",
+              "referee_capsule_id": "0a95c11d6bb591881511d81617e151281c62b28b7ea9c9cd3a29d0eb8dafba56",
+              "referee_id": "node-c",
+              "selection_tier": 1,
+              "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+              "referee_node_id": "node-c",
+              "half_a_node_id": "node-a",
+              "half_b_node_id": "node-b",
+              "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+              "referee_prompt": "requester_attested",
+              "referee_answer_digest": "5fde55218374bdb96691949882bb14b2bfcaa0debf5477769025990bc197e3c1",
+              "inconclusive_because": "split_within_margin",
+              "split_margin": {
+                "unit": "nats",
+                "threshold": "4.410000",
+                "referee": {
+                  "token_index": 6,
+                  "top1": {
+                    "token": " 4",
+                    "logprob": "-0.050000"
+                  },
+                  "top2": {
+                    "token": "‖",
+                    "logprob": "-0.491000"
+                  },
+                  "margin": "0.441000"
+                }
+              },
+              "twin_bracket_id": "bracket-1"
+            },
+            "epistemic_type": "adjudication",
+            "chain": {
+              "parent_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+              "relation": "confirms"
+            },
+            "provenance": "referee",
+            "signed_by_node": true
+          },
+          "issued_at_is_now": true
+        },
+        "appended": {
+          "issued-adjudications.jsonl": [
+            {
+              "verdict": "inconclusive",
+              "twin_bracket_id": "bracket-1",
+              "half_node_ids": [
+                "node-a",
+                "node-b"
+              ],
+              "referee_node_id": "node-c",
+              "referee_capsule_id": "0a95c11d6bb591881511d81617e151281c62b28b7ea9c9cd3a29d0eb8dafba56",
+              "halves": [
+                "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d"
+              ],
+              "verdict_capsule_id": "verdict-1",
+              "verdict_capsule_id_is_the_records": true,
+              "verdict_capsule": {
+                "block": {
+                  "schema": "capsule-emit-mesh/adjudication/v1",
+                  "source": "twin_comparison",
+                  "capture_method": "deterministic_replay",
+                  "verdict": "inconclusive",
+                  "status": "UNKNOWN",
+                  "divergence_index": 3,
+                  "prefix_digest": "0ec7db901e57f96f8d195aa69bbdbd858eb13d125021a24c90972a5ce35d587b",
+                  "twin_owner_distinct": true,
+                  "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+                  "half_a_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                  "half_b_capsule_id": "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d",
+                  "referee_capsule_id": "0a95c11d6bb591881511d81617e151281c62b28b7ea9c9cd3a29d0eb8dafba56",
+                  "referee_id": "node-c",
+                  "selection_tier": 1,
+                  "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+                  "referee_node_id": "node-c",
+                  "half_a_node_id": "node-a",
+                  "half_b_node_id": "node-b",
+                  "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+                  "referee_prompt": "requester_attested",
+                  "referee_answer_digest": "5fde55218374bdb96691949882bb14b2bfcaa0debf5477769025990bc197e3c1",
+                  "inconclusive_because": "split_within_margin",
+                  "split_margin": {
+                    "unit": "nats",
+                    "threshold": "4.410000",
+                    "referee": {
+                      "token_index": 6,
+                      "top1": {
+                        "token": " 4",
+                        "logprob": "-0.050000"
+                      },
+                      "top2": {
+                        "token": "‖",
+                        "logprob": "-0.491000"
+                      },
+                      "margin": "0.441000"
+                    }
+                  },
+                  "twin_bracket_id": "bracket-1"
+                },
+                "epistemic_type": "adjudication",
+                "chain": {
+                  "parent_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                  "relation": "confirms"
+                },
+                "provenance": "referee",
+                "signed_by_node": true
+              },
+              "issued_at_is_now": true
+            }
+          ]
+        }
+      }
+    ],
+    "margin_exactly_at_the_threshold": [
+      {
+        "reply": {
+          "adjudication_verdict": 1,
+          "verdict": "contradicted:node-b",
+          "twin_bracket_id": "bracket-1",
+          "half_node_ids": [
+            "node-a",
+            "node-b"
+          ],
+          "referee_node_id": "node-c",
+          "referee_capsule_id": "521feb5c4671be93d748c52e04533306a0892b863601971ec3909dda557c0c75",
+          "halves": [
+            "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+            "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d"
+          ],
+          "verdict_capsule_id": "verdict-1",
+          "verdict_capsule_id_is_the_records": true,
+          "verdict_capsule": {
+            "block": {
+              "schema": "capsule-emit-mesh/adjudication/v1",
+              "source": "twin_comparison",
+              "capture_method": "deterministic_replay",
+              "verdict": "contradicted:node-b",
+              "status": "CONTRADICTED",
+              "divergence_index": 3,
+              "prefix_digest": "0ec7db901e57f96f8d195aa69bbdbd858eb13d125021a24c90972a5ce35d587b",
+              "twin_owner_distinct": true,
+              "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+              "half_a_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+              "half_b_capsule_id": "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d",
+              "referee_capsule_id": "521feb5c4671be93d748c52e04533306a0892b863601971ec3909dda557c0c75",
+              "referee_id": "node-c",
+              "selection_tier": 1,
+              "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+              "referee_node_id": "node-c",
+              "half_a_node_id": "node-a",
+              "half_b_node_id": "node-b",
+              "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+              "referee_prompt": "requester_attested",
+              "referee_answer_digest": "1a87e85bdd557713a77556a24c64ee42558dc88b4cef6469193faa248fd8bf23",
+              "split_margin": {
+                "unit": "nats",
+                "threshold": "4.410000",
+                "referee": {
+                  "token_index": 6,
+                  "top1": {
+                    "token": " 4",
+                    "logprob": "-0.050000"
+                  },
+                  "top2": {
+                    "token": "‖",
+                    "logprob": "-4.460000"
+                  },
+                  "margin": "4.410000"
+                }
+              },
+              "twin_bracket_id": "bracket-1"
+            },
+            "epistemic_type": "adjudication",
+            "chain": {
+              "parent_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+              "relation": "confirms"
+            },
+            "provenance": "referee",
+            "signed_by_node": true
+          },
+          "issued_at_is_now": true
+        },
+        "appended": {
+          "issued-adjudications.jsonl": [
+            {
+              "verdict": "contradicted:node-b",
+              "twin_bracket_id": "bracket-1",
+              "half_node_ids": [
+                "node-a",
+                "node-b"
+              ],
+              "referee_node_id": "node-c",
+              "referee_capsule_id": "521feb5c4671be93d748c52e04533306a0892b863601971ec3909dda557c0c75",
+              "halves": [
+                "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d"
+              ],
+              "verdict_capsule_id": "verdict-1",
+              "verdict_capsule_id_is_the_records": true,
+              "verdict_capsule": {
+                "block": {
+                  "schema": "capsule-emit-mesh/adjudication/v1",
+                  "source": "twin_comparison",
+                  "capture_method": "deterministic_replay",
+                  "verdict": "contradicted:node-b",
+                  "status": "CONTRADICTED",
+                  "divergence_index": 3,
+                  "prefix_digest": "0ec7db901e57f96f8d195aa69bbdbd858eb13d125021a24c90972a5ce35d587b",
+                  "twin_owner_distinct": true,
+                  "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+                  "half_a_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                  "half_b_capsule_id": "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d",
+                  "referee_capsule_id": "521feb5c4671be93d748c52e04533306a0892b863601971ec3909dda557c0c75",
+                  "referee_id": "node-c",
+                  "selection_tier": 1,
+                  "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+                  "referee_node_id": "node-c",
+                  "half_a_node_id": "node-a",
+                  "half_b_node_id": "node-b",
+                  "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+                  "referee_prompt": "requester_attested",
+                  "referee_answer_digest": "1a87e85bdd557713a77556a24c64ee42558dc88b4cef6469193faa248fd8bf23",
+                  "split_margin": {
+                    "unit": "nats",
+                    "threshold": "4.410000",
+                    "referee": {
+                      "token_index": 6,
+                      "top1": {
+                        "token": " 4",
+                        "logprob": "-0.050000"
+                      },
+                      "top2": {
+                        "token": "‖",
+                        "logprob": "-4.460000"
+                      },
+                      "margin": "4.410000"
+                    }
+                  },
+                  "twin_bracket_id": "bracket-1"
+                },
+                "epistemic_type": "adjudication",
+                "chain": {
+                  "parent_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                  "relation": "confirms"
+                },
+                "provenance": "referee",
+                "signed_by_node": true
+              },
+              "issued_at_is_now": true
+            }
+          ]
+        }
+      }
+    ],
+    "margin_one_micronat_below": [
+      {
+        "reply": {
+          "adjudication_verdict": 1,
+          "verdict": "inconclusive",
+          "twin_bracket_id": "bracket-1",
+          "half_node_ids": [
+            "node-a",
+            "node-b"
+          ],
+          "referee_node_id": "node-c",
+          "referee_capsule_id": "bac37db7fdadc4bd9a0ae3c31fed914646c77a5cbfe2acefc42c58e7a3d662d9",
+          "halves": [
+            "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+            "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d"
+          ],
+          "verdict_capsule_id": "verdict-1",
+          "verdict_capsule_id_is_the_records": true,
+          "verdict_capsule": {
+            "block": {
+              "schema": "capsule-emit-mesh/adjudication/v1",
+              "source": "twin_comparison",
+              "capture_method": "deterministic_replay",
+              "verdict": "inconclusive",
+              "status": "UNKNOWN",
+              "divergence_index": 3,
+              "prefix_digest": "0ec7db901e57f96f8d195aa69bbdbd858eb13d125021a24c90972a5ce35d587b",
+              "twin_owner_distinct": true,
+              "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+              "half_a_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+              "half_b_capsule_id": "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d",
+              "referee_capsule_id": "bac37db7fdadc4bd9a0ae3c31fed914646c77a5cbfe2acefc42c58e7a3d662d9",
+              "referee_id": "node-c",
+              "selection_tier": 1,
+              "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+              "referee_node_id": "node-c",
+              "half_a_node_id": "node-a",
+              "half_b_node_id": "node-b",
+              "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+              "referee_prompt": "requester_attested",
+              "referee_answer_digest": "8cff6b5d958f36cf8a4fa09cc5d67d3a9acb99ed1fa329a47cfefd4744b37bd5",
+              "inconclusive_because": "split_within_margin",
+              "split_margin": {
+                "unit": "nats",
+                "threshold": "4.410000",
+                "referee": {
+                  "token_index": 6,
+                  "top1": {
+                    "token": " 4",
+                    "logprob": "-0.050000"
+                  },
+                  "top2": {
+                    "token": "‖",
+                    "logprob": "-4.459999"
+                  },
+                  "margin": "4.409999"
+                }
+              },
+              "twin_bracket_id": "bracket-1"
+            },
+            "epistemic_type": "adjudication",
+            "chain": {
+              "parent_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+              "relation": "confirms"
+            },
+            "provenance": "referee",
+            "signed_by_node": true
+          },
+          "issued_at_is_now": true
+        },
+        "appended": {
+          "issued-adjudications.jsonl": [
+            {
+              "verdict": "inconclusive",
+              "twin_bracket_id": "bracket-1",
+              "half_node_ids": [
+                "node-a",
+                "node-b"
+              ],
+              "referee_node_id": "node-c",
+              "referee_capsule_id": "bac37db7fdadc4bd9a0ae3c31fed914646c77a5cbfe2acefc42c58e7a3d662d9",
+              "halves": [
+                "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d"
+              ],
+              "verdict_capsule_id": "verdict-1",
+              "verdict_capsule_id_is_the_records": true,
+              "verdict_capsule": {
+                "block": {
+                  "schema": "capsule-emit-mesh/adjudication/v1",
+                  "source": "twin_comparison",
+                  "capture_method": "deterministic_replay",
+                  "verdict": "inconclusive",
+                  "status": "UNKNOWN",
+                  "divergence_index": 3,
+                  "prefix_digest": "0ec7db901e57f96f8d195aa69bbdbd858eb13d125021a24c90972a5ce35d587b",
+                  "twin_owner_distinct": true,
+                  "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+                  "half_a_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                  "half_b_capsule_id": "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d",
+                  "referee_capsule_id": "bac37db7fdadc4bd9a0ae3c31fed914646c77a5cbfe2acefc42c58e7a3d662d9",
+                  "referee_id": "node-c",
+                  "selection_tier": 1,
+                  "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+                  "referee_node_id": "node-c",
+                  "half_a_node_id": "node-a",
+                  "half_b_node_id": "node-b",
+                  "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+                  "referee_prompt": "requester_attested",
+                  "referee_answer_digest": "8cff6b5d958f36cf8a4fa09cc5d67d3a9acb99ed1fa329a47cfefd4744b37bd5",
+                  "inconclusive_because": "split_within_margin",
+                  "split_margin": {
+                    "unit": "nats",
+                    "threshold": "4.410000",
+                    "referee": {
+                      "token_index": 6,
+                      "top1": {
+                        "token": " 4",
+                        "logprob": "-0.050000"
+                      },
+                      "top2": {
+                        "token": "‖",
+                        "logprob": "-4.459999"
+                      },
+                      "margin": "4.409999"
+                    }
+                  },
+                  "twin_bracket_id": "bracket-1"
+                },
+                "epistemic_type": "adjudication",
+                "chain": {
+                  "parent_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                  "relation": "confirms"
+                },
+                "provenance": "referee",
+                "signed_by_node": true
+              },
+              "issued_at_is_now": true
+            }
+          ]
+        }
+      }
+    ],
+    "referee_answer_without_logprobs": [
+      {
+        "reply": {
+          "adjudication_verdict": 1,
+          "verdict": "inconclusive",
+          "twin_bracket_id": "bracket-1",
+          "half_node_ids": [
+            "node-a",
+            "node-b"
+          ],
+          "referee_node_id": "node-c",
+          "referee_capsule_id": "c2e88ecdfea2c5dead1db0b76f9566b48ac15adae40fd95da5040a4ce2d5a65f",
+          "halves": [
+            "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+            "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d"
+          ],
+          "verdict_capsule_id": "verdict-1",
+          "verdict_capsule_id_is_the_records": true,
+          "verdict_capsule": {
+            "block": {
+              "schema": "capsule-emit-mesh/adjudication/v1",
+              "source": "twin_comparison",
+              "capture_method": "deterministic_replay",
+              "verdict": "inconclusive",
+              "status": "UNKNOWN",
+              "divergence_index": 3,
+              "prefix_digest": "0ec7db901e57f96f8d195aa69bbdbd858eb13d125021a24c90972a5ce35d587b",
+              "twin_owner_distinct": true,
+              "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+              "half_a_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+              "half_b_capsule_id": "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d",
+              "referee_capsule_id": "c2e88ecdfea2c5dead1db0b76f9566b48ac15adae40fd95da5040a4ce2d5a65f",
+              "referee_id": "node-c",
+              "selection_tier": 1,
+              "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+              "referee_node_id": "node-c",
+              "half_a_node_id": "node-a",
+              "half_b_node_id": "node-b",
+              "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+              "referee_prompt": "requester_attested",
+              "referee_answer_digest": "0242bc9526adbb014565b8175ff134e2ba8731f4a13cab2d1b4d8aff8727586e",
+              "inconclusive_because": "split_margin_unavailable",
+              "split_margin": {
+                "unit": "nats",
+                "threshold": "4.410000",
+                "referee": null
+              },
+              "twin_bracket_id": "bracket-1"
+            },
+            "epistemic_type": "adjudication",
+            "chain": {
+              "parent_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+              "relation": "confirms"
+            },
+            "provenance": "referee",
+            "signed_by_node": true
+          },
+          "issued_at_is_now": true
+        },
+        "appended": {
+          "issued-adjudications.jsonl": [
+            {
+              "verdict": "inconclusive",
+              "twin_bracket_id": "bracket-1",
+              "half_node_ids": [
+                "node-a",
+                "node-b"
+              ],
+              "referee_node_id": "node-c",
+              "referee_capsule_id": "c2e88ecdfea2c5dead1db0b76f9566b48ac15adae40fd95da5040a4ce2d5a65f",
+              "halves": [
+                "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d"
+              ],
+              "verdict_capsule_id": "verdict-1",
+              "verdict_capsule_id_is_the_records": true,
+              "verdict_capsule": {
+                "block": {
+                  "schema": "capsule-emit-mesh/adjudication/v1",
+                  "source": "twin_comparison",
+                  "capture_method": "deterministic_replay",
+                  "verdict": "inconclusive",
+                  "status": "UNKNOWN",
+                  "divergence_index": 3,
+                  "prefix_digest": "0ec7db901e57f96f8d195aa69bbdbd858eb13d125021a24c90972a5ce35d587b",
+                  "twin_owner_distinct": true,
+                  "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+                  "half_a_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                  "half_b_capsule_id": "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d",
+                  "referee_capsule_id": "c2e88ecdfea2c5dead1db0b76f9566b48ac15adae40fd95da5040a4ce2d5a65f",
+                  "referee_id": "node-c",
+                  "selection_tier": 1,
+                  "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+                  "referee_node_id": "node-c",
+                  "half_a_node_id": "node-a",
+                  "half_b_node_id": "node-b",
+                  "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+                  "referee_prompt": "requester_attested",
+                  "referee_answer_digest": "0242bc9526adbb014565b8175ff134e2ba8731f4a13cab2d1b4d8aff8727586e",
+                  "inconclusive_because": "split_margin_unavailable",
+                  "split_margin": {
+                    "unit": "nats",
+                    "threshold": "4.410000",
+                    "referee": null
+                  },
+                  "twin_bracket_id": "bracket-1"
+                },
+                "epistemic_type": "adjudication",
+                "chain": {
+                  "parent_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                  "relation": "confirms"
+                },
+                "provenance": "referee",
+                "signed_by_node": true
+              },
+              "issued_at_is_now": true
+            }
+          ]
+        }
+      }
+    ],
+    "twin_claims_a_near_tie": [
+      {
+        "reply": {
+          "adjudication_verdict": 1,
+          "verdict": "contradicted:node-b",
+          "twin_bracket_id": "bracket-1",
+          "half_node_ids": [
+            "node-a",
+            "node-b"
+          ],
+          "referee_node_id": "node-c",
+          "referee_capsule_id": "b1880b17a8972d320aebb8d808f27a5218134ce7b7a2e0386b311c98cb1b9344",
+          "halves": [
+            "20c56e7df75701cf34756fa7f012f02eede0f87ecc1d7270bd8e62a0e263a711",
+            "4e497c9a7863f522355ec66f14976064d0033894170d8c8e38fc4faabf61bc3a"
+          ],
+          "verdict_capsule_id": "verdict-1",
+          "verdict_capsule_id_is_the_records": true,
+          "verdict_capsule": {
+            "block": {
+              "schema": "capsule-emit-mesh/adjudication/v1",
+              "source": "twin_comparison",
+              "capture_method": "deterministic_replay",
+              "verdict": "contradicted:node-b",
+              "status": "CONTRADICTED",
+              "divergence_index": 3,
+              "prefix_digest": "0ec7db901e57f96f8d195aa69bbdbd858eb13d125021a24c90972a5ce35d587b",
+              "twin_owner_distinct": true,
+              "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+              "half_a_capsule_id": "20c56e7df75701cf34756fa7f012f02eede0f87ecc1d7270bd8e62a0e263a711",
+              "half_b_capsule_id": "4e497c9a7863f522355ec66f14976064d0033894170d8c8e38fc4faabf61bc3a",
+              "referee_capsule_id": "b1880b17a8972d320aebb8d808f27a5218134ce7b7a2e0386b311c98cb1b9344",
+              "referee_id": "node-c",
+              "selection_tier": 1,
+              "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+              "referee_node_id": "node-c",
+              "half_a_node_id": "node-a",
+              "half_b_node_id": "node-b",
+              "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+              "referee_prompt": "requester_attested",
+              "referee_answer_digest": "4f02f13d3d98168083931359e738d2552deaeaf6bd4743997cd0c6c5018bd2fa",
+              "split_margin": {
+                "unit": "nats",
+                "threshold": "4.410000",
+                "referee": {
+                  "token_index": 6,
+                  "top1": {
+                    "token": " 4",
+                    "logprob": "-0.050000"
+                  },
+                  "top2": {
+                    "token": "‖",
+                    "logprob": "-13.280000"
+                  },
+                  "margin": "13.230000"
+                },
+                "twin_a": {
+                  "token_index": 6,
+                  "top1": {
+                    "token": " 4",
+                    "logprob": "-0.050000"
+                  },
+                  "top2": {
+                    "token": "‖",
+                    "logprob": "-8.870000"
+                  },
+                  "margin": "8.820000"
+                },
+                "twin_b": {
+                  "token_index": 6,
+                  "top1": {
+                    "token": " 999",
+                    "logprob": "-0.050000"
+                  },
+                  "top2": {
+                    "token": "‖",
+                    "logprob": "-0.051000"
+                  },
+                  "margin": "0.001000"
+                }
+              },
+              "twin_bracket_id": "bracket-1"
+            },
+            "epistemic_type": "adjudication",
+            "chain": {
+              "parent_capsule_id": "20c56e7df75701cf34756fa7f012f02eede0f87ecc1d7270bd8e62a0e263a711",
+              "relation": "confirms"
+            },
+            "provenance": "referee",
+            "signed_by_node": true
+          },
+          "issued_at_is_now": true
+        },
+        "appended": {
+          "issued-adjudications.jsonl": [
+            {
+              "verdict": "contradicted:node-b",
+              "twin_bracket_id": "bracket-1",
+              "half_node_ids": [
+                "node-a",
+                "node-b"
+              ],
+              "referee_node_id": "node-c",
+              "referee_capsule_id": "b1880b17a8972d320aebb8d808f27a5218134ce7b7a2e0386b311c98cb1b9344",
+              "halves": [
+                "20c56e7df75701cf34756fa7f012f02eede0f87ecc1d7270bd8e62a0e263a711",
+                "4e497c9a7863f522355ec66f14976064d0033894170d8c8e38fc4faabf61bc3a"
+              ],
+              "verdict_capsule_id": "verdict-1",
+              "verdict_capsule_id_is_the_records": true,
+              "verdict_capsule": {
+                "block": {
+                  "schema": "capsule-emit-mesh/adjudication/v1",
+                  "source": "twin_comparison",
+                  "capture_method": "deterministic_replay",
+                  "verdict": "contradicted:node-b",
+                  "status": "CONTRADICTED",
+                  "divergence_index": 3,
+                  "prefix_digest": "0ec7db901e57f96f8d195aa69bbdbd858eb13d125021a24c90972a5ce35d587b",
+                  "twin_owner_distinct": true,
+                  "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+                  "half_a_capsule_id": "20c56e7df75701cf34756fa7f012f02eede0f87ecc1d7270bd8e62a0e263a711",
+                  "half_b_capsule_id": "4e497c9a7863f522355ec66f14976064d0033894170d8c8e38fc4faabf61bc3a",
+                  "referee_capsule_id": "b1880b17a8972d320aebb8d808f27a5218134ce7b7a2e0386b311c98cb1b9344",
+                  "referee_id": "node-c",
+                  "selection_tier": 1,
+                  "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+                  "referee_node_id": "node-c",
+                  "half_a_node_id": "node-a",
+                  "half_b_node_id": "node-b",
+                  "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+                  "referee_prompt": "requester_attested",
+                  "referee_answer_digest": "4f02f13d3d98168083931359e738d2552deaeaf6bd4743997cd0c6c5018bd2fa",
+                  "split_margin": {
+                    "unit": "nats",
+                    "threshold": "4.410000",
+                    "referee": {
+                      "token_index": 6,
+                      "top1": {
+                        "token": " 4",
+                        "logprob": "-0.050000"
+                      },
+                      "top2": {
+                        "token": "‖",
+                        "logprob": "-13.280000"
+                      },
+                      "margin": "13.230000"
+                    },
+                    "twin_a": {
+                      "token_index": 6,
+                      "top1": {
+                        "token": " 4",
+                        "logprob": "-0.050000"
+                      },
+                      "top2": {
+                        "token": "‖",
+                        "logprob": "-8.870000"
+                      },
+                      "margin": "8.820000"
+                    },
+                    "twin_b": {
+                      "token_index": 6,
+                      "top1": {
+                        "token": " 999",
+                        "logprob": "-0.050000"
+                      },
+                      "top2": {
+                        "token": "‖",
+                        "logprob": "-0.051000"
+                      },
+                      "margin": "0.001000"
+                    }
+                  },
+                  "twin_bracket_id": "bracket-1"
+                },
+                "epistemic_type": "adjudication",
+                "chain": {
+                  "parent_capsule_id": "20c56e7df75701cf34756fa7f012f02eede0f87ecc1d7270bd8e62a0e263a711",
+                  "relation": "confirms"
+                },
+                "provenance": "referee",
+                "signed_by_node": true
+              },
+              "issued_at_is_now": true
+            }
+          ]
+        }
+      }
+    ],
+    "multi_token_word_least_margin_counts": [
+      {
+        "reply": {
+          "adjudication_verdict": 1,
+          "verdict": "contradicted:node-b",
+          "twin_bracket_id": "bracket-1",
+          "half_node_ids": [
+            "node-a",
+            "node-b"
+          ],
+          "referee_node_id": "node-c",
+          "referee_capsule_id": "398d606b90613193ace15dd6469662aa61eb681877067948277846d09e2de37e",
+          "halves": [
+            "9b64d31fdd0a42a4699d1ba77debe6af8ac9a0c3d44f790578a745700b97ad0b",
+            "b4df6eac99402d41e848e10f138aacf1d115f34dc8fa3075155af555e57eedfe"
+          ],
+          "verdict_capsule_id": "verdict-1",
+          "verdict_capsule_id_is_the_records": true,
+          "verdict_capsule": {
+            "block": {
+              "schema": "capsule-emit-mesh/adjudication/v1",
+              "source": "twin_comparison",
+              "capture_method": "deterministic_replay",
+              "verdict": "contradicted:node-b",
+              "status": "CONTRADICTED",
+              "divergence_index": 1,
+              "prefix_digest": "ffcadd7ce87fa9812037a0aa3b1d04f4d138ec64d2ee6d13ed4a08e6d2b7a171",
+              "twin_owner_distinct": true,
+              "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+              "half_a_capsule_id": "9b64d31fdd0a42a4699d1ba77debe6af8ac9a0c3d44f790578a745700b97ad0b",
+              "half_b_capsule_id": "b4df6eac99402d41e848e10f138aacf1d115f34dc8fa3075155af555e57eedfe",
+              "referee_capsule_id": "398d606b90613193ace15dd6469662aa61eb681877067948277846d09e2de37e",
+              "referee_id": "node-c",
+              "selection_tier": 1,
+              "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+              "referee_node_id": "node-c",
+              "half_a_node_id": "node-a",
+              "half_b_node_id": "node-b",
+              "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+              "referee_prompt": "requester_attested",
+              "referee_answer_digest": "c9091de73b17caa8b8a486fc1d0787207c9e4c022475f4d4a4870efe775cdf66",
+              "split_margin": {
+                "unit": "nats",
+                "threshold": "4.410000",
+                "referee": {
+                  "token_index": 1,
+                  "top1": {
+                    "token": " de",
+                    "logprob": "-0.050000"
+                  },
+                  "top2": {
+                    "token": "‖",
+                    "logprob": "-8.870000"
+                  },
+                  "margin": "8.820000"
+                }
+              },
+              "twin_bracket_id": "bracket-1"
+            },
+            "epistemic_type": "adjudication",
+            "chain": {
+              "parent_capsule_id": "9b64d31fdd0a42a4699d1ba77debe6af8ac9a0c3d44f790578a745700b97ad0b",
+              "relation": "confirms"
+            },
+            "provenance": "referee",
+            "signed_by_node": true
+          },
+          "issued_at_is_now": true
+        },
+        "appended": {
+          "issued-adjudications.jsonl": [
+            {
+              "verdict": "contradicted:node-b",
+              "twin_bracket_id": "bracket-1",
+              "half_node_ids": [
+                "node-a",
+                "node-b"
+              ],
+              "referee_node_id": "node-c",
+              "referee_capsule_id": "398d606b90613193ace15dd6469662aa61eb681877067948277846d09e2de37e",
+              "halves": [
+                "9b64d31fdd0a42a4699d1ba77debe6af8ac9a0c3d44f790578a745700b97ad0b",
+                "b4df6eac99402d41e848e10f138aacf1d115f34dc8fa3075155af555e57eedfe"
+              ],
+              "verdict_capsule_id": "verdict-1",
+              "verdict_capsule_id_is_the_records": true,
+              "verdict_capsule": {
+                "block": {
+                  "schema": "capsule-emit-mesh/adjudication/v1",
+                  "source": "twin_comparison",
+                  "capture_method": "deterministic_replay",
+                  "verdict": "contradicted:node-b",
+                  "status": "CONTRADICTED",
+                  "divergence_index": 1,
+                  "prefix_digest": "ffcadd7ce87fa9812037a0aa3b1d04f4d138ec64d2ee6d13ed4a08e6d2b7a171",
+                  "twin_owner_distinct": true,
+                  "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+                  "half_a_capsule_id": "9b64d31fdd0a42a4699d1ba77debe6af8ac9a0c3d44f790578a745700b97ad0b",
+                  "half_b_capsule_id": "b4df6eac99402d41e848e10f138aacf1d115f34dc8fa3075155af555e57eedfe",
+                  "referee_capsule_id": "398d606b90613193ace15dd6469662aa61eb681877067948277846d09e2de37e",
+                  "referee_id": "node-c",
+                  "selection_tier": 1,
+                  "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+                  "referee_node_id": "node-c",
+                  "half_a_node_id": "node-a",
+                  "half_b_node_id": "node-b",
+                  "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+                  "referee_prompt": "requester_attested",
+                  "referee_answer_digest": "c9091de73b17caa8b8a486fc1d0787207c9e4c022475f4d4a4870efe775cdf66",
+                  "split_margin": {
+                    "unit": "nats",
+                    "threshold": "4.410000",
+                    "referee": {
+                      "token_index": 1,
+                      "top1": {
+                        "token": " de",
+                        "logprob": "-0.050000"
+                      },
+                      "top2": {
+                        "token": "‖",
+                        "logprob": "-8.870000"
+                      },
+                      "margin": "8.820000"
+                    }
+                  },
+                  "twin_bracket_id": "bracket-1"
+                },
+                "epistemic_type": "adjudication",
+                "chain": {
+                  "parent_capsule_id": "9b64d31fdd0a42a4699d1ba77debe6af8ac9a0c3d44f790578a745700b97ad0b",
+                  "relation": "confirms"
+                },
+                "provenance": "referee",
+                "signed_by_node": true
+              },
+              "issued_at_is_now": true
+            }
+          ]
+        }
+      }
+    ],
+    "multi_token_word_near_tie_before_the_departing_byte": [
+      {
+        "reply": {
+          "adjudication_verdict": 1,
+          "verdict": "inconclusive",
+          "twin_bracket_id": "bracket-1",
+          "half_node_ids": [
+            "node-a",
+            "node-b"
+          ],
+          "referee_node_id": "node-c",
+          "referee_capsule_id": "5e1c48f55442741663fce6b0cc540dd90683b2493acb037e9e81df6c306efc91",
+          "halves": [
+            "9b64d31fdd0a42a4699d1ba77debe6af8ac9a0c3d44f790578a745700b97ad0b",
+            "b4df6eac99402d41e848e10f138aacf1d115f34dc8fa3075155af555e57eedfe"
+          ],
+          "verdict_capsule_id": "verdict-1",
+          "verdict_capsule_id_is_the_records": true,
+          "verdict_capsule": {
+            "block": {
+              "schema": "capsule-emit-mesh/adjudication/v1",
+              "source": "twin_comparison",
+              "capture_method": "deterministic_replay",
+              "verdict": "inconclusive",
+              "status": "UNKNOWN",
+              "divergence_index": 1,
+              "prefix_digest": "ffcadd7ce87fa9812037a0aa3b1d04f4d138ec64d2ee6d13ed4a08e6d2b7a171",
+              "twin_owner_distinct": true,
+              "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+              "half_a_capsule_id": "9b64d31fdd0a42a4699d1ba77debe6af8ac9a0c3d44f790578a745700b97ad0b",
+              "half_b_capsule_id": "b4df6eac99402d41e848e10f138aacf1d115f34dc8fa3075155af555e57eedfe",
+              "referee_capsule_id": "5e1c48f55442741663fce6b0cc540dd90683b2493acb037e9e81df6c306efc91",
+              "referee_id": "node-c",
+              "selection_tier": 1,
+              "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+              "referee_node_id": "node-c",
+              "half_a_node_id": "node-a",
+              "half_b_node_id": "node-b",
+              "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+              "referee_prompt": "requester_attested",
+              "referee_answer_digest": "a54115081080819c9208c2e9e4756ba4cac6925eb20696d0a505a3cc1da3f237",
+              "inconclusive_because": "split_within_margin",
+              "split_margin": {
+                "unit": "nats",
+                "threshold": "4.410000",
+                "referee": {
+                  "token_index": 1,
+                  "top1": {
+                    "token": " de",
+                    "logprob": "-0.050000"
+                  },
+                  "top2": {
+                    "token": "‖",
+                    "logprob": "-0.491000"
+                  },
+                  "margin": "0.441000"
+                }
+              },
+              "twin_bracket_id": "bracket-1"
+            },
+            "epistemic_type": "adjudication",
+            "chain": {
+              "parent_capsule_id": "9b64d31fdd0a42a4699d1ba77debe6af8ac9a0c3d44f790578a745700b97ad0b",
+              "relation": "confirms"
+            },
+            "provenance": "referee",
+            "signed_by_node": true
+          },
+          "issued_at_is_now": true
+        },
+        "appended": {
+          "issued-adjudications.jsonl": [
+            {
+              "verdict": "inconclusive",
+              "twin_bracket_id": "bracket-1",
+              "half_node_ids": [
+                "node-a",
+                "node-b"
+              ],
+              "referee_node_id": "node-c",
+              "referee_capsule_id": "5e1c48f55442741663fce6b0cc540dd90683b2493acb037e9e81df6c306efc91",
+              "halves": [
+                "9b64d31fdd0a42a4699d1ba77debe6af8ac9a0c3d44f790578a745700b97ad0b",
+                "b4df6eac99402d41e848e10f138aacf1d115f34dc8fa3075155af555e57eedfe"
+              ],
+              "verdict_capsule_id": "verdict-1",
+              "verdict_capsule_id_is_the_records": true,
+              "verdict_capsule": {
+                "block": {
+                  "schema": "capsule-emit-mesh/adjudication/v1",
+                  "source": "twin_comparison",
+                  "capture_method": "deterministic_replay",
+                  "verdict": "inconclusive",
+                  "status": "UNKNOWN",
+                  "divergence_index": 1,
+                  "prefix_digest": "ffcadd7ce87fa9812037a0aa3b1d04f4d138ec64d2ee6d13ed4a08e6d2b7a171",
+                  "twin_owner_distinct": true,
+                  "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+                  "half_a_capsule_id": "9b64d31fdd0a42a4699d1ba77debe6af8ac9a0c3d44f790578a745700b97ad0b",
+                  "half_b_capsule_id": "b4df6eac99402d41e848e10f138aacf1d115f34dc8fa3075155af555e57eedfe",
+                  "referee_capsule_id": "5e1c48f55442741663fce6b0cc540dd90683b2493acb037e9e81df6c306efc91",
+                  "referee_id": "node-c",
+                  "selection_tier": 1,
+                  "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+                  "referee_node_id": "node-c",
+                  "half_a_node_id": "node-a",
+                  "half_b_node_id": "node-b",
+                  "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+                  "referee_prompt": "requester_attested",
+                  "referee_answer_digest": "a54115081080819c9208c2e9e4756ba4cac6925eb20696d0a505a3cc1da3f237",
+                  "inconclusive_because": "split_within_margin",
+                  "split_margin": {
+                    "unit": "nats",
+                    "threshold": "4.410000",
+                    "referee": {
+                      "token_index": 1,
+                      "top1": {
+                        "token": " de",
+                        "logprob": "-0.050000"
+                      },
+                      "top2": {
+                        "token": "‖",
+                        "logprob": "-0.491000"
+                      },
+                      "margin": "0.441000"
+                    }
+                  },
+                  "twin_bracket_id": "bracket-1"
+                },
+                "epistemic_type": "adjudication",
+                "chain": {
+                  "parent_capsule_id": "9b64d31fdd0a42a4699d1ba77debe6af8ac9a0c3d44f790578a745700b97ad0b",
+                  "relation": "confirms"
+                },
+                "provenance": "referee",
+                "signed_by_node": true
+              },
+              "issued_at_is_now": true
+            }
+          ]
+        }
+      }
+    ],
+    "multi_token_word_near_tie_at_the_departure": [
+      {
+        "reply": {
+          "adjudication_verdict": 1,
+          "verdict": "inconclusive",
+          "twin_bracket_id": "bracket-1",
+          "half_node_ids": [
+            "node-a",
+            "node-b"
+          ],
+          "referee_node_id": "node-c",
+          "referee_capsule_id": "d755cb31a04b3112ef6c1ec4b41062cbbf6cadeb6dad0999ef03b9db9fe42cb4",
+          "halves": [
+            "9b64d31fdd0a42a4699d1ba77debe6af8ac9a0c3d44f790578a745700b97ad0b",
+            "b4df6eac99402d41e848e10f138aacf1d115f34dc8fa3075155af555e57eedfe"
+          ],
+          "verdict_capsule_id": "verdict-1",
+          "verdict_capsule_id_is_the_records": true,
+          "verdict_capsule": {
+            "block": {
+              "schema": "capsule-emit-mesh/adjudication/v1",
+              "source": "twin_comparison",
+              "capture_method": "deterministic_replay",
+              "verdict": "inconclusive",
+              "status": "UNKNOWN",
+              "divergence_index": 1,
+              "prefix_digest": "ffcadd7ce87fa9812037a0aa3b1d04f4d138ec64d2ee6d13ed4a08e6d2b7a171",
+              "twin_owner_distinct": true,
+              "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+              "half_a_capsule_id": "9b64d31fdd0a42a4699d1ba77debe6af8ac9a0c3d44f790578a745700b97ad0b",
+              "half_b_capsule_id": "b4df6eac99402d41e848e10f138aacf1d115f34dc8fa3075155af555e57eedfe",
+              "referee_capsule_id": "d755cb31a04b3112ef6c1ec4b41062cbbf6cadeb6dad0999ef03b9db9fe42cb4",
+              "referee_id": "node-c",
+              "selection_tier": 1,
+              "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+              "referee_node_id": "node-c",
+              "half_a_node_id": "node-a",
+              "half_b_node_id": "node-b",
+              "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+              "referee_prompt": "requester_attested",
+              "referee_answer_digest": "b53868836e6455b6b388e84ff9c7bb8143cf0b680e55472ddcac214afd328d65",
+              "inconclusive_because": "split_within_margin",
+              "split_margin": {
+                "unit": "nats",
+                "threshold": "4.410000",
+                "referee": {
+                  "token_index": 2,
+                  "top1": {
+                    "token": "ep",
+                    "logprob": "-0.050000"
+                  },
+                  "top2": {
+                    "token": "‖",
+                    "logprob": "-0.491000"
+                  },
+                  "margin": "0.441000"
+                }
+              },
+              "twin_bracket_id": "bracket-1"
+            },
+            "epistemic_type": "adjudication",
+            "chain": {
+              "parent_capsule_id": "9b64d31fdd0a42a4699d1ba77debe6af8ac9a0c3d44f790578a745700b97ad0b",
+              "relation": "confirms"
+            },
+            "provenance": "referee",
+            "signed_by_node": true
+          },
+          "issued_at_is_now": true
+        },
+        "appended": {
+          "issued-adjudications.jsonl": [
+            {
+              "verdict": "inconclusive",
+              "twin_bracket_id": "bracket-1",
+              "half_node_ids": [
+                "node-a",
+                "node-b"
+              ],
+              "referee_node_id": "node-c",
+              "referee_capsule_id": "d755cb31a04b3112ef6c1ec4b41062cbbf6cadeb6dad0999ef03b9db9fe42cb4",
+              "halves": [
+                "9b64d31fdd0a42a4699d1ba77debe6af8ac9a0c3d44f790578a745700b97ad0b",
+                "b4df6eac99402d41e848e10f138aacf1d115f34dc8fa3075155af555e57eedfe"
+              ],
+              "verdict_capsule_id": "verdict-1",
+              "verdict_capsule_id_is_the_records": true,
+              "verdict_capsule": {
+                "block": {
+                  "schema": "capsule-emit-mesh/adjudication/v1",
+                  "source": "twin_comparison",
+                  "capture_method": "deterministic_replay",
+                  "verdict": "inconclusive",
+                  "status": "UNKNOWN",
+                  "divergence_index": 1,
+                  "prefix_digest": "ffcadd7ce87fa9812037a0aa3b1d04f4d138ec64d2ee6d13ed4a08e6d2b7a171",
+                  "twin_owner_distinct": true,
+                  "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+                  "half_a_capsule_id": "9b64d31fdd0a42a4699d1ba77debe6af8ac9a0c3d44f790578a745700b97ad0b",
+                  "half_b_capsule_id": "b4df6eac99402d41e848e10f138aacf1d115f34dc8fa3075155af555e57eedfe",
+                  "referee_capsule_id": "d755cb31a04b3112ef6c1ec4b41062cbbf6cadeb6dad0999ef03b9db9fe42cb4",
+                  "referee_id": "node-c",
+                  "selection_tier": 1,
+                  "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+                  "referee_node_id": "node-c",
+                  "half_a_node_id": "node-a",
+                  "half_b_node_id": "node-b",
+                  "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+                  "referee_prompt": "requester_attested",
+                  "referee_answer_digest": "b53868836e6455b6b388e84ff9c7bb8143cf0b680e55472ddcac214afd328d65",
+                  "inconclusive_because": "split_within_margin",
+                  "split_margin": {
+                    "unit": "nats",
+                    "threshold": "4.410000",
+                    "referee": {
+                      "token_index": 2,
+                      "top1": {
+                        "token": "ep",
+                        "logprob": "-0.050000"
+                      },
+                      "top2": {
+                        "token": "‖",
+                        "logprob": "-0.491000"
+                      },
+                      "margin": "0.441000"
+                    }
+                  },
+                  "twin_bracket_id": "bracket-1"
+                },
+                "epistemic_type": "adjudication",
+                "chain": {
+                  "parent_capsule_id": "9b64d31fdd0a42a4699d1ba77debe6af8ac9a0c3d44f790578a745700b97ad0b",
+                  "relation": "confirms"
+                },
+                "provenance": "referee",
+                "signed_by_node": true
+              },
+              "issued_at_is_now": true
+            }
+          ]
+        }
+      }
+    ],
+    "split_inside_a_character": [
+      {
+        "reply": {
+          "adjudication_verdict": 1,
+          "verdict": "inconclusive",
+          "twin_bracket_id": "bracket-1",
+          "half_node_ids": [
+            "node-a",
+            "node-b"
+          ],
+          "referee_node_id": "node-c",
+          "referee_capsule_id": "49b373479d23252b62db07183b7c190ed0fe847045e11d80e65247a1f31e4c4b",
+          "halves": [
+            "6a3df6bc4ef38a68b62fe0fd2be5d06e97466354fad662a559d7cb35be8da606",
+            "925ba8c860de8cdeb57685ef887a4b8738f2bf7bba249c39aeb61f823efac30a"
+          ],
+          "verdict_capsule_id": "verdict-1",
+          "verdict_capsule_id_is_the_records": true,
+          "verdict_capsule": {
+            "block": {
+              "schema": "capsule-emit-mesh/adjudication/v1",
+              "source": "twin_comparison",
+              "capture_method": "deterministic_replay",
+              "verdict": "inconclusive",
+              "status": "UNKNOWN",
+              "divergence_index": 1,
+              "prefix_digest": "ffcadd7ce87fa9812037a0aa3b1d04f4d138ec64d2ee6d13ed4a08e6d2b7a171",
+              "twin_owner_distinct": true,
+              "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+              "half_a_capsule_id": "6a3df6bc4ef38a68b62fe0fd2be5d06e97466354fad662a559d7cb35be8da606",
+              "half_b_capsule_id": "925ba8c860de8cdeb57685ef887a4b8738f2bf7bba249c39aeb61f823efac30a",
+              "referee_capsule_id": "49b373479d23252b62db07183b7c190ed0fe847045e11d80e65247a1f31e4c4b",
+              "referee_id": "node-c",
+              "selection_tier": 1,
+              "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+              "referee_node_id": "node-c",
+              "half_a_node_id": "node-a",
+              "half_b_node_id": "node-b",
+              "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+              "referee_prompt": "requester_attested",
+              "referee_answer_digest": "9779f0e39ed4de0256d2b1e109daf496fde1520e7b290465eddf48e543d74576",
+              "inconclusive_because": "split_within_margin",
+              "split_margin": {
+                "unit": "nats",
+                "threshold": "4.410000",
+                "referee": {
+                  "token_index": 3,
+                  "top1": {
+                    "token": "",
+                    "logprob": "-0.050000"
+                  },
+                  "top2": {
+                    "token": "‖",
+                    "logprob": "-0.491000"
+                  },
+                  "margin": "0.441000"
+                }
+              },
+              "twin_bracket_id": "bracket-1"
+            },
+            "epistemic_type": "adjudication",
+            "chain": {
+              "parent_capsule_id": "6a3df6bc4ef38a68b62fe0fd2be5d06e97466354fad662a559d7cb35be8da606",
+              "relation": "confirms"
+            },
+            "provenance": "referee",
+            "signed_by_node": true
+          },
+          "issued_at_is_now": true
+        },
+        "appended": {
+          "issued-adjudications.jsonl": [
+            {
+              "verdict": "inconclusive",
+              "twin_bracket_id": "bracket-1",
+              "half_node_ids": [
+                "node-a",
+                "node-b"
+              ],
+              "referee_node_id": "node-c",
+              "referee_capsule_id": "49b373479d23252b62db07183b7c190ed0fe847045e11d80e65247a1f31e4c4b",
+              "halves": [
+                "6a3df6bc4ef38a68b62fe0fd2be5d06e97466354fad662a559d7cb35be8da606",
+                "925ba8c860de8cdeb57685ef887a4b8738f2bf7bba249c39aeb61f823efac30a"
+              ],
+              "verdict_capsule_id": "verdict-1",
+              "verdict_capsule_id_is_the_records": true,
+              "verdict_capsule": {
+                "block": {
+                  "schema": "capsule-emit-mesh/adjudication/v1",
+                  "source": "twin_comparison",
+                  "capture_method": "deterministic_replay",
+                  "verdict": "inconclusive",
+                  "status": "UNKNOWN",
+                  "divergence_index": 1,
+                  "prefix_digest": "ffcadd7ce87fa9812037a0aa3b1d04f4d138ec64d2ee6d13ed4a08e6d2b7a171",
+                  "twin_owner_distinct": true,
+                  "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+                  "half_a_capsule_id": "6a3df6bc4ef38a68b62fe0fd2be5d06e97466354fad662a559d7cb35be8da606",
+                  "half_b_capsule_id": "925ba8c860de8cdeb57685ef887a4b8738f2bf7bba249c39aeb61f823efac30a",
+                  "referee_capsule_id": "49b373479d23252b62db07183b7c190ed0fe847045e11d80e65247a1f31e4c4b",
+                  "referee_id": "node-c",
+                  "selection_tier": 1,
+                  "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+                  "referee_node_id": "node-c",
+                  "half_a_node_id": "node-a",
+                  "half_b_node_id": "node-b",
+                  "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+                  "referee_prompt": "requester_attested",
+                  "referee_answer_digest": "9779f0e39ed4de0256d2b1e109daf496fde1520e7b290465eddf48e543d74576",
+                  "inconclusive_because": "split_within_margin",
+                  "split_margin": {
+                    "unit": "nats",
+                    "threshold": "4.410000",
+                    "referee": {
+                      "token_index": 3,
+                      "top1": {
+                        "token": "",
+                        "logprob": "-0.050000"
+                      },
+                      "top2": {
+                        "token": "‖",
+                        "logprob": "-0.491000"
+                      },
+                      "margin": "0.441000"
+                    }
+                  },
+                  "twin_bracket_id": "bracket-1"
+                },
+                "epistemic_type": "adjudication",
+                "chain": {
+                  "parent_capsule_id": "6a3df6bc4ef38a68b62fe0fd2be5d06e97466354fad662a559d7cb35be8da606",
+                  "relation": "confirms"
+                },
+                "provenance": "referee",
+                "signed_by_node": true
+              },
+              "issued_at_is_now": true
+            }
+          ]
+        }
+      }
+    ],
+    "referee_stops_where_the_other_twin_goes_on": [
+      {
+        "reply": {
+          "adjudication_verdict": 1,
+          "verdict": "inconclusive",
+          "twin_bracket_id": "bracket-1",
+          "half_node_ids": [
+            "node-a",
+            "node-b"
+          ],
+          "referee_node_id": "node-c",
+          "referee_capsule_id": "02440d6ee7a633c179b596077c95f6ea8d545aff71697d62b0b83c1e323777df",
+          "halves": [
+            "0c2dc684318bf382cbdfc9ab4988261656e328b6cb561b2883ccf3d92472bcb5",
+            "4bcdc2877bbf58fb962d27781bd8eebbbc3857658509a436af136b5e570c8a3a"
+          ],
+          "verdict_capsule_id": "verdict-1",
+          "verdict_capsule_id_is_the_records": true,
+          "verdict_capsule": {
+            "block": {
+              "schema": "capsule-emit-mesh/adjudication/v1",
+              "source": "twin_comparison",
+              "capture_method": "deterministic_replay",
+              "verdict": "inconclusive",
+              "status": "UNKNOWN",
+              "divergence_index": 1,
+              "prefix_digest": "ffcadd7ce87fa9812037a0aa3b1d04f4d138ec64d2ee6d13ed4a08e6d2b7a171",
+              "twin_owner_distinct": true,
+              "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+              "half_a_capsule_id": "0c2dc684318bf382cbdfc9ab4988261656e328b6cb561b2883ccf3d92472bcb5",
+              "half_b_capsule_id": "4bcdc2877bbf58fb962d27781bd8eebbbc3857658509a436af136b5e570c8a3a",
+              "referee_capsule_id": "02440d6ee7a633c179b596077c95f6ea8d545aff71697d62b0b83c1e323777df",
+              "referee_id": "node-c",
+              "selection_tier": 1,
+              "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+              "referee_node_id": "node-c",
+              "half_a_node_id": "node-a",
+              "half_b_node_id": "node-b",
+              "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+              "referee_prompt": "requester_attested",
+              "referee_answer_digest": "b0cdb14844eb90b60a1c881d5f38ab12657cd4ac1a955d753c0163210a51be1e",
+              "inconclusive_because": "split_margin_unavailable",
+              "split_margin": {
+                "unit": "nats",
+                "threshold": "4.410000",
+                "referee": null
+              },
+              "twin_bracket_id": "bracket-1"
+            },
+            "epistemic_type": "adjudication",
+            "chain": {
+              "parent_capsule_id": "0c2dc684318bf382cbdfc9ab4988261656e328b6cb561b2883ccf3d92472bcb5",
+              "relation": "confirms"
+            },
+            "provenance": "referee",
+            "signed_by_node": true
+          },
+          "issued_at_is_now": true
+        },
+        "appended": {
+          "issued-adjudications.jsonl": [
+            {
+              "verdict": "inconclusive",
+              "twin_bracket_id": "bracket-1",
+              "half_node_ids": [
+                "node-a",
+                "node-b"
+              ],
+              "referee_node_id": "node-c",
+              "referee_capsule_id": "02440d6ee7a633c179b596077c95f6ea8d545aff71697d62b0b83c1e323777df",
+              "halves": [
+                "0c2dc684318bf382cbdfc9ab4988261656e328b6cb561b2883ccf3d92472bcb5",
+                "4bcdc2877bbf58fb962d27781bd8eebbbc3857658509a436af136b5e570c8a3a"
+              ],
+              "verdict_capsule_id": "verdict-1",
+              "verdict_capsule_id_is_the_records": true,
+              "verdict_capsule": {
+                "block": {
+                  "schema": "capsule-emit-mesh/adjudication/v1",
+                  "source": "twin_comparison",
+                  "capture_method": "deterministic_replay",
+                  "verdict": "inconclusive",
+                  "status": "UNKNOWN",
+                  "divergence_index": 1,
+                  "prefix_digest": "ffcadd7ce87fa9812037a0aa3b1d04f4d138ec64d2ee6d13ed4a08e6d2b7a171",
+                  "twin_owner_distinct": true,
+                  "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+                  "half_a_capsule_id": "0c2dc684318bf382cbdfc9ab4988261656e328b6cb561b2883ccf3d92472bcb5",
+                  "half_b_capsule_id": "4bcdc2877bbf58fb962d27781bd8eebbbc3857658509a436af136b5e570c8a3a",
+                  "referee_capsule_id": "02440d6ee7a633c179b596077c95f6ea8d545aff71697d62b0b83c1e323777df",
+                  "referee_id": "node-c",
+                  "selection_tier": 1,
+                  "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+                  "referee_node_id": "node-c",
+                  "half_a_node_id": "node-a",
+                  "half_b_node_id": "node-b",
+                  "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+                  "referee_prompt": "requester_attested",
+                  "referee_answer_digest": "b0cdb14844eb90b60a1c881d5f38ab12657cd4ac1a955d753c0163210a51be1e",
+                  "inconclusive_because": "split_margin_unavailable",
+                  "split_margin": {
+                    "unit": "nats",
+                    "threshold": "4.410000",
+                    "referee": null
+                  },
+                  "twin_bracket_id": "bracket-1"
+                },
+                "epistemic_type": "adjudication",
+                "chain": {
+                  "parent_capsule_id": "0c2dc684318bf382cbdfc9ab4988261656e328b6cb561b2883ccf3d92472bcb5",
+                  "relation": "confirms"
+                },
+                "provenance": "referee",
+                "signed_by_node": true
+              },
+              "issued_at_is_now": true
+            }
+          ]
+        }
+      }
+    ],
+    "tokens_do_not_spell_the_answer": [
+      {
+        "reply": {
+          "adjudication_verdict": 1,
+          "verdict": "inconclusive",
+          "twin_bracket_id": "bracket-1",
+          "half_node_ids": [
+            "node-a",
+            "node-b"
+          ],
+          "referee_node_id": "node-c",
+          "referee_capsule_id": "fd41c87859f9c300882b8291581842bf95d8c9ed7a8393f01ab2b2613c736e7a",
+          "halves": [
+            "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+            "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d"
+          ],
+          "verdict_capsule_id": "verdict-1",
+          "verdict_capsule_id_is_the_records": true,
+          "verdict_capsule": {
+            "block": {
+              "schema": "capsule-emit-mesh/adjudication/v1",
+              "source": "twin_comparison",
+              "capture_method": "deterministic_replay",
+              "verdict": "inconclusive",
+              "status": "UNKNOWN",
+              "divergence_index": 3,
+              "prefix_digest": "0ec7db901e57f96f8d195aa69bbdbd858eb13d125021a24c90972a5ce35d587b",
+              "twin_owner_distinct": true,
+              "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+              "half_a_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+              "half_b_capsule_id": "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d",
+              "referee_capsule_id": "fd41c87859f9c300882b8291581842bf95d8c9ed7a8393f01ab2b2613c736e7a",
+              "referee_id": "node-c",
+              "selection_tier": 1,
+              "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+              "referee_node_id": "node-c",
+              "half_a_node_id": "node-a",
+              "half_b_node_id": "node-b",
+              "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+              "referee_prompt": "requester_attested",
+              "referee_answer_digest": "49b8fd0c507434366c2f4e9d23874441bc84ee39bd184fadfad3db16f692d9ff",
+              "inconclusive_because": "split_margin_unavailable",
+              "split_margin": {
+                "unit": "nats",
+                "threshold": "4.410000",
+                "referee": null
+              },
+              "twin_bracket_id": "bracket-1"
+            },
+            "epistemic_type": "adjudication",
+            "chain": {
+              "parent_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+              "relation": "confirms"
+            },
+            "provenance": "referee",
+            "signed_by_node": true
+          },
+          "issued_at_is_now": true
+        },
+        "appended": {
+          "issued-adjudications.jsonl": [
+            {
+              "verdict": "inconclusive",
+              "twin_bracket_id": "bracket-1",
+              "half_node_ids": [
+                "node-a",
+                "node-b"
+              ],
+              "referee_node_id": "node-c",
+              "referee_capsule_id": "fd41c87859f9c300882b8291581842bf95d8c9ed7a8393f01ab2b2613c736e7a",
+              "halves": [
+                "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d"
+              ],
+              "verdict_capsule_id": "verdict-1",
+              "verdict_capsule_id_is_the_records": true,
+              "verdict_capsule": {
+                "block": {
+                  "schema": "capsule-emit-mesh/adjudication/v1",
+                  "source": "twin_comparison",
+                  "capture_method": "deterministic_replay",
+                  "verdict": "inconclusive",
+                  "status": "UNKNOWN",
+                  "divergence_index": 3,
+                  "prefix_digest": "0ec7db901e57f96f8d195aa69bbdbd858eb13d125021a24c90972a5ce35d587b",
+                  "twin_owner_distinct": true,
+                  "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+                  "half_a_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                  "half_b_capsule_id": "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d",
+                  "referee_capsule_id": "fd41c87859f9c300882b8291581842bf95d8c9ed7a8393f01ab2b2613c736e7a",
+                  "referee_id": "node-c",
+                  "selection_tier": 1,
+                  "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+                  "referee_node_id": "node-c",
+                  "half_a_node_id": "node-a",
+                  "half_b_node_id": "node-b",
+                  "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+                  "referee_prompt": "requester_attested",
+                  "referee_answer_digest": "49b8fd0c507434366c2f4e9d23874441bc84ee39bd184fadfad3db16f692d9ff",
+                  "inconclusive_because": "split_margin_unavailable",
+                  "split_margin": {
+                    "unit": "nats",
+                    "threshold": "4.410000",
+                    "referee": null
+                  },
+                  "twin_bracket_id": "bracket-1"
+                },
+                "epistemic_type": "adjudication",
+                "chain": {
+                  "parent_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                  "relation": "confirms"
+                },
+                "provenance": "referee",
+                "signed_by_node": true
+              },
+              "issued_at_is_now": true
+            }
+          ]
+        }
+      }
+    ],
+    "chosen_token_is_not_the_top_one": [
+      {
+        "reply": {
+          "adjudication_verdict": 1,
+          "verdict": "inconclusive",
+          "twin_bracket_id": "bracket-1",
+          "half_node_ids": [
+            "node-a",
+            "node-b"
+          ],
+          "referee_node_id": "node-c",
+          "referee_capsule_id": "a002098dbecdfacf48d0ac67770a95e7f8704cccb96fbf9f5021f505b5b2cb4b",
+          "halves": [
+            "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+            "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d"
+          ],
+          "verdict_capsule_id": "verdict-1",
+          "verdict_capsule_id_is_the_records": true,
+          "verdict_capsule": {
+            "block": {
+              "schema": "capsule-emit-mesh/adjudication/v1",
+              "source": "twin_comparison",
+              "capture_method": "deterministic_replay",
+              "verdict": "inconclusive",
+              "status": "UNKNOWN",
+              "divergence_index": 3,
+              "prefix_digest": "0ec7db901e57f96f8d195aa69bbdbd858eb13d125021a24c90972a5ce35d587b",
+              "twin_owner_distinct": true,
+              "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+              "half_a_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+              "half_b_capsule_id": "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d",
+              "referee_capsule_id": "a002098dbecdfacf48d0ac67770a95e7f8704cccb96fbf9f5021f505b5b2cb4b",
+              "referee_id": "node-c",
+              "selection_tier": 1,
+              "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+              "referee_node_id": "node-c",
+              "half_a_node_id": "node-a",
+              "half_b_node_id": "node-b",
+              "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+              "referee_prompt": "requester_attested",
+              "referee_answer_digest": "dfe2c05e7e032ad9b5a4bde136ac3fca8e46a87e6a0240d4d5955756f1ed9ce7",
+              "inconclusive_because": "split_margin_unavailable",
+              "split_margin": {
+                "unit": "nats",
+                "threshold": "4.410000",
+                "referee": null
+              },
+              "twin_bracket_id": "bracket-1"
+            },
+            "epistemic_type": "adjudication",
+            "chain": {
+              "parent_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+              "relation": "confirms"
+            },
+            "provenance": "referee",
+            "signed_by_node": true
+          },
+          "issued_at_is_now": true
+        },
+        "appended": {
+          "issued-adjudications.jsonl": [
+            {
+              "verdict": "inconclusive",
+              "twin_bracket_id": "bracket-1",
+              "half_node_ids": [
+                "node-a",
+                "node-b"
+              ],
+              "referee_node_id": "node-c",
+              "referee_capsule_id": "a002098dbecdfacf48d0ac67770a95e7f8704cccb96fbf9f5021f505b5b2cb4b",
+              "halves": [
+                "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d"
+              ],
+              "verdict_capsule_id": "verdict-1",
+              "verdict_capsule_id_is_the_records": true,
+              "verdict_capsule": {
+                "block": {
+                  "schema": "capsule-emit-mesh/adjudication/v1",
+                  "source": "twin_comparison",
+                  "capture_method": "deterministic_replay",
+                  "verdict": "inconclusive",
+                  "status": "UNKNOWN",
+                  "divergence_index": 3,
+                  "prefix_digest": "0ec7db901e57f96f8d195aa69bbdbd858eb13d125021a24c90972a5ce35d587b",
+                  "twin_owner_distinct": true,
+                  "weights_digest": "ac28b90e169cc75956ee6283ac8dc787a945696122692a3b2f266d8453ff56cc",
+                  "half_a_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                  "half_b_capsule_id": "a3b6b9b92d94007926ef30db020f5693d6f056afde5350e236728ba63a52e92d",
+                  "referee_capsule_id": "a002098dbecdfacf48d0ac67770a95e7f8704cccb96fbf9f5021f505b5b2cb4b",
+                  "referee_id": "node-c",
+                  "selection_tier": 1,
+                  "model_hash": "b2767326b03d5e629546363ebe41714b78065e028709580996d60d2d119192da",
+                  "referee_node_id": "node-c",
+                  "half_a_node_id": "node-a",
+                  "half_b_node_id": "node-b",
+                  "twins_request_digest": "c0b439598e4ff10d8f55dc241798b2a80aa8de77e564a169f8931336ac33ef1a",
+                  "referee_prompt": "requester_attested",
+                  "referee_answer_digest": "dfe2c05e7e032ad9b5a4bde136ac3fca8e46a87e6a0240d4d5955756f1ed9ce7",
+                  "inconclusive_because": "split_margin_unavailable",
+                  "split_margin": {
+                    "unit": "nats",
+                    "threshold": "4.410000",
+                    "referee": null
+                  },
+                  "twin_bracket_id": "bracket-1"
+                },
+                "epistemic_type": "adjudication",
+                "chain": {
+                  "parent_capsule_id": "667d7e4796f50b725da03f8126ea4d22284be69605f9f266110f24f0a8b2644c",
+                  "relation": "confirms"
+                },
+                "provenance": "referee",
+                "signed_by_node": true
+              },
+              "issued_at_is_now": true
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
