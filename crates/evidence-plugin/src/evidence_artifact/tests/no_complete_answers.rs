@@ -139,7 +139,7 @@ fn nodes() -> (Node, Node) {
     (node(), Node::over(&bound))
 }
 
-/// (kind, what, request, setup, asked of the corroborating node)
+/// (kind, what, request, setup)
 type Case = (&'static str, &'static str, Vec<u8>, Setup);
 
 fn cases(node: &Node) -> Vec<Case> {

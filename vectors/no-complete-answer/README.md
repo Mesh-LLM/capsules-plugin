@@ -22,7 +22,7 @@ the node's choice among records is never read as complete.
 
 `control:full_history` shows the reading can say `COMPLETE`: a whole-history
 answer does. The node serves it to no asker (refused `not_authorized` in every
-sharing setting); the vector is built ungated only to run the control.
+sharing setting); the vector is built ungated, like every case, so the control can run.
 
 Written by `the_vectors_are_the_nodes_answers`
 (`crates/evidence-plugin/src/evidence_artifact/tests/no_complete_answers.rs`),
