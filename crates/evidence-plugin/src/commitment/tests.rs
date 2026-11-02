@@ -270,6 +270,9 @@ fn no_setting_changes_the_staple() {
         "history_card/1"
     );
     for signed in [&plain, &wide] {
+        // verify() enforces the exact SCHEMA member set, so a wider policy
+        // adds no member above L0.
+        assert_eq!(verify(signed), Vec::<String>::new());
         let raw = base64::engine::general_purpose::STANDARD
             .decode(signed.commitment["history_card"]["bytes"].as_str().unwrap())
             .unwrap();
