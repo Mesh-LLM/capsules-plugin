@@ -269,6 +269,13 @@ fn no_setting_changes_the_staple() {
         plain.commitment["history_card"]["derivation"],
         "history_card/1"
     );
+    for signed in [&plain, &wide] {
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(signed.commitment["history_card"]["bytes"].as_str().unwrap())
+            .unwrap();
+        let text = String::from_utf8(raw).unwrap();
+        assert!(!text.contains("service_history") && !text.contains("standard_history"));
+    }
 }
 
 #[test]
