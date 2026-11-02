@@ -191,7 +191,7 @@ fn a_served_commitment_that_verifies_under_this_policy_is_present() {
     let dir = corpus();
     let served = serve(dir.path(), &defaults(), Some(NODE));
     let found = with(dir.path(), &defaults(), |r| {
-        findings(r, &defaults(), &served, &Witnesses::default(), false).unwrap()
+        findings(r, &defaults(), &served, &Witnesses::default(), None, false).unwrap()
     });
     assert_eq!(state(&found, POLICY_IN_COMMITMENT).state, STATE_PRESENT);
 }
@@ -203,7 +203,7 @@ fn a_served_commitment_that_does_not_verify_is_missing() {
     signed.policy.push(0);
     let served: Served = Ok(signed);
     let found = with(dir.path(), &defaults(), |r| {
-        findings(r, &defaults(), &served, &Witnesses::default(), false).unwrap()
+        findings(r, &defaults(), &served, &Witnesses::default(), None, false).unwrap()
     });
     let f = state(&found, POLICY_IN_COMMITMENT);
     assert_eq!(f.state, STATE_MISSING);
