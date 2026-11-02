@@ -16,7 +16,7 @@
 #     publishing that record twice;
 #   - a chain shorter than what was published, a node key other than the
 #     book's, and a second run while one holds the lock are refused, leaving
-#     the page and the book's seed as they were.
+#     the page as it was and no seed behind (a finished run leaves none either).
 set -euo pipefail
 
 if [ -z "${CAPSULECTL:-}" ] || [ -z "${EVIDENCEBOOK_SKILLS:-}" ]; then
