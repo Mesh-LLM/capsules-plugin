@@ -545,6 +545,19 @@ pub(crate) fn artifact(
     stream: &str,
     log_size: u64,
 ) -> Result<Vec<u8>, Reason> {
+    artifact_for(Definition::active(), card, counts, anchor, stream, log_size)
+}
+
+/// [`artifact`] under `def`, which names the History's `derivation`; a test
+/// builds the artifacts of other definitions, such as the vectors', with it.
+pub(crate) fn artifact_for(
+    def: &Definition,
+    card: &[u8],
+    counts: Value,
+    anchor: &str,
+    stream: &str,
+    log_size: u64,
+) -> Result<Vec<u8>, Reason> {
     let mut card_value: Value =
         serde_json::from_slice(card).map_err(|_| Reason::CapacityExceeded)?;
     if jcs::to_string(&card_value)
@@ -568,7 +581,7 @@ pub(crate) fn artifact(
         "anchor": anchor,
         "coverage_declaration": coverage_declaration(anchor, stream, log_size),
         "declared": DECLARED,
-        "derivation": definition_digest(),
+        "derivation": def.digest(),
         "evidence_stream": stream,
         "history_card": card_value,
         "history_card_digest": hex::encode(Sha256::digest(card_text.as_bytes())),

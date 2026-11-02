@@ -313,3 +313,84 @@ fn the_e2e_override_is_another_definition_with_its_own_digest() {
     assert_ne!(def.digest(), DEFINITION_DIGEST);
     assert_ne!(def.policy_digest, POLICY_DIGEST);
 }
+
+/// The served exchanges per model that the generator's
+/// `standard-served-only` case counts in its three closed days (its
+/// `SERVED`); the requested ones are in no cell.
+const SERVED_ONLY: [[(&str, u64); 2]; 3] = [
+    [("model-a", 12), ("model-b", 7)],
+    [("model-a", 9), ("model-b", 3)],
+    [("model-a", 6), ("model-b", 5)],
+];
+
+/// The artifact this module builds for the generator's served-only History
+/// is the generator's artifact, byte for byte: the same cells from the same
+/// per-model counts, the same members, the same JCS octets. The embedded
+/// card is the card's own canonical octets (the vectors' card is a
+/// corpus-only shape, ISH §9, so the direct `history_card/1` of a real node
+/// is not rebuilt here).
+#[test]
+fn the_served_only_artifact_is_the_generators_bytes() {
+    let all = cases();
+    let case = all
+        .iter()
+        .find(|c| id(c) == "standard-served-only")
+        .unwrap();
+    let def = Definition::from_document(&case["inputs"]["definition"]).unwrap();
+    let want = artifact(&case["inputs"]["reply"]);
+    let floor = case["inputs"]["definition"]["period_policy"]["floor"]
+        .as_u64()
+        .unwrap();
+    let theirs = want["period_counts"]["periods"].as_array().unwrap();
+    assert_eq!(theirs.len(), SERVED_ONLY.len());
+    let periods: Vec<Value> = theirs
+        .iter()
+        .zip(SERVED_ONLY)
+        .map(|(period, served)| {
+            let by_model = served.iter().map(|&(m, n)| (m.to_string(), n)).collect();
+            json!({"from": period["from"], "to": period["to"], "cells": cells(&by_model, floor)})
+        })
+        .collect();
+    let counts = json!({"policy": want["period_counts"]["policy"], "periods": periods});
+    assert_eq!(
+        counts, want["period_counts"],
+        "cells, floor and complementary rule"
+    );
+    let card = jcs::to_string(&want["history_card"]).unwrap();
+    let got = artifact_for(
+        &def,
+        card.as_bytes(),
+        counts,
+        want["anchor"].as_str().unwrap(),
+        want["evidence_stream"].as_str().unwrap(),
+        want["coverage_declaration"]["live_set"][0]["count"]
+            .as_u64()
+            .unwrap(),
+    )
+    .unwrap();
+    let generated = {
+        let envelope = octets(&case["inputs"]["reply"]);
+        base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(envelope["artifact"].as_str().unwrap().trim_end_matches('='))
+            .unwrap()
+    };
+    assert_eq!(got, generated);
+}
+
+/// ISH §5.1: this plugin counts exchanges served and no other unit, so a
+/// served count is never summed with a requested one, and no cell is a score.
+#[test]
+fn a_cell_counts_served_exchanges_and_nothing_else() {
+    let by_model = [("model-a".to_string(), 12), ("model-b".to_string(), 7)]
+        .into_iter()
+        .collect();
+    for cell in cells(&by_model, 5) {
+        assert_eq!(cell["unit"], json!("exchanges_served"));
+        assert_eq!(cell["label"], json!("self_reported"));
+        assert_eq!(
+            cell.as_object().unwrap().len(),
+            4,
+            "no member beyond dimension, label, unit, value"
+        );
+    }
+}
