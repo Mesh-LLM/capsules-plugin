@@ -25,7 +25,7 @@
 #       [--wording FILE --wording-digest SHA256]
 #
 #   --report-dir   the reporting book's directory; the node's CAPSULES_SETTLEMENT_REPORT_DIR
-#   --capsulectl   a capsulectl that loads capsulectl-book; the node's CAPSULES_CAPSULECTL
+#   --capsulectl   a capsulectl that loads capsulectl-book v0.1.0-rc31 or later; the node's CAPSULES_CAPSULECTL
 #   --skills       an evidencebook-skills checkout (scripts/report.sh, packs/inference-deals)
 #   --capsules     the plugin binary (default: capsules on PATH)
 #   --data-dir     the node's data directory (default: CAPSULES_DATA_DIR)
@@ -80,7 +80,8 @@ REPORT_DIR=$(cd "$REPORT_DIR" && pwd)
 LOCK="$REPORT_DIR/.lock"
 mkdir "$LOCK" 2>/dev/null || fail "another run holds $LOCK (remove it if no run is going)"
 WORK=""
-trap 'rm -rf "$LOCK" ${WORK:+"$WORK"}' EXIT
+SEED="$REPORT_DIR/node.seed"
+trap 'rm -rf "$LOCK" "$SEED" ${WORK:+"$WORK"}' EXIT
 WORK=$(mktemp -d "$REPORT_DIR/run.XXXXXX")
 
 # capsulectl keeps its profiles under XDG_CONFIG_HOME, and finds capsulectl-book
@@ -91,10 +92,10 @@ export CAPSULECTL_PLUGIN_ROOTS=${CAPSULECTL_PLUGIN_ROOTS:-$(cd "$(dirname "$CAPS
 PROFILE=settlement
 BOOK="$REPORT_DIR/book.json"
 # The book's signing seed, the node's own key, as the profile names it. It
-# stays (0600, in this 0700 directory) because capsulectl-book's `book report
-# check`, which the node runs at hand-over, opens the profile only with its
-# signing secret (action-state-group/evidencebook#324).
-SEED="$REPORT_DIR/node.seed"
+# exists only while a run publishes and seals (0600, in this 0700 directory):
+# the trap above removes it, and capsulectl-book's `book report check`, which
+# the node runs at hand-over, opens the book read-only without it
+# (action-state-group/evidencebook#349, capsulectl-book v0.1.0-rc31).
 
 # book.json's fields, read and written in one place.
 book() { python3 "$WORK/book.py" "$BOOK" "$@"; }

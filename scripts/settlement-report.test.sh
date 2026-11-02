@@ -16,7 +16,7 @@
 #     publishing that record twice;
 #   - a chain shorter than what was published, a node key other than the
 #     book's, and a second run while one holds the lock are refused, leaving
-#     the page and the book's seed as they were.
+#     the page as it was and no seed behind (a finished run leaves none either).
 set -euo pipefail
 
 if [ -z "${CAPSULECTL:-}" ] || [ -z "${EVIDENCEBOOK_SKILLS:-}" ]; then
@@ -72,7 +72,17 @@ book = json.load(open(sys.argv[1]))
 book["pending"] = {"line": 10, "capsule_id": sys.argv[2]}
 json.dump(book, open(sys.argv[1], "w"))
 EOF
+# The seed the profile names exists only during a run, so this step makes it
+# the way a run does and removes it again.
+python3 - "$work/data/keys/node-key.pem" "$work/report/node.seed" <<'EOF2'
+import base64, os, sys
+body = "".join(l for l in open(sys.argv[1]).read().splitlines() if l and not l.startswith("-----"))
+fd = os.open(sys.argv[2], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+with os.fdopen(fd, "w") as f:
+    f.write(base64.b64decode(body)[16:].hex())
+EOF2
 "$CAPSULECTL" publish --profile settlement --request "$work/eleventh.json" >/dev/null
+rm -f "$work/report/node.seed"
 
 # The rest of the chain, and a padding line after it.
 { cat "$fixture"; echo '{"padding":"0000"}'; } >"$work/chain.jsonl"
@@ -87,7 +97,8 @@ grep -q '"page": *"match"' "$work/report/settlement.json" || fail "the note does
 [ "$(copies "$(id_at 1)")" = 1 ] || fail "a run with nothing new published a record again"
 
 before=$(shasum -a 256 "$work/report/settlement.html")
-seed_before=$(shasum -a 256 "$work/report/node.seed")
+[ ! -e "$work/report/node.seed" ] || fail "a finished run left the book's seed behind"
+"$CAPSULECTL" book report check --profile settlement --page "$work/report/settlement.html" >/dev/null || fail "book report check needs the seed"
 
 head -n 5 "$fixture" >"$work/chain.jsonl"
 if run; then fail "a chain shorter than what was published was accepted"; fi
@@ -104,5 +115,5 @@ if run; then fail "a node key other than the book's was accepted"; fi
 grep -q "not this node's" "$work/run.log" || fail "the foreign key's refusal does not say why"
 
 [ "$before" = "$(shasum -a 256 "$work/report/settlement.html")" ] || fail "a refused run changed the page"
-[ "$seed_before" = "$(shasum -a 256 "$work/report/node.seed")" ] || fail "a refused run replaced the book's seed"
+[ ! -e "$work/report/node.seed" ] || fail "a refused run left the book's seed behind"
 echo "settlement-report.test: ok"
