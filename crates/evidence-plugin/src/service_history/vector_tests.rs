@@ -152,19 +152,33 @@ fn the_served_only_artifact_is_the_generators_bytes() {
 
 /// ISH §5.1: this plugin counts exchanges served and no other unit, so a
 /// served count is never summed with a requested one, and no cell is a score.
+/// Checked over the cells this node's own derivation produces.
 #[test]
 fn a_cell_counts_served_exchanges_and_nothing_else() {
-    let all = cases();
-    let case = all
-        .iter()
-        .find(|c| id(c) == "standard-served-only")
-        .unwrap();
-    let want = artifact_of(&case["inputs"]["reply"]);
-    for period in want["period_counts"]["periods"].as_array().unwrap() {
-        for cell in period["cells"].as_array().unwrap() {
-            assert_eq!(cell["unit"], json!("exchanges_served"));
-            assert_eq!(cell["label"], json!("self_reported"));
-            assert!(cell.as_object().unwrap().len() >= 4);
-        }
+    let models: Vec<&str> = std::iter::repeat_n("model-a", 6)
+        .chain(std::iter::repeat_n("model-b", 3))
+        .collect();
+    let chain = [
+        Cut {
+            timestamp: "2026-01-07T12:00:00Z",
+            leaves: 9,
+        },
+        Cut {
+            timestamp: "2026-01-12T00:00:00Z",
+            leaves: 9,
+        },
+    ];
+    let counts = period_counts(&chain, &|i| models.get(i as usize).map(|m| m.to_string())).unwrap();
+    let cells = counts["periods"][0]["cells"].as_array().unwrap();
+    assert_eq!(cells.len(), 3, "two models and the total");
+    for cell in cells {
+        assert_eq!(cell["unit"], json!("exchanges_served"));
+        assert_eq!(cell["label"], json!("self_reported"));
+        let published = cell.get("suppressed").is_none();
+        assert_eq!(
+            cell.as_object().unwrap().len(),
+            if published { 4 } else { 5 },
+            "no member beyond dimension, label, unit, value (and suppressed)"
+        );
     }
 }

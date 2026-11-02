@@ -44,9 +44,9 @@
 //!   octets, and `history_card_digest` is their SHA-256.
 //! - `period_counts` is `{policy, periods}` in the form of ISH §9's vectors:
 //!   `policy` the digest of the definition's `period_policy`, and one entry
-//!   per closed period, with none left out, from the one the stream's first
-//!   checkpoint commits into (the one that holds its first record) to the
-//!   one ending at the anchor, each `{from, to, cells}`. The cells
+//!   per closed period, with none left out, from the one that holds the
+//!   stream's first record (none when no checkpoint commits one) to the one
+//!   ending at the anchor, each `{from, to, cells}`. The cells
 //!   count `exchanges_served`, one per model the provider states and one
 //!   total (`dimension` null), all `self_reported`. A cell under the floor
 //!   is published with no value and `suppressed: "below_floor"`, and

@@ -639,7 +639,7 @@ fn boundary_cut(
 /// well inside its minute, which a checkpoint's minute-granular time then
 /// names. Zero once that second has passed.
 fn until_boundary(boundary: i64, now: i64) -> Duration {
-    Duration::from_secs((boundary + 1 - now).max(0) as u64)
+    Duration::from_secs(boundary.saturating_add(1).saturating_sub(now).max(0) as u64)
 }
 
 /// The client capsule-emit's checkpoint calls take. Since capsule-emit
