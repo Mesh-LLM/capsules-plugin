@@ -3,8 +3,8 @@
 evidencebook#206 row 7 (Mesh-LLM/capsules-plugin#233). One case per answer
 kind this node gives: `record`, `correlation`, `exchange`, `checkpoints`,
 `history_card/1`, `served_summary/1` and `exchange_corroboration/1`, each the
-node's own signed reply to the request beside it, under the fixed test key
-`node_key_seed` at `issued_at`.
+node's own signed reply to the request beside it, under the plugin's fixed test key
+(`NODE_KEY_SEED` in `evidence_request_parity.rs`, not repeated here) at `issued_at`.
 
 `reading` is what a requester takes from the reply, with the anchor's size from
 the node's own checkpoint list: a verified answer is

@@ -242,7 +242,6 @@ fn generate() -> Value {
         .collect();
     json!({
         "about": "evidencebook#206 row 7: no producer-selected answer verifies as COMPLETE. See evidence_artifact/tests/no_complete_answers.rs for the reading.",
-        "node_key_seed": hex::encode(NODE_KEY_SEED),
         "issued_at": NOW,
         "cases": out,
     })
