@@ -240,6 +240,47 @@ fn the_checkpoint_is_the_latest_and_the_staple_is_what_a_stranger_gets() {
     assert_eq!(staple["anchor"]["digest"], latest);
 }
 
+/// The staple is L0 (`history_card/1`) on every setting (Steven, 2026-11-01:
+/// a node staples L0 in its commitment; plugin#241). No switch widens it:
+/// with standard history and advertising both on, the stapled card is
+/// byte for byte the one the default settings give, and so carries no
+/// Service History.
+#[test]
+fn no_setting_changes_the_staple() {
+    let on = Policy::from_settings(|env| {
+        [
+            share_policy::ENV_STANDARD_HISTORY,
+            share_policy::ENV_ADVERTISE_EVIDENCE_REQUESTS,
+        ]
+        .contains(&env)
+        .then(|| "on".to_string())
+    });
+    assert!(on.share_standard_history && on.advertise_evidence_requests);
+    let (plain, wide) = (built(&defaults()), built(&on));
+    assert_ne!(
+        plain.commitment["lcap"]["policy_digest"], wide.commitment["lcap"]["policy_digest"],
+        "the settings are in the signed policy"
+    );
+    assert_eq!(
+        plain.commitment["history_card"],
+        wide.commitment["history_card"]
+    );
+    assert_eq!(
+        plain.commitment["history_card"]["derivation"],
+        "history_card/1"
+    );
+    for signed in [&plain, &wide] {
+        // verify() enforces the exact SCHEMA member set, so a wider policy
+        // adds no member above L0.
+        assert_eq!(verify(signed), Vec::<String>::new());
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(signed.commitment["history_card"]["bytes"].as_str().unwrap())
+            .unwrap();
+        let text = String::from_utf8(raw).unwrap();
+        assert!(!text.contains("service_history") && !text.contains("standard_history"));
+    }
+}
+
 #[test]
 fn no_checkpoint_means_no_commitment() {
     let dir = tempfile::tempdir().unwrap();
