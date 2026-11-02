@@ -85,10 +85,6 @@ mutant-answer-matches-never-leaves = []
 # requires the named test to FAIL (gates/mutants.json).
 # Embeds a card rebuilt without its consistency proofs, not the direct card.
 mutant-service-history-card-rebuilt = []
-# Counts the period the anchor opens, which is not closed.
-mutant-service-history-counts-open-period = []
-# Publishes the model a suppressed one beside a published total gives away.
-mutant-service-history-skips-complementary = []
 
 # The referee's implementation mutants: each builds the referee with one
 # deliberate fault (vectors/parity/referee/mutants.json names the fault and
@@ -198,8 +194,11 @@ evidencebook = { version = "=0.0.12", features = ["deal", "shelf"] }
 # and #268) decides the base pack (#178). Not on crates.io: pinned by the
 # merge commit.
 capsule-engine = { git = "https://github.com/action-state-group/capsule-engine", rev = "c7701385b87b68c631803e5d0adeee4d617ff5d4" }
-# Class 1 verification of a received half (capsule-emit main moved it here).
-agent-action-capsule = { version = "0.8.0", features = ["strict"] }
+# Class 1 verification of a received half (capsule-emit main moved it here),
+# and, with `inference-history`, the Service History's derivation and checks
+# (`service_history`, evidencebook#322). capsule-emit still builds on 0.8.0, so
+# two lines of this crate are in the tree until it moves; 0.9.0 only adds.
+agent-action-capsule = { version = "0.9.0", features = ["strict", "inference-history"] }
 # The witness's own record of this log (`witness_status`): one blocking GET,
 # no redirects, a capped body. Already in the tree through capsule-emit.
 ureq = { version = "2", features = ["json"] }

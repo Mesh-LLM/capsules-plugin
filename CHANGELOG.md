@@ -31,6 +31,8 @@
 
 ### Changed
 
+- **The Service History's derivation and checks are agent-action-capsule's** (`inference_history`, crate 0.9.0; evidencebook#322). The plugin no longer carries its own copy of the period counts, the artifact or the checker; it holds this node's definition document and the responder's gates, and calls the library, which passes the Standard cases of both ISH vector sets. No wire change: the plugin's reply fixture is still served byte for byte. Two checker rules are now the profile's (ISH §6.1 item 3, §6.3): the first period is the one that holds the stream's first record (a stream with no record lists none), and the artifact must name the `full_history` subject. Two of the Service History's three CI mutants (`counts-open-period`, `skips-complementary`) are dropped with the code they broke; the library's tests hold those rules. `card-rebuilt` stays.
+
 - **A referee names a twin only when its own top-2 margin at the split reaches a pinned
   threshold.** Honest nodes on different backends (Metal, CUDA, CPU, other thread or batch
   settings) can split greedy decoding on a near-tie, and a referee that computes like one of them

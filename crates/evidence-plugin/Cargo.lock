@@ -26,6 +26,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent-action-capsule"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f5a684ca3c9daf693cbb77b9cab8b4124e4746614dfdd9efc675256b09a1830"
+dependencies = [
+ "base64 0.22.1",
+ "checkpointed-local-log",
+ "ed25519-dalek",
+ "evidence-request",
+ "hex",
+ "p256",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -238,7 +255,7 @@ version = "0.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88d71d8b6f23b4aaaf2e9835fc4d2557658923df87a8bfae6b98118dfa58333f"
 dependencies = [
- "agent-action-capsule",
+ "agent-action-capsule 0.8.0",
  "anyhow",
  "base64 0.22.1",
  "capsule-emit-artifact",
@@ -263,7 +280,7 @@ version = "0.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "428349dc897094a230f7a2c9b2c0e32f5052123cfe2b535ec5b6396e397fe72b"
 dependencies = [
- "agent-action-capsule",
+ "agent-action-capsule 0.8.0",
  "base64 0.22.1",
  "hex",
  "rusqlite",
@@ -698,7 +715,7 @@ dependencies = [
 name = "evidence-plugin"
 version = "0.1.12"
 dependencies = [
- "agent-action-capsule",
+ "agent-action-capsule 0.9.0",
  "anyhow",
  "axum",
  "base64 0.22.1",
@@ -763,7 +780,7 @@ version = "0.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46cb4ced5c50fa1bcb3a99927c93b3ca1711bfcce138d73e472fab6ee571acbd"
 dependencies = [
- "agent-action-capsule",
+ "agent-action-capsule 0.8.0",
  "base64 0.22.1",
  "boon",
  "capsule-emit-artifact",
