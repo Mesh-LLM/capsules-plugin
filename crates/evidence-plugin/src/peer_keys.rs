@@ -13,7 +13,8 @@
 //! - **The host's announced keys,** when the host lists the `plugin_keys.v1`
 //!   capability: each peer's key for this plugin, bound to that peer by its
 //!   own node key and checked by the host before it lists it at
-//!   `GET /api/plugin-keys` ([`announced`]). Off a host without the
+//!   `GET /api/plugin-keys` ([`announced`]); a peer the host stops listing
+//!   loses its key after [`announced::UNLISTED_TTL`]. Off a host without the
 //!   capability, nothing is read.
 //! - **The operator's map,** `CAPSULES_PEER_KEYS`: a JSON object mapping peer
 //!   id to that peer's `key_id` (the raw Ed25519 public key, lowercase hex),
@@ -80,7 +81,7 @@ pub fn merged(
 pub mod announced {
     use std::collections::BTreeMap;
     use std::sync::{Mutex, OnceLock, PoisonError};
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     /// The host capability that says it announces plugin keys.
     pub const CAPABILITY: &str = "plugin_keys.v1";
@@ -91,29 +92,43 @@ pub mod announced {
     const ROUTE: &str = "/api/plugin-keys";
     const EVERY: Duration = Duration::from_secs(30);
     const TIMEOUT: Duration = Duration::from_secs(5);
+    /// How long a peer the host no longer lists keeps the key it announced.
+    /// While the host answers polls, a key is honoured at most
+    /// `EVERY + TIMEOUT + UNLISTED_TTL` after the host last listed it (the
+    /// next poll starts `EVERY` after the last one ends); while it cannot be
+    /// read, nothing expires. The clock is monotonic, so time the machine
+    /// spends suspended may not count. The residual is that a peer unlisted
+    /// for longer is refused until the host lists it again.
+    pub const UNLISTED_TTL: Duration = Duration::from_secs(600);
 
-    fn keys() -> &'static Mutex<BTreeMap<String, String>> {
-        static KEYS: OnceLock<Mutex<BTreeMap<String, String>>> = OnceLock::new();
-        KEYS.get_or_init(|| Mutex::new(BTreeMap::new()))
+    /// Each peer's announced key and when the host last listed the peer
+    /// with it.
+    pub(super) type Known = BTreeMap<String, (String, Instant)>;
+
+    fn known() -> &'static Mutex<Known> {
+        static KNOWN: OnceLock<Mutex<Known>> = OnceLock::new();
+        KNOWN.get_or_init(|| Mutex::new(Known::new()))
     }
 
     /// Peer id to this plugin's announced key, as last read. Empty off a
     /// host without the capability.
     pub fn snapshot() -> BTreeMap<String, String> {
-        keys()
+        known()
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+            .iter()
+            .map(|(peer, (key, _))| (peer.clone(), key.clone()))
+            .collect()
     }
 
     /// Record `key` as announced for `peer`, as a host answer would: for
     /// tests that need a peer whose key this node knows.
     #[cfg(test)]
     pub fn announce_for_test(peer: &str, key: &str) {
-        keys()
+        known()
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .insert(peer.to_string(), key.to_string());
+            .insert(peer.to_string(), (key.to_string(), Instant::now()));
     }
 
     /// The host's console API base: [`ENV_CONSOLE_URL`], or
@@ -132,9 +147,11 @@ pub mod announced {
     /// Fold one `GET /api/plugin-keys` answer into `known`: this node's own
     /// key and each listed peer's key for `plugin`. A peer the answer lists
     /// without a key for `plugin` withdrew it, and is forgotten. A peer it
-    /// does not list (no longer connected) keeps the key it announced: that
-    /// binding was checked when it was received, and stays true.
-    pub fn fold(known: &mut BTreeMap<String, String>, answer: &serde_json::Value, plugin: &str) {
+    /// does not list (no longer connected) keeps the key it announced until
+    /// [`UNLISTED_TTL`] after the host last listed it with that key, then is
+    /// forgotten: its binding was checked when received, but the host can
+    /// no longer vouch for it, and an offline owner cannot be withdrawn.
+    pub(super) fn fold(known: &mut Known, answer: &serde_json::Value, plugin: &str, now: Instant) {
         let mut listed: Vec<(&str, Option<&str>)> = Vec::new();
         if let Some(own) = answer.get("node_id").and_then(|v| v.as_str()) {
             listed.push((
@@ -155,13 +172,14 @@ pub mod announced {
             }
             match key.filter(|key| is_key(key)) {
                 Some(key) => {
-                    known.insert(peer.to_string(), key.to_string());
+                    known.insert(peer.to_string(), (key.to_string(), now));
                 }
                 None => {
                     known.remove(peer);
                 }
             }
         }
+        known.retain(|_, (_, at)| now.saturating_duration_since(*at) < UNLISTED_TTL);
     }
 
     /// Start reading the host's announced keys, when `host_supports` says it
@@ -190,8 +208,8 @@ pub mod announced {
                         match response.json::<serde_json::Value>().await {
                             Ok(answer) => {
                                 let mut known =
-                                    keys().lock().unwrap_or_else(PoisonError::into_inner);
-                                fold(&mut known, &answer, plugin);
+                                    known().lock().unwrap_or_else(PoisonError::into_inner);
+                                fold(&mut known, &answer, plugin, Instant::now());
                             }
                             Err(error) => {
                                 tracing::debug!(%error, "unreadable announced plugin keys")
@@ -636,6 +654,20 @@ mod tests {
             .collect()
     }
 
+    fn known_of(pairs: &[(&str, &str)], at: std::time::Instant) -> announced::Known {
+        pairs
+            .iter()
+            .map(|(p, k)| (p.to_string(), (k.to_string(), at)))
+            .collect()
+    }
+
+    fn keys_in(known: &announced::Known) -> std::collections::BTreeMap<String, String> {
+        known
+            .iter()
+            .map(|(p, (k, _))| (p.clone(), k.clone()))
+            .collect()
+    }
+
     const KA: &str = "aa00000000000000000000000000000000000000000000000000000000000000";
     const KB: &str = "bb00000000000000000000000000000000000000000000000000000000000000";
 
@@ -693,7 +725,8 @@ mod tests {
 
     #[test]
     fn the_hosts_answer_folds_in_own_and_peer_keys_for_this_plugin_only() {
-        let mut known = keys_of(&[("gone", KA), ("withdrew", KA)]);
+        let now = std::time::Instant::now();
+        let mut known = known_of(&[("gone", KA), ("withdrew", KA)], now);
         let answer = serde_json::json!({
             "node_id": "self",
             "plugin_keys": {"capsules": KA, "other": KB},
@@ -704,12 +737,47 @@ mod tests {
                 "short": {"capsules": "ab"},
             }
         });
-        announced::fold(&mut known, &answer, "capsules");
+        announced::fold(&mut known, &answer, "capsules", now);
         assert_eq!(
-            known,
+            keys_in(&known),
             keys_of(&[("gone", KA), ("node-b", KB), ("self", KA)]),
             "own key in; a peer with another plugin's key only, a withdrawn key and a malformed key out; \
-             a peer no longer listed keeps the key it announced"
+             a peer no longer listed keeps the key it announced within the TTL"
+        );
+    }
+
+    #[test]
+    fn an_unlisted_peers_key_expires_after_the_ttl_and_a_listed_one_does_not() {
+        use std::time::Instant;
+        let t0 = Instant::now();
+        let mut known = announced::Known::new();
+        let both = serde_json::json!({"node_id": "self", "peers": {
+            "offline": {"capsules": KA}, "online": {"capsules": KB}}});
+        announced::fold(&mut known, &both, "capsules", t0);
+        assert_eq!(known.len(), 2);
+        // The host keeps listing `online` and stops listing `offline`.
+        let only_online = serde_json::json!({"node_id": "self", "peers": {
+            "online": {"capsules": KB}}});
+        let before = t0 + announced::UNLISTED_TTL - std::time::Duration::from_secs(1);
+        announced::fold(&mut known, &only_online, "capsules", before);
+        assert_eq!(
+            keys_in(&known),
+            keys_of(&[("offline", KA), ("online", KB)]),
+            "within the TTL"
+        );
+        let after = t0 + announced::UNLISTED_TTL;
+        announced::fold(&mut known, &only_online, "capsules", after);
+        assert_eq!(
+            keys_in(&known),
+            keys_of(&[("online", KB)]),
+            "the unlisted key expired"
+        );
+        // A returning peer is refused until the host lists it again.
+        announced::fold(&mut known, &both, "capsules", after);
+        assert_eq!(
+            keys_in(&known),
+            keys_of(&[("offline", KA), ("online", KB)]),
+            "re-announced"
         );
     }
 
@@ -804,16 +872,21 @@ mod tests {
     /// receiver folds it in: its registry, with no `CAPSULES_PEER_KEYS`.
     async fn registry_after_announce(sender: &Sender) -> Option<String> {
         let (_, sent) = announce_capturing(true, sender.state.public_key(), Ok(())).await;
-        let mut known = std::collections::BTreeMap::new();
+        let mut known = announced::Known::new();
         if let Some(bytes) = sent {
             let answer = serde_json::json!({
                 "node_id": "receiver",
                 "plugin_keys": {},
                 "peers": {&sender.peer_id: {crate::PLUGIN_ID: hex::encode(bytes)}},
             });
-            announced::fold(&mut known, &answer, crate::PLUGIN_ID);
+            announced::fold(
+                &mut known,
+                &answer,
+                crate::PLUGIN_ID,
+                std::time::Instant::now(),
+            );
         }
-        merged(None, &known)
+        merged(None, &keys_in(&known))
     }
 
     #[tokio::test]
