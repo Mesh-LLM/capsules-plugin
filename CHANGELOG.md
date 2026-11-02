@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.13
+
 ### Documented
 
 - **The commitment's staple is L0 only, on every setting.** It was already so; no preset or
@@ -67,6 +69,20 @@
   answer (`own_referee_record`), so the service treated it as unreachable. The two-node e2e
   now expects what stock mesh-llm, which serves no logprobs, gives: an `inconclusive` ruling
   sealed with `split_margin_unavailable`, counted against neither twin (#155).
+
+Pull requests since 0.1.12:
+
+- #230 feat(evidence-plugin): seal admission's history-card ask before it is sent (loop step 7)
+- #231 feat(evidence-plugin): settlement legs survive a restart
+- #234 chore: drop the CAPSULE_EMIT_MESH_* names; state end releases for the other legacy paths
+- #159 feat(referee): name a twin only when the referee's top-2 margin at the split reaches a measured threshold
+- #243 test(service-history): artifact and cells match the AAC generator's bytes
+- #244 docs(commitment): the staple is L0 on every setting, pinned by a test
+- #246 refactor(service-history): derive and check through agent-action-capsule's inference_history
+- #247 fix(peer_keys): an unlisted peer's key expires after a TTL
+- #248 test(vectors): no producer-selected answer reads COMPLETE, one vector per answer kind
+- #250 fix(doctor): report NOT_CHECKED, not missing, when a node serves no commitment
+- #252 test(e2e): expect the inconclusive referee ruling stock mesh-llm gives; digest floats as Python repr
 
 ## 0.1.12
 
