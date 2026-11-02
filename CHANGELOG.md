@@ -42,6 +42,11 @@
   more without them. mesh-llm returns logprobs from Mesh-LLM/mesh-llm#2565 on, which is not in
   0.78.1, and not for split serving, so until a referee runs a release with it, a
   referee-decided split is `inconclusive`. Mesh-LLM/capsules-plugin#155.
+- **A test checks the Service History's artifact against the AAC generator's bytes.** For the
+  `standard-served-only` case of the `inference-service-history-v0` vectors, the cells built from
+  the generator's per-model counts and the artifact assembled from them are the vector's, byte
+  for byte; another test pins that a cell counts served exchanges only. Test-only: no served
+  byte changes (Mesh-LLM/capsules-plugin#242).
 - Comments that described the Python sidecar now describe the Rust plugin.
 
 ## 0.1.12
