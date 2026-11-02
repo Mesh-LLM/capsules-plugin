@@ -1101,6 +1101,8 @@ mod tests {
     use evidence_request::envelope::EnvelopeParts;
     use evidence_request::request;
 
+    mod no_complete_answers;
+
     const NOW: &str = "2026-09-29T00:00:00Z";
 
     fn key() -> SigningKey {
