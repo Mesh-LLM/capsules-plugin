@@ -61,6 +61,8 @@
           }
         ]
       },
+      "corroborating": false,
+      "expect": "INCOMPLETE",
       "reading": "INCOMPLETE",
       "shown": {
         "anchor_leaves": 300,
@@ -68,7 +70,8 @@
           17
         ],
         "checkpoints": 0,
-        "halves": 0
+        "halves": 0,
+        "members": []
       }
     },
     {
@@ -129,6 +132,8 @@
           }
         ]
       },
+      "corroborating": false,
+      "expect": "INCOMPLETE",
       "reading": "INCOMPLETE",
       "shown": {
         "anchor_leaves": 300,
@@ -137,7 +142,17 @@
           4
         ],
         "checkpoints": 0,
-        "halves": 0
+        "halves": 0,
+        "members": [
+          "anchor",
+          "body",
+          "correlation",
+          "digest",
+          "evidence_stream",
+          "leaf_index",
+          "records",
+          "subject"
+        ]
       }
     },
     {
@@ -180,6 +195,8 @@
           "ggqEWCDI-9KjnQiYtYXGWnjh5tgvv4hsQZj3KJ1Gv5H8aLDXKFggbYtUUn9sRgdjFiEoTfCyXzqZQ6qXGkPx0yCC3EMY42dYIA8y6S6RbZVSCOblYQlhPCuQ3CX-jZfqFhjeTKHbwI1zWCC9f9fOwezcufm1P_R_um98kgS3CU3QCoh8TWl8dDK6aw"
         ]
       },
+      "corroborating": false,
+      "expect": "INCOMPLETE",
       "reading": "INCOMPLETE",
       "shown": {
         "anchor_leaves": 16,
@@ -187,7 +204,17 @@
           6
         ],
         "checkpoints": 0,
-        "halves": 0
+        "halves": 0,
+        "members": [
+          "anchor",
+          "body",
+          "digest",
+          "evidence_stream",
+          "exchange",
+          "leaf_index",
+          "records",
+          "subject"
+        ]
       }
     },
     {
@@ -229,12 +256,20 @@
           }
         ]
       },
+      "corroborating": false,
+      "expect": "INCOMPLETE",
       "reading": "INCOMPLETE",
       "shown": {
         "anchor_leaves": 300,
         "records": [],
         "checkpoints": 2,
-        "halves": 0
+        "halves": 0,
+        "members": [
+          "anchor",
+          "checkpoints",
+          "evidence_stream",
+          "subject"
+        ]
       }
     },
     {
@@ -278,12 +313,24 @@
           }
         ]
       },
+      "corroborating": false,
+      "expect": "INCOMPLETE",
       "reading": "INCOMPLETE",
       "shown": {
         "anchor_leaves": 300,
         "records": [],
         "checkpoints": 2,
-        "halves": 0
+        "halves": 0,
+        "members": [
+          "anchor",
+          "checkpoint",
+          "consistency_from_previous",
+          "derivation",
+          "evidence_stream",
+          "full_history",
+          "history",
+          "subject"
+        ]
       }
     },
     {
@@ -305,6 +352,8 @@
         "key_id": "8146640f02493af4fbc54fe33388e75dc2c937ae0b7727cc2b2afb1b75199a3e",
         "sig": "3f11b82b711ed942a3928b7bdc615db09ba5966655fd57c3d49710a3ef34e166a5428c4e9d83f0ab3278f6747cec3bc68d76c58d1b0f0468067a7eae6716e703"
       },
+      "corroborating": false,
+      "expect": "REFUSED",
       "reading": "REFUSED",
       "shown": {
         "reason": "derivation_unsupported"
@@ -361,6 +410,8 @@
           }
         ]
       },
+      "corroborating": true,
+      "expect": "INCOMPLETE",
       "reading": "INCOMPLETE",
       "shown": {
         "anchor_leaves": 300,
@@ -368,7 +419,21 @@
           3
         ],
         "checkpoints": 0,
-        "halves": 1
+        "halves": 1,
+        "members": [
+          "anchor",
+          "client_nonce_sha256",
+          "correlation",
+          "derivation",
+          "entries",
+          "evidence_stream",
+          "half",
+          "inclusion",
+          "request_digest",
+          "response_digest",
+          "role",
+          "subject"
+        ]
       }
     },
     {
@@ -486,6 +551,8 @@
           "ghgahFggoZpMQrpIrqVccvmNyhvHtimGNfCHZqHP6fk2GiMYGApYIHNNHgYZTnRvN8btH7XsB8stakcrjjYETCYc1mM7wAtuWCD7c2CGfX4ktUlEq-5SVIuE6aC3-u7dAOSRYWxtGlqrqlggkDyY_zcuyhCXJydT_pvAa9m3PMQuPQ_MCoa2NpHtYlo"
         ]
       },
+      "corroborating": false,
+      "expect": "COMPLETE",
       "reading": "COMPLETE",
       "shown": {
         "anchor_leaves": 16,
@@ -508,7 +575,17 @@
           15
         ],
         "checkpoints": 0,
-        "halves": 0
+        "halves": 0,
+        "members": [
+          "anchor",
+          "body",
+          "digest",
+          "evidence_stream",
+          "full_history",
+          "leaf_index",
+          "records",
+          "subject"
+        ]
       }
     }
   ]

@@ -6,12 +6,17 @@
 //! The reading ([`reading`]) is the strictest a requester can take from an
 //! answer on its own: a verified artifact is COMPLETE only when it shows
 //! every record of the log up to its anchor. Otherwise it is INCOMPLETE, and
-//! a signed refusal is REFUSED. The answers carry no interval claim to
+//! a signed refusal is REFUSED. Every case is asked of the node ungated (the
+//! sharing policy would only refuse more). An answer that carries no record
+//! (`checkpoints`, `history_card/1`) reads INCOMPLETE because it shows none,
+//! and the check that it states no interval is [`CLAIMS`] over every member
+//! name of its artifact. The anchor's size comes from the node's own
+//! checkpoint list, not from the file. The answers carry no interval claim to
 //! check, so selection among records is never certified. A kind that read
 //! COMPLETE would be a finding of its own. `full_history` is the control: it
 //! does show every record, so it reads COMPLETE where the node serves it, and
 //! the node serves it to no asker (`spans_parties`, refused `not_authorized`
-//! under every sharing setting; ungated here only so the control can run).
+//! under every sharing setting; ungated here so the control can run).
 //!
 //! `CAPSULES_WRITE_NO_COMPLETE_VECTORS=1 cargo test -p evidence-plugin
 //! the_vectors_are_the_nodes_answers` rewrites the file; then regenerate
@@ -21,19 +26,47 @@ use super::*;
 
 const VECTORS: &str = "../../vectors/no-complete-answer/vectors.json";
 
-/// Members an artifact would need to state an interval it covers.
-const INTERVAL_MEMBERS: [&str; 5] = [
+/// Fragments of a member name that would state a covered interval or a
+/// completeness claim; no member name of an answer's artifact, at any depth,
+/// may hold one. Any new member name is read here before it passes.
+const CLAIMS: [&str; 8] = [
     "interval",
-    "completeness",
+    "complete",
     "coverage",
     "range",
+    "cover",
+    "span",
     "certificate",
+    "size",
 ];
 
-/// `COMPLETE`, `INCOMPLETE` or `REFUSED`, from the reply alone.
+/// Every member name in `v`, at any depth, sorted and unique.
+fn member_names(v: &Value, out: &mut std::collections::BTreeSet<String>) {
+    match v {
+        Value::Object(m) => {
+            for (k, x) in m {
+                out.insert(k.clone());
+                member_names(x, out);
+            }
+        }
+        Value::Array(a) => a.iter().for_each(|x| member_names(x, out)),
+        _ => {}
+    }
+}
+
+/// `COMPLETE`, `INCOMPLETE` or `REFUSED`, from the reply and the node's own
+/// checkpoint list (for the anchor's size).
 fn reading(node: &Node, sent: &[u8], reply: &Value) -> (&'static str, Value) {
-    if reply.get("reason").is_some() {
-        return ("REFUSED", json!({"reason": reply["reason"]}));
+    let state = evidence_answer::verify_response(
+        sent,
+        reply,
+        &key().verifying_key(),
+        &std::collections::BTreeMap::new(),
+    );
+    match state["state"].as_str() {
+        Some("refusal") => return ("REFUSED", json!({"reason": state["reason"]})),
+        Some("artifact") => {}
+        _ => panic!("a node's own reply verifies: {state}"),
     }
     let checked = check_reply(sent, reply).expect("a node's own answer verifies");
     let at = node
@@ -43,14 +76,19 @@ fn reading(node: &Node, sent: &[u8], reply: &Value) -> (&'static str, Value) {
         .unwrap();
     let leaves = leaf_count(node_size(node, at)).unwrap();
     let whole: Vec<u64> = (0..leaves).collect();
-    let members: Vec<String> = match serde_json::from_slice::<Value>(&envelope_of(reply).artifact) {
-        Ok(Value::Object(m)) if !checked.records.is_empty() || checked.checkpoints > 0 => {
-            m.keys().cloned().collect()
-        }
-        _ => Vec::new(),
-    };
+    // A single record's artifact is the record's own line, whose members are
+    // the record's, not a statement about the answer.
+    let single = request::parse_json(sent)
+        .map(|r| r.derivation.is_none() && matches!(r.subject, Subject::Record(_)))
+        .unwrap_or(false);
+    let mut members = std::collections::BTreeSet::new();
+    if !single {
+        let artifact = serde_json::from_slice::<Value>(&envelope_of(reply).artifact).unwrap();
+        member_names(&artifact, &mut members);
+    }
     for member in &members {
-        assert!(!INTERVAL_MEMBERS.contains(&member.as_str()), "{member}");
+        let lower = member.to_lowercase();
+        assert!(!CLAIMS.iter().any(|c| lower.contains(c)), "{member}");
     }
     let verdict = if checked.records == whole {
         "COMPLETE"
@@ -64,8 +102,19 @@ fn reading(node: &Node, sent: &[u8], reply: &Value) -> (&'static str, Value) {
             "records": checked.records,
             "checkpoints": checked.checkpoints,
             "halves": checked.halves.len(),
+            "members": members,
         }),
     )
+}
+
+/// Whether a kind is asked of the corroborating node, and what it must read.
+fn expectation(kind: &str) -> (bool, &'static str) {
+    match kind {
+        "exchange_corroboration/1" => (true, "INCOMPLETE"),
+        "served_summary/1" => (false, "REFUSED"),
+        "control:full_history" => (false, "COMPLETE"),
+        _ => (false, "INCOMPLETE"),
+    }
 }
 
 /// The nodes the cases are asked of: the corpus, and the corpus with a
@@ -91,7 +140,7 @@ fn nodes() -> (Node, Node) {
 }
 
 /// (kind, what, request, setup, asked of the corroborating node)
-type Case = (&'static str, &'static str, Vec<u8>, Setup, bool);
+type Case = (&'static str, &'static str, Vec<u8>, Setup);
 
 fn cases(node: &Node) -> Vec<Case> {
     let last = node.anchors.len() - 1;
@@ -110,28 +159,24 @@ fn cases(node: &Node) -> Vec<Case> {
             "a record of the second checkpoint",
             ask(json!({"subject": {"record": ledger[17]["capsule_id"]}, "coverage": pin})),
             plain,
-            false,
         ),
         (
             "correlation",
             "the records under one correlation key",
             ask(json!({"subject": {"correlation": "n-1"}, "coverage": pin})),
             plain,
-            false,
         ),
         (
             "exchange",
             "the records citing a counterparty's half",
             ask(json!({"subject": {"exchange": half}, "coverage": {"expected_pin": half}})),
             plain,
-            false,
         ),
         (
             "checkpoints",
             "the checkpoint list",
             ask(json!({"subject": {"checkpoints": null}, "coverage": pin})),
             plain,
-            false,
         ),
         (
             "history_card/1",
@@ -140,7 +185,6 @@ fn cases(node: &Node) -> Vec<Case> {
                 json!({"subject": {"full_history": null}, "coverage": pin, "derivation": "history_card/1"}),
             ),
             plain,
-            false,
         ),
         (
             "served_summary/1",
@@ -149,7 +193,6 @@ fn cases(node: &Node) -> Vec<Case> {
                 json!({"subject": {"full_history": null}, "coverage": pin, "derivation": "served_summary/1"}),
             ),
             plain,
-            false,
         ),
         (
             "exchange_corroboration/1",
@@ -159,14 +202,12 @@ fn cases(node: &Node) -> Vec<Case> {
                 corroboration: true,
                 ..plain
             },
-            true,
         ),
         (
             "control:full_history",
             "every record up to the first checkpoint; never served to an asker",
             ask(json!({"subject": {"full_history": null}, "coverage": first})),
             plain,
-            false,
         ),
     ]
 }
@@ -175,7 +216,8 @@ fn generate() -> Value {
     let (plain, corroborating) = nodes();
     let out: Vec<Value> = cases(&plain)
         .into_iter()
-        .map(|(kind, what, request, setup, corroboration)| {
+        .map(|(kind, what, request, setup)| {
+            let (corroboration, expect) = expectation(kind);
             let node = if corroboration {
                 &corroborating
             } else {
@@ -191,6 +233,8 @@ fn generate() -> Value {
                 "what": what,
                 "request": serde_json::from_slice::<Value>(&request).unwrap(),
                 "reply": reply,
+                "corroborating": corroboration,
+                "expect": expect,
                 "reading": verdict,
                 "shown": shown,
             })
@@ -222,8 +266,8 @@ fn the_vectors_are_the_nodes_answers() {
     );
 }
 
-/// The file's replies are verified afresh from the file alone, so a vector
-/// cannot claim a reading its reply does not give.
+/// The file's replies are read afresh (signatures and refusals verified), so
+/// a vector cannot claim a reading its reply does not give.
 #[test]
 fn no_selected_answer_reads_complete() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(VECTORS);
@@ -247,24 +291,19 @@ fn no_selected_answer_reads_complete() {
             "control:full_history",
         ]
     );
+    let (plain, corroborating) = nodes();
     for case in file["cases"].as_array().unwrap() {
         let kind = case["kind"].as_str().unwrap();
         let sent = serde_json::to_vec(&case["request"]).unwrap();
-        let (plain, corroborating) = nodes();
-        let node = if kind == "exchange_corroboration/1" {
-            corroborating
+        let node = if case["corroborating"] == json!(true) {
+            &corroborating
         } else {
-            plain
+            &plain
         };
-        let (verdict, _) = reading(&node, &sent, &case["reply"]);
+        let (verdict, _) = reading(node, &sent, &case["reply"]);
         assert_eq!(verdict, case["reading"], "{kind}");
-        let want = if kind == "control:full_history" {
-            "COMPLETE"
-        } else if kind == "served_summary/1" {
-            "REFUSED"
-        } else {
-            "INCOMPLETE"
-        };
-        assert_eq!(verdict, want, "{kind}");
+        let (corroboration, expect) = expectation(kind);
+        assert_eq!(case["corroborating"], json!(corroboration), "{kind}");
+        assert_eq!(verdict, expect, "{kind}");
     }
 }
