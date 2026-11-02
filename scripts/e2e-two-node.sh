@@ -238,8 +238,12 @@ wait_for 120 "the reporter holds the requester's signed join" holds join
 
 # --- the exchanges: each asked of the provider by id ------------------------
 for n in $(seq "$EXCHANGES"); do
+  # logprobs: the referee rules on its own top-2 margin at the split
+  # (referee/verdict.rs, #155), read from the answer it served, so the
+  # first exchange, which is the referee answer, must carry them.
   body=$(jq -cn --arg m "$MODEL_NAME" --arg p "Reply with the number $n and nothing else." \
-    '{model: $m, messages: [{role: "user", content: $p}], max_tokens: 8, temperature: 0}')
+    '{model: $m, messages: [{role: "user", content: $p}], max_tokens: 8, temperature: 0,
+      logprobs: true, top_logprobs: 2}')
   code=$(curl -sS -o "$out/response-$n.json" -D "$out/headers-$n.txt" -w '%{http_code}' \
     --max-time 120 -H 'content-type: application/json' -H "x-mesh-target: $provider_id" \
     -d "$body" "http://127.0.0.1:$REQUESTER_API/v1/chat/completions")
