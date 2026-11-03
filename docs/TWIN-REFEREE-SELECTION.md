@@ -170,7 +170,7 @@ off:** the referee names a twin on any split, including a near-tie that honest b
 have split on (the S08 demo's measured margin was 0.000208 nats). Set it to **4.41** to restore
 the rule of #155/#159 (twice the largest honest CUDA-CPU margin measured, 2.20 nats; Sherlock2).
 It takes a non-negative number of nats; a value that is negative or not a number reads as 4.41,
-never as a looser one, and one past 1,000,000 (more than any margin can be) names no twin. It is read at each ruling, so a change in the console applies to the next
+never as a looser one, and one past 1,000,000 (the largest margin there is) is capped at 1,000,000. It is read at each ruling, so a change in the console applies to the next
 one. A referee with no margin to read stays `inconclusive` at any threshold. Every verdict seals
 the margin and the threshold it was judged by (`split_margin.referee.margin`,
 `split_margin.threshold`), so a page can show both.

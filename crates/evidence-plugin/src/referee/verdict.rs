@@ -66,7 +66,7 @@ pub const DEFAULT_SPLIT_MARGIN_THRESHOLD_NATS: f64 = 0.0;
 
 /// The threshold a setting reads as, in micro-nats: unset or empty is the
 /// default; a non-negative finite number of nats is itself, a number past
-/// [`margin::MAX_NATS`] (which no margin reaches: never name a twin) is
+/// [`margin::MAX_NATS`] (the largest margin there is) is capped at
 /// `MAX_NATS`; anything else (negative, not a number) is the rule's 4.41, so
 /// a typo never names a twin more readily than the rule does.
 pub fn split_margin_threshold_from(raw: Option<&str>) -> i64 {
@@ -551,9 +551,9 @@ mod tests {
         }
     }
 
-    /// Past what any margin can reach, the threshold never names a twin.
+    /// Past the largest margin there is, the threshold is capped at it.
     #[test]
-    fn a_threshold_past_the_largest_margin_is_never_reached() {
+    fn a_threshold_past_the_largest_margin_is_capped_at_it() {
         let max = margin::micro(margin::MAX_NATS);
         for huge in ["1e6", "1e7", "1e300"] {
             assert_eq!(split_margin_threshold_from(Some(huge)), max, "{huge}");
