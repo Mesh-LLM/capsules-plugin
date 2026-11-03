@@ -1,7 +1,7 @@
 import { HISTORY_CHECK_IDS, historyViewHtml } from '@action-state-group/capsule-viewer/history-view'
 import { describe, expect, it } from 'vitest'
-import { NOT_RUN, PERIOD_COUNTS_NOT_RUN, type HistoryVerdict } from '@/features/capsules/lib/history-verify'
-import { historyViewInput } from '@/features/capsules/lib/history-view-input'
+import { NOT_RUN, PERIOD_COUNTS_NOT_RUN, VERIFIER_CHECK_IDS, type HistoryVerdict } from '@/features/capsules/lib/history-verify'
+import { CHECK_ID, historyViewInput } from '@/features/capsules/lib/history-view-input'
 
 const context = {
   nodeKeyId: 'b'.repeat(64),
@@ -18,7 +18,9 @@ const context = {
 
 describe('historyViewInput', () => {
   it('maps every check id the verifier can report onto the view’s closed list', () => {
-    const ids = ['readable', 'refusal', 'artifact_digest', 'card_digest', 'card', 'checkpoints', 'chain', 'consistency', 'anchor']
+    expect(Object.keys(CHECK_ID).sort()).toEqual([...VERIFIER_CHECK_IDS].sort())
+    for (const mapped of Object.values(CHECK_ID)) expect(HISTORY_CHECK_IDS).toContain(mapped)
+    const ids = ['readable', 'refusal', 'artifact_digest', 'card_digest', 'checkpoints', 'chain', 'consistency', 'anchor']
     const verdict: HistoryVerdict = {
       kind: 'answered',
       verified: false,
@@ -45,5 +47,36 @@ describe('historyViewInput', () => {
     expect(input.holder.node).toBe('c'.repeat(64))
     expect(input.rows[0]).toMatchObject({ signature: 'pass', witness: { state: 'not_checked' }, second_signature: { state: 'not_checked' } })
     expect(() => historyViewHtml(input)).not.toThrow()
+  })
+
+  it('keeps node-supplied text inside what the view accepts', () => {
+    for (const reason of ['', 'x'.repeat(300)]) {
+      const refusal: HistoryVerdict = { kind: 'refused', verified: false, checks: [{ id: 'refusal', status: 'not_run', detail: '' }], checkpoints: [], reason }
+      expect(() => historyViewHtml(historyViewInput(refusal, context))).not.toThrow()
+    }
+  })
+
+  it('does not say a complementary count is under the floor', () => {
+    const verdict: HistoryVerdict = {
+      kind: 'answered',
+      verified: true,
+      checks: [],
+      checkpoints: [{ size: 5, time: '2026-11-03T01:00:00Z', anchor: 'ab'.repeat(32) }],
+      keyId: 'c'.repeat(64),
+      counts: [
+        {
+          from: '2026-10-26',
+          to: '2026-11-01',
+          cells: [
+            { what: 'model a', value: 'withheld (below the floor)' },
+            { what: 'model b', value: 'withheld (showing it would let a count under the floor be worked out)' }
+          ]
+        }
+      ]
+    }
+    const html = historyViewHtml(historyViewInput(verdict, context))
+    expect(html).toContain('model a: fewer than 5')
+    expect(html).not.toContain('model b: fewer than 5')
+    expect(html).toContain('model b: withheld')
   })
 })

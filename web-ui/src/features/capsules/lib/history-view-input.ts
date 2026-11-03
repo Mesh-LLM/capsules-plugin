@@ -19,12 +19,11 @@ export type HistoryPageContext = {
 type CheckStatus = 'pass' | 'fail' | 'not_run'
 
 // The verifier's check ids, under the view's closed list.
-const CHECK_ID: Record<string, string> = {
+export const CHECK_ID: Record<string, string> = {
   readable: 'readable',
   refusal: 'refusal',
   artifact_digest: 'artifact_digest',
   card_digest: 'card_digest',
-  card: 'card_digest',
   checkpoints: 'checkpoint_signatures',
   chain: 'checkpoint_chain',
   consistency: 'consistency',
@@ -36,6 +35,17 @@ const CHECK_ID: Record<string, string> = {
   witness_receipts: 'witness'
 }
 
+// The view's limits on node-supplied text (it refuses longer input).
+const clamp = (text: string, max: number): string => (text.length > max ? text.slice(0, max) : text)
+
+// A count under the floor is the view's `withheld`. A count withheld only so
+// that another cannot be worked out (`complementary`) may itself be 5 or more,
+// so it is not drawn as "fewer than" anything.
+function cell(what: string, value: string) {
+  if (value.startsWith('withheld (below')) return { what: clamp(what, 200), withheld: true as const }
+  return { what: clamp(what, 200), value: clamp(value.startsWith('withheld') ? 'withheld' : value, 40) }
+}
+
 const NOT_CHECKED = { state: 'not_checked' } as const
 
 export function historyViewInput(verdict: HistoryVerdict, context: HistoryPageContext) {
@@ -45,8 +55,8 @@ export function historyViewInput(verdict: HistoryVerdict, context: HistoryPageCo
     // A check the view has no words for would be refused; the verifier's own
     // ids are all mapped (see the test), so this only guards a future id.
     if (!id) continue
-    // The verifier's `card` failure is a card_digest failure after that
-    // check passed: the failure wins.
+    // A later failure of a check that passed before (a Service History's card
+    // shape after its digest) wins.
     const seen = checks.find((c) => c.id === id)
     if (!seen) checks.push({ id, status: check.status })
     else if (check.status === 'fail') seen.status = 'fail'
@@ -68,7 +78,7 @@ export function historyViewInput(verdict: HistoryVerdict, context: HistoryPageCo
     ? verdict.counts?.map((p) => ({
         from: p.from,
         to: p.to,
-        cells: p.cells.map((c) => (c.value.startsWith('withheld') ? { what: c.what, withheld: true as const } : { what: c.what, value: c.value }))
+        cells: p.cells.map((c) => cell(c.what, c.value))
       }))
     : undefined
   return {
@@ -84,7 +94,7 @@ export function historyViewInput(verdict: HistoryVerdict, context: HistoryPageCo
       verdict.kind === 'answered'
         ? { kind: 'answered' as const }
         : verdict.kind === 'refused'
-          ? { kind: 'refused' as const, reason: verdict.reason ?? 'unknown' }
+          ? { kind: 'refused' as const, reason: clamp(verdict.reason || 'unknown', 200) }
           : { kind: 'unreadable' as const },
     rows,
     checks,

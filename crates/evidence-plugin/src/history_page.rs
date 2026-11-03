@@ -128,8 +128,8 @@ fn outcome_json(
         "sharing": {
             "standard_history": policy.share_standard_history,
             "history_segments": policy.history_segments,
-            "record_at_completion": if policy.record_at_completion { "counterparty" } else { "off" },
-            "adjudications": if policy.adjudications_delivered { "deliver_to_subjects" } else { "off" },
+            "record_at_completion": policy.record_at_completion_value(),
+            "adjudications": policy.adjudications_value(),
             "exchange_corroboration": policy.share_exchange_corroboration,
         },
     }))

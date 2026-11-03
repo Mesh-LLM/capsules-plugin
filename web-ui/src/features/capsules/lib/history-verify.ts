@@ -92,6 +92,24 @@ function periodCounts(raw: unknown): PeriodCount[] {
 }
 
 /** The checks this page cannot run, always listed, whatever else passed. */
+/** Every check id this verifier reports (`history-view-input.ts` maps each
+ *  onto the shared view's closed list; a test holds the two together). */
+export const VERIFIER_CHECK_IDS = [
+  'readable',
+  'refusal',
+  'artifact_digest',
+  'card_digest',
+  'checkpoints',
+  'chain',
+  'consistency',
+  'anchor',
+  'period_counts',
+  'envelope_signature',
+  'key_is_nodes',
+  'request_binding',
+  'witness_receipts'
+] as const
+
 export const NOT_RUN: readonly Check[] = [
   { id: 'witness_receipts', status: 'not_run', detail: 'Witness receipts were not checked: this page has no verifier for them.' },
   {
@@ -259,7 +277,7 @@ export async function verifyHistoryReply(replyText: string): Promise<HistoryVerd
   } catch {
     artifact = null
   }
-  if (!artifact) return fail('card', 'The artifact is not readable.')
+  if (!artifact) return fail('readable', 'The artifact is not readable.')
   // A Service History embeds the node's card as a member; a direct answer is the card.
   const embedded = object(artifact.history_card)
   let card: Record<string, unknown> = artifact
@@ -271,7 +289,7 @@ export async function verifyHistoryReply(replyText: string): Promise<HistoryVerd
     }
     checks.push({ id: 'card_digest', status: 'pass', detail: 'The history card inside matches its digest.' })
     if (artifact.anchor !== embedded.anchor || artifact.evidence_stream !== embedded.evidence_stream) {
-      return fail('card', 'The history card inside names another anchor or log than the answer.')
+      return fail('anchor', 'The history card inside names another anchor or log than the answer.')
     }
     // The answer names one derivation, the artifact says it carries the card and the counts, and
     // the card is for the same subject (the node's own checker holds the same).
@@ -284,18 +302,18 @@ export async function verifyHistoryReply(replyText: string): Promise<HistoryVerd
       !declared.includes('period_counts') ||
       jcs(embedded.subject) !== jcs(artifact.subject)
     ) {
-      return fail('card', 'The artifact is not a Service History for the card inside it.')
+      return fail('card_digest', 'The artifact is not a Service History for the card inside it.')
     }
     card = embedded
     counts = periodCounts(artifact.period_counts)
   } else if (reply.derivation !== 'history_card/1') {
-    return fail('card', 'The artifact is not a history_card/1 card.')
+    return fail('readable', 'The artifact is not a history_card/1 card.')
   }
   const history = Array.isArray(card.history) ? card.history : null
   if (!history || history.length === 0 || history.length > MAX_CHECKPOINTS) {
-    return fail('card', 'The artifact is not a history card.')
+    return fail('readable', 'The artifact is not a history card.')
   }
-  if (card.derivation !== 'history_card/1') return fail('card', 'The artifact is not a history_card/1 card.')
+  if (card.derivation !== 'history_card/1') return fail('readable', 'The artifact is not a history_card/1 card.')
 
   const links: Link[] = []
   for (let i = 0; i < history.length; i++) {
