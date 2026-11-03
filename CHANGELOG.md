@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.15
+
 ### Fixed
 
 - **A logprob float digests the way the host seals it, on every shortest-round-trip tie.** The
