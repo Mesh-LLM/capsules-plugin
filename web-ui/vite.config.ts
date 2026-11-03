@@ -63,7 +63,7 @@ function inlineIife(): PluginOption {
       const result = await build({
         configFile: false,
         logLevel: 'silent',
-        resolve: { alias: { '@cll-browser': cllBrowser } },
+        resolve: { alias: { '@': path.resolve(dirname, './src'), '@cll-browser': cllBrowser, '@aac-browser': aacBrowser } },
         build: {
           write: false,
           minify: true,

@@ -829,7 +829,8 @@ fn parse(args: &ComposeArgs) -> Result<(String, Vec<String>), String> {
 }
 
 /// The route's answer once the composition is sealed (or refused) and a
-/// checkpoint was cut over it: `{"state": "bundle", "bundle": ...}`, or
+/// checkpoint was cut over it: `{"state": "bundle", "bundle": "<JSON text>"}`
+/// (`super::bundle_answer`), or
 /// `{"state": "refused", "why": ...}` for the owner's input or this node's
 /// state; an error for a failure the host reports.
 pub(crate) fn answer(
@@ -839,7 +840,7 @@ pub(crate) fn answer(
     sealed: Result<Composition, ComposeError>,
 ) -> Result<Value, String> {
     match sealed.and_then(|c| bundle(ledger_dir, node_key_id, exchange, &c)) {
-        Ok(bundle) => Ok(json!({"state": "bundle", "bundle": bundle})),
+        Ok(bundle) => Ok(super::bundle_answer(&bundle)),
         Err(error) => refused(error),
     }
 }
