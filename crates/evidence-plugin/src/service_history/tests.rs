@@ -816,22 +816,26 @@ fn page_given(dir: &Path, share: bool) -> Value {
     let key = key();
     let announced = announced_keys();
     let replay = ReplayCache::default();
-    crate::history_page::serve(&Responder {
-        ledger_dir: dir,
-        signing_key: &key,
-        now: NOW,
-        history_segments: "counterparties",
-        share_standard_history: share,
-        share_exchange_corroboration: false,
-        keys: Keys {
-            announced: &announced,
-            configured: None,
-            own_key: None,
+    let policy = crate::commitment::Policy::from_settings(|_| None);
+    crate::history_page::serve(
+        &Responder {
+            ledger_dir: dir,
+            signing_key: &key,
+            now: NOW,
+            history_segments: "counterparties",
+            share_standard_history: share,
+            share_exchange_corroboration: false,
+            keys: Keys {
+                announced: &announced,
+                configured: None,
+                own_key: None,
+            },
+            replay: &replay,
+            node_id: Some(RESPONDER_NODE),
+            policy_digest: None,
         },
-        replay: &replay,
-        node_id: Some(RESPONDER_NODE),
-        policy_digest: None,
-    })
+        &policy,
+    )
     .unwrap()
 }
 

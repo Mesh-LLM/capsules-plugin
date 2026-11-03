@@ -32,7 +32,7 @@ const served = (name: string): Served => JSON.parse(readFileSync(path.join(dir!,
 async function saveAndOpen(body: Served) {
   const taken = servedHistoryFrom(body)
   expect(taken.replyText).toBe(body.reply)
-  const { html } = historyPage(taken.replyText, SAVED, taken.form)
+  const { html } = historyPage(taken.replyText, SAVED, taken)
   // The page carries the served bytes as they are.
   expect(Buffer.from(embeddedBundle(html)).equals(Buffer.from(body.reply, 'utf8'))).toBe(true)
   const opened = await openSavedPage(html)
@@ -48,11 +48,11 @@ describe.skipIf(!dir)('the History page from a live node’s history-page reply,
     expect(body).toMatchObject({ form: 'history_card/1', outcome: 'answered' })
     const { text, form } = await saveAndOpen(body)
     expect(form).toBe('history_card')
-    expect(text).toContain(
-      `Checked against the node’s own key when this page opened: the history card matches its digest, and every checkpoint is signed by key ${body.node_key_id}`
-    )
-    expect(text).toMatch(/Checked: All \d+ checkpoints verify/)
-    expect(text).not.toContain('Failed: ')
+    expect(text).toContain(`node key ${body.node_key_id.slice(0, 12)}`)
+    expect(text).toContain('every checkpoint signature checks')
+    expect(text).toContain('Checked: Every checkpoint is signed by the key that answered')
+    expect(text).toContain('What this node shares')
+    expect(text).not.toContain("Didn't verify")
   })
 
   it('verifies the card inside a Service History under the node’s own key', async () => {
@@ -60,12 +60,9 @@ describe.skipIf(!dir)('the History page from a live node’s history-page reply,
     expect(body).toMatchObject({ form: 'service_history/1', outcome: 'answered' })
     const { text, form } = await saveAndOpen(body)
     expect(form).toBe('service_history')
-    expect(text).toContain('Service History')
-    expect(text).toContain(
-      `the history card inside the Service History matches its digest, and every checkpoint is signed by key ${body.node_key_id}`
-    )
-    expect(text).toContain('Checked: The history card inside matches its digest.')
-    expect(text).not.toContain('Failed: ')
+    expect(text).toContain('Service History: exchanges served in each closed week')
+    expect(text).toContain('Checked: Every checkpoint is signed by the key that answered')
+    expect(text).not.toContain("Didn't verify")
   })
 
   it('shows a node with no checkpoint as declining, and nothing it could not check', async () => {
@@ -73,8 +70,8 @@ describe.skipIf(!dir)('the History page from a live node’s history-page reply,
     expect(body).toMatchObject({ form: 'history_card/1', outcome: 'refused' })
     const { text, form } = await saveAndOpen(body)
     expect(form).toBe('history_card')
-    expect(text).toContain('The node declined to answer')
-    expect(text).not.toContain('matches its digest')
-    expect(text).not.toContain('could not check its answer')
+    expect(text).toContain('The node declined to answer.')
+    expect(text).not.toContain('every checkpoint signature checks')
+    expect(text).not.toContain("This history didn't verify")
   })
 })

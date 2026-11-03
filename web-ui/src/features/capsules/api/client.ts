@@ -68,7 +68,24 @@ export async function fetchDisclosurePreimage(capsuleId: string): Promise<Disclo
   }
 }
 
-export type ServedHistory = { replyText: string; outcome: 'answered' | 'refused'; form: 'history_card' | 'service_history' }
+/** The node's sharing settings when the page was saved, for the page's
+ *  "What this node shares" block. */
+export type HistorySharing = {
+  standard_history: boolean
+  history_segments: 'counterparties' | 'peers' | 'off'
+  record_at_completion: 'counterparty' | 'off'
+  adjudications: 'deliver_to_subjects' | 'off'
+  exchange_corroboration: boolean
+}
+
+export type ServedHistory = {
+  replyText: string
+  outcome: 'answered' | 'refused'
+  form: 'history_card' | 'service_history'
+  /** The key the node signs its answers with. */
+  nodeKeyId: string
+  sharing: HistorySharing
+}
 
 /** What this node answers a stranger who asks for its history: the reply's
  *  bytes as text, unchanged, for the History page (`saved-pages.ts`). */
@@ -79,7 +96,7 @@ export async function fetchServedHistory(): Promise<ServedHistory> {
 /** The `history-page` route's body as the History page takes it. Throws for
  *  a body that is not a history, or a card signed under another key. */
 export function servedHistoryFrom(raw: unknown): ServedHistory {
-  const body = (isRecord(raw) ? raw : {}) as { reply?: unknown; outcome?: unknown; node_key_id?: unknown; form?: unknown }
+  const body = (isRecord(raw) ? raw : {}) as { reply?: unknown; outcome?: unknown; node_key_id?: unknown; form?: unknown; sharing?: unknown }
   if (typeof body.reply !== 'string' || (body.outcome !== 'answered' && body.outcome !== 'refused')) {
     throw new Error('this node did not give its history')
   }
@@ -90,9 +107,23 @@ export function servedHistoryFrom(raw: unknown): ServedHistory {
       throw new Error('the history it gave is signed under another key')
     }
   }
+  if (typeof body.node_key_id !== 'string') throw new Error('this node did not give its history')
+  const sharing = isRecord(body.sharing) ? body.sharing : {}
+  const { standard_history, history_segments, record_at_completion, adjudications, exchange_corroboration } = sharing
+  if (
+    typeof standard_history !== 'boolean' ||
+    typeof exchange_corroboration !== 'boolean' ||
+    (history_segments !== 'counterparties' && history_segments !== 'peers' && history_segments !== 'off') ||
+    (record_at_completion !== 'counterparty' && record_at_completion !== 'off') ||
+    (adjudications !== 'deliver_to_subjects' && adjudications !== 'off')
+  ) {
+    throw new Error('this node did not say what it shares')
+  }
   return {
     replyText: body.reply,
     outcome: body.outcome,
-    form: body.form === 'service_history/1' ? 'service_history' : 'history_card'
+    form: body.form === 'service_history/1' ? 'service_history' : 'history_card',
+    nodeKeyId: body.node_key_id,
+    sharing: { standard_history, history_segments, record_at_completion, adjudications, exchange_corroboration }
   }
 }

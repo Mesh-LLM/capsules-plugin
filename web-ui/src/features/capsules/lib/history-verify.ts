@@ -23,9 +23,29 @@ import { checkpointMetadata, leafCount, verifyCheckpoint, verifyConsistency } fr
  *  crates/evidence-plugin/src/evidence_answer.rs): a longer list is not one. */
 const MAX_CHECKPOINTS = 1024
 
+/** Every check id this verifier reports (`history-view-input.ts` maps each
+ *  onto the shared view's closed list; a test holds the two together). */
+export const VERIFIER_CHECK_IDS = [
+  'readable',
+  'refusal',
+  'artifact_digest',
+  'card_digest',
+  'checkpoints',
+  'chain',
+  'consistency',
+  'anchor',
+  'period_counts',
+  'envelope_signature',
+  'key_is_nodes',
+  'request_binding',
+  'witness_receipts'
+] as const
+
+export type VerifierCheckId = (typeof VERIFIER_CHECK_IDS)[number]
+
 export type CheckStatus = 'pass' | 'fail' | 'not_run'
 
-export type Check = { id: string; status: CheckStatus; detail: string }
+export type Check = { id: VerifierCheckId; status: CheckStatus; detail: string }
 
 export type HistoryVerdict = {
   /** `answered`: the node gave its card; `refused`: it signed a refusal;
@@ -35,7 +55,7 @@ export type HistoryVerdict = {
   verified: boolean
   checks: Check[]
   /** The checkpoints the card lists, when it was read. */
-  checkpoints: { size: number; time: string }[]
+  checkpoints: { size: number; time: string; anchor: string }[]
   /** The refusal's reason, for a refusal. */
   reason?: string
   /** The key every checkpoint was checked under: the one the reply names as
@@ -235,7 +255,7 @@ export async function verifyHistoryReply(replyText: string): Promise<HistoryVerd
   }
 
   const checks: Check[] = []
-  const fail = (id: string, detail: string): HistoryVerdict => ({
+  const fail = (id: VerifierCheckId, detail: string): HistoryVerdict => ({
     kind: 'answered',
     verified: false,
     checks: [...checks, { id, status: 'fail', detail }, ...NOT_RUN],
@@ -259,7 +279,7 @@ export async function verifyHistoryReply(replyText: string): Promise<HistoryVerd
   } catch {
     artifact = null
   }
-  if (!artifact) return fail('card', 'The artifact is not readable.')
+  if (!artifact) return fail('readable', 'The artifact is not readable.')
   // A Service History embeds the node's card as a member; a direct answer is the card.
   const embedded = object(artifact.history_card)
   let card: Record<string, unknown> = artifact
@@ -271,7 +291,7 @@ export async function verifyHistoryReply(replyText: string): Promise<HistoryVerd
     }
     checks.push({ id: 'card_digest', status: 'pass', detail: 'The history card inside matches its digest.' })
     if (artifact.anchor !== embedded.anchor || artifact.evidence_stream !== embedded.evidence_stream) {
-      return fail('card', 'The history card inside names another anchor or log than the answer.')
+      return fail('anchor', 'The history card inside names another anchor or log than the answer.')
     }
     // The answer names one derivation, the artifact says it carries the card and the counts, and
     // the card is for the same subject (the node's own checker holds the same).
@@ -284,18 +304,18 @@ export async function verifyHistoryReply(replyText: string): Promise<HistoryVerd
       !declared.includes('period_counts') ||
       jcs(embedded.subject) !== jcs(artifact.subject)
     ) {
-      return fail('card', 'The artifact is not a Service History for the card inside it.')
+      return fail('card_digest', 'The artifact is not a Service History for the card inside it.')
     }
     card = embedded
     counts = periodCounts(artifact.period_counts)
   } else if (reply.derivation !== 'history_card/1') {
-    return fail('card', 'The artifact is not a history_card/1 card.')
+    return fail('readable', 'The artifact is not a history_card/1 card.')
   }
   const history = Array.isArray(card.history) ? card.history : null
   if (!history || history.length === 0 || history.length > MAX_CHECKPOINTS) {
-    return fail('card', 'The artifact is not a history card.')
+    return fail('readable', 'The artifact is not a history card.')
   }
-  if (card.derivation !== 'history_card/1') return fail('card', 'The artifact is not a history_card/1 card.')
+  if (card.derivation !== 'history_card/1') return fail('readable', 'The artifact is not a history_card/1 card.')
 
   const links: Link[] = []
   for (let i = 0; i < history.length; i++) {
@@ -391,7 +411,7 @@ export async function verifyHistoryReply(replyText: string): Promise<HistoryVerd
     kind: 'answered',
     verified: true,
     checks: [...checks, ...(counts ? [PERIOD_COUNTS_NOT_RUN] : []), ...NOT_RUN],
-    checkpoints: links.map((l) => ({ size: Number(l.size), time: l.time })),
+    checkpoints: links.map((l) => ({ size: Number(l.size), time: l.time, anchor: l.digest })),
     keyId: last.keyId,
     form: counts ? 'service_history' : 'history_card',
     ...(counts ? { counts } : {})

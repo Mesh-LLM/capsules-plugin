@@ -133,18 +133,34 @@ impl Policy {
         }
     }
 
+    /// `record_at_completion` as the operator sets it.
+    pub fn record_at_completion_value(&self) -> &'static str {
+        if self.record_at_completion {
+            "counterparty"
+        } else {
+            "off"
+        }
+    }
+
+    /// `adjudications` as the operator sets it.
+    pub fn adjudications_value(&self) -> &'static str {
+        if self.adjudications_delivered {
+            "deliver_to_subjects"
+        } else {
+            "off"
+        }
+    }
+
     /// The `policy` member: each switch under its setting name, with the
     /// value the operator would set for it.
     pub fn body(&self) -> Value {
         let on_off = |on: bool| if on { "on" } else { "off" };
         json!({
             share_policy::ADVERTISE_EVIDENCE_REQUESTS_KEY: on_off(self.advertise_evidence_requests),
-            share_policy::ADJUDICATIONS_KEY:
-                if self.adjudications_delivered { "deliver_to_subjects" } else { "off" },
+            share_policy::ADJUDICATIONS_KEY: self.adjudications_value(),
             share_policy::EXCHANGE_CORROBORATION_KEY: on_off(self.share_exchange_corroboration),
             share_policy::HISTORY_SEGMENTS_KEY: self.history_segments,
-            share_policy::RECORD_AT_COMPLETION_KEY:
-                if self.record_at_completion { "counterparty" } else { "off" },
+            share_policy::RECORD_AT_COMPLETION_KEY: self.record_at_completion_value(),
             share_policy::STANDARD_HISTORY_KEY: on_off(self.share_standard_history),
             "stranger_safe": STRANGER_SAFE,
         })
