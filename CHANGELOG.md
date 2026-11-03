@@ -15,7 +15,7 @@
 - **The referee's split-margin threshold is a setting, `split_margin_threshold`, and its default is
   0** (Configuration > When answers differ; env `CAPSULES_SPLIT_MARGIN_THRESHOLD`; nats). It was a
   constant 4.41 (#155, #159). **At the default 0 the false-accusation guard is off:** a referee
-  names a twin on any split it has a margin for, including a near-tie (the Devcon S08 demo's
+  names a twin on any split it has a margin for, including a near-tie or an exact tie (the Devcon S08 demo's
   measured 0.000208 nats) that an honest node on another backend could have split on. 4.41 is
   still Sherlock2's rule, twice the largest honest CUDA-CPU margin measured (2.20 nats); **set
   `split_margin_threshold` to 4.41 to restore it.** A negative or non-numeric value reads as 4.41; one past 1,000,000 is capped at 1,000,000.

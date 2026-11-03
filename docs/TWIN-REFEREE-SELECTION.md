@@ -32,7 +32,7 @@ are nearly tied, temperature 0 can choose differently on two honest twins. So
 the referee asks its own server for the top-2 logprobs of every token of its
 re-answer, and its word names a twin only when its own margin (top-1 minus
 top-2 logprob, in nats) is at least the `split_margin_threshold` setting (section 6;
-**0 nats by default, which names a twin at any split, near-ties included**; the rule is 4.41 nats,
+**0 nats by default, which names a twin at any split, near-ties and exact ties included**; the rule is 4.41 nats,
 `referee/verdict.rs`) at every token from the space before the word where it
 departs from the other twin through the token where they part: the other twin
 may cut the same text into other tokens, so any of them may be where it chose
@@ -166,8 +166,8 @@ about a node's future answers.
 
 `split_margin_threshold` is the least margin, in nats, between the referee's top two words
 at the split for it to name a twin (section 1). **At the default 0 the false-accusation guard is
-off:** the referee names a twin on any split, including a near-tie that honest backends could
-have split on (the S08 demo's measured margin was 0.000208 nats). Set it to **4.41** to restore
+off:** the referee names a twin on any split, including a near-tie or an exact tie that honest backends could
+have split on (the S08 demo's measured margin was 0.000208 nats). If your twins run on mixed platforms (CUDA, CPU, Metal) or with nondeterministic batching, set it to **4.41** to restore
 the rule of #155/#159 (twice the largest honest CUDA-CPU margin measured, 2.20 nats; Sherlock2).
 It takes a non-negative number of nats; a value that is negative or not a number reads as 4.41,
 never as a looser one, and one past 1,000,000 (the largest margin there is) is capped at 1,000,000. It is read at each ruling, so a change in the console applies to the next

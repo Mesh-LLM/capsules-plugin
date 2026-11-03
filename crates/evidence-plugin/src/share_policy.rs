@@ -370,9 +370,9 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 .description(
                     "The least margin, in nats, between the referee's top two words at the split \
                      for it to name a twin; below it the ruling is inconclusive. The default 0 \
-                     names a twin at any split, near-ties included, so the guard against \
+                     names a twin at any split, near-ties and exact ties included, so the guard against \
                      accusing an honest node whose backend split on a near-tie is off. Set 4.41 \
-                     to turn it on: that is the rule, twice the largest margin seen between \
+                     if your nodes mix platforms or batching: that is the rule, twice the largest margin seen between \
                      honest backends. Every verdict records the margin and the threshold it \
                      was judged by.",
                 )
