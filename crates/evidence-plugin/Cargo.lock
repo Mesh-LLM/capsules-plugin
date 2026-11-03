@@ -740,6 +740,7 @@ dependencies = [
  "reqwest",
  "rmcp",
  "rusqlite",
+ "ryu",
  "schemars",
  "scitt-cose-receipt",
  "serde",

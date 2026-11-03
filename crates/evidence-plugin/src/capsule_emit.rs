@@ -121,24 +121,74 @@ fn stringify_floats(value: Value) -> Value {
     }
 }
 
+/// Python's `repr(float)`: the shortest decimal digit sequence that
+/// round-trips to `f`, in fixed-point form when the decimal exponent is in
+/// `[-4, 16)` and in exponent form (`d[.ddd]e+NN` / `e-NN`) otherwise.
+///
+/// The **digits** come from `ryu`, not Rust's `Display`/`{:e}`: both are
+/// shortest-round-trip, but on a tie between two candidates Rust may pick
+/// another last digit than Python's `repr` and the host's `float_repr` (also
+/// `ryu`): `-2.7862319946289062` here would otherwise spell `...063`, change
+/// the response digest and leave the referee unable to find its own sealed
+/// record. Only the *placement* is derived here, since `ryu` switches to
+/// exponent form at other exponents than Python does.
+///
+/// JSON carries no non-finite number, so `NaN`/`inf` keep Rust's rendering.
 fn python_repr_f64(f: f64) -> String {
-    // Python's `repr` writes a float in positional form for decimal exponents
-    // -4..=15 and in scientific form (`1e-05`, `9.07e-06`, `1e+16`) outside
-    // them. The host seals its digests from that spelling, so a body with a
-    // small float (a token logprob) digests the same here only if this does.
-    let scientific = format!("{f:e}");
-    let (mantissa, exponent) = scientific.split_once('e').expect("{:e} has an exponent");
-    let exponent: i32 = exponent.parse().expect("{:e} exponent is an integer");
-    if (-4..16).contains(&exponent) {
-        let s = format!("{f}");
-        return if s.contains('.') || s.contains('e') || s.contains('E') {
-            s
-        } else {
-            format!("{s}.0")
-        };
+    if !f.is_finite() {
+        return format!("{f}");
     }
-    let sign = if exponent < 0 { '-' } else { '+' };
-    format!("{mantissa}e{sign}{:02}", exponent.abs())
+    if f == 0.0 {
+        return if f.is_sign_negative() { "-0.0" } else { "0.0" }.to_string();
+    }
+    let sign = if f.is_sign_negative() { "-" } else { "" };
+    let shortest = ryu::Buffer::new().format(f.abs()).to_string();
+    let (digits, exponent) = significant_digits(&shortest);
+    if (-4..16).contains(&exponent) {
+        let body = if exponent >= 0 {
+            let int_len = exponent as usize + 1;
+            if digits.len() > int_len {
+                format!("{}.{}", &digits[..int_len], &digits[int_len..])
+            } else {
+                format!("{digits}{}.0", "0".repeat(int_len - digits.len()))
+            }
+        } else {
+            format!("0.{}{digits}", "0".repeat((-exponent - 1) as usize))
+        };
+        format!("{sign}{body}")
+    } else {
+        let mantissa = if digits.len() == 1 {
+            digits
+        } else {
+            format!("{}.{}", &digits[..1], &digits[1..])
+        };
+        let exp_sign = if exponent < 0 { '-' } else { '+' };
+        format!("{sign}{mantissa}e{exp_sign}{:02}", exponent.abs())
+    }
+}
+
+/// Split `ryu`'s shortest-round-trip output (fixed or exponent form) into its
+/// significant digits, without leading or trailing zeros, and the decimal
+/// exponent of the first digit: `0.00001` -> (`"1"`, -5), `123456789.0` ->
+/// (`"123456789"`, 8).
+fn significant_digits(shortest: &str) -> (String, i32) {
+    let (mantissa, exponent) = match shortest.split_once(['e', 'E']) {
+        Some((m, e)) => (m, e.parse::<i32>().unwrap_or(0)),
+        None => (shortest, 0),
+    };
+    let (int_part, frac_part) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    let combined = format!("{int_part}{frac_part}");
+    let leading_zeros = combined.chars().take_while(|c| *c == '0').count();
+    let significant = combined[leading_zeros..].trim_end_matches('0');
+    let significant = if significant.is_empty() {
+        "0"
+    } else {
+        significant
+    };
+    (
+        significant.to_string(),
+        int_part.len() as i32 - 1 + exponent - leading_zeros as i32,
+    )
 }
 
 /// The JSON-DIGEST of a value, floats stringified first: the digest a signed
@@ -3403,6 +3453,95 @@ pub(crate) mod tests {
         assert_eq!(python_repr_f64(1e15), "1000000000000000.0");
         assert_eq!(python_repr_f64(1e16), "1e+16");
         assert_eq!(python_repr_f64(-2.5e100), "-2.5e+100");
+    }
+
+    /// The host seals `-2.7862319946289062` (ryu / Python repr); Rust's
+    /// `Display` renders the same double as `...063`, which changed the
+    /// response digest and left the S08 referee without its own record.
+    #[test]
+    fn python_repr_f64_takes_ryu_digits_on_shortest_round_trip_ties() {
+        assert_eq!(python_repr_f64(-2.7862319946289062), "-2.7862319946289062");
+        assert_eq!(python_repr_f64(1057279450645605.2), "1057279450645605.2");
+        assert_eq!(python_repr_f64(-0.0), "-0.0");
+        let body = br#"{"logprob":-2.7862319946289062}"#;
+        let host = serde_json::json!({"logprob": "-2.7862319946289062"});
+        assert_eq!(
+            canonical_body_digest(body).expect("digest"),
+            jcs::json_digest(&host).expect("digest")
+        );
+    }
+
+    /// The mesh-llm host's `float_repr` (canonical_digest.rs), copied as the
+    /// oracle: the plugin's spelling must equal it for every finite double.
+    fn host_float_repr(f: f64) -> String {
+        if f == 0.0 {
+            return if f.is_sign_negative() { "-0.0" } else { "0.0" }.to_string();
+        }
+        let sign = if f.is_sign_negative() { "-" } else { "" };
+        let shortest = ryu::Buffer::new().format(f.abs()).to_string();
+        let (mantissa, exp) = match shortest.split_once('e') {
+            Some((m, e)) => (m.to_string(), e.parse::<i32>().unwrap()),
+            None => (shortest.clone(), 0),
+        };
+        let (ip, fp) = mantissa.split_once('.').unwrap_or((&mantissa, ""));
+        let combined = format!("{ip}{fp}");
+        let lz = combined.chars().take_while(|c| *c == '0').count();
+        let digits = combined[lz..].trim_end_matches('0').to_string();
+        let exponent = ip.len() as i32 - 1 + exp - lz as i32;
+        if (-4..16).contains(&exponent) {
+            let body = if exponent >= 0 {
+                let n = exponent as usize + 1;
+                if digits.len() > n {
+                    format!("{}.{}", &digits[..n], &digits[n..])
+                } else {
+                    format!("{digits}{}.0", "0".repeat(n - digits.len()))
+                }
+            } else {
+                format!("0.{}{digits}", "0".repeat((-exponent - 1) as usize))
+            };
+            format!("{sign}{body}")
+        } else {
+            let m = if digits.len() == 1 {
+                digits
+            } else {
+                format!("{}.{}", &digits[..1], &digits[1..])
+            };
+            format!(
+                "{sign}{m}e{}{:02}",
+                if exponent < 0 { '-' } else { '+' },
+                exponent.abs()
+            )
+        }
+    }
+
+    #[test]
+    fn python_repr_f64_matches_the_host_float_repr_over_many_doubles() {
+        let mut x: u64 = 0x9E37_79B9_7F4A_7C15;
+        let mut checked = 0u32;
+        for i in 0..400_000u32 {
+            // xorshift64*: deterministic, covers every exponent.
+            x ^= x >> 12;
+            x ^= x << 25;
+            x ^= x >> 27;
+            let bits = x.wrapping_mul(0x2545_F491_4F6C_DD1D);
+            let f = match i % 3 {
+                0 => f64::from_bits(bits),
+                // Logprob-shaped values: the range where ties were seen.
+                1 => -((bits >> 11) as f64 / (1u64 << 53) as f64) * 30.0,
+                _ => ((bits >> 11) as f64) / 1e6,
+            };
+            if f.is_finite() {
+                assert_eq!(
+                    python_repr_f64(f),
+                    host_float_repr(f),
+                    "bits {:#x}",
+                    f.to_bits()
+                );
+                assert_eq!(python_repr_f64(f).parse::<f64>().unwrap(), f);
+                checked += 1;
+            }
+        }
+        assert!(checked > 300_000);
     }
 
     /// [B3, extended by rung 3a] The runtime/binary-attestation rung: a real

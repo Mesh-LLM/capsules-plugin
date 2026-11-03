@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- **A logprob float digests the way the host seals it, on every shortest-round-trip tie.** The
+  plugin took a float's digits from Rust's `Display`, which can end on another last digit than the
+  host's `ryu` and Python's `repr` (`-2.7862319946289062` came out `...063`). One such float in a
+  response changed its digest, so the referee never found its own sealed record and step 4 ended
+  `referee_cannot_sign`. The digits now come from `ryu` (Mesh-LLM/capsules-plugin#260).
+
 ## 0.1.14
 
 ### Changed

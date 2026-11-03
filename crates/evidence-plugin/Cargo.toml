@@ -215,6 +215,9 @@ k256 = { version = "0.13", default-features = false, features = ["schnorr", "std
 # A controller binding's nonce (CB §9.3) and a service evidence agreement's
 # session id (`agreement`): 128 random bits each. Already in the tree.
 getrandom = "0.2"
+# Shortest-round-trip float digits for `python_repr_f64`, the same source the
+# mesh-llm host and Python's repr agree on (Rust Display ties differ).
+ryu = "1"
 
 [dev-dependencies]
 # The record-push parity run reads its own golden answers, which hold a record
