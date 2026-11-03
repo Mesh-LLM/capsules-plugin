@@ -7,7 +7,8 @@
 //! similarity threshold, and without a referee it is inconclusive. Only a
 //! referee's re-answer can name a twin, and only the twin the referee did
 //! not agree with, and only when the referee's own top-2 margin at the split
-//! is at least [`SPLIT_MARGIN_THRESHOLD_NATS`] (#155): below it, honest
+//! is at least the operator's threshold ([`ENV_SPLIT_MARGIN_THRESHOLD`], 0 unless
+//! set; #155): below it, honest
 //! backends could have split there, so the ruling is inconclusive.
 
 use serde_json::{json, Map, Value};
@@ -38,21 +39,78 @@ pub const NO_VERDICT_REFEREE_UNREACHABLE: &str = "referee_unreachable";
 pub const INCONCLUSIVE_SPLIT_WITHIN_MARGIN: &str = "split_within_margin";
 pub const INCONCLUSIVE_SPLIT_MARGIN_UNAVAILABLE: &str = "split_margin_unavailable";
 
-/// Decided (#155): the least top-2 margin, in nats, at which a referee's
-/// word at the split names a twin. Below it, or with no margin, the ruling
-/// is `inconclusive`. A margin equal to it names the twin. It is at least
-/// twice the largest referee-side margin (read over the word window, as
+/// Decided (#155, Sherlock2 on #159): the least top-2 margin, in nats, at
+/// which a referee's word at the split should name a twin: 4.41, twice the
+/// largest referee-side margin (read over the word window, as
 /// [`least_margin`] reads it) at any top-1 disagreement between honest
 /// backends measured; and between them no gap of at least it is seen to
 /// flip, nor one below twice it to shrink by as much
-/// (`vectors/parity/referee/margin-measurement/README.md`,
-/// "The rule"; Sherlock2 on #159). A change is a CHANGELOG line. There is no
-/// operator setting: a lower value charges honest nodes more readily.
-pub const SPLIT_MARGIN_THRESHOLD_NATS: f64 = 4.41;
+/// (`vectors/parity/referee/margin-measurement/README.md`, "The rule").
+/// Below it honest backends could have split there. A change is a CHANGELOG
+/// line. This is the rule's value, not the default: the operator's
+/// [`ENV_SPLIT_MARGIN_THRESHOLD`] sets what the node applies.
+pub const SPLIT_MARGIN_RULE_NATS: f64 = 4.41;
 
-/// [`SPLIT_MARGIN_THRESHOLD_NATS`] in the micro-nats the rule compares.
+/// The setting (`split_margin_threshold` in the console): the least top-2
+/// margin, in nats, at which this node's referee names a twin. A margin
+/// equal to it names the twin; a lower one is `inconclusive`.
+pub const ENV_SPLIT_MARGIN_THRESHOLD: &str = "CAPSULES_SPLIT_MARGIN_THRESHOLD";
+
+/// What the node applies when the operator has not set it (Ethan,
+/// 2026-11-03): 0, so the referee names a twin at any split, near-ties
+/// included. That turns off the guard against accusing an honest node whose
+/// backend split on a near-tie; set [`SPLIT_MARGIN_RULE_NATS`] (4.41) to
+/// restore it. Every sealed `split_margin` block records the margin and the
+/// threshold in effect.
+pub const DEFAULT_SPLIT_MARGIN_THRESHOLD_NATS: f64 = 0.0;
+
+/// The threshold a setting reads as, in micro-nats: unset or empty is the
+/// default; a non-negative finite number of nats is itself, a number past
+/// [`margin::MAX_NATS`] (the largest margin there is) is capped at
+/// `MAX_NATS`; anything else (negative, not a number) is the rule's 4.41, so
+/// a typo never names a twin more readily than the rule does.
+pub fn split_margin_threshold_from(raw: Option<&str>) -> i64 {
+    let Some(raw) = raw.map(str::trim).filter(|r| !r.is_empty()) else {
+        return margin::micro(DEFAULT_SPLIT_MARGIN_THRESHOLD_NATS);
+    };
+    match raw.parse::<f64>() {
+        Ok(nats) if nats.is_finite() && nats >= 0.0 => margin::micro(nats.min(margin::MAX_NATS)),
+        _ => margin::micro(SPLIT_MARGIN_RULE_NATS),
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Tests pin the threshold here instead of through the environment.
+    static THRESHOLD_OVERRIDE: std::cell::Cell<Option<i64>> = const { std::cell::Cell::new(None) };
+}
+
+/// Run `f` with the threshold at `nats`, on this thread only.
+#[cfg(test)]
+pub(crate) fn with_threshold<T>(nats: f64, f: impl FnOnce() -> T) -> T {
+    struct Reset(Option<i64>);
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            THRESHOLD_OVERRIDE.with(|c| c.set(self.0));
+        }
+    }
+    let _reset = Reset(THRESHOLD_OVERRIDE.with(|c| c.replace(Some(margin::micro(nats)))));
+    f()
+}
+
+/// The threshold in force, in the micro-nats the rule compares: the
+/// operator's setting, read at each ruling.
 pub fn split_margin_threshold() -> i64 {
-    margin::micro(SPLIT_MARGIN_THRESHOLD_NATS)
+    #[cfg(test)]
+    if let Some(pinned) = THRESHOLD_OVERRIDE.with(std::cell::Cell::get) {
+        return pinned;
+    }
+    match crate::settings::var(ENV_SPLIT_MARGIN_THRESHOLD) {
+        Ok(raw) => split_margin_threshold_from(Some(&raw)),
+        Err(std::env::VarError::NotPresent) => split_margin_threshold_from(None),
+        // Set but not text: a malformed setting is the rule's, never the default.
+        Err(std::env::VarError::NotUnicode(_)) => margin::micro(SPLIT_MARGIN_RULE_NATS),
+    }
 }
 
 /// The fixed members of the sealed ruling block.
@@ -188,7 +246,7 @@ impl Ruling {
 /// agreed words exactly; its word at the difference then names the twin it
 /// agrees with, and the other twin is contradicted, when the referee's own
 /// margin at the split (read from `referee_body`, its answer with logprobs)
-/// reaches [`SPLIT_MARGIN_THRESHOLD_NATS`]. Anything else is inconclusive,
+/// reaches [`split_margin_threshold`]. Anything else is inconclusive,
 /// never a guess. The twins' own margins, when their answers carry them,
 /// are sealed beside it and never change the ruling.
 pub fn referee_verdict(
@@ -235,9 +293,11 @@ pub fn referee_verdict(
     let referee_margin = departure(referee_text, referee_index, other.text(), at)
         .zip(referee_body)
         .and_then(|((from, split), body)| least_margin(body, referee_text, from, split));
+    // Read once: the ruling and the threshold it seals must be the same.
+    let threshold = split_margin_threshold();
     let because = match &referee_margin {
         None => Some(INCONCLUSIVE_SPLIT_MARGIN_UNAVAILABLE),
-        Some(m) if m.margin < split_margin_threshold() => Some(INCONCLUSIVE_SPLIT_WITHIN_MARGIN),
+        Some(m) if m.margin < threshold => Some(INCONCLUSIVE_SPLIT_WITHIN_MARGIN),
         Some(_) => None,
     };
     let because = because.filter(|_| !cfg!(feature = "mutant-referee-ignores-split-margin"));
@@ -247,7 +307,13 @@ pub fn referee_verdict(
             None => contradicted(node),
         },
         inconclusive_because: because,
-        split_margin: Some(split_margin_block(referee_margin.as_ref(), a, b, at)),
+        split_margin: Some(split_margin_block(
+            referee_margin.as_ref(),
+            threshold,
+            a,
+            b,
+            at,
+        )),
     }
 }
 
@@ -255,13 +321,16 @@ pub fn referee_verdict(
 /// (`null` when it had none), and each twin's own margin where its answer
 /// departs from the other's, read the same way, when that twin's answer
 /// carries logprobs.
-fn split_margin_block(referee: Option<&Margin>, a: &Half, b: &Half, at: usize) -> Value {
+fn split_margin_block(
+    referee: Option<&Margin>,
+    threshold: i64,
+    a: &Half,
+    b: &Half,
+    at: usize,
+) -> Value {
     let mut block = Map::new();
     block.insert("unit".into(), json!("nats"));
-    block.insert(
-        "threshold".into(),
-        json!(margin::decimal(split_margin_threshold())),
-    );
+    block.insert("threshold".into(), json!(margin::decimal(threshold)));
     block.insert(
         "referee".into(),
         referee.map_or(Value::Null, Margin::to_json),
@@ -462,6 +531,34 @@ pub fn adjudicate(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_threshold_setting_defaults_to_zero_and_reads_a_number_of_nats() {
+        for unset in [None, Some(""), Some("  ")] {
+            assert_eq!(split_margin_threshold_from(unset), 0, "{unset:?}");
+        }
+        assert_eq!(split_margin_threshold_from(Some("0")), 0);
+        assert_eq!(split_margin_threshold_from(Some("4.41")), 4_410_000);
+        assert_eq!(split_margin_threshold_from(Some(" 2.5 ")), 2_500_000);
+    }
+
+    /// A value that is not a non-negative number is the rule's 4.41, never a
+    /// looser one.
+    #[test]
+    fn a_bad_threshold_setting_reads_as_the_rule() {
+        for bad in ["-1", "abc", "NaN", "inf", "4,41"] {
+            assert_eq!(split_margin_threshold_from(Some(bad)), 4_410_000, "{bad}");
+        }
+    }
+
+    /// Past the largest margin there is, the threshold is capped at it.
+    #[test]
+    fn a_threshold_past_the_largest_margin_is_capped_at_it() {
+        let max = margin::micro(margin::MAX_NATS);
+        for huge in ["1e6", "1e7", "1e300"] {
+            assert_eq!(split_margin_threshold_from(Some(huge)), max, "{huge}");
+        }
+    }
 
     #[test]
     fn words_split_on_any_whitespace() {

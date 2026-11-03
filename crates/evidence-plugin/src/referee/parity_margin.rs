@@ -15,9 +15,7 @@
 use serde_json::{json, Value};
 
 use super::parity::{referee_dir, test_key, NOW};
-use super::verdict::{
-    split_margin_threshold, INCONCLUSIVE_SPLIT_MARGIN_UNAVAILABLE, INCONCLUSIVE_SPLIT_WITHIN_MARGIN,
-};
+use super::verdict::{INCONCLUSIVE_SPLIT_MARGIN_UNAVAILABLE, INCONCLUSIVE_SPLIT_WITHIN_MARGIN};
 
 /// The logprob every token here is chosen at.
 const CHOSEN: f64 = -0.05;
@@ -77,11 +75,6 @@ pub(crate) fn decisive_logprobs(text: &str) -> Value {
     logprobs(&tokens)
 }
 
-/// The threshold in nats, as the cases state their margins.
-fn threshold() -> f64 {
-    split_margin_threshold() as f64 / 1_000_000.0
-}
-
 /// The referee's answer "1, 2, 3, 4, 5" (twin A's), with `split` nats at its
 /// fourth word, " 4": the token where it departs from twin B's "999".
 fn counting(split: f64) -> Vec<(&'static str, f64)> {
@@ -121,7 +114,7 @@ fn decimal(nats: f64) -> String {
 }
 
 fn specs() -> Vec<Spec> {
-    let t = threshold();
+    let t = super::verdict::SPLIT_MARGIN_RULE_NATS;
     let one_micro = 0.000_001;
     let a = "1, 2, 3, 4, 5";
     let b = "1, 2, 3, 999 5";
@@ -414,7 +407,7 @@ fn check(spec: &Spec, answer: &Value) {
     assert_eq!(margin["unit"], json!("nats"), "{}", spec.name);
     assert_eq!(
         margin["threshold"],
-        json!(super::margin::decimal(split_margin_threshold())),
+        json!(decimal(super::verdict::SPLIT_MARGIN_RULE_NATS)),
         "{}",
         spec.name
     );
@@ -451,7 +444,9 @@ fn writes_the_split_margin_corpus() {
     let cases: Vec<Value> = specs.iter().map(build).collect();
     let mut answers = serde_json::Map::new();
     for (spec, case) in specs.iter().zip(&cases) {
-        let answer = Value::Array(super::parity::run_service(case));
+        let answer = Value::Array(super::parity::at_the_rule(|| {
+            super::parity::run_service(case)
+        }));
         check(spec, &answer);
         answers.insert(spec.name.to_string(), answer);
     }
@@ -487,6 +482,66 @@ fn the_split_margin_cases_say_what_the_rule_requires() {
     assert_eq!(cases.len(), specs.len(), "one case per stated ruling");
     for (spec, case) in specs.iter().zip(cases) {
         assert_eq!(case["name"], json!(spec.name));
-        check(spec, &Value::Array(super::parity::run_service(case)));
+        check(
+            spec,
+            &Value::Array(super::parity::at_the_rule(|| {
+                super::parity::run_service(case)
+            })),
+        );
     }
+}
+
+/// The sealed ruling of `margin_well_below` rebuilt with the referee's margin
+/// at the split set to `split` nats, run with the threshold at `threshold`.
+fn ruling_at(split: f64, threshold: f64) -> Value {
+    let mut spec = specs()
+        .into_iter()
+        .find(|s| s.name == "margin_well_below")
+        .expect("the near-tie case");
+    spec.referee_logprobs = Some(logprobs(&counting(split)));
+    let case = build(&spec);
+    let answers = super::verdict::with_threshold(threshold, || super::parity::run_service(&case));
+    answers.into_iter().next().expect("one answer")
+}
+
+/// The default threshold is 0 (Ethan, 2026-11-03): a referee names a twin on
+/// a 0.0002-nat split, as in the S08 measurement, and seals the margin and
+/// the 0 it was judged by.
+#[test]
+fn threshold_zero_names_a_twin_on_a_near_tie() {
+    let answer = ruling_at(0.000_2, 0.0);
+    let text = answer.to_string();
+    assert!(text.contains("contradicted:node-b"), "{text}");
+    assert!(!text.contains(INCONCLUSIVE_SPLIT_WITHIN_MARGIN), "{text}");
+    assert!(text.contains("\"threshold\":\"0.000000\""), "{text}");
+    assert!(text.contains("\"margin\":\"0.000200\""), "{text}");
+}
+
+/// At the rule's 4.41 the same split is inconclusive, and says why.
+#[test]
+fn threshold_4_41_leaves_a_near_tie_inconclusive() {
+    let text = ruling_at(0.000_2, 4.41).to_string();
+    assert!(!text.contains("contradicted:"), "{text}");
+    assert!(text.contains(INCONCLUSIVE_SPLIT_WITHIN_MARGIN), "{text}");
+    assert!(text.contains("\"threshold\":\"4.410000\""), "{text}");
+    assert!(text.contains("\"margin\":\"0.000200\""), "{text}");
+}
+
+/// Without a margin the ruling stays inconclusive even at 0: there is
+/// nothing sealed to name a twin by.
+#[test]
+fn threshold_zero_still_needs_a_margin() {
+    let mut spec = specs()
+        .into_iter()
+        .find(|s| s.name == "referee_answer_without_logprobs")
+        .expect("the no-logprobs case");
+    spec.referee_logprobs = None;
+    let case = build(&spec);
+    let answers = super::verdict::with_threshold(0.0, || super::parity::run_service(&case));
+    let text = Value::Array(answers).to_string();
+    assert!(!text.contains("contradicted:"), "{text}");
+    assert!(
+        text.contains(INCONCLUSIVE_SPLIT_MARGIN_UNAVAILABLE),
+        "{text}"
+    );
 }

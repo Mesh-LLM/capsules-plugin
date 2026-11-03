@@ -560,6 +560,12 @@ fn run_request(case: &Value) -> Vec<Value> {
 
 type Runner = fn(&Value) -> Vec<Value>;
 
+/// The corpus states the rule's threshold (4.41 nats, #159), not the node's
+/// default of 0, so every path is run with it pinned.
+pub(crate) fn at_the_rule<T>(f: impl FnOnce() -> T) -> T {
+    verdict::with_threshold(verdict::SPLIT_MARGIN_RULE_NATS, f)
+}
+
 /// Every path this runner judges, with where its expected answers are.
 pub(crate) fn paths() -> Vec<(&'static str, &'static str, Runner)> {
     vec![
@@ -598,7 +604,7 @@ pub(crate) fn run_cases(names: &[&str]) -> Vec<(String, String)> {
                 .iter()
                 .find(|c| c["name"] == json!(name))
                 .unwrap_or_else(|| panic!("no case {path}/{name}"));
-            let got = Value::Array(runner(case));
+            let got = Value::Array(at_the_rule(|| runner(case)));
             let want = &expected["answers"][name];
             if canonical(&got) != canonical(want) {
                 differs.push((
@@ -623,7 +629,7 @@ pub(crate) fn run() -> (Vec<(String, String)>, Value) {
         let mut answers = Map::new();
         for case in corpus["cases"].as_array().expect("cases") {
             let name = case["name"].as_str().expect("name");
-            let got = Value::Array(runner(case));
+            let got = Value::Array(at_the_rule(|| runner(case)));
             let want = &expected["answers"][name];
             if canonical(&got) != canonical(want) {
                 differs.push((
