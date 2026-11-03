@@ -23,9 +23,29 @@ import { checkpointMetadata, leafCount, verifyCheckpoint, verifyConsistency } fr
  *  crates/evidence-plugin/src/evidence_answer.rs): a longer list is not one. */
 const MAX_CHECKPOINTS = 1024
 
+/** Every check id this verifier reports (`history-view-input.ts` maps each
+ *  onto the shared view's closed list; a test holds the two together). */
+export const VERIFIER_CHECK_IDS = [
+  'readable',
+  'refusal',
+  'artifact_digest',
+  'card_digest',
+  'checkpoints',
+  'chain',
+  'consistency',
+  'anchor',
+  'period_counts',
+  'envelope_signature',
+  'key_is_nodes',
+  'request_binding',
+  'witness_receipts'
+] as const
+
+export type VerifierCheckId = (typeof VERIFIER_CHECK_IDS)[number]
+
 export type CheckStatus = 'pass' | 'fail' | 'not_run'
 
-export type Check = { id: string; status: CheckStatus; detail: string }
+export type Check = { id: VerifierCheckId; status: CheckStatus; detail: string }
 
 export type HistoryVerdict = {
   /** `answered`: the node gave its card; `refused`: it signed a refusal;
@@ -92,24 +112,6 @@ function periodCounts(raw: unknown): PeriodCount[] {
 }
 
 /** The checks this page cannot run, always listed, whatever else passed. */
-/** Every check id this verifier reports (`history-view-input.ts` maps each
- *  onto the shared view's closed list; a test holds the two together). */
-export const VERIFIER_CHECK_IDS = [
-  'readable',
-  'refusal',
-  'artifact_digest',
-  'card_digest',
-  'checkpoints',
-  'chain',
-  'consistency',
-  'anchor',
-  'period_counts',
-  'envelope_signature',
-  'key_is_nodes',
-  'request_binding',
-  'witness_receipts'
-] as const
-
 export const NOT_RUN: readonly Check[] = [
   { id: 'witness_receipts', status: 'not_run', detail: 'Witness receipts were not checked: this page has no verifier for them.' },
   {
@@ -253,7 +255,7 @@ export async function verifyHistoryReply(replyText: string): Promise<HistoryVerd
   }
 
   const checks: Check[] = []
-  const fail = (id: string, detail: string): HistoryVerdict => ({
+  const fail = (id: VerifierCheckId, detail: string): HistoryVerdict => ({
     kind: 'answered',
     verified: false,
     checks: [...checks, { id, status: 'fail', detail }, ...NOT_RUN],

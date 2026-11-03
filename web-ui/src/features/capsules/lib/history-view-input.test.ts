@@ -20,7 +20,9 @@ describe('historyViewInput', () => {
   it('maps every check id the verifier can report onto the view’s closed list', () => {
     expect(Object.keys(CHECK_ID).sort()).toEqual([...VERIFIER_CHECK_IDS].sort())
     for (const mapped of Object.values(CHECK_ID)) expect(HISTORY_CHECK_IDS).toContain(mapped)
-    const ids = ['readable', 'refusal', 'artifact_digest', 'card_digest', 'checkpoints', 'chain', 'consistency', 'anchor']
+    // Every id the verifier reports, passing; the always-not-run ones come from NOT_RUN.
+    const notRun = new Set<string>([...NOT_RUN, PERIOD_COUNTS_NOT_RUN].map((c) => c.id))
+    const ids = VERIFIER_CHECK_IDS.filter((id) => !notRun.has(id))
     const verdict: HistoryVerdict = {
       kind: 'answered',
       verified: false,
