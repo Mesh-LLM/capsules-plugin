@@ -42,7 +42,9 @@ pub const FORM_SERVICE_HISTORY: &str = "service_history/1";
 /// This node's answer to a stranger asking for its history card.
 pub fn served(capsules: &CapsuleState, node_id: Option<&str>) -> Result<Value, String> {
     let now = evidence_answer::now_utc();
-    crate::commitment::with_responder(capsules, &now, node_id, |responder, _| serve(responder))
+    crate::commitment::with_responder(capsules, &now, node_id, |responder, policy| {
+        serve(responder, policy)
+    })
 }
 
 /// The anchor of the latest checkpoint whose time is a period boundary (ISH
@@ -68,7 +70,10 @@ fn latest_boundary_anchor(responder: &evidence_answer::Responder<'_>) -> Option<
 }
 
 /// [`served`], from the responder it would use.
-pub(crate) fn serve(responder: &evidence_answer::Responder<'_>) -> Result<Value, String> {
+pub(crate) fn serve(
+    responder: &evidence_answer::Responder<'_>,
+    policy: &crate::commitment::Policy,
+) -> Result<Value, String> {
     if responder.share_standard_history {
         if let Some(pin) = latest_boundary_anchor(responder) {
             let request = serde_json::to_vec(&json!({
@@ -82,6 +87,7 @@ pub(crate) fn serve(responder: &evidence_answer::Responder<'_>) -> Result<Value,
                 FORM_SERVICE_HISTORY,
                 evidence_answer::answer(&request, responder),
                 responder,
+                policy,
             );
         }
     }
@@ -94,6 +100,7 @@ pub(crate) fn serve(responder: &evidence_answer::Responder<'_>) -> Result<Value,
         FORM_HISTORY_CARD,
         evidence_answer::answer(&request, responder),
         responder,
+        policy,
     )
 }
 
@@ -101,6 +108,7 @@ fn outcome_json(
     form: &str,
     outcome: Outcome,
     responder: &evidence_answer::Responder<'_>,
+    policy: &crate::commitment::Policy,
 ) -> Result<Value, String> {
     let (label, bytes) = match &outcome {
         Outcome::Answered { .. } => ("answered", outcome.wire_bytes()),
@@ -118,8 +126,11 @@ fn outcome_json(
         // The node's live settings, for the page's "What this node shares"
         // block. Read when the page is saved; the page is a snapshot.
         "sharing": {
-            "standard_history": responder.share_standard_history,
-            "history_segments": responder.history_segments,
+            "standard_history": policy.share_standard_history,
+            "history_segments": policy.history_segments,
+            "record_at_completion": if policy.record_at_completion { "counterparty" } else { "off" },
+            "adjudications": if policy.adjudications_delivered { "deliver_to_subjects" } else { "off" },
+            "exchange_corroboration": policy.share_exchange_corroboration,
         },
     }))
 }
@@ -222,7 +233,8 @@ mod tests {
             node_id: None,
             policy_digest: None,
         };
-        let served = serve(&responder).unwrap();
+        let policy = crate::commitment::Policy::from_settings(|_| None);
+        let served = serve(&responder, &policy).unwrap();
         assert_eq!(served["outcome"], "answered");
         let reply: Value = serde_json::from_str(served["reply"].as_str().unwrap()).unwrap();
         assert_eq!(reply["derivation"], FORM_HISTORY_CARD);
@@ -230,7 +242,13 @@ mod tests {
         assert_eq!(served["node_key_id"], crate::commitment::key_id(&key));
         assert_eq!(
             served["sharing"],
-            json!({"standard_history": false, "history_segments": "counterparties"})
+            json!({
+                "standard_history": policy.share_standard_history,
+                "history_segments": "counterparties",
+                "record_at_completion": "counterparty",
+                "adjudications": "deliver_to_subjects",
+                "exchange_corroboration": policy.share_exchange_corroboration,
+            })
         );
     }
 }

@@ -70,7 +70,13 @@ export async function fetchDisclosurePreimage(capsuleId: string): Promise<Disclo
 
 /** The node's sharing settings when the page was saved, for the page's
  *  "What this node shares" block. */
-export type HistorySharing = { standard_history: boolean; history_segments: 'counterparties' | 'peers' | 'off' }
+export type HistorySharing = {
+  standard_history: boolean
+  history_segments: 'counterparties' | 'peers' | 'off'
+  record_at_completion: 'counterparty' | 'off'
+  adjudications: 'deliver_to_subjects' | 'off'
+  exchange_corroboration: boolean
+}
 
 export type ServedHistory = {
   replyText: string
@@ -100,14 +106,20 @@ export function servedHistoryFrom(raw: unknown): ServedHistory {
     }
   }
   const sharing = isRecord(body.sharing) ? body.sharing : {}
-  const segments = sharing.history_segments
-  if (typeof sharing.standard_history !== 'boolean' || (segments !== 'counterparties' && segments !== 'peers' && segments !== 'off')) {
+  const { standard_history, history_segments, record_at_completion, adjudications, exchange_corroboration } = sharing
+  if (
+    typeof standard_history !== 'boolean' ||
+    typeof exchange_corroboration !== 'boolean' ||
+    (history_segments !== 'counterparties' && history_segments !== 'peers' && history_segments !== 'off') ||
+    (record_at_completion !== 'counterparty' && record_at_completion !== 'off') ||
+    (adjudications !== 'deliver_to_subjects' && adjudications !== 'off')
+  ) {
     throw new Error('this node did not say what it shares')
   }
   return {
     replyText: body.reply,
     outcome: body.outcome,
     form: body.form === 'service_history/1' ? 'service_history' : 'history_card',
-    sharing: { standard_history: sharing.standard_history, history_segments: segments }
+    sharing: { standard_history, history_segments, record_at_completion, adjudications, exchange_corroboration }
   }
 }

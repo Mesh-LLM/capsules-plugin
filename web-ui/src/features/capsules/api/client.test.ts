@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { servedHistoryFrom } from '@/features/capsules/api/client'
 
 const KEY = 'a'.repeat(64)
-const SHARING = { standard_history: false, history_segments: 'counterparties' }
+const SHARING = {
+  standard_history: false,
+  history_segments: 'counterparties',
+  record_at_completion: 'counterparty',
+  adjudications: 'deliver_to_subjects',
+  exchange_corroboration: false
+}
 const reply = (fields: Record<string, unknown>) => `${JSON.stringify(fields)}\n`
 
 describe('servedHistoryFrom', () => {
@@ -39,7 +45,7 @@ describe('servedHistoryFrom', () => {
   it('refuses a body that does not say what the node shares', () => {
     const text = reply({ responder: KEY })
     const base = { form: 'history_card/1', outcome: 'answered', reply: text, node_key_id: KEY }
-    for (const sharing of [undefined, {}, { standard_history: 'yes', history_segments: 'off' }, { standard_history: true, history_segments: 'none' }]) {
+    for (const sharing of [undefined, {}, { ...SHARING, standard_history: 'yes' }, { ...SHARING, history_segments: 'none' }, { ...SHARING, adjudications: undefined }]) {
       expect(() => servedHistoryFrom({ ...base, sharing })).toThrow('did not say what it shares')
     }
   })
