@@ -17,7 +17,7 @@
 //! switch on but no boundary checkpoint yet gives the card, and says so in
 //! `form`.
 //!
-//! The route answers `{form, outcome, reply, node_key_id}`. `reply` is the
+//! The route answers `{form, outcome, reply, node_key_id, sharing}`. `reply` is the
 //! reply's wire bytes as text, unchanged, which the page embeds as it got
 //! them. `outcome` is `answered` or `refused`; a node that cannot sign an
 //! answer (an unreadable ledger or clock) answers a route error instead,
@@ -115,6 +115,12 @@ fn outcome_json(
         "outcome": label,
         "reply": reply,
         "node_key_id": crate::commitment::key_id(responder.signing_key),
+        // The node's live settings, for the page's "What this node shares"
+        // block. Read when the page is saved; the page is a snapshot.
+        "sharing": {
+            "standard_history": responder.share_standard_history,
+            "history_segments": responder.history_segments,
+        },
     }))
 }
 
@@ -204,7 +210,7 @@ mod tests {
             ledger_dir: dir.path(),
             signing_key: &key,
             now: "2026-10-28T00:00:00Z",
-            history_segments: "none",
+            history_segments: "counterparties",
             share_standard_history: false,
             share_exchange_corroboration: false,
             keys: crate::requester_auth::Keys {
@@ -222,5 +228,9 @@ mod tests {
         assert_eq!(reply["derivation"], FORM_HISTORY_CARD);
         assert_eq!(reply["responder"], served["node_key_id"]);
         assert_eq!(served["node_key_id"], crate::commitment::key_id(&key));
+        assert_eq!(
+            served["sharing"],
+            json!({"standard_history": false, "history_segments": "counterparties"})
+        );
     }
 }
