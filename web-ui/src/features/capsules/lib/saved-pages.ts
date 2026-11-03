@@ -168,7 +168,6 @@ export function historyPage(
   }
 }
 
-
 /** The Settlement page when the node has no sealed report to give: a note
  *  with the node's own reason (`settlement-report`'s refusal), word for word. */
 export function settlementPage(savedAt: string, why: string): SavedPage {

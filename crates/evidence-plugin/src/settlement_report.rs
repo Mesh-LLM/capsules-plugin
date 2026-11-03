@@ -139,8 +139,16 @@ pub async fn answer(setup: &Setup) -> Value {
     if check.get("page").and_then(Value::as_str) != Some("match")
         || check.get("verification").and_then(Value::as_str) != Some("VALID")
     {
+        let field = |name: &str| {
+            check
+                .get(name)
+                .and_then(Value::as_str)
+                .unwrap_or("not reported")
+        };
         return refused(format!(
-            "the settlement report did not check, so it is not handed over: {check}"
+            "the settlement report did not check, so it is not handed over (page: {}, seal: {})",
+            field("page"),
+            field("verification")
         ));
     }
     // The bytes served are the bytes checked: a new report written in
@@ -291,7 +299,9 @@ mod tests {
             };
             let answered = answer(&setup).await;
             assert_eq!(answered["state"], "refused", "{check}");
-            assert!(answered["why"].as_str().unwrap().contains("did not check"));
+            let why = answered["why"].as_str().unwrap();
+            assert!(why.contains("did not check"));
+            assert!(!why.contains('{'), "no raw check JSON in the reason: {why}");
             assert!(answered.get("page").is_none());
         }
     }
