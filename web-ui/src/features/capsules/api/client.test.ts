@@ -18,6 +18,7 @@ describe('servedHistoryFrom', () => {
       replyText: text,
       outcome: 'answered',
       form: 'history_card',
+      nodeKeyId: KEY,
       sharing: SHARING
     })
   })

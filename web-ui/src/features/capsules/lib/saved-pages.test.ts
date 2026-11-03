@@ -10,32 +10,48 @@ const fixture = JSON.parse(
 // The bytes a node served: the reply as the node wrote it.
 const served = `${JSON.stringify(fixture.history_card)}\n`
 const SAVED = '2026-10-29T18:00:00Z'
+const NODE = {
+  nodeKeyId: 'a'.repeat(64),
+  sharing: {
+    standard_history: true,
+    history_segments: 'counterparties',
+    record_at_completion: 'counterparty',
+    adjudications: 'deliver_to_subjects',
+    exchange_corroboration: false
+  } as const
+}
 
 describe('the History page, opened offline', () => {
-  it('verifies the embedded answer itself and hands back the JSON byte for byte', async () => {
-    const { html } = historyPage(served, SAVED)
+  it('verifies the embedded answer itself, draws it through the shared view, and hands back the JSON byte for byte', async () => {
+    const { html } = historyPage(served, SAVED, NODE)
     expect(Buffer.from(embedded(html)).equals(Buffer.from(served, 'utf8'))).toBe(true)
 
     const { dom, requested, text } = await open(html)
-    expect(text).toContain('Checked against the node’s own key when this page opened: the history card matches its digest, and every checkpoint is signed by key')
-    // Never the pass style: this page checks no witness receipt.
-    expect(dom.window.document.querySelector('p.ok')).toBeNull()
-    expect(dom.window.document.querySelector('p.warn')?.textContent).toContain('No witness receipt is checked here')
-    expect(text).toContain('compare that key with the node’s published commitment')
-    // evidencebook#209: a chain that checks only against its holder's key
-    // says so on the line that says it was checked.
-    expect(text).toContain('No witness receipt is checked here, so this could be a private copy of the node’s log')
-    expect(text).not.toContain('unchanged')
-    expect(text).toContain('Not checked: That this key is the node’s')
-    expect(text).toMatch(/Checked: All \d+ checkpoints verify/)
-    expect(text).toContain('Not checked: Witness receipts')
+    expect(dom.window.document.querySelector('.cv-history')).not.toBeNull()
+    expect(text).toContain('every checkpoint signature checks')
+    expect(text).toContain('Checked: Every checkpoint is signed by the key that answered')
+    // This page checks no witness receipt, no reply signature, no node key.
+    expect(text).toContain('Not checked here: A witness time-stamped these records')
+    expect(text).toContain("Not checked here: The signing key is the node's published key")
+    expect(text).not.toContain('Failed')
     expect(requested).toEqual([])
 
     expect((await savedBytes(dom)).equals(Buffer.from(served, 'utf8'))).toBe(true)
   })
 
+  it('shows what this node shares, from the settings the node reported', async () => {
+    const { text } = await open(historyPage(served, SAVED, NODE).html)
+    expect(text).toContain('What this node shares')
+    expect(text).toContain('With anyone: the Service History.')
+    expect(text).toContain("Only with the other side of an exchange, when they ask: that exchange's record.")
+    const off = { ...NODE, sharing: { ...NODE.sharing, standard_history: false, history_segments: 'off' as const } }
+    const { text: offText } = await open(historyPage(served, SAVED, off).html)
+    expect(offText).toContain('The Service History: only the other side of an exchange gets it (off for anyone else on this node).')
+    expect(offText).toContain("The other side of an exchange can't ask for its record (off on this node).")
+  })
+
   it('refers to nothing outside itself', () => {
-    const { html } = historyPage(served, SAVED)
+    const { html } = historyPage(served, SAVED, NODE)
     expect(html).not.toMatch(/(?:src|href)\s*=\s*["']?(?:https?:)?\/\//i)
     expect(html).not.toMatch(/<link\b/i)
     expect(html).not.toMatch(/<script[^>]*\ssrc=/i)
@@ -44,22 +60,23 @@ describe('the History page, opened offline', () => {
   it('shows none of a bundle that does not check', async () => {
     const tampered = served.replace(/"artifact_digest":"[0-9a-f]{4}/, '"artifact_digest":"0000')
     expect(tampered).not.toBe(served)
-    const { text } = await open(historyPage(tampered, SAVED).html)
-    expect(text).toContain('could not check its answer, so it shows none of it')
-    expect(text).toContain('Failed: The artifact is not the bytes its digest names')
-    expect(text).not.toContain('The log, checkpoint by checkpoint')
+    const { text, dom } = await open(historyPage(tampered, SAVED, NODE).html)
+    expect(text).toContain('This history didn\'t verify, so this page shows none of it.')
+    expect(text).toContain("Didn't verify: The answer's file is the bytes its digest names")
+    expect(dom.window.document.querySelectorAll('.cvh-row').length).toBe(0)
   })
 
   it('shows a refusal as a refusal', async () => {
     const refusal = `${JSON.stringify(fixture.refused_unknown_pin)}\n`
-    const { text } = await open(historyPage(refusal, SAVED).html)
-    expect(text).toContain('The node declined to answer')
-    expect(text).not.toContain('matches its digest')
+    const { text } = await open(historyPage(refusal, SAVED, NODE).html)
+    expect(text).toContain('The node declined to answer.')
+    expect(text).toContain('coverage_unsatisfiable')
+    expect(text).not.toContain('every checkpoint signature checks')
   })
 
   it('draws nothing from the bundle as markup', async () => {
     const hostile = `${JSON.stringify({ reason: '<img src=x onerror=alert(1)>' })}\n`
-    const { dom } = await open(historyPage(hostile, SAVED).html)
+    const { dom } = await open(historyPage(hostile, SAVED, NODE).html)
     expect(dom.window.document.querySelector('#result img')).toBeNull()
   })
 })
@@ -71,17 +88,13 @@ const serviceFixture = readFileSync(
 
 describe('the History page of a Service History, opened offline', () => {
   it('verifies the card inside, shows the counts as the node states them, and says what it did not check', async () => {
-    const { html } = historyPage(serviceFixture, SAVED, 'service_history')
+    const { html } = historyPage(serviceFixture, SAVED, NODE)
     expect(Buffer.from(embedded(html)).equals(Buffer.from(serviceFixture, 'utf8'))).toBe(true)
     const { text, requested } = await open(html)
-    expect(text).toContain('Service History')
-    expect(text).toContain('the history card inside the Service History matches its digest')
-    expect(text).toContain('Checked: The history card inside matches its digest.')
-    expect(text).toContain('Not checked: The counts were not checked')
+    expect(text).toContain('Service History: exchanges served in each closed week')
     expect(text).toContain('all models: 12')
-    expect(text).toContain('withheld (below the floor)')
-    expect(text).toContain('withheld (showing it would let a count under the floor be worked out)')
-    expect(text).toContain('Not checked: Witness receipts')
+    expect(text).toContain('model a: fewer than 5')
+    expect(text).toContain('A witness time-stamped these records')
     expect(requested).toEqual([])
   })
 
@@ -106,9 +119,8 @@ describe('the History page of a Service History, opened offline', () => {
     const forged = await reserve((a) => {
       ;(a.history_card as Record<string, unknown>).evidence_stream = 'another-log'
     })
-    const { text } = await open(historyPage(forged, SAVED, 'service_history').html)
-    expect(text).toContain('could not check its answer, so it shows none of it')
-    expect(text).toContain('Failed: The history card inside is not the bytes its digest names')
+    const { text } = await open(historyPage(forged, SAVED, NODE).html)
+    expect(text).toContain('This history didn\'t verify, so this page shows none of it.')
     expect(text).not.toContain('all models: 12')
   })
 
@@ -119,8 +131,8 @@ describe('the History page of a Service History, opened offline', () => {
       card.evidence_stream = 'another-log'
       a.history_card_digest = createHash('sha256').update(jcsOf(card)).digest('hex')
     })
-    const { text } = await open(historyPage(forged, SAVED, 'service_history').html)
-    expect(text).toContain('Failed: The history card inside names another anchor or log than the answer')
+    const { text } = await open(historyPage(forged, SAVED, NODE).html)
+    expect(text).toContain('This history didn\'t verify, so this page shows none of it.')
     expect(text).not.toContain('all models: 12')
   })
 
@@ -128,8 +140,8 @@ describe('the History page of a Service History, opened offline', () => {
     const forged = await reserve((a) => {
       a.declared = ['history_card']
     })
-    const { text } = await open(historyPage(forged, SAVED, 'service_history').html)
-    expect(text).toContain('Failed: The artifact is not a Service History for the card inside it')
+    const { text } = await open(historyPage(forged, SAVED, NODE).html)
+    expect(text).toContain('This history didn\'t verify, so this page shows none of it.')
   })
 
   it('does not call a cell without a stated reason withheld below the floor', async () => {
@@ -137,7 +149,7 @@ describe('the History page of a Service History, opened offline', () => {
       const periods = (a.period_counts as { periods: { cells: Record<string, unknown>[] }[] }).periods
       delete periods[0].cells[1].suppressed
     })
-    const { text } = await open(historyPage(forged, SAVED, 'service_history').html)
+    const { text } = await open(historyPage(forged, SAVED, NODE).html)
     expect(text).toContain('no count stated')
   })
 })

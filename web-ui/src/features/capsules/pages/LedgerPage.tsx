@@ -524,7 +524,7 @@ function ExchangesSection({
       if (which === 'settlement') page = settlementPage(savedAt)
       else {
         const served = await fetchServedHistory()
-        page = historyPage(served.replyText, savedAt, served.form)
+        page = historyPage(served.replyText, savedAt, served)
       }
       if (!saveTextFile(page.fileName, page.html, 'text/html')) setPageNote('This browser could not save the page.')
     } catch (error) {

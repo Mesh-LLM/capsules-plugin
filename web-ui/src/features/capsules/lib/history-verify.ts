@@ -35,7 +35,7 @@ export type HistoryVerdict = {
   verified: boolean
   checks: Check[]
   /** The checkpoints the card lists, when it was read. */
-  checkpoints: { size: number; time: string }[]
+  checkpoints: { size: number; time: string; anchor: string }[]
   /** The refusal's reason, for a refusal. */
   reason?: string
   /** The key every checkpoint was checked under: the one the reply names as
@@ -391,7 +391,7 @@ export async function verifyHistoryReply(replyText: string): Promise<HistoryVerd
     kind: 'answered',
     verified: true,
     checks: [...checks, ...(counts ? [PERIOD_COUNTS_NOT_RUN] : []), ...NOT_RUN],
-    checkpoints: links.map((l) => ({ size: Number(l.size), time: l.time })),
+    checkpoints: links.map((l) => ({ size: Number(l.size), time: l.time, anchor: l.digest })),
     keyId: last.keyId,
     form: counts ? 'service_history' : 'history_card',
     ...(counts ? { counts } : {})

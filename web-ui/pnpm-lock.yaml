@@ -11,6 +11,9 @@ importers:
       '@action-state-group/agent-action-capsule':
         specifier: 0.10.0
         version: 0.10.0(@action-state-group/cll@0.3.0(@types/node@26.4.1))
+      '@action-state-group/capsule-viewer':
+        specifier: 0.14.0
+        version: 0.14.0(@types/node@26.4.1)
       '@action-state-group/cll':
         specifier: 0.3.0
         version: 0.3.0(@types/node@26.4.1)
@@ -125,6 +128,19 @@ packages:
     peerDependenciesMeta:
       '@action-state-group/cll':
         optional: true
+
+  '@action-state-group/agent-action-capsule@0.13.1':
+    resolution: {integrity: sha512-3W2t+6eCmGFTwTBjfV6AvD5YkvxTZ9y/jCW6BBc27f5tyEBh6CCQFVEdzQ5+QKr95PktnVpXabl3PJFes+6W0w==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@action-state-group/cll': 0.3.0
+    peerDependenciesMeta:
+      '@action-state-group/cll':
+        optional: true
+
+  '@action-state-group/capsule-viewer@0.14.0':
+    resolution: {integrity: sha512-irjzHOSPsWYgz9U0VjDsBO4zrgxKgm2RzC3VtBysLejHemQenOGzUv5hf2jVt8gkGBels2tTGnmk9wI2FzSBPQ==}
+    engines: {node: '>=20'}
 
   '@action-state-group/cll@0.3.0':
     resolution: {integrity: sha512-mKWEo6Z19+dNrJVX5uF15x0j2wxWbV4O7eTg1ODAX9tNka4LQc5gIiyKfNulcuEVI/E5eL9yeJNCq7a0PFfnLQ==}
@@ -1870,6 +1886,17 @@ snapshots:
   '@action-state-group/agent-action-capsule@0.10.0(@action-state-group/cll@0.3.0(@types/node@26.4.1))':
     optionalDependencies:
       '@action-state-group/cll': 0.3.0(@types/node@26.4.1)
+
+  '@action-state-group/agent-action-capsule@0.13.1(@action-state-group/cll@0.3.0(@types/node@26.4.1))':
+    optionalDependencies:
+      '@action-state-group/cll': 0.3.0(@types/node@26.4.1)
+
+  '@action-state-group/capsule-viewer@0.14.0(@types/node@26.4.1)':
+    dependencies:
+      '@action-state-group/agent-action-capsule': 0.13.1(@action-state-group/cll@0.3.0(@types/node@26.4.1))
+      '@action-state-group/cll': 0.3.0(@types/node@26.4.1)
+    transitivePeerDependencies:
+      - '@types/node'
 
   '@action-state-group/cll@0.3.0(@types/node@26.4.1)':
     dependencies:

@@ -82,6 +82,8 @@ export type ServedHistory = {
   replyText: string
   outcome: 'answered' | 'refused'
   form: 'history_card' | 'service_history'
+  /** The key the node signs its answers with. */
+  nodeKeyId: string
   sharing: HistorySharing
 }
 
@@ -105,6 +107,7 @@ export function servedHistoryFrom(raw: unknown): ServedHistory {
       throw new Error('the history it gave is signed under another key')
     }
   }
+  if (typeof body.node_key_id !== 'string') throw new Error('this node did not give its history')
   const sharing = isRecord(body.sharing) ? body.sharing : {}
   const { standard_history, history_segments, record_at_completion, adjudications, exchange_corroboration } = sharing
   if (
@@ -120,6 +123,7 @@ export function servedHistoryFrom(raw: unknown): ServedHistory {
     replyText: body.reply,
     outcome: body.outcome,
     form: body.form === 'service_history/1' ? 'service_history' : 'history_card',
+    nodeKeyId: body.node_key_id,
     sharing: { standard_history, history_segments, record_at_completion, adjudications, exchange_corroboration }
   }
 }

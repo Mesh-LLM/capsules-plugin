@@ -8,10 +8,20 @@
 // The page checks its own bundle when it opens, with the same code the tests
 // run (`history-verify.ts`, inlined), and shows its content only from a bundle
 // that checked. Whatever the page could not check, it lists as not checked.
-import verifierSource from '@/features/capsules/lib/history-verify.ts?iife'
+import { historyViewStyles } from '@action-state-group/capsule-viewer/history-view'
+import type { HistorySharing } from '@/features/capsules/api/client'
+import type { HistoryPageContext } from '@/features/capsules/lib/history-view-input'
+import verifierSource from '@/features/capsules/lib/history-page-entry.ts?iife'
 
 /** The id of the script that holds the bundle, base64 of the served bytes. */
 export const BUNDLE_ELEMENT_ID = 'mesh-bundle'
+
+/** The id of the script that holds what the History page needs besides the
+ *  bundle: the node's key, its sharing settings and when they were read. */
+export const CONTEXT_ELEMENT_ID = 'mesh-context'
+
+/** The tool named in the History page's "How this was checked". */
+export const BUILT_BY = 'capsules-plugin web-ui'
 
 export type SavedPage = { fileName: string; html: string }
 
@@ -56,24 +66,6 @@ const RUNTIME = `
     var a=document.createElement('a');a.href=url;a.download=document.body.getAttribute('data-json-name');document.body.appendChild(a);a.click();a.remove();
     setTimeout(function(){URL.revokeObjectURL(url)},0)});
   var kind=document.body.getAttribute('data-kind');
-  function show(verdict){
-    var status=el('p',verdict.verified?'warn':'bad',verdict.verified?'Checked against the node\\u2019s own key when this page opened: the '+(verdict.form==='service_history'?'history card inside the Service History':'history card')+' matches its digest, and every checkpoint is signed by key '+verdict.keyId+' and extends the one before. No witness receipt is checked here, so this could be a private copy of the node\\u2019s log. To know this is the node\\u2019s, compare that key with the node\\u2019s published commitment.':verdict.kind==='refused'?'The node declined to answer.':'This page could not check its answer, so it shows none of it.');
-    out.appendChild(status);
-    if(verdict.kind==='refused'&&verdict.reason)out.appendChild(el('p','muted','Its reason: '+verdict.reason));
-    var h=el('h2',null,'What was checked');out.appendChild(h);
-    var ul=el('ul');verdict.checks.forEach(function(c){
-      var li=el('li',c.status==='pass'?'ok':c.status==='fail'?'bad':'warn',(c.status==='pass'?'Checked: ':c.status==='fail'?'Failed: ':'Not checked: ')+c.detail);ul.appendChild(li)});
-    out.appendChild(ul);
-    if(verdict.verified&&verdict.checkpoints.length){
-      out.appendChild(el('h2',null,'The log, checkpoint by checkpoint'));
-      var t=el('table');var head=el('tr');['Checkpoint','Entries in the log','Cut at'].forEach(function(x){head.appendChild(el('th',null,x))});t.appendChild(head);
-      verdict.checkpoints.forEach(function(c,i){var r=el('tr');[String(i+1),String(c.size),c.time].forEach(function(x){r.appendChild(el('td',null,x))});t.appendChild(r)});
-      out.appendChild(t)}
-    if(verdict.verified&&verdict.counts&&verdict.counts.length){
-      out.appendChild(el('h2',null,'Exchanges served, per closed week (the node\\u2019s own statement)'));
-      var ct=el('table');var ch=el('tr');['From','To','Count'].forEach(function(x){ch.appendChild(el('th',null,x))});ct.appendChild(ch);
-      verdict.counts.forEach(function(p){p.cells.forEach(function(c){var r=el('tr');[p.from,p.to,c.what+': '+c.value].forEach(function(x){r.appendChild(el('td',null,x))});ct.appendChild(r)})});
-      out.appendChild(ct)}}
   if(kind==='settlement-refusal'){
     var doc;try{doc=JSON.parse(text)}catch(e){doc=null}
     if(doc&&doc.source==='dashboard'&&doc.reason==='no_terms_pack'&&doc.words===${JSON.stringify(SETTLEMENT_REFUSAL_WORDS)}){
@@ -81,7 +73,9 @@ const RUNTIME = `
       out.appendChild(el('p',null,doc.words))}
     else out.appendChild(el('p','bad','This page could not read its own note, so it shows nothing.'));
     return}
-  CapsulesSavedPage.verifyHistoryReply(text).then(show,function(e){show({kind:'unreadable',verified:false,checks:[{status:'fail',detail:'The check itself failed: '+String(e&&e.message||e)}],checkpoints:[]})});
+  var context=JSON.parse(document.getElementById('${CONTEXT_ELEMENT_ID}').textContent);
+  function draw(verdict){CapsulesSavedPage.renderHistoryView(CapsulesSavedPage.historyViewInput(verdict,context),out)}
+  CapsulesSavedPage.verifyHistoryReply(text).then(draw,function(){draw({kind:'unreadable',verified:false,checks:[{id:'readable',status:'fail',detail:''}],checkpoints:[]})});
 })();
 `
 
@@ -93,28 +87,29 @@ type Shell = {
   jsonName: string
   /** What the saved bytes are, in a sentence. */
   inside: string
+  /** The History page's context; the Settlement page has none. */
+  context?: HistoryPageContext
 }
 
-function shell({ title, kind, intro, bundleText, jsonName, inside }: Shell): string {
+function shell({ title, kind, intro, bundleText, jsonName, inside, context }: Shell): string {
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)}</title>
-<style>${STYLE}</style>
+<style>${STYLE}${kind === 'history' ? historyViewStyles : ''}</style>
 </head>
 <body data-kind="${kind}" data-json-name="${escapeHtml(jsonName)}">
 <main>
-<h1>${escapeHtml(title)}</h1>
-<p class="muted">${escapeHtml(intro)}</p>
+${kind === 'history' ? '' : `<h1>${escapeHtml(title)}</h1>\n<p class="muted">${escapeHtml(intro)}</p>`}
 <div id="result"></div>
 <h2>${kind === 'history' ? 'The file inside' : 'The note inside'}</h2>
 <p class="muted">${escapeHtml(inside)}</p>
 <p><button id="save-json" type="button">${kind === 'history' ? 'Save the JSON' : 'Save the note'}</button> <code>${escapeHtml(jsonName)}</code></p>
 </main>
 <script type="application/octet-stream" id="${BUNDLE_ELEMENT_ID}" data-encoding="base64">${toBase64(bundleText)}</script>
-${kind === 'history' ? `<script>${inlineScript(verifierSource)}</script>` : ''}
+${kind === 'history' ? `<script type="application/json" id="${CONTEXT_ELEMENT_ID}">${JSON.stringify(context).replace(/</g, '\\u003c')}</script>\n<script>${inlineScript(verifierSource)}</script>` : ''}
 <script>${RUNTIME}</script>
 </body>
 </html>
@@ -128,7 +123,7 @@ const stamp = (when: string): string => when.replace(/[^0-9TZ]/g, '').slice(0, 1
 export function historyPage(
   replyText: string,
   savedAt: string,
-  form: 'history_card' | 'service_history' = 'history_card'
+  node: { nodeKeyId: string; sharing: HistorySharing }
 ): SavedPage {
   const name = `mesh-history-${stamp(savedAt)}`
   return {
@@ -136,20 +131,14 @@ export function historyPage(
     html: shell({
       title: 'This node’s history',
       kind: 'history',
-      intro:
-        (form === 'service_history'
-          ? 'What this node answers anyone who asks for its Service History: its log’s checkpoints, and how many exchanges it served in each closed week, per model it states. It shows nothing about any one exchange. '
-          : 'What this node answers anyone who asks for its history card: its log’s checkpoints, and nothing about any one exchange. ') +
-        'Saved ' +
-        savedAt +
-        '.',
+      intro: '',
       bundleText: replyText,
       jsonName: `${name}.json`,
-      inside: 'This page carries the exact bytes the node served, below. Save them to check them with your own tools.'
+      inside: 'This page carries the exact bytes the node served, below. Save them to check them with your own tools.',
+      context: { nodeKeyId: node.nodeKeyId, savedAt, sharing: node.sharing, builtBy: BUILT_BY }
     })
   }
 }
-
 
 /** The Settlement page. Until the settlement terms pack exists
  *  (action-state-group/evidencebook-skills#71) the node gives the refusal. */

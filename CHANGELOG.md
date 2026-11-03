@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Changed
+
+- **The saved History page draws through the shared History view.** The page that "Save History
+  page" writes now uses `@action-state-group/capsule-viewer` 0.14.0 (`history-view/v0`), the view
+  Muse and Goose use too, so all three look alike. It still checks the node's answer itself when
+  it opens and still carries the served bytes unchanged. It now ends with a "What this node
+  shares" block built from the node's settings: the `history-page` route reports
+  `standard_history`, `history_segments`, `record_at_completion`, `adjudications` and
+  `exchange_corroboration` (Mesh-LLM/capsules-plugin#255).
+
 ## 0.1.13
 
 ### Documented
