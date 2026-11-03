@@ -1,4 +1,4 @@
-//! The analysis behind `SPLIT_MARGIN_THRESHOLD_NATS` (#155): how far honest
+//! The analysis behind `SPLIT_MARGIN_RULE_NATS` (#155): how far honest
 //! backends move the top-2 gap, from the raw runs
 //! `vectors/parity/referee/margin-measurement/measure.sh` writes.
 //!

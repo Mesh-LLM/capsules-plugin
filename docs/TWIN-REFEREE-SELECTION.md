@@ -31,7 +31,8 @@ settings) computes slightly different next-word scores, so where the top two
 are nearly tied, temperature 0 can choose differently on two honest twins. So
 the referee asks its own server for the top-2 logprobs of every token of its
 re-answer, and its word names a twin only when its own margin (top-1 minus
-top-2 logprob, in nats) is at least `SPLIT_MARGIN_THRESHOLD_NATS` (4.41 nats;
+top-2 logprob, in nats) is at least the `split_margin_threshold` setting (section 6;
+**0 nats by default, which names a twin at any split, near-ties included**; the rule is 4.41 nats,
 `referee/verdict.rs`) at every token from the space before the word where it
 departs from the other twin through the token where they part: the other twin
 may cut the same text into other tokens, so any of them may be where it chose
@@ -131,7 +132,7 @@ and no further call follows on its own.
   referee did (a non-canonical tokenization, which greedy decoding rarely
   produces) could have parted from the referee at a near-tie there, and that
   token is not read. Reading every token back to the start would leave almost
-  every split `inconclusive`: at 4.41 nats, about 42 % of tokens in the
+  every split `inconclusive`: at 4.41 nats (the rule's value), about 42 % of tokens in the
   CUDA measurement fall under the threshold. The twins' own tokens are not used to
   find the point, since a judged twin could then choose where its referee is
   read.
@@ -159,10 +160,22 @@ about a node's future answers.
 | --- | --- | --- |
 | `adjudicate_differing_twins` | `CAPSULES_ADJUDICATE_DIFFERING_TWINS` | off (`on`, `1`, `true` or `yes` turns it on) |
 | `referee_bar_days` | `CAPSULES_REFEREE_BAR_DAYS` | 30 |
+| `split_margin_threshold` | `CAPSULES_SPLIT_MARGIN_THRESHOLD` | 0 (nats) |
 | `stop_routing_after_contradictions` | `CAPSULES_STOP_ROUTING_AFTER_CONTRADICTIONS` | off |
 | `stop_routing_window_days` | `CAPSULES_STOP_ROUTING_WINDOW_DAYS` | 30 |
 
-The last two are the opt-in stop-routing rule: with N set, this node stops
+`split_margin_threshold` is the least margin, in nats, between the referee's top two words
+at the split for it to name a twin (section 4). **At the default 0 the false-accusation guard is
+off:** the referee names a twin on any split, including a near-tie that honest backends could
+have split on (the S08 demo's measured margin was 0.000208 nats). Set it to **4.41** to restore
+the rule of #155/#159 (twice the largest honest CUDA-CPU margin measured, 2.20 nats; Sherlock2).
+It takes a non-negative number of nats; a value that is negative or not a number reads as 4.41,
+never as a looser one. It is read at each ruling, so a change in the console applies to the next
+one. A referee with no margin to read stays `inconclusive` at any threshold. Every verdict seals
+the margin and the threshold it was judged by (`split_margin.referee.margin`,
+`split_margin.threshold`), so a page can show both.
+
+The next two are the opt-in stop-routing rule: with N set, this node stops
 routing to a peer after N referee-signed contradictions within D days, at most
 N - 1 of them from any one referee, through the host's own stop-routing path.
 Undo it the same way as a manual block; the verdicts that met the rule never

@@ -21,7 +21,7 @@
 //! (off unless set) and `CAPSULES_STOP_ROUTING_WINDOW_DAYS`.
 
 use mesh_llm_plugin::{
-    config_array, config_enum, config_integer, config_object, config_object_property,
+    config_array, config_enum, config_float, config_integer, config_object, config_object_property,
     config_schema, config_setting, config_string, config_url, ManifestEntry,
 };
 
@@ -52,6 +52,9 @@ pub const STOP_ROUTING_WINDOW_KEY: &str = "stop_routing_window_days";
 /// `CAPSULES_REFEREE_BAR_DAYS`).
 pub const ADJUDICATE_DIFFERING_TWINS_KEY: &str = "adjudicate_differing_twins";
 pub const REFEREE_BAR_DAYS_KEY: &str = "referee_bar_days";
+/// The least top-2 margin, in nats, at which the referee names a twin
+/// (`CAPSULES_SPLIT_MARGIN_THRESHOLD`; `crate::referee::verdict`). Default 0.
+pub const SPLIT_MARGIN_THRESHOLD_KEY: &str = "split_margin_threshold";
 
 /// This process's own runtime env var for `share_record_at_completion` --
 /// see the module doc's "declarative only" note: no live host->plugin
@@ -362,6 +365,22 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 .order(7),
         )
         .setting(
+            config_setting(SPLIT_MARGIN_THRESHOLD_KEY, config_float())
+                .default_value(&0.0)
+                .description(
+                    "The least margin, in nats, between the referee's top two words at the split \
+                     for it to name a twin; below it the ruling is inconclusive. The default 0 \
+                     names a twin at any split, near-ties included, so the guard against \
+                     accusing an honest node whose backend split on a near-tie is off. Set 4.41 \
+                     to turn it on: that is the rule, twice the largest margin seen between \
+                     honest backends. Every verdict records the margin and the threshold it \
+                     was judged by.",
+                )
+                .label("Referee's least margin to name a twin")
+                .category(DIFFER_CATEGORY_ID, DIFFER_CATEGORY_LABEL, DIFFER_CATEGORY_SUMMARY, 1)
+                .order(8),
+        )
+        .setting(
             config_setting(ADJUDICATIONS_KEY, config_enum(["deliver_to_subjects", "off"]))
                 .default_value(&"deliver_to_subjects")
                 .description(
@@ -370,7 +389,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 )
                 .label("Deliver verdicts to the nodes judged")
                 .category(DIFFER_CATEGORY_ID, DIFFER_CATEGORY_LABEL, DIFFER_CATEGORY_SUMMARY, 1)
-                .order(8),
+                .order(9),
         )
         // Keeping records.
         .setting(
@@ -385,7 +404,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 )
                 .label("Send your record to the other side")
                 .category(RECORDS_CATEGORY_ID, RECORDS_CATEGORY_LABEL, RECORDS_CATEGORY_SUMMARY, 2)
-                .order(9),
+                .order(10),
         )
         .setting(
             config_setting(
@@ -414,7 +433,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 .placeholder(SUGGESTED_WITNESS_URL)
                 .renderer_id("set-value")
                 .category(RECORDS_CATEGORY_ID, RECORDS_CATEGORY_LABEL, RECORDS_CATEGORY_SUMMARY, 2)
-                .order(10),
+                .order(11),
         )
         .setting(
             // The statement, byte for byte, as Steven approved it (loop's
@@ -424,7 +443,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 .description(crate::network_join::SWITCH_CONSENT)
                 .label(JOIN_NETWORK_LABEL)
                 .category(NETWORK_CATEGORY_ID, NETWORK_CATEGORY_LABEL, NETWORK_CATEGORY_SUMMARY, 3)
-                .order(11),
+                .order(12),
         )
         .into()
 }
@@ -457,6 +476,7 @@ mod tests {
                 STOP_ROUTING_AFTER_KEY,
                 STOP_ROUTING_WINDOW_KEY,
                 REFEREE_BAR_DAYS_KEY,
+                SPLIT_MARGIN_THRESHOLD_KEY,
                 ADJUDICATIONS_KEY,
                 RECORD_AT_COMPLETION_KEY,
                 WITNESS_KEY,
@@ -521,6 +541,11 @@ mod tests {
                     "When answers differ",
                     "Bar a contradicted referee for",
                     REFEREE_BAR_DAYS_KEY
+                ),
+                row(
+                    "When answers differ",
+                    "Referee's least margin to name a twin",
+                    SPLIT_MARGIN_THRESHOLD_KEY
                 ),
                 row(
                     "When answers differ",
@@ -643,6 +668,7 @@ mod tests {
             (STOP_ROUTING_AFTER_KEY, None, v(&[])),
             (STOP_ROUTING_WINDOW_KEY, Some("30"), v(&[])),
             (REFEREE_BAR_DAYS_KEY, Some("30"), v(&[])),
+            (SPLIT_MARGIN_THRESHOLD_KEY, Some("0.0"), v(&[])),
             (
                 ADJUDICATIONS_KEY,
                 Some("\"deliver_to_subjects\""),
@@ -731,6 +757,10 @@ mod tests {
             format!("CAPSULES_{}", REFEREE_BAR_DAYS_KEY.to_uppercase()),
             crate::referee::bar::ENV_REFEREE_BAR_DAYS
         );
+        assert_eq!(
+            format!("CAPSULES_{}", SPLIT_MARGIN_THRESHOLD_KEY.to_uppercase()),
+            crate::referee::verdict::ENV_SPLIT_MARGIN_THRESHOLD
+        );
     }
 
     #[test]
@@ -775,6 +805,7 @@ mod tests {
             ),
             (ADJUDICATE_DIFFERING_TWINS_KEY, "ADJUDICATE_DIFFERING_TWINS"),
             (REFEREE_BAR_DAYS_KEY, "REFEREE_BAR_DAYS"),
+            (SPLIT_MARGIN_THRESHOLD_KEY, "SPLIT_MARGIN_THRESHOLD"),
             (STOP_ROUTING_AFTER_KEY, "STOP_ROUTING_AFTER_CONTRADICTIONS"),
             (STOP_ROUTING_WINDOW_KEY, "STOP_ROUTING_WINDOW_DAYS"),
         ];

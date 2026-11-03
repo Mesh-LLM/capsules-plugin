@@ -1,4 +1,4 @@
-//! The rule behind `SPLIT_MARGIN_THRESHOLD_NATS` (#155, Sherlock2 on #159),
+//! The rule behind `SPLIT_MARGIN_RULE_NATS` (#155, Sherlock2 on #159),
 //! over scored runs: every honest answer read by two referees on different
 //! backends, both on the same answer tokens, so both always share the
 //! context. One row per answer position (`margin-measurement/cuda-cpu/`).

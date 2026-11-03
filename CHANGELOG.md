@@ -12,6 +12,18 @@
   `standard_history`, `history_segments`, `record_at_completion`, `adjudications` and
   `exchange_corroboration` (Mesh-LLM/capsules-plugin#255).
 
+- **The referee's split-margin threshold is a setting, `split_margin_threshold`, and its default is
+  0** (Configuration > When answers differ; env `CAPSULES_SPLIT_MARGIN_THRESHOLD`; nats). It was a
+  constant 4.41 (#155, #159). **At the default 0 the false-accusation guard is off:** a referee
+  names a twin on any split it has a margin for, including a near-tie (the Devcon S08 demo's
+  measured 0.000208 nats) that an honest node on another backend could have split on. 4.41 is
+  still Sherlock2's rule, twice the largest honest CUDA-CPU margin measured (2.20 nats); **set
+  `split_margin_threshold` to 4.41 to restore it.** A negative or non-numeric value reads as 4.41.
+  A referee with no margin to read stays `inconclusive` at any threshold. Every verdict still seals
+  the referee's margin and the threshold in effect (`split_margin.referee.margin`,
+  `split_margin.threshold`). The parity vectors state the rule and are run with the threshold at
+  4.41; no vector or wire shape changes (#257).
+
 ## 0.1.13
 
 ### Documented

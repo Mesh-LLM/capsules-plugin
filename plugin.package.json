@@ -194,6 +194,27 @@
         }
       },
       {
+        "key": "split_margin_threshold",
+        "value_schema": {
+          "kind": "float",
+          "allow_additional_properties": false
+        },
+        "required": false,
+        "default_json": "0.0",
+        "apply_mode": "static_on_load",
+        "restart_scope": "none",
+        "visibility": "user",
+        "description": "The least margin, in nats, between the referee's top two words at the split for it to name a twin; below it the ruling is inconclusive. The default 0 names a twin at any split, near-ties included, so the guard against accusing an honest node whose backend split on a near-tie is off. Set 4.41 to turn it on: that is the rule, twice the largest margin seen between honest backends. Every verdict records the margin and the threshold it was judged by.",
+        "presentation": {
+          "label": "Referee's least margin to name a twin",
+          "category_id": "differ",
+          "category_label": "When answers differ",
+          "category_summary": "A client can send one request to two machines. These settings decide what happens when the two answers don't match.",
+          "category_order": 1,
+          "setting_order": 8
+        }
+      },
+      {
         "key": "share_adjudications",
         "value_schema": {
           "kind": "enum",
@@ -215,7 +236,7 @@
           "category_label": "When answers differ",
           "category_summary": "A client can send one request to two machines. These settings decide what happens when the two answers don't match.",
           "category_order": 1,
-          "setting_order": 8
+          "setting_order": 9
         }
       },
       {
@@ -240,7 +261,7 @@
           "category_label": "Keeping records",
           "category_summary": "Who else holds a copy of what you sealed. This is what makes a later rewrite provable by someone other than you.",
           "category_order": 2,
-          "setting_order": 9
+          "setting_order": 10
         }
       },
       {
@@ -284,7 +305,7 @@
           "category_label": "Keeping records",
           "category_summary": "Who else holds a copy of what you sealed. This is what makes a later rewrite provable by someone other than you.",
           "category_order": 2,
-          "setting_order": 10,
+          "setting_order": 11,
           "placeholder": "https://witness.agentactioncapsule.org",
           "renderer_id": "set-value"
         }
@@ -311,7 +332,7 @@
           "category_label": "Evidence network",
           "category_summary": "Whether this node is on the evidence network's list. Off by default.",
           "category_order": 3,
-          "setting_order": 11
+          "setting_order": 12
         }
       }
     ]

@@ -27,7 +27,7 @@
 //!    or when either was sampled, the ruling is `not_comparable`, with why.
 //!
 //! A ruling names a twin only when this node's own top-2 margin at the split
-//! reaches the pinned threshold (`verdict::SPLIT_MARGIN_THRESHOLD_NATS`,
+//! reaches the operator's threshold (`verdict::split_margin_threshold`,
 //! #155); otherwise it is `inconclusive`, sealed with `inconclusive_because`.
 //! The margin is read from the answer of step 6, whose digest this node's own
 //! record covers, so no one else's number can move it. Every weighed margin
