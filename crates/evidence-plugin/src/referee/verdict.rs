@@ -65,17 +65,16 @@ pub const ENV_SPLIT_MARGIN_THRESHOLD: &str = "CAPSULES_SPLIT_MARGIN_THRESHOLD";
 pub const DEFAULT_SPLIT_MARGIN_THRESHOLD_NATS: f64 = 0.0;
 
 /// The threshold a setting reads as, in micro-nats: unset or empty is the
-/// default; a non-negative finite number of nats is itself; anything else
-/// (negative, not a number, beyond [`margin::MAX_NATS`]) is the rule's
-/// 4.41, so a typo never names a twin more readily than the rule does.
+/// default; a non-negative finite number of nats is itself, a number past
+/// [`margin::MAX_NATS`] (which no margin reaches: never name a twin) is
+/// `MAX_NATS`; anything else (negative, not a number) is the rule's 4.41, so
+/// a typo never names a twin more readily than the rule does.
 pub fn split_margin_threshold_from(raw: Option<&str>) -> i64 {
     let Some(raw) = raw.map(str::trim).filter(|r| !r.is_empty()) else {
         return margin::micro(DEFAULT_SPLIT_MARGIN_THRESHOLD_NATS);
     };
     match raw.parse::<f64>() {
-        Ok(nats) if nats.is_finite() && (0.0..=margin::MAX_NATS).contains(&nats) => {
-            margin::micro(nats)
-        }
+        Ok(nats) if nats.is_finite() && nats >= 0.0 => margin::micro(nats.min(margin::MAX_NATS)),
         _ => margin::micro(SPLIT_MARGIN_RULE_NATS),
     }
 }
@@ -106,11 +105,12 @@ pub fn split_margin_threshold() -> i64 {
     if let Some(pinned) = THRESHOLD_OVERRIDE.with(std::cell::Cell::get) {
         return pinned;
     }
-    split_margin_threshold_from(
-        crate::settings::var(ENV_SPLIT_MARGIN_THRESHOLD)
-            .ok()
-            .as_deref(),
-    )
+    match crate::settings::var(ENV_SPLIT_MARGIN_THRESHOLD) {
+        Ok(raw) => split_margin_threshold_from(Some(&raw)),
+        Err(std::env::VarError::NotPresent) => split_margin_threshold_from(None),
+        // Set but not text: a malformed setting is the rule's, never the default.
+        Err(std::env::VarError::NotUnicode(_)) => margin::micro(SPLIT_MARGIN_RULE_NATS),
+    }
 }
 
 /// The fixed members of the sealed ruling block.
@@ -293,9 +293,11 @@ pub fn referee_verdict(
     let referee_margin = departure(referee_text, referee_index, other.text(), at)
         .zip(referee_body)
         .and_then(|((from, split), body)| least_margin(body, referee_text, from, split));
+    // Read once: the ruling and the threshold it seals must be the same.
+    let threshold = split_margin_threshold();
     let because = match &referee_margin {
         None => Some(INCONCLUSIVE_SPLIT_MARGIN_UNAVAILABLE),
-        Some(m) if m.margin < split_margin_threshold() => Some(INCONCLUSIVE_SPLIT_WITHIN_MARGIN),
+        Some(m) if m.margin < threshold => Some(INCONCLUSIVE_SPLIT_WITHIN_MARGIN),
         Some(_) => None,
     };
     let because = because.filter(|_| !cfg!(feature = "mutant-referee-ignores-split-margin"));
@@ -305,7 +307,13 @@ pub fn referee_verdict(
             None => contradicted(node),
         },
         inconclusive_because: because,
-        split_margin: Some(split_margin_block(referee_margin.as_ref(), a, b, at)),
+        split_margin: Some(split_margin_block(
+            referee_margin.as_ref(),
+            threshold,
+            a,
+            b,
+            at,
+        )),
     }
 }
 
@@ -313,13 +321,16 @@ pub fn referee_verdict(
 /// (`null` when it had none), and each twin's own margin where its answer
 /// departs from the other's, read the same way, when that twin's answer
 /// carries logprobs.
-fn split_margin_block(referee: Option<&Margin>, a: &Half, b: &Half, at: usize) -> Value {
+fn split_margin_block(
+    referee: Option<&Margin>,
+    threshold: i64,
+    a: &Half,
+    b: &Half,
+    at: usize,
+) -> Value {
     let mut block = Map::new();
     block.insert("unit".into(), json!("nats"));
-    block.insert(
-        "threshold".into(),
-        json!(margin::decimal(split_margin_threshold())),
-    );
+    block.insert("threshold".into(), json!(margin::decimal(threshold)));
     block.insert(
         "referee".into(),
         referee.map_or(Value::Null, Margin::to_json),
@@ -535,8 +546,17 @@ mod tests {
     /// looser one.
     #[test]
     fn a_bad_threshold_setting_reads_as_the_rule() {
-        for bad in ["-1", "abc", "NaN", "inf", "1e300", "4,41"] {
+        for bad in ["-1", "abc", "NaN", "inf", "4,41"] {
             assert_eq!(split_margin_threshold_from(Some(bad)), 4_410_000, "{bad}");
+        }
+    }
+
+    /// Past what any margin can reach, the threshold never names a twin.
+    #[test]
+    fn a_threshold_past_the_largest_margin_is_never_reached() {
+        let max = margin::micro(margin::MAX_NATS);
+        for huge in ["1e6", "1e7", "1e300"] {
+            assert_eq!(split_margin_threshold_from(Some(huge)), max, "{huge}");
         }
     }
 

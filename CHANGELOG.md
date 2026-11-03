@@ -18,7 +18,7 @@
   names a twin on any split it has a margin for, including a near-tie (the Devcon S08 demo's
   measured 0.000208 nats) that an honest node on another backend could have split on. 4.41 is
   still Sherlock2's rule, twice the largest honest CUDA-CPU margin measured (2.20 nats); **set
-  `split_margin_threshold` to 4.41 to restore it.** A negative or non-numeric value reads as 4.41.
+  `split_margin_threshold` to 4.41 to restore it.** A negative or non-numeric value reads as 4.41; one past 1,000,000 names no twin.
   A referee with no margin to read stays `inconclusive` at any threshold. Every verdict still seals
   the referee's margin and the threshold in effect (`split_margin.referee.margin`,
   `split_margin.threshold`). The parity vectors state the rule and are run with the threshold at
