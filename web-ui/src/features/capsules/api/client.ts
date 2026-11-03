@@ -68,7 +68,16 @@ export async function fetchDisclosurePreimage(capsuleId: string): Promise<Disclo
   }
 }
 
-export type ServedHistory = { replyText: string; outcome: 'answered' | 'refused'; form: 'history_card' | 'service_history' }
+/** The node's sharing settings when the page was saved, for the page's
+ *  "What this node shares" block. */
+export type HistorySharing = { standard_history: boolean; history_segments: 'counterparties' | 'peers' | 'off' }
+
+export type ServedHistory = {
+  replyText: string
+  outcome: 'answered' | 'refused'
+  form: 'history_card' | 'service_history'
+  sharing: HistorySharing
+}
 
 /** What this node answers a stranger who asks for its history: the reply's
  *  bytes as text, unchanged, for the History page (`saved-pages.ts`). */
@@ -79,7 +88,7 @@ export async function fetchServedHistory(): Promise<ServedHistory> {
 /** The `history-page` route's body as the History page takes it. Throws for
  *  a body that is not a history, or a card signed under another key. */
 export function servedHistoryFrom(raw: unknown): ServedHistory {
-  const body = (isRecord(raw) ? raw : {}) as { reply?: unknown; outcome?: unknown; node_key_id?: unknown; form?: unknown }
+  const body = (isRecord(raw) ? raw : {}) as { reply?: unknown; outcome?: unknown; node_key_id?: unknown; form?: unknown; sharing?: unknown }
   if (typeof body.reply !== 'string' || (body.outcome !== 'answered' && body.outcome !== 'refused')) {
     throw new Error('this node did not give its history')
   }
@@ -90,9 +99,15 @@ export function servedHistoryFrom(raw: unknown): ServedHistory {
       throw new Error('the history it gave is signed under another key')
     }
   }
+  const sharing = isRecord(body.sharing) ? body.sharing : {}
+  const segments = sharing.history_segments
+  if (typeof sharing.standard_history !== 'boolean' || (segments !== 'counterparties' && segments !== 'peers' && segments !== 'off')) {
+    throw new Error('this node did not say what it shares')
+  }
   return {
     replyText: body.reply,
     outcome: body.outcome,
-    form: body.form === 'service_history/1' ? 'service_history' : 'history_card'
+    form: body.form === 'service_history/1' ? 'service_history' : 'history_card',
+    sharing: { standard_history: sharing.standard_history, history_segments: segments }
   }
 }

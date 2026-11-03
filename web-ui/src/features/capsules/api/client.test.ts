@@ -2,26 +2,28 @@ import { describe, expect, it } from 'vitest'
 import { servedHistoryFrom } from '@/features/capsules/api/client'
 
 const KEY = 'a'.repeat(64)
+const SHARING = { standard_history: false, history_segments: 'counterparties' }
 const reply = (fields: Record<string, unknown>) => `${JSON.stringify(fields)}\n`
 
 describe('servedHistoryFrom', () => {
   it('takes a card the node signed under its own key, bytes unchanged', () => {
     const text = reply({ responder: KEY, derivation: 'history_card/1' })
-    expect(servedHistoryFrom({ form: 'history_card/1', outcome: 'answered', reply: text, node_key_id: KEY })).toEqual({
+    expect(servedHistoryFrom({ form: 'history_card/1', outcome: 'answered', reply: text, node_key_id: KEY, sharing: SHARING })).toEqual({
       replyText: text,
       outcome: 'answered',
-      form: 'history_card'
+      form: 'history_card',
+      sharing: SHARING
     })
   })
 
   it('names a Service History by its form', () => {
     const text = reply({ responder: KEY })
-    expect(servedHistoryFrom({ form: 'service_history/1', outcome: 'answered', reply: text, node_key_id: KEY }).form).toBe('service_history')
+    expect(servedHistoryFrom({ form: 'service_history/1', outcome: 'answered', reply: text, node_key_id: KEY, sharing: SHARING }).form).toBe('service_history')
   })
 
   it('refuses a card signed under another key', () => {
     const text = reply({ responder: 'b'.repeat(64) })
-    expect(() => servedHistoryFrom({ form: 'history_card/1', outcome: 'answered', reply: text, node_key_id: KEY })).toThrow(
+    expect(() => servedHistoryFrom({ form: 'history_card/1', outcome: 'answered', reply: text, node_key_id: KEY, sharing: SHARING })).toThrow(
       'signed under another key'
     )
     expect(() => servedHistoryFrom({ form: 'history_card/1', outcome: 'answered', reply: reply({ responder: KEY }) })).toThrow(
@@ -31,7 +33,15 @@ describe('servedHistoryFrom', () => {
 
   it('takes a refusal as it is, which names no responder', () => {
     const text = reply({ reason: 'coverage_unsatisfiable', sig: '00' })
-    expect(servedHistoryFrom({ form: 'history_card/1', outcome: 'refused', reply: text, node_key_id: KEY }).outcome).toBe('refused')
+    expect(servedHistoryFrom({ form: 'history_card/1', outcome: 'refused', reply: text, node_key_id: KEY, sharing: SHARING }).outcome).toBe('refused')
+  })
+
+  it('refuses a body that does not say what the node shares', () => {
+    const text = reply({ responder: KEY })
+    const base = { form: 'history_card/1', outcome: 'answered', reply: text, node_key_id: KEY }
+    for (const sharing of [undefined, {}, { standard_history: 'yes', history_segments: 'off' }, { standard_history: true, history_segments: 'none' }]) {
+      expect(() => servedHistoryFrom({ ...base, sharing })).toThrow('did not say what it shares')
+    }
   })
 
   it('refuses a body that is not a history', () => {
