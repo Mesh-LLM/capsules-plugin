@@ -28,7 +28,9 @@ describe('historyViewInput', () => {
     const input = historyViewInput(verdict, context)
     for (const check of input.checks) expect(HISTORY_CHECK_IDS).toContain(check.id)
     expect(input.checks.length).toBe(new Set(input.checks.map((c) => c.id)).size)
-    expect(NOT_RUN.every((c) => input.checks.some((m) => m.status === 'not_run'))).toBe(true)
+    expect(input.checks.filter((c) => c.status === 'not_run').map((c) => c.id)).toEqual(
+      expect.arrayContaining(['witness', 'envelope_signature', 'key_is_node', 'reply_bound', 'period_counts'])
+    )
   })
 
   it('draws a verified answer, every row not time-stamped and not countersigned', () => {
