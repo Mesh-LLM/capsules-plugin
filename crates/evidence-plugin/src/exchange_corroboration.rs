@@ -151,11 +151,6 @@ pub(crate) fn entries(
         let record = view.record_at(i).ok_or(Reason::CapacityExceeded)?;
         let body: Value =
             serde_json::from_slice(&record.body).map_err(|_| Reason::CapacityExceeded)?;
-        // A half of a failed exchange binds no digest, so there is nothing to
-        // corroborate; it is not one of the exchange's halves here.
-        if crate::evidence_panes::is_failed(&body) {
-            continue;
-        }
         let proof = crate::evidence_artifact::inclusion(view, i, anchor.mmr_size)?;
         entries.push(json!({
             "half": record.digest,
@@ -167,9 +162,6 @@ pub(crate) fn entries(
             "response_digest": effect_digest(&body, "response_digest"),
             "inclusion": hex::encode(proof),
         }));
-    }
-    if entries.is_empty() {
-        return Err(Reason::NoSuchSubject);
     }
     Ok(Value::Array(entries))
 }

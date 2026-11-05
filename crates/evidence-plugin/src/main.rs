@@ -356,9 +356,14 @@ async fn observe_failed_exchange(
     let capsules_for_seal = capsules.clone();
     // As a served half is: only the provider's record gets its own checkpoint.
     let checkpoints_for_seal = checkpoints.filter(|_| provider_side).cloned();
+    let failures = splits.failures.clone();
     let sealed = tokio::task::spawn_blocking(move || {
-        if let Some(summary) = &closed {
-            seal_unsealed_failures(&capsules_for_seal, checkpoints_for_seal.as_ref(), summary);
+        if let Some(summary) = closed {
+            if seal_unsealed_failures(&capsules_for_seal, checkpoints_for_seal.as_ref(), &summary)
+                .is_none()
+            {
+                failures.restore(summary);
+            }
         }
         if admit == failure_window::Admit::Seal {
             seal_observed_host_exchange(
@@ -1207,7 +1212,9 @@ fn spawn_split_tick(
                     .failures
                     .due_summaries(chrono::Utc::now().timestamp())
                 {
-                    seal_unsealed_failures(&capsules, checkpoints.as_ref(), &summary);
+                    if seal_unsealed_failures(&capsules, checkpoints.as_ref(), &summary).is_none() {
+                        splits.failures.restore(summary);
+                    }
                 }
             })
             .await

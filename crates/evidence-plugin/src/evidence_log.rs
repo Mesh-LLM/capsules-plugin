@@ -476,8 +476,13 @@ impl LedgerIndex {
             for id in record_correlation_ids(&record) {
                 self.correlations.entry(id).or_default().push(index);
             }
-            if let Some(digest) = client_nonce_digest(&record) {
-                self.client_nonces.entry(digest).or_default().push(index);
+            // A failed exchange's record binds no digest, so there is nothing
+            // to corroborate: it is not found by its nonce, which keeps it out
+            // of the authorization and capacity checks of the answer too.
+            if !crate::evidence_panes::is_failed(&record) {
+                if let Some(digest) = client_nonce_digest(&record) {
+                    self.client_nonces.entry(digest).or_default().push(index);
+                }
             }
             for half in counterparty_half_citations(&record) {
                 self.citations.entry(half).or_default().push(index);

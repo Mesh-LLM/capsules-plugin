@@ -346,11 +346,17 @@ fn a_failed_half_is_not_a_half_of_the_answer() {
     assert_eq!(halves.len(), 1, "the failed half is not listed");
     assert_eq!(halves[0].role, "served");
 
-    let alone = node_with(&[failed], &node_key());
+    let alone = node_with(&[failed.clone()], &node_key());
     assert_eq!(
         refused(&ask(alone.path(), &unsigned(&key), true)),
         Some(Reason::NoSuchSubject)
     );
+
+    // Under the default policy the party to the served half is answered: the
+    // failed half names another node, and must not make it `not_authorized`.
+    let default = node_with(&[served_half(), failed], &node_key());
+    let wire = wire_of(ask(default.path(), &signed_by("node-a", &key), false));
+    assert_eq!(artifact_of(&wire)["entries"].as_array().unwrap().len(), 1);
 }
 
 /// A half that never leaves this node is in no answer's matched set

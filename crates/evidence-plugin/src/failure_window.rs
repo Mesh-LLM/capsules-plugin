@@ -54,6 +54,9 @@ pub struct FailureWindow {
     cap: u32,
     window_s: u32,
     peers: Mutex<HashMap<String, PeerWindow>>,
+    /// Summaries handed back that could not be sealed, held until they can
+    /// be ([`FailureWindow::restore`]).
+    unsealed_summaries: Mutex<Vec<Summary>>,
 }
 
 impl Default for FailureWindow {
@@ -69,7 +72,17 @@ impl FailureWindow {
             cap,
             window_s,
             peers: Mutex::new(HashMap::new()),
+            unsealed_summaries: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Hold a summary whose seal failed (a write error), so a later tick
+    /// hands it back instead of the count being lost.
+    pub fn restore(&self, summary: Summary) {
+        self.unsealed_summaries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(summary);
     }
 
     fn window_of(&self, now: i64) -> i64 {
@@ -128,7 +141,12 @@ impl FailureWindow {
             .peers
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut due = Vec::new();
+        let mut due = std::mem::take(
+            &mut *self
+                .unsealed_summaries
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
         peers.retain(|peer, entry| {
             if entry.window >= window {
                 return true;
@@ -213,6 +231,21 @@ mod tests {
             "handed back once"
         );
         assert_eq!(window.admit("a", T0 + 3601).0, Admit::Seal);
+    }
+
+    #[test]
+    fn a_summary_that_could_not_be_sealed_is_handed_back_again() {
+        let window = FailureWindow::new(1, 3600);
+        window.admit("a", T0);
+        window.admit("a", T0 + 1);
+        let due = window.due_summaries(T0 + 3600);
+        assert_eq!(due.len(), 1);
+        window.restore(due[0].clone());
+        assert_eq!(window.due_summaries(T0 + 3601), due);
+        assert!(
+            window.due_summaries(T0 + 3602).is_empty(),
+            "once sealed, gone"
+        );
     }
 
     #[test]
