@@ -343,7 +343,7 @@ function PeersSection({
 
 type ExchangeFilterKey = 'role' | 'checks' | 'state'
 
-const ALL_ROLE_VALUES = ['SERVED', 'ASKED']
+const ALL_ROLE_VALUES = ['SERVED', 'ASKED', 'FAILED']
 const ALL_CHECKS_VALUES = ['clean', 'exception']
 // v3 §2a: "useful filters are states, not qualities". `twins` isn't a
 // right-cell state -- it's bracket membership, which no payload carries
@@ -357,6 +357,8 @@ function exchangeFilterOptionLabel(value: string): string {
       return 'Served'
     case 'ASKED':
       return 'Asked'
+    case 'FAILED':
+      return 'Failed'
     case 'clean':
       return 'Clean'
     case 'exception':

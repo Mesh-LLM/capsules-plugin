@@ -162,6 +162,39 @@ pub fn peer_capsule_id_for_seal(envelope: &OpenAiExchangeEnvelope) -> Option<(&s
     }
 }
 
+/// Mirror of the host's `ExchangeFailureClass`
+/// (`mesh-llm-host-runtime::plugin::openai_exchange`, Mesh-LLM/mesh-llm#2852):
+/// why an exchange did not complete, on a terminal envelope only. Present
+/// exactly when the exchange failed, whatever its `status` says: a stream cut
+/// after its 200 headers carries `status: 200` and a class. `#[serde(other)]`
+/// for the same forward-compat reason as `DispatchPath::Unknown`: a class a
+/// newer host adds still parses, and such a record is sealed failed with no
+/// reason, never with a guessed one.
+#[derive(Debug, Clone, Copy, Deserialize, serde::Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FailureClass {
+    PaymentRequired,
+    Refused,
+    UpstreamError,
+    Timeout,
+    Dropped,
+    #[serde(other)]
+    Unknown,
+}
+
+/// The wire value a sealed record carries for a class, `None` for a class
+/// this mirror predates (`Unknown`).
+pub fn failure_class_wire_value(class: FailureClass) -> Option<&'static str> {
+    match class {
+        FailureClass::PaymentRequired => Some("payment_required"),
+        FailureClass::Refused => Some("refused"),
+        FailureClass::UpstreamError => Some("upstream_error"),
+        FailureClass::Timeout => Some("timeout"),
+        FailureClass::Dropped => Some("dropped"),
+        FailureClass::Unknown => None,
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Phase {
@@ -183,6 +216,17 @@ pub struct OpenAiExchangeEnvelope {
     pub model: String,
     #[serde(default)]
     pub status: Option<u16>,
+    /// Why this exchange failed, on a terminal envelope of a failed exchange
+    /// only (see [`FailureClass`]); `None` on a served one and on a host that
+    /// predates the member.
+    #[serde(default)]
+    pub failure_class: Option<FailureClass>,
+    /// The mesh node that asked for an exchange that failed on this node,
+    /// from the host's QUIC-authenticated remote id (never from the request).
+    /// Set by the host only on a failed raw-proxy terminal that came over the
+    /// mesh; a served exchange names its asker in `serving_provenance`.
+    #[serde(default)]
+    pub requested_by_node_id: Option<String>,
     #[serde(default)]
     pub capsule_id: Option<String>,
     /// How `capsule_id` was obtained -- see [`CapsuleIdProvenance`]. On a
@@ -382,7 +426,7 @@ impl ObservedLifecycleEvents {
         if envelope.phase != Phase::Terminal {
             return false;
         }
-        if !matches!(envelope.status, Some(200..=299)) {
+        if !matches!(envelope.status, Some(200..=299)) || envelope.failure_class.is_some() {
             return false;
         }
         if matches!(envelope.dispatch_path, DispatchPath::RemoteMesh) {
@@ -439,7 +483,50 @@ impl ObservedLifecycleEvents {
     pub fn is_sealable_requester_side(envelope: &OpenAiExchangeEnvelope) -> bool {
         envelope.phase == Phase::Terminal
             && matches!(envelope.status, Some(200..=299))
+            && envelope.failure_class.is_none()
             && matches!(envelope.dispatch_path, DispatchPath::RemoteMesh)
+    }
+
+    /// Whether this observed envelope is a FAILED exchange this plugin should
+    /// seal a record for: a terminal event the host stamped with a
+    /// `failure_class`. A 2xx status does not make it a served exchange (a
+    /// stream cut after its headers has one), so the two served predicates
+    /// above refuse any envelope that carries a class, and this is mutually
+    /// exclusive with both.
+    ///
+    /// - A `RemoteMesh` failure is this node's requester-side half: always
+    ///   sealed, since this node chose to send the request.
+    /// - A failure on a node that was to serve the request (`raw_proxy`,
+    ///   `typed_frontend`) is sealed only when the host named the mesh peer
+    ///   that asked (`requested_by_node_id`), so an anonymous caller cannot
+    ///   grow the log. A per-peer cap on top of that is `failure_window`'s.
+    /// - An unrecognized dispatch path is observed, never sealed.
+    ///
+    /// No plugin-served stub discriminator is needed: this plugin's own
+    /// handler seals nothing for a request it refuses (a blocked model gets
+    /// its 403 and no record), so a failed terminal for it has no sealed
+    /// twin to duplicate.
+    pub fn is_sealable_failed(envelope: &OpenAiExchangeEnvelope) -> bool {
+        if envelope.phase != Phase::Terminal || envelope.failure_class.is_none() {
+            return false;
+        }
+        match envelope.dispatch_path {
+            DispatchPath::RemoteMesh => true,
+            DispatchPath::TypedFrontend | DispatchPath::RawProxy => {
+                Self::failed_asker(envelope).is_some()
+            }
+            DispatchPath::Unknown => false,
+        }
+    }
+
+    /// The mesh peer that asked for a failed exchange this node was to
+    /// serve; `None` when the host named none.
+    pub fn failed_asker(envelope: &OpenAiExchangeEnvelope) -> Option<&str> {
+        envelope
+            .requested_by_node_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|id| !id.is_empty() && *id != "unknown")
     }
 
     pub fn record(&self, envelope: OpenAiExchangeEnvelope) {
@@ -523,6 +610,10 @@ struct LoggedEnvelope {
     phase: Phase,
     model: String,
     status: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    failure_class: Option<FailureClass>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    requested_by_node_id: Option<String>,
     capsule_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     capsule_id_provenance: Option<CapsuleIdProvenance>,
@@ -555,6 +646,8 @@ impl From<&OpenAiExchangeEnvelope> for LoggedEnvelope {
             phase: e.phase.clone(),
             model: e.model.clone(),
             status: e.status,
+            failure_class: e.failure_class,
+            requested_by_node_id: e.requested_by_node_id.clone(),
             capsule_id: e.capsule_id.clone(),
             capsule_id_provenance: e.capsule_id_provenance,
             nonce: e.nonce.clone(),
@@ -1033,6 +1126,8 @@ mod tests {
             phase: Phase::Terminal,
             model: model.to_string(),
             status: Some(200),
+            failure_class: None,
+            requested_by_node_id: None,
             capsule_id: None,
             capsule_id_provenance: None,
             nonce: None,
@@ -1081,5 +1176,116 @@ mod tests {
         assert!(store.latest_provenance_for_model("model-unseen").is_none());
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod failed_tests {
+    use super::*;
+
+    fn event(
+        dispatch_path: &str,
+        status: Option<u16>,
+        class: Option<&str>,
+    ) -> OpenAiExchangeEnvelope {
+        serde_json::from_value(serde_json::json!({
+            "dispatch_path": dispatch_path,
+            "phase": "terminal",
+            "model": "m",
+            "status": status,
+            "failure_class": class,
+        }))
+        .expect("parses")
+    }
+
+    #[test]
+    fn every_class_the_host_names_parses_and_a_new_one_does_not_break_the_event() {
+        for (wire, class) in [
+            ("payment_required", FailureClass::PaymentRequired),
+            ("refused", FailureClass::Refused),
+            ("upstream_error", FailureClass::UpstreamError),
+            ("timeout", FailureClass::Timeout),
+            ("dropped", FailureClass::Dropped),
+        ] {
+            let e = event("remote_mesh", None, Some(wire));
+            assert_eq!(e.failure_class, Some(class));
+            assert_eq!(failure_class_wire_value(class), Some(wire));
+        }
+        let newer = event("remote_mesh", None, Some("quota_exceeded"));
+        assert_eq!(newer.failure_class, Some(FailureClass::Unknown));
+        assert_eq!(failure_class_wire_value(FailureClass::Unknown), None);
+        assert!(ObservedLifecycleEvents::is_sealable_failed(&newer));
+    }
+
+    #[test]
+    fn a_requester_side_failure_is_sealable_whatever_its_status() {
+        for status in [None, Some(402), Some(502), Some(504), Some(200)] {
+            let e = event("remote_mesh", status, Some("upstream_error"));
+            assert!(
+                ObservedLifecycleEvents::is_sealable_failed(&e),
+                "{status:?}"
+            );
+        }
+    }
+
+    /// The three predicates never seal one event twice: a class makes a 2xx
+    /// event a failure, not a served exchange.
+    #[test]
+    fn a_class_on_a_2xx_event_is_failed_and_neither_served_predicate() {
+        let e = event("remote_mesh", Some(200), Some("upstream_error"));
+        assert!(!ObservedLifecycleEvents::is_sealable_requester_side(&e));
+        assert!(ObservedLifecycleEvents::is_sealable_failed(&e));
+        let mut served_here = event("raw_proxy", Some(200), Some("dropped"));
+        served_here.serving_provenance = Some(HostServingProvenance {
+            weights_digest: Some("w".into()),
+            ..serde_json::from_str("{}").unwrap()
+        });
+        assert!(!ObservedLifecycleEvents::is_sealable_host_served(
+            &served_here
+        ));
+    }
+
+    #[test]
+    fn an_event_without_a_class_is_never_failed() {
+        for path in ["remote_mesh", "raw_proxy", "typed_frontend"] {
+            for status in [None, Some(402), Some(500)] {
+                assert!(
+                    !ObservedLifecycleEvents::is_sealable_failed(&event(path, status, None)),
+                    "{path} {status:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_failed_effective_request_is_not_sealable() {
+        let mut e = event("remote_mesh", None, Some("timeout"));
+        e.phase = Phase::EffectiveRequest;
+        assert!(!ObservedLifecycleEvents::is_sealable_failed(&e));
+    }
+
+    #[test]
+    fn a_provider_side_failure_needs_an_identified_mesh_peer() {
+        for path in ["raw_proxy", "typed_frontend"] {
+            let mut e = event(path, Some(402), Some("payment_required"));
+            assert!(!ObservedLifecycleEvents::is_sealable_failed(&e), "no asker");
+            for blank in ["", "  ", "unknown"] {
+                e.requested_by_node_id = Some(blank.into());
+                assert!(
+                    !ObservedLifecycleEvents::is_sealable_failed(&e),
+                    "{blank:?}"
+                );
+            }
+            e.requested_by_node_id = Some("peer-1".into());
+            assert!(ObservedLifecycleEvents::is_sealable_failed(&e));
+            assert_eq!(ObservedLifecycleEvents::failed_asker(&e), Some("peer-1"));
+        }
+    }
+
+    #[test]
+    fn an_unrecognized_dispatch_path_is_never_sealed_failed() {
+        let mut e = event("something_new", Some(500), Some("upstream_error"));
+        e.requested_by_node_id = Some("peer-1".into());
+        assert!(!ObservedLifecycleEvents::is_sealable_failed(&e));
     }
 }

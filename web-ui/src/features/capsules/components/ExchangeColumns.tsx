@@ -27,7 +27,7 @@ function formatExchangeTimestamp(timestamp: string | null): string {
 }
 
 function roleLabel(roleTag: string): string {
-  return roleTag === 'SERVED' ? 'Served' : roleTag === 'ASKED' ? 'Asked' : roleTag
+  return roleTag === 'SERVED' ? 'Served' : roleTag === 'ASKED' ? 'Asked' : roleTag === 'FAILED' ? 'Failed' : roleTag
 }
 
 export function buildExchangeColumns(): ColumnDef<ExchangeLedgerRow>[] {

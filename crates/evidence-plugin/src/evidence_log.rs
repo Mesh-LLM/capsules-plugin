@@ -1340,6 +1340,20 @@ mod leaf_facts_tests {
         assert_eq!(leaf_facts(&plain).adjudicated_halves, None);
     }
 
+    /// Service History counts served exchanges: a provider's record of a
+    /// request it refused or failed has role `served` and is not one.
+    #[test]
+    fn a_failed_record_is_not_a_served_exchange() {
+        let record = json!({
+            "effect": {"status": "failed"},
+            "model_attestation": {"compute_attestation": {"x-mesh-poc-v1": {
+                "role": "served", "outcome": "failed", "failure_class": "payment_required",
+                "serving_provenance": {"model_canonical_ref": "m", "requesting_party": "someone"}
+            }}}
+        });
+        assert_eq!(leaf_facts(&record).served, None);
+    }
+
     #[test]
     fn a_served_record_reads_its_model_quantization_outcome_and_latency() {
         let record = json!({

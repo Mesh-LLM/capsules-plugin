@@ -101,6 +101,7 @@ const PAYER_NOT_RECORDED_TEXT = 'Served for pay — payer not recorded'
 function roleText(roleTag: string): string {
   // `You served`/`You asked` are stated in words on every row -- never
   // inferred from position or colour alone (v3 §2).
+  if (roleTag === 'FAILED') return 'Exchange failed'
   return roleTag === 'SERVED' ? 'You served' : 'You asked'
 }
 

@@ -1787,6 +1787,7 @@ pub(crate) mod tests {
             peer_capsule_id_provenance: None,
             twin_bracket_id: None,
             response_text_digest: None,
+            failure: None,
         };
         let mine_dir = tempfile::tempdir().unwrap();
         let theirs_dir = tempfile::tempdir().unwrap();

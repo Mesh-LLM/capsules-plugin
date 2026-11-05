@@ -1069,6 +1069,11 @@ fn theirs_cell(record: &Value) -> Value {
     }
 }
 
+/// A record of a failed exchange (`is_failed`) is labelled `"failed"`, never
+/// `"served"` or `"requested"`: every count and derivation that keys on those
+/// two labels (own role counts, Service History's served counts, provider
+/// receipts, corroboration sides) leaves it out without a case of its own.
+///
 /// `capsule_mesh_view.label_role`, source_log fixed to `"plugin"` --
 /// this route's records are always plugin-ledger reads. `_EXPLICIT_POC_ROLES` = `{requested, served, conflict, unknown}`,
 /// trusted as-is per the 2026-09-06 role ruling; `_SERVED_OBSERVATION_
@@ -1076,6 +1081,9 @@ fn theirs_cell(record: &Value) -> Value {
 /// for `"plugin"` is `"served"` -- the plugin
 /// observes this machine acting as the serving provider, never a requestor elsewhere.
 pub(crate) fn label_role(record: &Value) -> &'static str {
+    if is_failed(record) {
+        return "failed";
+    }
     if let Some(role) = poc_block(record)
         .and_then(|poc| poc.get("role"))
         .and_then(Value::as_str)
@@ -1104,12 +1112,23 @@ pub(crate) fn label_role(record: &Value) -> &'static str {
     "served"
 }
 
-/// `capsule_exchange_tab.EXCHANGE_ROLE_SERVED` / `_ASKED`.
+/// Whether the record is of an exchange that FAILED (`x-mesh-poc-v1.outcome`).
+/// An absent `outcome` means served, so every record sealed before the member
+/// existed reads as not failed.
+pub(crate) fn is_failed(record: &Value) -> bool {
+    poc_block(record)
+        .and_then(|poc| poc.get("outcome"))
+        .and_then(Value::as_str)
+        == Some("failed")
+}
+
+/// `capsule_exchange_tab.EXCHANGE_ROLE_SERVED` / `_ASKED`, and `FAILED` for a
+/// record of a failed exchange: neither side's served or asked count.
 fn role_tag(record: &Value) -> &'static str {
-    if label_role(record) == "served" {
-        "SERVED"
-    } else {
-        "ASKED"
+    match label_role(record) {
+        "failed" => "FAILED",
+        "served" => "SERVED",
+        _ => "ASKED",
     }
 }
 
@@ -1498,7 +1517,15 @@ fn unattributed_row(
     } else if served_count > 0 {
         ("them_to_you", format!("them→you · {served_count}"))
     } else {
-        ("unknown", format!("unknown role · {total}"))
+        let failed = records
+            .iter()
+            .filter(|r| !is_received_record(r, received_provenance) && is_failed(r))
+            .count();
+        if failed > 0 {
+            ("failed", format!("failed · {failed}"))
+        } else {
+            ("unknown", format!("unknown role · {total}"))
+        }
     };
     json!({
         "peer_id": Value::Null,
@@ -5290,6 +5317,38 @@ mod tests {
         let not_found = build_pane_c_drilldown(&records, &HashMap::new(), "digest:nonexistent");
         assert_eq!(not_found["found"], json!(false));
         assert!(not_found.get("view").is_none());
+    }
+
+    #[test]
+    fn a_failed_record_is_labelled_failed_and_counts_as_neither_side() {
+        let mut failed = fixture_record("cap-f", "2026-09-01T00:00:00Z", "req-1", None);
+        failed["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"] =
+            json!({ "role": "requested", "outcome": "failed", "failure_class": "timeout" });
+        assert!(is_failed(&failed));
+        assert_eq!(label_role(&failed), "failed");
+        assert_eq!(role_tag(&failed), "FAILED");
+        let mut refused = fixture_record("cap-r", "2026-09-01T00:00:00Z", "req-2", None);
+        refused["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"] =
+            json!({ "role": "served", "outcome": "failed", "failure_class": "payment_required" });
+        let mut asked = fixture_record("cap-a", "2026-09-01T00:00:00Z", "req-3", None);
+        asked["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"] =
+            json!({ "role": "requested" });
+        let records = [failed, refused, asked];
+        let counts = own_role_counts(&records, &HashMap::new());
+        assert_eq!(counts, (1, 0), "only the asked, served-free record counts");
+    }
+
+    /// A record sealed before `outcome` existed, or with any other value, is
+    /// not failed: an absent `outcome` means served.
+    #[test]
+    fn a_record_without_a_failed_outcome_is_not_failed() {
+        let plain = fixture_record("cap-1", "2026-09-01T00:00:00Z", "req-1", None);
+        assert!(!is_failed(&plain));
+        let mut odd = plain.clone();
+        odd["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"] =
+            json!({ "role": "served", "outcome": "served" });
+        assert!(!is_failed(&odd));
+        assert_eq!(label_role(&odd), "served");
     }
 
     #[test]

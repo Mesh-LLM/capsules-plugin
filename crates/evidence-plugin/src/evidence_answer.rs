@@ -2901,6 +2901,7 @@ pub(crate) mod tests {
                 peer_capsule_id_provenance: None,
                 twin_bracket_id: None,
                 response_text_digest: None,
+                failure: None,
             })
             .unwrap();
         let (mut checkpoints, _) =

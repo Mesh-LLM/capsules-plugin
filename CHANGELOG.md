@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added
+
+- **A failed exchange leaves a record on each side that saw it (action-state-group/evidencebook#205).**
+  A 402, a 5xx, a timeout or a dropped stream seals the same exchange record with
+  `x-mesh-poc-v1.outcome: "failed"` and a `failure_class` (`payment_required`, `refused`,
+  `upstream_error`, `timeout`, `dropped`), from the host's new `failure_class` member
+  (Mesh-LLM/mesh-llm#2852). It carries no digest, usage or body. An absent `outcome` means
+  served, so served records seal as before. The requester seals every failure of its own. A
+  provider seals a failure only for an identified mesh peer, at most 20 per peer per hour, and
+  one summary record per peer for the rest. The Evidence tab labels such a record `FAILED`, and
+  Service History and exchange corroboration do not count it. See
+  [docs/FAILED-EXCHANGES.md](docs/FAILED-EXCHANGES.md). No price is sealed yet.
+
 ### Changed
 
 - **Each exchange's "Save evidence file" becomes "Save receipt page" (#96, Steven's 10-29

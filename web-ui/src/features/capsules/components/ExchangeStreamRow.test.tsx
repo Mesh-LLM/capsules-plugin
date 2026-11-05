@@ -622,6 +622,22 @@ describe('ExchangeStreamRow — counterparty field', () => {
   })
 })
 
+describe('ExchangeStreamRow — a failed exchange (evidencebook#205)', () => {
+  it('says in words that the exchange failed, not that it was asked or served', () => {
+    render(
+      <ExchangeStreamRow
+        {...toggleProps()}
+        localRecord={RECORD_NAMING_NO_PEER}
+        rail={NO_RAIL}
+        row={makeRow('open_not_asked', { counterparty: null, roleTag: 'FAILED' })}
+      />
+    )
+    expect(screen.getByText('Exchange failed')).toBeInTheDocument()
+    expect(screen.queryByText('You asked')).not.toBeInTheDocument()
+    expect(screen.queryByText('You served')).not.toBeInTheDocument()
+  })
+})
+
 describe('ExchangeStreamRow — counterparty gating (unaffected by the modal removal)', () => {
   it('ASKED row, no recorded counterparty: "Other side: not known" gated text, both asks disabled with the reason', () => {
     render(
