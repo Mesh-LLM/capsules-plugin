@@ -223,4 +223,11 @@ describe('servedAskedLine', () => {
     expect(rows).toHaveLength(7)
     expect(servedAskedLine(rows)).toBe('You served 3 · you asked 3')
   })
+
+  it('counts a failed exchange as neither served nor asked', () => {
+    const own = (roleTag: string) => ({ roleTag, raw: { mine: { state: 'present' } } })
+    expect(
+      servedAskedLine([own('SERVED'), own('ASKED'), own('FAILED'), own('FAILED')] as never)
+    ).toBe('You served 1 · you asked 1')
+  })
 })

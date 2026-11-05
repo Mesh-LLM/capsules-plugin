@@ -106,5 +106,6 @@ export function exchangesHeadline(
 export function servedAskedLine(rows: readonly ExchangeLedgerRow[]): string {
   const own = rows.filter((row) => row.raw.mine.state !== 'absent')
   const served = own.filter((row) => row.roleTag === 'SERVED').length
-  return `You served ${served} · you asked ${own.length - served}`
+  const asked = own.filter((row) => row.roleTag !== 'SERVED' && row.roleTag !== 'FAILED').length
+  return `You served ${served} · you asked ${asked}`
 }

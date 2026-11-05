@@ -164,6 +164,17 @@ const trustingJudges: AskJudges = {
   producerSignatureVerifies: () => true
 }
 
+describe('askTarget — a failed exchange', () => {
+  it('has no record of theirs to ask for, even when the record names a peer and a nonce', () => {
+    const record = ourRequestedRecord()
+    const poc = (record.model_attestation as Record<string, Record<string, Record<string, unknown>>>).compute_attestation[
+      'x-mesh-poc-v1'
+    ]
+    poc.outcome = 'failed'
+    expect(askTarget(record)).toBeNull()
+  })
+})
+
 describe('askTarget', () => {
   const DIGESTS = { request: FIXTURE_REQUEST_DIGEST, response: FIXTURE_RESPONSE_DIGEST }
   const poc = (record: Record<string, unknown>) =>

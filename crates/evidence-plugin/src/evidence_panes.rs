@@ -999,6 +999,16 @@ fn distinct_exchange_count(
     records: &[Value],
     received_provenance: &HashMap<String, ReceivedProvenance>,
 ) -> usize {
+    // A failed exchange is not one of the exchanges dealt with: it can never
+    // be confirmed, so counting it would lower every ratio (3 confirmed and
+    // 20 refused reads "3 / 23"). `own_failed_count` reports it apart.
+    let kept: Vec<Value>;
+    let records = if records.iter().any(is_failed) {
+        kept = records.iter().filter(|r| !is_failed(r)).cloned().collect();
+        &kept[..]
+    } else {
+        records
+    };
     let uncorrelated = records
         .iter()
         .filter(|r| exchange_key_for(r).is_none())
@@ -1069,6 +1079,11 @@ fn theirs_cell(record: &Value) -> Value {
     }
 }
 
+/// A record of a failed exchange (`is_failed`) is labelled `"failed"`, never
+/// `"served"` or `"requested"`: every count and derivation that keys on those
+/// two labels (own role counts, Service History's served counts, provider
+/// receipts, corroboration sides) leaves it out without a case of its own.
+///
 /// `capsule_mesh_view.label_role`, source_log fixed to `"plugin"` --
 /// this route's records are always plugin-ledger reads. `_EXPLICIT_POC_ROLES` = `{requested, served, conflict, unknown}`,
 /// trusted as-is per the 2026-09-06 role ruling; `_SERVED_OBSERVATION_
@@ -1076,6 +1091,9 @@ fn theirs_cell(record: &Value) -> Value {
 /// for `"plugin"` is `"served"` -- the plugin
 /// observes this machine acting as the serving provider, never a requestor elsewhere.
 pub(crate) fn label_role(record: &Value) -> &'static str {
+    if is_failed(record) {
+        return "failed";
+    }
     if let Some(role) = poc_block(record)
         .and_then(|poc| poc.get("role"))
         .and_then(Value::as_str)
@@ -1104,12 +1122,23 @@ pub(crate) fn label_role(record: &Value) -> &'static str {
     "served"
 }
 
-/// `capsule_exchange_tab.EXCHANGE_ROLE_SERVED` / `_ASKED`.
+/// Whether the record is of an exchange that FAILED (`x-mesh-poc-v1.outcome`).
+/// An absent `outcome` means served, so every record sealed before the member
+/// existed reads as not failed.
+pub(crate) fn is_failed(record: &Value) -> bool {
+    poc_block(record)
+        .and_then(|poc| poc.get("outcome"))
+        .and_then(Value::as_str)
+        == Some("failed")
+}
+
+/// `capsule_exchange_tab.EXCHANGE_ROLE_SERVED` / `_ASKED`, and `FAILED` for a
+/// record of a failed exchange: neither side's served or asked count.
 fn role_tag(record: &Value) -> &'static str {
-    if label_role(record) == "served" {
-        "SERVED"
-    } else {
-        "ASKED"
+    match label_role(record) {
+        "failed" => "FAILED",
+        "served" => "SERVED",
+        _ => "ASKED",
     }
 }
 
@@ -1358,6 +1387,33 @@ fn own_role_counts(
     )
 }
 
+/// How many of THIS node's own records are of failed exchanges; they are in
+/// neither `own_role_counts` side nor `distinct_exchange_count`.
+fn own_failed_count(
+    records: &[Value],
+    received_provenance: &HashMap<String, ReceivedProvenance>,
+) -> usize {
+    records
+        .iter()
+        .filter(|r| !is_received_record(r, received_provenance) && is_failed(r))
+        .map(failures_in)
+        .sum()
+}
+
+/// The failures a failed record stands for: one, or for a provider's summary
+/// record the `unsealed_failures.count` it did not seal one by one.
+fn failures_in(record: &Value) -> usize {
+    unsealed_failures(record).map_or(1, |count| count as usize)
+}
+
+/// The count on a summary record (`x-mesh-poc-v1.unsealed_failures`).
+fn unsealed_failures(record: &Value) -> Option<u64> {
+    poc_block(record)?
+        .get("unsealed_failures")?
+        .get("count")?
+        .as_u64()
+}
+
 /// One `claims_refused` gate input per own record of this peer whose other
 /// half the receiver refused for contradicting it (`claim_refusal_for`).
 fn refused_siblings(
@@ -1390,7 +1446,8 @@ fn refused_siblings(
 /// One "Nodes you have dealt with" row: a NAMED counterparty (`label`) this
 /// node exchanged with, `exchange_count` real. Its half being unheld is a
 /// STATE ("their half not held") the CLOSED path fills -- it is never a reason
-/// to omit the peer or show a zero count.
+/// to omit the peer. A peer this node has only failed exchanges with is shown
+/// with 0 exchanges and a `failed` role cell that counts them apart.
 fn dealt_with_row(
     label: &str,
     records: &[Value],
@@ -1407,6 +1464,7 @@ fn dealt_with_row(
     let total = distinct_exchange_count(records, received_provenance);
     let confirmed_siblings = confirmed_siblings_for(records, siblings_by_key, received_provenance);
     let (requested_count, served_count) = own_role_counts(records, received_provenance);
+    let failed_count = own_failed_count(records, received_provenance);
     // A half this peer pushed and the receiver verified IS held now. The node/
     // cross_party text stops asserting the flat "their half not held" the
     // moment a provenance-carrying sibling correlates -- the gate decides
@@ -1448,10 +1506,21 @@ fn dealt_with_row(
         },
         "role": {
             "state": CELL_PRESENT,
-            "text": format!("you→them · {requested_count} (them→you · {served_count})"),
-            "role": if requested_count > 0 { "you_to_them" } else { "them_to_you" },
+            "text": if requested_count == 0 && served_count == 0 && failed_count > 0 {
+                format!("failed · {failed_count}")
+            } else {
+                format!("you→them · {requested_count} (them→you · {served_count})")
+            },
+            "role": if requested_count == 0 && served_count == 0 && failed_count > 0 {
+                "failed"
+            } else if requested_count > 0 {
+                "you_to_them"
+            } else {
+                "them_to_you"
+            },
             "you_to_them_count": requested_count,
             "them_to_you_count": served_count,
+            "failed_count": failed_count,
             "exchange_count": total,
         },
         "history": not_checked_state(),
@@ -1498,7 +1567,12 @@ fn unattributed_row(
     } else if served_count > 0 {
         ("them_to_you", format!("them→you · {served_count}"))
     } else {
-        ("unknown", format!("unknown role · {total}"))
+        let failed = own_failed_count(records, received_provenance);
+        if failed > 0 {
+            ("failed", format!("failed · {failed}"))
+        } else {
+            ("unknown", format!("unknown role · {total}"))
+        }
     };
     json!({
         "peer_id": Value::Null,
@@ -2335,6 +2409,9 @@ fn build_pane_c_list_with_settlements(
         rows.push(json!({
             "exchange_key": exchange_key,
             "role_tag": role_tag(anchor),
+            // On the one summary record a provider seals for the failures it
+            // did not seal one by one: how many (null on every other row).
+            "unsealed_failures": unsealed_failures(anchor),
             "counterparty": counterparty,
             // `header_state`/`properties`/`has_issue` need the nine-key
             // assurance map (`build_assurance_map`), which is cryptographic
@@ -5290,6 +5367,97 @@ mod tests {
         let not_found = build_pane_c_drilldown(&records, &HashMap::new(), "digest:nonexistent");
         assert_eq!(not_found["found"], json!(false));
         assert!(not_found.get("view").is_none());
+    }
+
+    #[test]
+    fn a_failed_record_is_labelled_failed_and_counts_as_neither_side() {
+        let mut failed = fixture_record("cap-f", "2026-09-01T00:00:00Z", "req-1", None);
+        failed["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"] =
+            json!({ "role": "requested", "outcome": "failed", "failure_class": "timeout" });
+        assert!(is_failed(&failed));
+        assert_eq!(label_role(&failed), "failed");
+        assert_eq!(role_tag(&failed), "FAILED");
+        let mut refused = fixture_record("cap-r", "2026-09-01T00:00:00Z", "req-2", None);
+        refused["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"] =
+            json!({ "role": "served", "outcome": "failed", "failure_class": "payment_required" });
+        let mut asked = fixture_record("cap-a", "2026-09-01T00:00:00Z", "req-3", None);
+        asked["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"] =
+            json!({ "role": "requested" });
+        let records = [failed, refused, asked];
+        let counts = own_role_counts(&records, &HashMap::new());
+        assert_eq!(counts, (1, 0), "only the asked, served-free record counts");
+    }
+
+    /// 3 exchanges asked and 2 refused read 3, not 5: a failed exchange is
+    /// never confirmed, so counting it would lower every ratio.
+    #[test]
+    fn failed_records_are_not_counted_among_the_exchanges_dealt_with() {
+        let ask = |id: &str, digest: &str| {
+            let mut r = fixture_record(id, "2026-09-01T00:00:00Z", digest, None);
+            r["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"] =
+                json!({ "role": "requested" });
+            r
+        };
+        let failed = |id: &str| {
+            let mut r = fixture_record(id, "2026-09-01T00:00:00Z", "none", None);
+            r["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"] = json!({ "role": "served", "outcome": "failed", "failure_class": "payment_required" });
+            r
+        };
+        let records = vec![
+            ask("a", "d1"),
+            ask("b", "d2"),
+            ask("c", "d3"),
+            failed("f1"),
+            failed("f2"),
+        ];
+        let none = HashMap::new();
+        assert_eq!(distinct_exchange_count(&records, &none), 3);
+        assert_eq!(own_failed_count(&records, &none), 2);
+        // A provider's summary stands for the failures it did not seal.
+        let mut summary = failed("s");
+        summary["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"]["unsealed_failures"] =
+            json!({ "count": 3, "window_start": "2026-09-01T00:00:00Z", "window_s": 3600 });
+        let mut with_summary = records.clone();
+        with_summary.push(summary);
+        assert_eq!(own_failed_count(&with_summary, &none), 5);
+        assert_eq!(own_role_counts(&records, &none), (3, 0));
+    }
+
+    /// A peer this node only has failed exchanges with is a row of 0
+    /// exchanges whose role cell says `failed` and counts them apart.
+    #[test]
+    fn a_peer_with_only_failed_exchanges_has_a_failed_role_cell() {
+        let peer = "b".repeat(64);
+        let failed = |id: &str, digest: &str| {
+            let mut r = fixture_record(id, "2026-09-01T00:00:00Z", digest, None);
+            r["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"] = json!({
+                "role": "requested", "outcome": "failed", "failure_class": "timeout",
+                "serving_provenance": { "served_by_node_id": peer }
+            });
+            r
+        };
+        let pane = build_pane_b(&[failed("f1", "d1"), failed("f2", "d2")], &no_provenance());
+        let rows = pane["rows"].as_array().unwrap();
+        let row = rows
+            .iter()
+            .find(|r| r["role"]["role"] == json!("failed"))
+            .unwrap_or_else(|| panic!("a failed role cell: {pane}"));
+        assert_eq!(row["role"]["failed_count"], json!(2));
+        assert_eq!(row["role"]["you_to_them_count"], json!(0));
+        assert_eq!(row["exchange_count"], json!(0));
+    }
+
+    /// A record sealed before `outcome` existed, or with any other value, is
+    /// not failed: an absent `outcome` means served.
+    #[test]
+    fn a_record_without_a_failed_outcome_is_not_failed() {
+        let plain = fixture_record("cap-1", "2026-09-01T00:00:00Z", "req-1", None);
+        assert!(!is_failed(&plain));
+        let mut odd = plain.clone();
+        odd["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"] =
+            json!({ "role": "served", "outcome": "served" });
+        assert!(!is_failed(&odd));
+        assert_eq!(label_role(&odd), "served");
     }
 
     #[test]

@@ -447,6 +447,8 @@ export type PeerTableRowView = {
    *  discipline carried over): empty for a dealt-with peer (the legend says it once),
    *  "no exchanges yet" for one only advertised. */
   exchangeCount: number
+  /** Exchanges with this peer that failed; counted apart from `exchangeCount`. */
+  failedCount: number
   period: string
   /** The "Needs a look" filter: only what the row itself shows -- a caught swap, a
    *  differing record, a failed log check or a refusal. */
@@ -624,6 +626,7 @@ export function dealtWithRowView(
     // UX §2: "self-reported" is true of every row, so it lives once in the
     // table legend, not on each row.
     exchangeCount: row.exchange_count ?? 0,
+    failedCount: row.role?.failed_count ?? 0,
     period: periodRangeText(row.last_seen, row.last_seen),
     needsALook: facts.swapped.caught > 0 || facts.leftOut.differ > 0 || attention.some(isShownAttention),
     attention,

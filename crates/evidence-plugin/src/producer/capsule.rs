@@ -314,6 +314,34 @@ pub struct MeshPocV1 {
     /// member `acceptance` (design R5). `None` omits the member: an
     /// exchange outside any agreement looks as it always did.
     pub acceptance_digest: Option<String>,
+    /// Set on a record of an exchange that FAILED. `None` omits every member
+    /// below, so a served record seals byte-for-byte as it did before: an
+    /// absent `outcome` means served.
+    pub failure: Option<FailedExchange>,
+}
+
+/// What a failed exchange's record says beyond the facts every exchange
+/// record carries: `outcome: "failed"` and, when the host classified it, the
+/// reason. It never holds a body, a digest or a usage count -- a failed
+/// record states that the exchange failed and why, not what was said.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FailedExchange {
+    /// `payment_required`, `refused`, `upstream_error`, `timeout` or
+    /// `dropped`; `None` when the host sent a class this plugin predates.
+    pub class: Option<String>,
+    /// Set only on the one summary record a provider seals per peer per
+    /// window for the failures it did not seal one by one.
+    pub unsealed: Option<UnsealedFailures>,
+}
+
+/// The failures a provider did not seal for one peer in one window (past the
+/// per-peer cap), so the gap is on the record rather than silent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnsealedFailures {
+    pub count: u32,
+    /// RFC 3339, minute granularity, as every other timestamp here.
+    pub window_start: String,
+    pub window_s: u32,
 }
 
 impl MeshPocV1 {
@@ -326,6 +354,24 @@ impl MeshPocV1 {
     }
 
     fn block_without_acceptance(&self) -> Value {
+        let mut block = self.base_block();
+        if let Some(failure) = &self.failure {
+            block["outcome"] = json!("failed");
+            if let Some(class) = &failure.class {
+                block["failure_class"] = json!(class);
+            }
+            if let Some(unsealed) = &failure.unsealed {
+                block["unsealed_failures"] = json!({
+                    "count": unsealed.count,
+                    "window_start": unsealed.window_start,
+                    "window_s": unsealed.window_s,
+                });
+            }
+        }
+        block
+    }
+
+    fn base_block(&self) -> Value {
         json!({
             "client_nonce": self.client_nonce,
             "client_nonce_source": self.client_nonce_source,
@@ -1913,6 +1959,7 @@ mod tests {
                 binary_attestation: None,
                 tee_attestation: None,
                 acceptance_digest: None,
+                failure: None,
             },
             effect_status: "confirmed".to_string(),
             effect_type: "inference_completion".to_string(),

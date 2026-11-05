@@ -315,6 +315,50 @@ fn with_the_setting_on_no_match_is_no_such_subject_never_an_empty_artifact() {
     );
 }
 
+/// A half of a failed exchange binds no digest, so there is nothing to
+/// corroborate (evidencebook#205): beside a served half it is not one of the
+/// answer's halves, and alone it is `no_such_subject`.
+#[test]
+fn a_failed_half_is_not_a_half_of_the_answer() {
+    let failed = sealed(json!({
+        "action_type": "fyi",
+        "effect": {"status": "failed"},
+        "model_attestation": {"compute_attestation": {"x-mesh-poc-v1": {
+            "role": "requested", "client_nonce": NONCE,
+            "client_nonce_source": "host_forwarded_nonce",
+            "outcome": "failed", "failure_class": "timeout",
+            "serving_provenance": {"served_by_node_id": RESPONDER_NODE},
+        }}},
+    }));
+    let key = digest_of(NONCE);
+
+    let beside = node_with(&[served_half(), failed.clone()], &node_key());
+    let sent = unsigned(&key);
+    let wire = wire_of(ask(beside.path(), &sent, true));
+    let Verified::Halves { halves, .. } = verify(
+        &sent,
+        &wire,
+        &node_key().verifying_key(),
+        &Default::default(),
+    ) else {
+        panic!("verifies");
+    };
+    assert_eq!(halves.len(), 1, "the failed half is not listed");
+    assert_eq!(halves[0].role, "served");
+
+    let alone = node_with(std::slice::from_ref(&failed), &node_key());
+    assert_eq!(
+        refused(&ask(alone.path(), &unsigned(&key), true)),
+        Some(Reason::NoSuchSubject)
+    );
+
+    // Under the default policy the party to the served half is answered: the
+    // failed half names another node, and must not make it `not_authorized`.
+    let default = node_with(&[served_half(), failed], &node_key());
+    let wire = wire_of(ask(default.path(), &signed_by("node-a", &key), false));
+    assert_eq!(artifact_of(&wire)["entries"].as_array().unwrap().len(), 1);
+}
+
 /// A half that never leaves this node is in no answer's matched set
 /// (evidencebook#206 row 4, Mesh-LLM/capsules-plugin#161): beside it, the
 /// answer is the one a node without it gives, and alone it is the same

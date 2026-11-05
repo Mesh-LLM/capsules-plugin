@@ -139,6 +139,9 @@ pub struct Leaf {
     /// (`crate::ask_book`), an owner-maintenance record or a deal's report:
     /// it never leaves this node, whoever asks.
     pub never_leaves: bool,
+    /// The record is of a failed exchange (`evidence_panes::is_failed`): it
+    /// binds no digest, so `exchange_corroboration/1` has nothing to say of it.
+    pub failed: bool,
     pub facts: LeafFacts,
 }
 
@@ -498,6 +501,7 @@ impl LedgerIndex {
             counterparty,
             counterparty_key,
             never_leaves: never_leaves(&record),
+            failed: crate::evidence_panes::is_failed(&record),
             facts: leaf_facts(&record),
         });
         Ok(())
@@ -677,6 +681,16 @@ impl LedgerIndex {
             .iter()
             .copied()
             .filter(|&i| self.leaves_node(i))
+            .collect()
+    }
+
+    /// `found` without the records of failed exchanges, which
+    /// `exchange_corroboration/1` does not answer with: authorization and the
+    /// size limit then read the same set as the artifact.
+    pub fn corroborable(&self, found: &[u64]) -> Vec<u64> {
+        self.leaving(found)
+            .into_iter()
+            .filter(|&i| self.leaves.get(i as usize).is_some_and(|l| !l.failed))
             .collect()
     }
 
@@ -1338,6 +1352,20 @@ mod leaf_facts_tests {
         let plain = json!({"chain": {"relation": "confirms"},
             "model_attestation": {"compute_attestation": {"adjudication": {"half_a_capsule_id": "a"}}}});
         assert_eq!(leaf_facts(&plain).adjudicated_halves, None);
+    }
+
+    /// Service History counts served exchanges: a provider's record of a
+    /// request it refused or failed has role `served` and is not one.
+    #[test]
+    fn a_failed_record_is_not_a_served_exchange() {
+        let record = json!({
+            "effect": {"status": "failed"},
+            "model_attestation": {"compute_attestation": {"x-mesh-poc-v1": {
+                "role": "served", "outcome": "failed", "failure_class": "payment_required",
+                "serving_provenance": {"model_canonical_ref": "m", "requesting_party": "someone"}
+            }}}
+        });
+        assert_eq!(leaf_facts(&record).served, None);
     }
 
     #[test]

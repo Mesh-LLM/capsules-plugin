@@ -139,9 +139,10 @@ export function isLocalOnly(
 
 /** The state filter's bucket for a row: a local-only row has its own,
  *  `local`, rather than counting as `open`. */
-export type ExchangeStateFilterValue = LedgerStateFilterValue | 'local'
+export type ExchangeStateFilterValue = LedgerStateFilterValue | 'local' | 'failed'
 
 export function exchangeStateFilterValue(row: ExchangeLedgerRow): ExchangeStateFilterValue {
+  if (row.roleTag === 'FAILED') return 'failed'
   return row.localOnly ? 'local' : ledgerStateFilterValue(row.rightCellState)
 }
 

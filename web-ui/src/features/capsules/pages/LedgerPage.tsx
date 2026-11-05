@@ -343,13 +343,13 @@ function PeersSection({
 
 type ExchangeFilterKey = 'role' | 'checks' | 'state'
 
-const ALL_ROLE_VALUES = ['SERVED', 'ASKED']
+const ALL_ROLE_VALUES = ['SERVED', 'ASKED', 'FAILED']
 const ALL_CHECKS_VALUES = ['clean', 'exception']
 // v3 §2a: "useful filters are states, not qualities". `twins` isn't a
 // right-cell state -- it's bracket membership, which no payload carries
 // until B6 -- see `rowMatchesStateFilter` below.
 // `local`: a served exchange with no other side (`isLocalOnly`), kept out of `open`.
-const ALL_STATE_FILTER_VALUES = [...LEDGER_STATE_FILTER_VALUES, 'local', 'twins']
+const ALL_STATE_FILTER_VALUES = [...LEDGER_STATE_FILTER_VALUES, 'local', 'failed', 'twins']
 
 function exchangeFilterOptionLabel(value: string): string {
   switch (value) {
@@ -357,6 +357,8 @@ function exchangeFilterOptionLabel(value: string): string {
       return 'Served'
     case 'ASKED':
       return 'Asked'
+    case 'FAILED':
+      return 'Failed'
     case 'clean':
       return 'Clean'
     case 'exception':
@@ -371,6 +373,8 @@ function exchangeFilterOptionLabel(value: string): string {
       return 'Waiting for theirs'
     case 'local':
       return 'No other side'
+    case 'failed':
+      return 'Failed'
     case 'twins':
       return 'Sent to two machines'
     default:

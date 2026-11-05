@@ -74,6 +74,7 @@ import { NO_PEER_NAMES, peerName as namePeer, resolveRowPeer } from '@/features/
 import { isWaitingForTheirRecord, rowSteps, rowVerdictText, type RowStep } from '@/features/capsules/lib/row-verdict'
 import {
   CONFIRMED_NOT_KEPT,
+  FAILED_TOOLTIP,
   LOCAL_ONLY_TOOLTIP,
   OWN_RECORD_FAILS_WARNING,
   SAVED_BECAUSE_YOU_ASKED,
@@ -95,12 +96,15 @@ import {
 const NO_OTHER_SIDE_TEXT = 'Local — no other side'
 /** The badge on a served exchange with no other side anywhere. */
 const NO_OTHER_SIDE_LABEL = 'No other side'
+const FAILED_LABEL = 'Failed'
+const FAILED_FACE_TEXT = 'The exchange failed'
 const OTHER_SIDE_NOT_KNOWN_TEXT = 'Other side: not known'
 const PAYER_NOT_RECORDED_TEXT = 'Served for pay — payer not recorded'
 
 function roleText(roleTag: string): string {
   // `You served`/`You asked` are stated in words on every row -- never
   // inferred from position or colour alone (v3 §2).
+  if (roleTag === 'FAILED') return 'Exchange failed'
   return roleTag === 'SERVED' ? 'You served' : 'You asked'
 }
 
@@ -349,9 +353,15 @@ export function ExchangeStreamRow({
   // face, not only behind the (i).
   const latestAsk = askOutcome?.latest ?? null
   const notOnMesh = latestAsk?.kind === 'no_reply' && latestAsk.plain === true && latestAsk.detail === NOT_ON_MESH
-  const faceText = gatedByCounterparty
-    ? gatedText
-    : rowVerdictText(state, otherSideName, notOnMesh)
+  const failed = row.roleTag === 'FAILED'
+  const unsealedFailures = row.raw.unsealed_failures ?? null
+  const faceText = failed
+    ? unsealedFailures
+      ? `${unsealedFailures} more ${unsealedFailures === 1 ? 'failure' : 'failures'} from this peer in that hour ${unsealedFailures === 1 ? 'was' : 'were'} not recorded (limit 20 per hour)`
+      : FAILED_FACE_TEXT
+    : gatedByCounterparty
+      ? gatedText
+      : rowVerdictText(state, otherSideName, notOnMesh)
   // A confirmation from the record the node holds because this node asked
   // for it (the pane's `via: "ask"`; a pushed one is `"push"`) says so.
   // One the ask brought but the plugin couldn't save says that instead.
@@ -562,15 +572,27 @@ export function ExchangeStreamRow({
                 {/* L-A/L-B: only CONTRADICTED gets the alarm dot; the tone
                    (§3A "one colour per state") still varies with CLOSED/
                    refused/absent, never just alarm-vs-muted. */}
-                <StatusBadge dot={alarm} size="caption" tone={localOnly ? 'muted' : tone}>
-                  {localOnly ? NO_OTHER_SIDE_LABEL : rowStatusLabel(state, row.raw.theirs.in_their_log)}
+                <StatusBadge dot={alarm} size="caption" tone={localOnly || failed ? 'muted' : tone}>
+                  {failed
+                    ? FAILED_LABEL
+                    : localOnly
+                      ? NO_OTHER_SIDE_LABEL
+                      : rowStatusLabel(state, row.raw.theirs.in_their_log)}
                 </StatusBadge>
                 {/* Terse state on the face; the fuller story behind the (i). */}
                 <InfoHover
-                  census={localOnly ? 'row_state:local' : `row_state:${state.kind}`}
-                  describes={localOnly ? `the ${NO_OTHER_SIDE_LABEL} state` : `the ${rightCellStatusLabel(state)} state`}
+                  census={failed ? 'row_state:failed' : localOnly ? 'row_state:local' : `row_state:${state.kind}`}
+                  describes={
+                    failed
+                      ? `the ${FAILED_LABEL} state`
+                      : localOnly
+                        ? `the ${NO_OTHER_SIDE_LABEL} state`
+                        : `the ${rightCellStatusLabel(state)} state`
+                  }
                   label={
-                    localOnly
+                    failed
+                      ? FAILED_TOOLTIP
+                      : localOnly
                       ? LOCAL_ONLY_TOOLTIP
                       : servedForPay && gatedByCounterparty
                         ? SERVED_FOR_PAY_NO_PAYER_TOOLTIP

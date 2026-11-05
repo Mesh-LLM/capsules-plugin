@@ -33,6 +33,7 @@ mod evidence_request_parity;
 mod evidence_routes;
 mod exchange_corroboration;
 mod exchange_text;
+mod failure_window;
 mod flat_export;
 mod history_page;
 mod host_status;
@@ -105,6 +106,7 @@ use mesh_llm_plugin::{
     capability, events, inference, mcp, mesh_channel, plugin_server_info, DeclarativePluginBuilder,
     PluginMetadata, PluginRuntime,
 };
+use producer::capsule::{FailedExchange, UnsealedFailures};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use std::time::Instant;
@@ -280,6 +282,12 @@ async fn observe_exchange_event(
         })
         .await;
     }
+    if ObservedLifecycleEvents::is_sealable_failed(&envelope) {
+        observe_failed_exchange(envelope, capsules, checkpoints, splits, lifecycle_events).await;
+        // Never pushed: a failed record is the node's own, and the share gate
+        // gives a counterparty nothing it did not already have.
+        return None;
+    }
     let envelope = if ObservedLifecycleEvents::is_sealable_host_served(&envelope) {
         let exchange_id = envelope.exchange_id.clone();
         splits.collector.hold(exchange_id.as_deref(), envelope)?
@@ -327,6 +335,175 @@ async fn observe_exchange_event(
     }
 }
 
+/// Seal a failed exchange's record: the requester's own failure always, a
+/// provider's only up to the per-peer cap (`failure_window`), with the summary
+/// of the window it closes sealed first. Best-effort like every observe-path
+/// seal: a producer error is logged, never propagated.
+async fn observe_failed_exchange(
+    envelope: OpenAiExchangeEnvelope,
+    capsules: &Arc<CapsuleState>,
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
+    splits: &Splits,
+    lifecycle_events: &ObservedLifecycleEvents,
+) {
+    let provider_side = envelope.dispatch_path != lifecycle_channel::DispatchPath::RemoteMesh;
+    let (admit, closed) = match ObservedLifecycleEvents::failed_asker(&envelope) {
+        Some(asker) if provider_side => splits.failures.admit(asker, splits.failures.now()),
+        _ => (failure_window::Admit::Seal, None),
+    };
+    let capsules_for_seal = capsules.clone();
+    // As a served half is: only the provider's record gets its own checkpoint.
+    let checkpoints_for_seal = checkpoints.filter(|_| provider_side).cloned();
+    let failures = splits.failures.clone();
+    let sealed = tokio::task::spawn_blocking(move || {
+        if let Some(summary) = closed {
+            seal_or_restore(
+                &capsules_for_seal,
+                checkpoints_for_seal.as_ref(),
+                &failures,
+                summary,
+                failures.now(),
+            );
+        }
+        if admit == failure_window::Admit::Seal {
+            seal_observed_host_exchange(
+                &capsules_for_seal,
+                checkpoints_for_seal.as_ref(),
+                &envelope,
+            );
+        }
+        envelope
+    })
+    .await;
+    match sealed {
+        Ok(envelope) => lifecycle_events.record(envelope),
+        Err(join_error) => {
+            tracing::warn!(%join_error, "failed-exchange seal task did not complete");
+        }
+    }
+}
+
+/// Seal `summary`; when that fails, hold it for a bounded number of retries
+/// (`FailureWindow::restore`) so a write error does not lose the count.
+fn seal_or_restore(
+    capsules: &CapsuleState,
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
+    failures: &failure_window::FailureWindow,
+    summary: failure_window::Summary,
+    now: i64,
+) {
+    // A seal that failed may have failed after its record reached the ledger
+    // (the sequence counter did not commit), so a retry looks for it first:
+    // one summary per peer per window.
+    if failures.was_tried(&summary) && summary_on_ledger(capsules, &summary) {
+        failures.sealed(&summary);
+        return;
+    }
+    if seal_unsealed_failures(capsules, checkpoints, &summary).is_some() {
+        failures.sealed(&summary);
+        return;
+    }
+    if !failures.restore(summary.clone(), now) {
+        tracing::warn!(
+            peer = %summary.peer,
+            unsealed = summary.unsealed,
+            "giving up on the unsealed-failures summary after repeated seal failures"
+        );
+    }
+}
+
+/// Whether the ledger already holds the summary record of this peer and
+/// window (`unsealed_exchange_id`).
+fn summary_on_ledger(capsules: &CapsuleState, summary: &failure_window::Summary) -> bool {
+    let id = unsealed_exchange_id(summary);
+    evidence_panes::read_capsule_records(capsules.ledger_dir())
+        .iter()
+        .any(|record| {
+            record
+                .pointer("/model_attestation/compute_attestation/x-mesh-poc-v1/serving_provenance/exchange_id")
+                .and_then(Value::as_str)
+                == Some(id.as_str())
+        })
+}
+
+/// The exchange id of a summary record: one per peer per window.
+fn unsealed_exchange_id(summary: &failure_window::Summary) -> String {
+    format!(
+        "unsealed-failures:{}:{}",
+        summary.peer, summary.window_start
+    )
+}
+
+/// Seal every summary whose window has closed, as the plugin's tick does.
+fn seal_due_summaries(
+    capsules: &CapsuleState,
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
+    failures: &failure_window::FailureWindow,
+    now: i64,
+) {
+    for summary in failures.due_summaries(now) {
+        seal_or_restore(capsules, checkpoints, failures, summary, now);
+    }
+}
+
+/// The one record a provider seals for the failures it did not seal for one
+/// peer in one closed window: the exchange record of a failure with no class
+/// and no model, naming the peer, the window and the count.
+fn seal_unsealed_failures(
+    capsules: &CapsuleState,
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
+    summary: &failure_window::Summary,
+) -> Option<Value> {
+    let window_start = chrono::DateTime::from_timestamp(summary.window_start, 0)?
+        .format("%Y-%m-%dT%H:%M:00Z")
+        .to_string();
+    let exchange_id = unsealed_exchange_id(summary);
+    let observed = ObservedHostExchange {
+        model: "unknown",
+        exchange_id: Some(&exchange_id),
+        request_digest: None,
+        response_digest: None,
+        tool_calls_digest: None,
+        reasoning_digest: None,
+        usage: None,
+        host_provenance: HostProvenance {
+            requested_by_node_id: Some(summary.peer.clone()),
+            ..HostProvenance::default()
+        },
+        dispatch_path: lifecycle_channel::DispatchPath::RawProxy,
+        nonce: None,
+        peer_capsule_id: None,
+        peer_capsule_id_provenance: None,
+        twin_bracket_id: None,
+        response_text_digest: None,
+        failure: Some(FailedExchange {
+            class: None,
+            unsealed: Some(UnsealedFailures {
+                count: summary.unsealed,
+                window_start,
+                window_s: summary.window_s,
+            }),
+        }),
+    };
+    match checkpoint_cadence::seal_half(checkpoints, capsules, 1, |capsules| {
+        capsules.emit_for_observed_host_exchange(&observed)
+    }) {
+        Ok(emitted) => {
+            tracing::info!(
+                capsule_id = %emitted.capsule_id,
+                peer = %summary.peer,
+                unsealed = summary.unsealed,
+                "SEALED summary of failures past the per-peer cap"
+            );
+            Some(emitted.capsule)
+        }
+        Err(error) => {
+            tracing::warn!(%error, peer = %summary.peer, "failed to seal the unsealed-failures summary");
+            None
+        }
+    }
+}
+
 /// Seal a capsule for a host-served terminal exchange this plugin only OBSERVED.
 /// Best-effort observability: a producer error is logged, never propagated (an
 /// observe-path failure must not disturb the host). The three real facts —
@@ -366,11 +543,18 @@ fn seal_observed(
     envelope: &OpenAiExchangeEnvelope,
     split: Option<&split_stage::SplitPlan>,
 ) -> Option<Value> {
-    let host_provenance = envelope
+    let failed = ObservedLifecycleEvents::is_sealable_failed(envelope);
+    let mut host_provenance = envelope
         .serving_provenance
         .clone()
         .map(host_provenance_from)
         .unwrap_or_default();
+    // A failed exchange names its asker at the top of the event (the host
+    // puts `serving_provenance` on a served 2xx only).
+    if failed && host_provenance.requested_by_node_id.is_none() {
+        host_provenance.requested_by_node_id =
+            ObservedLifecycleEvents::failed_asker(envelope).map(str::to_string);
+    }
     let usage = envelope.usage.map(token_usage_from);
     let observed = ObservedHostExchange {
         model: &envelope.model,
@@ -393,6 +577,13 @@ fn seal_observed(
         peer_capsule_id_provenance: peer_capsule_id_for_seal(envelope).map(|(_, prov)| prov),
         twin_bracket_id: envelope.twin_bracket_id.as_deref(),
         response_text_digest: envelope.response_text_digest.as_deref(),
+        failure: failed.then(|| FailedExchange {
+            class: envelope
+                .failure_class
+                .and_then(lifecycle_channel::failure_class_wire_value)
+                .map(str::to_string),
+            unsealed: None,
+        }),
     };
     // A split's stage-exchange records are sealed just before its main record.
     let records = split.map_or(1, |plan| plan.exchanges.len() as u64 + 1);
@@ -969,6 +1160,9 @@ async fn push_at_completion_if_configured(
 struct Splits {
     collector: Arc<split_stage::SplitCollector<OpenAiExchangeEnvelope>>,
     pushes: Arc<std::sync::Mutex<Vec<SplitPush>>>,
+    /// The per-peer cap on a provider's sealed failures; it rides here
+    /// because the observe path and the tick already share this state.
+    failures: Arc<failure_window::FailureWindow>,
 }
 
 struct SplitPush {
@@ -982,6 +1176,7 @@ impl Splits {
         Splits {
             collector: Arc::default(),
             pushes: Arc::default(),
+            failures: Arc::default(),
         }
     }
 
@@ -1073,6 +1268,12 @@ fn spawn_split_tick(
             );
             if let Err(join_error) = tokio::task::spawn_blocking(move || {
                 seal_released_splits(&capsules, checkpoints.as_ref(), &splits, &lifecycle_events);
+                seal_due_summaries(
+                    &capsules,
+                    checkpoints.as_ref(),
+                    &splits.failures,
+                    splits.failures.now(),
+                );
             })
             .await
             {
@@ -2446,6 +2647,8 @@ mod push_eligibility_tests {
             phase: Phase::Terminal,
             model: "some-model".to_string(),
             status: Some(200),
+            failure_class: None,
+            requested_by_node_id: None,
             capsule_id: None,
             capsule_id_provenance: None,
             nonce: None,
@@ -3032,5 +3235,326 @@ mod paid_push_tests {
         assert!(body["inclusion"]["proof"].is_object(), "{body}");
         assert!(body["checkpoint"]["root"].is_string(), "{body}");
         assert!(push_coverage(None, leg, "provider").await.is_none());
+    }
+}
+
+/// A failed exchange leaves a record on each side that saw the request
+/// (evidencebook#205), through the channel handler's own path.
+#[cfg(test)]
+mod failed_exchange_tests {
+    use super::*;
+    use serde_json::json;
+
+    const ASKER: &str = "e1c3d5f7a9b1c3d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1d3";
+    const DIGEST: &str = "a6329c5ebb66562f38a8136a8d8511b6aeed166e4c7d889b9133ac96fc49a9d5";
+
+    fn failed_event(dispatch_path: &str, status: Option<u16>, class: &str) -> Value {
+        // Digests and usage ride along on purpose: the record must drop them.
+        json!({
+            "dispatch_path": dispatch_path,
+            "phase": "terminal",
+            "model": "qwen",
+            "status": status,
+            "failure_class": class,
+            "exchange_id": format!("ex-{dispatch_path}-{class}"),
+            "nonce": "n-1",
+            "request_digest": DIGEST,
+            "response_digest": DIGEST,
+            "tool_calls_digest": DIGEST,
+            "reasoning_digest": DIGEST,
+            "response_text_digest": DIGEST,
+            "usage": {"prompt_tokens": 3, "completion_tokens": 5, "total_tokens": 8},
+        })
+    }
+
+    struct Node {
+        dir: tempfile::TempDir,
+        capsules: Arc<CapsuleState>,
+        store: ObservedLifecycleEvents,
+        splits: Splits,
+    }
+
+    impl Node {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            Node {
+                capsules: Arc::new(CapsuleState::open(dir.path(), "failed-test").unwrap()),
+                store: ObservedLifecycleEvents::open(dir.path()).unwrap(),
+                splits: Splits::new(),
+                dir,
+            }
+        }
+
+        async fn observe(&self, event: &Value) {
+            assert!(
+                self.observe_any(event).await.is_none(),
+                "a failed record is never pushed"
+            );
+        }
+
+        async fn observe_any(&self, event: &Value) -> Option<(OpenAiExchangeEnvelope, Value)> {
+            observe_exchange_event(
+                event.to_string().as_bytes(),
+                false,
+                &self.capsules,
+                None,
+                &self.splits,
+                &self.store,
+            )
+            .await
+        }
+
+        fn sealed(&self) -> Vec<Value> {
+            evidence_panes::read_capsule_records(self.capsules.ledger_dir())
+        }
+    }
+
+    fn poc(record: &Value) -> &Value {
+        &record["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"]
+    }
+
+    /// A 402, a 5xx, a timeout and a dropped stream each leave exactly one
+    /// requester-side record, with the outcome and the reason, and none of
+    /// the content the event carried.
+    #[tokio::test]
+    async fn each_failure_class_seals_one_requester_record_without_content() {
+        for (status, class) in [
+            (Some(402), "payment_required"),
+            (Some(502), "upstream_error"),
+            (None, "timeout"),
+            (None, "dropped"),
+        ] {
+            let node = Node::new();
+            node.observe(&failed_event("remote_mesh", status, class))
+                .await;
+            let sealed = node.sealed();
+            assert_eq!(sealed.len(), 1, "{class}");
+            let record = &sealed[0];
+            assert_eq!(poc(record)["role"], "requested", "{class}");
+            assert_eq!(poc(record)["outcome"], "failed", "{class}");
+            assert_eq!(poc(record)["failure_class"], class);
+            assert_eq!(record["effect"]["status"], "failed");
+            assert_eq!(evidence_panes::label_role(record), "failed");
+            let text = record.to_string();
+            assert!(!text.contains(DIGEST), "{class}: no digest: {text}");
+            assert!(record["effect"].get("request_digest").is_none());
+            assert!(record["effect"].get("response_digest").is_none());
+            assert!(poc(record)["serving_provenance"]["usage"].is_null());
+            assert!(
+                record["model_attestation"]["compute_attestation"]["invocation"]
+                    .get("usage")
+                    .is_none()
+            );
+            assert!(record["model_attestation"]
+                .get("agent_output_digest")
+                .is_none());
+        }
+    }
+
+    /// A stream cut after its 200 headers has status 200 and a class: it is
+    /// sealed failed, never as a served exchange.
+    #[tokio::test]
+    async fn a_cut_stream_with_status_200_is_sealed_failed_not_served() {
+        let node = Node::new();
+        node.observe(&failed_event("remote_mesh", Some(200), "upstream_error"))
+            .await;
+        let sealed = node.sealed();
+        assert_eq!(sealed.len(), 1);
+        assert_eq!(poc(&sealed[0])["outcome"], "failed");
+        assert_eq!(evidence_panes::label_role(&sealed[0]), "failed");
+    }
+
+    /// The provider half: sealed when the host named the mesh peer that
+    /// asked, and that peer is the record's requesting party.
+    #[tokio::test]
+    async fn a_provider_seals_a_refusal_for_an_identified_peer() {
+        let node = Node::new();
+        let mut event = failed_event("raw_proxy", Some(402), "payment_required");
+        event["requested_by_node_id"] = json!(ASKER);
+        node.observe(&event).await;
+        let sealed = node.sealed();
+        assert_eq!(sealed.len(), 1);
+        let record = &sealed[0];
+        assert_eq!(poc(record)["role"], "served");
+        assert_eq!(poc(record)["outcome"], "failed");
+        assert_eq!(poc(record)["failure_class"], "payment_required");
+        assert_eq!(poc(record)["serving_provenance"]["requesting_party"], ASKER);
+    }
+
+    /// An anonymous caller grows nothing: with no identified peer, a
+    /// provider's refusal is observed and not sealed.
+    #[tokio::test]
+    async fn a_provider_seals_nothing_for_an_unidentified_asker() {
+        let node = Node::new();
+        node.observe(&failed_event("raw_proxy", Some(402), "payment_required"))
+            .await;
+        let mut unknown = failed_event("raw_proxy", Some(402), "payment_required");
+        unknown["requested_by_node_id"] = json!("unknown");
+        node.observe(&unknown).await;
+        assert!(node.sealed().is_empty());
+        assert_eq!(node.store.snapshot().len(), 2, "still observed");
+    }
+
+    /// Past the per-peer cap a provider seals nothing more for the peer, and
+    /// when the window closes it seals one summary with the count.
+    #[tokio::test]
+    async fn past_the_cap_a_provider_seals_one_summary_for_the_window() {
+        let node = Node::new();
+        let cap = failure_window::MAX_SEALED_PER_PEER as usize;
+        for i in 0..cap + 3 {
+            let mut event = failed_event("raw_proxy", Some(402), "payment_required");
+            event["exchange_id"] = json!(format!("ex-{i}"));
+            event["requested_by_node_id"] = json!(ASKER);
+            node.observe(&event).await;
+        }
+        assert_eq!(node.sealed().len(), cap, "the cap, no more");
+
+        // The window closes: the tick's call hands back the summary.
+        let later = chrono::Utc::now().timestamp() + i64::from(failure_window::WINDOW_SECS);
+        let due = node.splits.failures.due_summaries(later);
+        assert_eq!(due.len(), 1);
+        let capsules = node.capsules.clone();
+        let sealed = seal_unsealed_failures(&capsules, None, &due[0]).expect("summary sealed");
+        assert_eq!(node.sealed().len(), cap + 1);
+        assert_eq!(poc(&sealed)["outcome"], "failed");
+        assert_eq!(poc(&sealed)["unsealed_failures"]["count"], 3);
+        assert_eq!(
+            poc(&sealed)["unsealed_failures"]["window_s"],
+            failure_window::WINDOW_SECS
+        );
+        assert_eq!(
+            poc(&sealed)["serving_provenance"]["requesting_party"],
+            ASKER
+        );
+        assert!(poc(&sealed).get("failure_class").is_none());
+        assert!(
+            node.splits.failures.due_summaries(later).is_empty(),
+            "one summary per peer per window"
+        );
+    }
+
+    /// The failure that opens a new window seals the summary of the one it
+    /// closes, before its own record; the tick seals a window nobody reopens.
+    #[tokio::test]
+    async fn the_next_window_and_the_tick_each_seal_the_summary_once() {
+        use std::sync::atomic::{AtomicI64, Ordering};
+        let clock = Arc::new(AtomicI64::new(10_000));
+        let mut node = Node::new();
+        node.splits.failures = Arc::new(failure_window::FailureWindow::with_clock(
+            1,
+            100,
+            clock.clone(),
+        ));
+        let failure = |id: &str| {
+            let mut event = failed_event("raw_proxy", Some(402), "payment_required");
+            event["exchange_id"] = json!(id);
+            event["requested_by_node_id"] = json!(ASKER);
+            event
+        };
+        node.observe(&failure("a")).await;
+        node.observe(&failure("b")).await; // over the cap: counted only
+        assert_eq!(node.sealed().len(), 1);
+        clock.fetch_add(100, Ordering::SeqCst);
+        node.observe(&failure("c")).await; // closes the window: summary, then itself
+        let sealed = node.sealed();
+        assert_eq!(sealed.len(), 3, "a, the summary, c");
+        assert_eq!(poc(&sealed[1])["unsealed_failures"]["count"], 1);
+        assert!(poc(&sealed[2]).get("unsealed_failures").is_none());
+
+        // `c` fit its window's cap, so closing that window seals no summary.
+        clock.fetch_add(100, Ordering::SeqCst);
+        node.observe(&failure("d")).await;
+        node.observe(&failure("e")).await;
+        clock.fetch_add(100, Ordering::SeqCst);
+        let tick = |node: &Node| {
+            seal_due_summaries(
+                &node.capsules,
+                None,
+                &node.splits.failures,
+                node.splits.failures.now(),
+            )
+        };
+        tick(&node);
+        let sealed = node.sealed();
+        assert_eq!(
+            sealed.len(),
+            5,
+            "d, then the tick's summary; e is over the cap"
+        );
+        assert_eq!(poc(&sealed[4])["unsealed_failures"]["count"], 1);
+        tick(&node);
+        assert_eq!(node.sealed().len(), 5, "once");
+    }
+
+    /// A summary whose seal failed after its record reached the ledger is not
+    /// sealed twice when it is retried.
+    #[tokio::test]
+    async fn a_retried_summary_already_on_the_ledger_is_not_sealed_again() {
+        let node = Node::new();
+        let summary = failure_window::Summary {
+            peer: ASKER.to_string(),
+            window_start: 3600,
+            window_s: 3600,
+            unsealed: 2,
+        };
+        // The first seal reached the ledger but was reported failed.
+        assert!(seal_unsealed_failures(&node.capsules, None, &summary).is_some());
+        assert!(node.splits.failures.restore(summary.clone(), 0));
+        let due = node.splits.failures.due_summaries(1_000);
+        assert_eq!(due, vec![summary.clone()]);
+        seal_or_restore(
+            &node.capsules,
+            None,
+            &node.splits.failures,
+            summary.clone(),
+            1_000,
+        );
+        assert_eq!(node.sealed().len(), 1, "one summary for the window");
+        assert!(
+            !node.splits.failures.was_tried(&summary),
+            "forgotten once found"
+        );
+        // A summary with no earlier failed seal is sealed, as before.
+        let other = failure_window::Summary {
+            window_start: 7200,
+            ..summary
+        };
+        seal_or_restore(&node.capsules, None, &node.splits.failures, other, 1_000);
+        assert_eq!(node.sealed().len(), 2);
+    }
+
+    /// The requester side seals every failure of its own: the cap is a
+    /// provider's protection against being asked, not the requester's.
+    #[tokio::test]
+    async fn the_requester_side_is_never_capped() {
+        let node = Node::new();
+        let n = failure_window::MAX_SEALED_PER_PEER as usize + 2;
+        for i in 0..n {
+            let mut event = failed_event("remote_mesh", None, "timeout");
+            event["exchange_id"] = json!(format!("ex-{i}"));
+            node.observe(&event).await;
+        }
+        assert_eq!(node.sealed().len(), n);
+    }
+
+    /// A served exchange seals as it did before the member existed: no
+    /// `outcome`, no failure members, and a 2xx predicate still seals it.
+    #[tokio::test]
+    async fn a_served_exchange_carries_no_failure_members() {
+        let node = Node::new();
+        node.observe_any(&json!({
+            "dispatch_path": "remote_mesh", "phase": "terminal", "model": "qwen",
+            "status": 200, "exchange_id": "ex-ok", "nonce": "n-ok",
+            "request_digest": DIGEST, "response_digest": DIGEST,
+        }))
+        .await;
+        let sealed = node.sealed();
+        assert_eq!(sealed.len(), 1);
+        for member in ["outcome", "failure_class", "unsealed_failures"] {
+            assert!(poc(&sealed[0]).get(member).is_none(), "{member}");
+        }
+        assert_eq!(sealed[0]["effect"]["status"], "confirmed");
+        assert_eq!(evidence_panes::label_role(&sealed[0]), "requested");
+        let _ = &node.dir;
     }
 }

@@ -11,8 +11,8 @@
 
 use crate::lifecycle_channel::{dispatch_path_wire_value, role_for_dispatch_path, DispatchPath};
 use crate::producer::capsule::{
-    seal, seal_owner_maintenance_record, CapsuleInput, ChainLink, HostBinding, MeshPocV1,
-    OwnerMaintenance, ServingProvenance, TokenUsage,
+    seal, seal_owner_maintenance_record, CapsuleInput, ChainLink, FailedExchange, HostBinding,
+    MeshPocV1, OwnerMaintenance, ServingProvenance, TokenUsage,
 };
 use crate::producer::cose::{build_signed_statement, SignedStatementInput};
 use crate::producer::jcs;
@@ -1063,6 +1063,7 @@ impl CapsuleState {
                 tee_attestation: Some(tee_attestation),
                 // This path serves a local request: no mesh counterparty, no agreement.
                 acceptance_digest: None,
+                failure: None,
             },
             effect_status: "confirmed".to_string(),
             effect_type: "inference_completion".to_string(),
@@ -1231,6 +1232,13 @@ pub struct ObservedHostExchange<'a> {
     /// The host's digest of the answer text, forwarded verbatim (see
     /// `ServingProvenance::response_text_digest`). `None` when the host sent none.
     pub response_text_digest: Option<&'a str>,
+    /// Set when the exchange FAILED (`lifecycle_channel::is_sealable_failed`).
+    /// The record is then the same exchange record with `outcome: "failed"`
+    /// and the reason class, and carries no request, response, tool-call or
+    /// reasoning digest, no usage and no response-text digest, even when the
+    /// envelope sent them: the host's failure event carries none today, and
+    /// a failed record states that the exchange failed, not what was said.
+    pub failure: Option<FailedExchange>,
 }
 
 impl CapsuleState {
@@ -1370,7 +1378,13 @@ impl CapsuleState {
             peer_capsule_id_provenance,
             twin_bracket_id,
             response_text_digest,
+            failure,
         } = observed;
+        let failed = failure.is_some();
+        // A failed record states that the exchange failed and why, never what
+        // was said: every digest and count below is dropped, whatever the
+        // envelope carried.
+        let response_text_digest = response_text_digest.filter(|_| !failed);
         let response_text_digest = response_text_digest
             .map(|d| d.trim().to_ascii_lowercase())
             .filter(|d| d.len() == 64 && d.bytes().all(|b| b.is_ascii_hexdigit()));
@@ -1389,11 +1403,11 @@ impl CapsuleState {
         ) = (
             *model,
             *exchange_id,
-            *request_digest,
-            *response_digest,
-            *tool_calls_digest,
-            *reasoning_digest,
-            usage.clone(),
+            request_digest.filter(|_| !failed),
+            response_digest.filter(|_| !failed),
+            tool_calls_digest.filter(|_| !failed),
+            reasoning_digest.filter(|_| !failed),
+            usage.clone().filter(|_| !failed),
             *nonce,
             *peer_capsule_id,
             *peer_capsule_id_provenance,
@@ -1550,7 +1564,11 @@ impl CapsuleState {
         let sequence = sequence_counters.peek(&self.node_id, &requesting_party);
 
         let input = CapsuleInput {
-            action_id: format!("mesh-poc/capsule-emit-mesh-host-served/{agent_input_digest}"),
+            action_id: if failed {
+                format!("mesh-poc/capsule-emit-mesh-host-failed/{agent_input_digest}")
+            } else {
+                format!("mesh-poc/capsule-emit-mesh-host-served/{agent_input_digest}")
+            },
             // Observed, not admitted: this plugin decided nothing here.
             action_type: "fyi".to_string(),
             operator: "capsule-emit-mesh-poc-rust".to_string(),
@@ -1657,11 +1675,14 @@ impl CapsuleState {
                 binary_attestation,
                 tee_attestation: Some(tee_attestation),
                 acceptance_digest: acceptance_digest.clone(),
+                failure: failure.clone(),
             },
             // Confirmed only over the host's digest of the REAL response body;
             // without one the completion was dispatched but its output is
             // unbound, so the effect carries no response digest (AAC-05 §5.2).
-            effect_status: if response_digest.is_some() {
+            effect_status: if failed {
+                "failed"
+            } else if response_digest.is_some() {
                 "confirmed"
             } else {
                 "dispatched"
@@ -1670,7 +1691,12 @@ impl CapsuleState {
             effect_type: "inference_completion".to_string(),
             effect_request_digest: request_digest.map(str::to_string),
             effect_response_digest: response_digest.map(str::to_string),
-            effect_attestation: "host_served_observed".to_string(),
+            effect_attestation: if failed {
+                "host_failed_observed"
+            } else {
+                "host_served_observed"
+            }
+            .to_string(),
             disposition_decision: "accept".to_string(),
             disposition_approver: "policy".to_string(),
             disposition_human_disposed: false,
@@ -2821,6 +2847,7 @@ pub(crate) mod tests {
                 peer_capsule_id_provenance: None,
                 twin_bracket_id: None,
                 response_text_digest: None,
+                failure: None,
             };
             digests.push(digest_of(
                 &state
@@ -2861,6 +2888,7 @@ pub(crate) mod tests {
             peer_capsule_id_provenance: None,
             twin_bracket_id: None,
             response_text_digest: None,
+            failure: None,
         };
         let emitted = state
             .emit_for_observed_host_exchange(&observed)
@@ -2902,6 +2930,7 @@ pub(crate) mod tests {
             peer_capsule_id_provenance: None,
             twin_bracket_id: None,
             response_text_digest: None,
+            failure: None,
         };
         let emitted = state
             .emit_for_observed_host_exchange(&observed)
@@ -2951,6 +2980,7 @@ pub(crate) mod tests {
             peer_capsule_id_provenance: None,
             twin_bracket_id: None,
             response_text_digest: None,
+            failure: None,
         };
         let emitted = state
             .emit_for_observed_host_exchange(&observed)
@@ -3108,6 +3138,7 @@ pub(crate) mod tests {
             peer_capsule_id_provenance: None,
             twin_bracket_id: None,
             response_text_digest: None,
+            failure: None,
         };
         let emitted = state
             .emit_for_observed_host_exchange(&observed)
@@ -3171,6 +3202,7 @@ pub(crate) mod tests {
             peer_capsule_id_provenance: None,
             twin_bracket_id: None,
             response_text_digest: None,
+            failure: None,
         };
         let emitted = state
             .emit_for_observed_host_exchange(&observed)
@@ -3216,6 +3248,7 @@ pub(crate) mod tests {
             peer_capsule_id_provenance: None,
             twin_bracket_id: Some("twin-abc123"),
             response_text_digest: None,
+            failure: None,
         };
         let emitted = state
             .emit_for_observed_host_exchange(&observed)
@@ -3250,6 +3283,7 @@ pub(crate) mod tests {
             peer_capsule_id_provenance: None,
             twin_bracket_id: None,
             response_text_digest: None,
+            failure: None,
         };
         let emitted = state
             .emit_for_observed_host_exchange(&observed)
@@ -3294,6 +3328,7 @@ pub(crate) mod tests {
             peer_capsule_id_provenance: None,
             twin_bracket_id: Some("twin-shared"),
             response_text_digest: None,
+            failure: None,
         };
         let observed_b = ObservedHostExchange {
             model: "m",
@@ -3310,6 +3345,7 @@ pub(crate) mod tests {
             peer_capsule_id_provenance: None,
             twin_bracket_id: Some("twin-shared"),
             response_text_digest: None,
+            failure: None,
         };
 
         let emitted_a = state_a
@@ -3999,6 +4035,7 @@ pub(crate) mod tests {
             peer_capsule_id_provenance: None,
             twin_bracket_id: None,
             response_text_digest: None,
+            failure: None,
         };
         let first = state
             .emit_for_observed_host_exchange(&observed)
@@ -4046,6 +4083,7 @@ pub(crate) mod tests {
                 peer_capsule_id_provenance: None,
                 twin_bracket_id: None,
                 response_text_digest: None,
+                failure: None,
             };
         let seal = |dispatch_path, requested_by| {
             let emitted = state
@@ -4134,6 +4172,7 @@ pub(crate) mod tests {
             peer_capsule_id_provenance: None,
             twin_bracket_id: None,
             response_text_digest: None,
+            failure: None,
         }
     }
 
@@ -4834,6 +4873,7 @@ pub(crate) mod tests {
             peer_capsule_id_provenance: None,
             twin_bracket_id: None,
             response_text_digest: None,
+            failure: None,
         };
         let router_emitted = router_state
             .emit_for_observed_host_exchange(&router_observed)

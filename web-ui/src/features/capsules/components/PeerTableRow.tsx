@@ -118,7 +118,10 @@ export function PeerTableRow({
           </div>
         </TableCell>
         {visibleColumns.has('exchanges') ? (
-          <TableCell className="text-xs text-fg-dim">{view.exchangeCount}</TableCell>
+          <TableCell className="text-xs text-fg-dim">
+            {view.exchangeCount}
+            {view.failedCount > 0 ? ` · ${view.failedCount} failed` : ''}
+          </TableCell>
         ) : null}
         {visibleColumns.has('rewrote') ? (
           <TableCell>
