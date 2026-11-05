@@ -139,6 +139,9 @@ pub struct Leaf {
     /// (`crate::ask_book`), an owner-maintenance record or a deal's report:
     /// it never leaves this node, whoever asks.
     pub never_leaves: bool,
+    /// The record is of a failed exchange (`evidence_panes::is_failed`): it
+    /// binds no digest, so `exchange_corroboration/1` has nothing to say of it.
+    pub failed: bool,
     pub facts: LeafFacts,
 }
 
@@ -476,13 +479,8 @@ impl LedgerIndex {
             for id in record_correlation_ids(&record) {
                 self.correlations.entry(id).or_default().push(index);
             }
-            // A failed exchange's record binds no digest, so there is nothing
-            // to corroborate: it is not found by its nonce, which keeps it out
-            // of the authorization and capacity checks of the answer too.
-            if !crate::evidence_panes::is_failed(&record) {
-                if let Some(digest) = client_nonce_digest(&record) {
-                    self.client_nonces.entry(digest).or_default().push(index);
-                }
+            if let Some(digest) = client_nonce_digest(&record) {
+                self.client_nonces.entry(digest).or_default().push(index);
             }
             for half in counterparty_half_citations(&record) {
                 self.citations.entry(half).or_default().push(index);
@@ -503,6 +501,7 @@ impl LedgerIndex {
             counterparty,
             counterparty_key,
             never_leaves: never_leaves(&record),
+            failed: crate::evidence_panes::is_failed(&record),
             facts: leaf_facts(&record),
         });
         Ok(())
@@ -682,6 +681,16 @@ impl LedgerIndex {
             .iter()
             .copied()
             .filter(|&i| self.leaves_node(i))
+            .collect()
+    }
+
+    /// `found` without the records of failed exchanges, which
+    /// `exchange_corroboration/1` does not answer with: authorization and the
+    /// size limit then read the same set as the artifact.
+    pub fn corroborable(&self, found: &[u64]) -> Vec<u64> {
+        self.leaving(found)
+            .into_iter()
+            .filter(|&i| self.leaves.get(i as usize).is_some_and(|l| !l.failed))
             .collect()
     }
 

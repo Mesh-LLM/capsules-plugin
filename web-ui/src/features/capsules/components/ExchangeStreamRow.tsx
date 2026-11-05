@@ -74,6 +74,7 @@ import { NO_PEER_NAMES, peerName as namePeer, resolveRowPeer } from '@/features/
 import { isWaitingForTheirRecord, rowSteps, rowVerdictText, type RowStep } from '@/features/capsules/lib/row-verdict'
 import {
   CONFIRMED_NOT_KEPT,
+  FAILED_TOOLTIP,
   LOCAL_ONLY_TOOLTIP,
   OWN_RECORD_FAILS_WARNING,
   SAVED_BECAUSE_YOU_ASKED,
@@ -95,6 +96,8 @@ import {
 const NO_OTHER_SIDE_TEXT = 'Local — no other side'
 /** The badge on a served exchange with no other side anywhere. */
 const NO_OTHER_SIDE_LABEL = 'No other side'
+const FAILED_LABEL = 'Failed'
+const FAILED_FACE_TEXT = 'The exchange failed'
 const OTHER_SIDE_NOT_KNOWN_TEXT = 'Other side: not known'
 const PAYER_NOT_RECORDED_TEXT = 'Served for pay — payer not recorded'
 
@@ -333,7 +336,7 @@ export function ExchangeStreamRow({
   const localOnly = row.localOnly && !askOutcome
   const servedForPay = isServedForPay(row.raw)
   const gatedText =
-    row.roleTag === 'FAILED' ? NO_OTHER_SIDE_TEXT : row.roleTag !== 'SERVED' ? OTHER_SIDE_NOT_KNOWN_TEXT : servedForPay ? PAYER_NOT_RECORDED_TEXT : NO_OTHER_SIDE_TEXT
+    row.roleTag !== 'SERVED' ? OTHER_SIDE_NOT_KNOWN_TEXT : servedForPay ? PAYER_NOT_RECORDED_TEXT : NO_OTHER_SIDE_TEXT
   const cellText = gatedByCounterparty ? gatedText : rightCellText(state)
   // The face says the verdict in plain words, naming the other node; the
   // longer sentences (the state's own, and what an ask returned and how it
@@ -350,9 +353,12 @@ export function ExchangeStreamRow({
   // face, not only behind the (i).
   const latestAsk = askOutcome?.latest ?? null
   const notOnMesh = latestAsk?.kind === 'no_reply' && latestAsk.plain === true && latestAsk.detail === NOT_ON_MESH
-  const faceText = gatedByCounterparty
-    ? gatedText
-    : rowVerdictText(state, otherSideName, notOnMesh)
+  const failed = row.roleTag === 'FAILED'
+  const faceText = failed
+    ? FAILED_FACE_TEXT
+    : gatedByCounterparty
+      ? gatedText
+      : rowVerdictText(state, otherSideName, notOnMesh)
   // A confirmation from the record the node holds because this node asked
   // for it (the pane's `via: "ask"`; a pushed one is `"push"`) says so.
   // One the ask brought but the plugin couldn't save says that instead.
@@ -563,15 +569,27 @@ export function ExchangeStreamRow({
                 {/* L-A/L-B: only CONTRADICTED gets the alarm dot; the tone
                    (§3A "one colour per state") still varies with CLOSED/
                    refused/absent, never just alarm-vs-muted. */}
-                <StatusBadge dot={alarm} size="caption" tone={localOnly ? 'muted' : tone}>
-                  {localOnly ? NO_OTHER_SIDE_LABEL : rowStatusLabel(state, row.raw.theirs.in_their_log)}
+                <StatusBadge dot={alarm} size="caption" tone={localOnly || failed ? 'muted' : tone}>
+                  {failed
+                    ? FAILED_LABEL
+                    : localOnly
+                      ? NO_OTHER_SIDE_LABEL
+                      : rowStatusLabel(state, row.raw.theirs.in_their_log)}
                 </StatusBadge>
                 {/* Terse state on the face; the fuller story behind the (i). */}
                 <InfoHover
-                  census={localOnly ? 'row_state:local' : `row_state:${state.kind}`}
-                  describes={localOnly ? `the ${NO_OTHER_SIDE_LABEL} state` : `the ${rightCellStatusLabel(state)} state`}
+                  census={failed ? 'row_state:failed' : localOnly ? 'row_state:local' : `row_state:${state.kind}`}
+                  describes={
+                    failed
+                      ? `the ${FAILED_LABEL} state`
+                      : localOnly
+                        ? `the ${NO_OTHER_SIDE_LABEL} state`
+                        : `the ${rightCellStatusLabel(state)} state`
+                  }
                   label={
-                    localOnly
+                    failed
+                      ? FAILED_TOOLTIP
+                      : localOnly
                       ? LOCAL_ONLY_TOOLTIP
                       : servedForPay && gatedByCounterparty
                         ? SERVED_FOR_PAY_NO_PAYER_TOOLTIP

@@ -171,6 +171,10 @@ export const ENTRY_CHIP_RESULT_TOOLTIPS = {
 export const LOCAL_ONLY_TOOLTIP =
   'This node only. This node served the request and no other side is recorded for it, so there is no record of theirs to wait for. It is not counted as open.'
 
+/** The FAILED badge's (i): the exchange did not complete. */
+export const FAILED_TOOLTIP =
+  'The exchange failed, so there is no completed exchange for the other side to have a record of. It is not counted as open.'
+
 /** The OPEN badge's (i) on a row served for pay whose payer is not recorded:
  *  it has no ask target, so it stays open unless the payer's record arrives. */
 export const SERVED_FOR_PAY_NO_PAYER_TOOLTIP =

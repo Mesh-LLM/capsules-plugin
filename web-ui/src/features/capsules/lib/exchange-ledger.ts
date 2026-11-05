@@ -128,9 +128,6 @@ export function isLocalOnly(
   state: RightCellState,
   ownRecord: CapsuleRecord | Record<string, unknown> | null | undefined
 ): boolean {
-  // A failed exchange has no other side to wait for: nothing of theirs will
-  // arrive for it, so it is never `open`.
-  if (row.role_tag === 'FAILED') return true
   return (
     row.role_tag === 'SERVED' &&
     counterparty === null &&
@@ -142,9 +139,10 @@ export function isLocalOnly(
 
 /** The state filter's bucket for a row: a local-only row has its own,
  *  `local`, rather than counting as `open`. */
-export type ExchangeStateFilterValue = LedgerStateFilterValue | 'local'
+export type ExchangeStateFilterValue = LedgerStateFilterValue | 'local' | 'failed'
 
 export function exchangeStateFilterValue(row: ExchangeLedgerRow): ExchangeStateFilterValue {
+  if (row.roleTag === 'FAILED') return 'failed'
   return row.localOnly ? 'local' : ledgerStateFilterValue(row.rightCellState)
 }
 

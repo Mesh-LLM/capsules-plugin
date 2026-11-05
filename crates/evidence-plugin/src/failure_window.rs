@@ -15,10 +15,15 @@
 //! peer in a later window, or the plugin's background tick (`due_summaries`),
 //! whichever comes first, hands back its summary. Counts are in memory only: a
 //! restart forgets the open window's, which can seal at most one more window's
-//! worth of failures for a peer and loses that window's summary.
+//! worth of failures for a peer and loses that window's summary. A summary
+//! whose seal fails is tried again, with a backoff, [`MAX_SEAL_ATTEMPTS`]
+//! times in all and then given up on (a warning in the log), so a write failure
+//! that outlasts the tries also loses it. A seal that fails after its record
+//! reached the ledger can leave up to that many copies of one summary.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Arc, Mutex};
 
 /// Failures sealed one by one for one peer in one window.
 pub const MAX_SEALED_PER_PEER: u32 = 20;
@@ -54,12 +59,14 @@ pub struct FailureWindow {
     cap: u32,
     window_s: u32,
     peers: Mutex<HashMap<String, PeerWindow>>,
-    /// Summaries handed back that could not be sealed, each with the number
-    /// of seal attempts so far and the earliest time of the next one
-    /// ([`FailureWindow::restore`]).
+    /// Summaries handed back that could not be sealed, each with the earliest
+    /// time of the next attempt ([`FailureWindow::restore`]).
     unsealed_summaries: Mutex<Vec<(Summary, i64)>>,
-    /// Failed seals so far, per (peer, window start).
+    /// Failed seals so far, per (peer, window start); an entry goes when the
+    /// summary seals ([`FailureWindow::sealed`]) or is given up on.
     seal_failures: Mutex<HashMap<(String, i64), u32>>,
+    /// The clock, in Unix seconds; `None` reads the system's. A test sets it.
+    clock: Option<Arc<AtomicI64>>,
 }
 
 /// A summary whose seal fails is tried this many times in all. A seal that
@@ -84,7 +91,33 @@ impl FailureWindow {
             peers: Mutex::new(HashMap::new()),
             unsealed_summaries: Mutex::new(Vec::new()),
             seal_failures: Mutex::new(HashMap::new()),
+            clock: None,
         }
+    }
+
+    /// A window that reads `clock` (Unix seconds) instead of the system's.
+    #[cfg(test)]
+    pub fn with_clock(cap: u32, window_s: u32, clock: Arc<AtomicI64>) -> Self {
+        Self {
+            clock: Some(clock),
+            ..Self::new(cap, window_s)
+        }
+    }
+
+    /// Now, in Unix seconds.
+    pub fn now(&self) -> i64 {
+        self.clock.as_ref().map_or_else(
+            || chrono::Utc::now().timestamp(),
+            |clock| clock.load(Ordering::SeqCst),
+        )
+    }
+
+    /// A summary sealed: forget its failed attempts.
+    pub fn sealed(&self, summary: &Summary) {
+        self.seal_failures
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&(summary.peer.clone(), summary.window_start));
     }
 
     /// Hold a summary whose seal failed (a write error), so a later tick

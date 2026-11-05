@@ -1431,7 +1431,8 @@ fn refused_siblings(
 /// One "Nodes you have dealt with" row: a NAMED counterparty (`label`) this
 /// node exchanged with, `exchange_count` real. Its half being unheld is a
 /// STATE ("their half not held") the CLOSED path fills -- it is never a reason
-/// to omit the peer or show a zero count.
+/// to omit the peer. A peer this node has only failed exchanges with is shown
+/// with 0 exchanges and a `failed` role cell that counts them apart.
 fn dealt_with_row(
     label: &str,
     records: &[Value],
@@ -5369,8 +5370,6 @@ mod tests {
         assert_eq!(counts, (1, 0), "only the asked, served-free record counts");
     }
 
-    /// A record sealed before `outcome` existed, or with any other value, is
-    /// not failed: an absent `outcome` means served.
     /// 3 exchanges asked and 2 refused read 3, not 5: a failed exchange is
     /// never confirmed, so counting it would lower every ratio.
     #[test]
@@ -5399,6 +5398,32 @@ mod tests {
         assert_eq!(own_role_counts(&records, &none), (3, 0));
     }
 
+    /// A peer this node only has failed exchanges with is a row of 0
+    /// exchanges whose role cell says `failed` and counts them apart.
+    #[test]
+    fn a_peer_with_only_failed_exchanges_has_a_failed_role_cell() {
+        let peer = "b".repeat(64);
+        let failed = |id: &str, digest: &str| {
+            let mut r = fixture_record(id, "2026-09-01T00:00:00Z", digest, None);
+            r["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"] = json!({
+                "role": "requested", "outcome": "failed", "failure_class": "timeout",
+                "serving_provenance": { "served_by_node_id": peer }
+            });
+            r
+        };
+        let pane = build_pane_b(&[failed("f1", "d1"), failed("f2", "d2")], &no_provenance());
+        let rows = pane["rows"].as_array().unwrap();
+        let row = rows
+            .iter()
+            .find(|r| r["role"]["role"] == json!("failed"))
+            .unwrap_or_else(|| panic!("a failed role cell: {pane}"));
+        assert_eq!(row["role"]["failed_count"], json!(2));
+        assert_eq!(row["role"]["you_to_them_count"], json!(0));
+        assert_eq!(row["exchange_count"], json!(0));
+    }
+
+    /// A record sealed before `outcome` existed, or with any other value, is
+    /// not failed: an absent `outcome` means served.
     #[test]
     fn a_record_without_a_failed_outcome_is_not_failed() {
         let plain = fixture_record("cap-1", "2026-09-01T00:00:00Z", "req-1", None);

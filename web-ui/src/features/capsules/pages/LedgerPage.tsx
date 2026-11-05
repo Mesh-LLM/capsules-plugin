@@ -349,7 +349,7 @@ const ALL_CHECKS_VALUES = ['clean', 'exception']
 // right-cell state -- it's bracket membership, which no payload carries
 // until B6 -- see `rowMatchesStateFilter` below.
 // `local`: a served exchange with no other side (`isLocalOnly`), kept out of `open`.
-const ALL_STATE_FILTER_VALUES = [...LEDGER_STATE_FILTER_VALUES, 'local', 'twins']
+const ALL_STATE_FILTER_VALUES = [...LEDGER_STATE_FILTER_VALUES, 'local', 'failed', 'twins']
 
 function exchangeFilterOptionLabel(value: string): string {
   switch (value) {
@@ -373,6 +373,8 @@ function exchangeFilterOptionLabel(value: string): string {
       return 'Waiting for theirs'
     case 'local':
       return 'No other side'
+    case 'failed':
+      return 'Failed'
     case 'twins':
       return 'Sent to two machines'
     default:

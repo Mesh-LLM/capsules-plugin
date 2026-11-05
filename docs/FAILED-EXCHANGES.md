@@ -49,7 +49,10 @@ the asking peer, and
 ```
 
 so the gap is on the record. Counts are in memory: a restart forgets the open window, which can
-seal at most one more window's worth for a peer and loses that window's summary. The requester
+seal at most one more window's worth for a peer and loses that window's summary. A summary whose seal
+fails (a write error) is tried again after 60 s and 120 s and then given up on, with a warning in the
+log, so a write failure that outlasts those tries also loses it. A seal that fails after its record
+reached the ledger (the sequence counter did not commit) can leave up to three copies of one summary. The requester
 side is not capped.
 
 ## What does not count it

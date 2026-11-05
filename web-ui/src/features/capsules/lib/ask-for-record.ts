@@ -167,6 +167,7 @@ export type RowAskInput = {
   historyAsk: { kind: string } | null
 }
 
+const FAILED_NO_RECORD_TO_ASK = 'The exchange failed, so there is no record of theirs to ask for.'
 export const ASK_RECORD_LABEL = 'Ask for their record'
 export const ASK_RECORD_AGAIN_LABEL = 'Ask again for their record'
 export const ASK_HISTORY_LABEL = 'Ask for their history'
@@ -201,7 +202,11 @@ export function rowAskControls(input: RowAskInput): { record: RowAskControl; his
     const unnamed = input.target ? null : 'Your record doesn’t name this exchange in a way they can look up.'
     record = {
       label,
-      disabledReason: unavailable ?? nobody ?? (ASKABLE_KINDS.has(input.kind) ? unnamed : settled)
+      disabledReason:
+        unavailable ??
+        (input.roleTag === 'FAILED' ? FAILED_NO_RECORD_TO_ASK : null) ??
+        nobody ??
+        (ASKABLE_KINDS.has(input.kind) ? unnamed : settled)
     }
   }
 

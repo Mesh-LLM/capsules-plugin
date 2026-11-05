@@ -21,7 +21,13 @@ export function exchangeRowsToCsv(rows: readonly ExchangeLedgerRow[]): string {
         row.exchangeKey,
         row.counterparty ?? '',
         row.roleTag,
-        row.confirmed ? 'confirmed' : row.localOnly ? 'this node only' : 'not yet confirmed',
+        row.confirmed
+          ? 'confirmed'
+          : row.roleTag === 'FAILED'
+            ? 'failed'
+            : row.localOnly
+              ? 'this node only'
+              : 'not yet confirmed',
         row.checksText
       ]
         .map(csvCell)

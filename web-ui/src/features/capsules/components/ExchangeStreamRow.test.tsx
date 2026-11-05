@@ -635,6 +635,17 @@ describe('ExchangeStreamRow — a failed exchange (evidencebook#205)', () => {
     expect(screen.getByText('Exchange failed')).toBeInTheDocument()
     expect(screen.queryByText('You asked')).not.toBeInTheDocument()
     expect(screen.queryByText('You served')).not.toBeInTheDocument()
+    // Its own state: not the served-with-no-other-side one, and no ask is offered.
+    expect(screen.getByText('The exchange failed')).toBeInTheDocument()
+    expect(screen.queryByText('No other side')).not.toBeInTheDocument()
+    expect(screen.queryByText('Local — no other side')).not.toBeInTheDocument()
+    for (const name of ['Ask for their record']) {
+      const button = screen.getByRole('button', { name })
+      expect(button).toBeDisabled()
+      expect(button.closest('[data-census-chip]')).toHaveTextContent(
+        'The exchange failed, so there is no record of theirs to ask for.'
+      )
+    }
   })
 })
 

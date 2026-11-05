@@ -348,9 +348,7 @@ async fn observe_failed_exchange(
 ) {
     let provider_side = envelope.dispatch_path != lifecycle_channel::DispatchPath::RemoteMesh;
     let (admit, closed) = match ObservedLifecycleEvents::failed_asker(&envelope) {
-        Some(asker) if provider_side => {
-            splits.failures.admit(asker, chrono::Utc::now().timestamp())
-        }
+        Some(asker) if provider_side => splits.failures.admit(asker, splits.failures.now()),
         _ => (failure_window::Admit::Seal, None),
     };
     let capsules_for_seal = capsules.clone();
@@ -364,7 +362,7 @@ async fn observe_failed_exchange(
                 checkpoints_for_seal.as_ref(),
                 &failures,
                 summary,
-                chrono::Utc::now().timestamp(),
+                failures.now(),
             );
         }
         if admit == failure_window::Admit::Seal {
@@ -395,6 +393,7 @@ fn seal_or_restore(
     now: i64,
 ) {
     if seal_unsealed_failures(capsules, checkpoints, &summary).is_some() {
+        failures.sealed(&summary);
         return;
     }
     if !failures.restore(summary.clone(), now) {
@@ -1247,7 +1246,7 @@ fn spawn_split_tick(
                     &capsules,
                     checkpoints.as_ref(),
                     &splits.failures,
-                    chrono::Utc::now().timestamp(),
+                    splits.failures.now(),
                 );
             })
             .await
@@ -3412,8 +3411,14 @@ mod failed_exchange_tests {
     /// closes, before its own record; the tick seals a window nobody reopens.
     #[tokio::test]
     async fn the_next_window_and_the_tick_each_seal_the_summary_once() {
+        use std::sync::atomic::{AtomicI64, Ordering};
+        let clock = Arc::new(AtomicI64::new(10_000));
         let mut node = Node::new();
-        node.splits.failures = Arc::new(failure_window::FailureWindow::new(1, 1));
+        node.splits.failures = Arc::new(failure_window::FailureWindow::with_clock(
+            1,
+            100,
+            clock.clone(),
+        ));
         let failure = |id: &str| {
             let mut event = failed_event("raw_proxy", Some(402), "payment_required");
             event["exchange_id"] = json!(id);
@@ -3423,7 +3428,7 @@ mod failed_exchange_tests {
         node.observe(&failure("a")).await;
         node.observe(&failure("b")).await; // over the cap: counted only
         assert_eq!(node.sealed().len(), 1);
-        tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
+        clock.fetch_add(100, Ordering::SeqCst);
         node.observe(&failure("c")).await; // closes the window: summary, then itself
         let sealed = node.sealed();
         assert_eq!(sealed.len(), 3, "a, the summary, c");
@@ -3431,16 +3436,19 @@ mod failed_exchange_tests {
         assert!(poc(&sealed[2]).get("unsealed_failures").is_none());
 
         // `c` fit its window's cap, so closing that window seals no summary.
-        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+        clock.fetch_add(100, Ordering::SeqCst);
         node.observe(&failure("d")).await;
         node.observe(&failure("e")).await;
-        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
-        seal_due_summaries(
-            &node.capsules,
-            None,
-            &node.splits.failures,
-            chrono::Utc::now().timestamp(),
-        );
+        clock.fetch_add(100, Ordering::SeqCst);
+        let tick = |node: &Node| {
+            seal_due_summaries(
+                &node.capsules,
+                None,
+                &node.splits.failures,
+                node.splits.failures.now(),
+            )
+        };
+        tick(&node);
         let sealed = node.sealed();
         assert_eq!(
             sealed.len(),
@@ -3448,12 +3456,7 @@ mod failed_exchange_tests {
             "d, then the tick's summary; e is over the cap"
         );
         assert_eq!(poc(&sealed[4])["unsealed_failures"]["count"], 1);
-        seal_due_summaries(
-            &node.capsules,
-            None,
-            &node.splits.failures,
-            chrono::Utc::now().timestamp(),
-        );
+        tick(&node);
         assert_eq!(node.sealed().len(), 5, "once");
     }
 
