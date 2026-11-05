@@ -54,10 +54,20 @@ pub struct FailureWindow {
     cap: u32,
     window_s: u32,
     peers: Mutex<HashMap<String, PeerWindow>>,
-    /// Summaries handed back that could not be sealed, held until they can
-    /// be ([`FailureWindow::restore`]).
-    unsealed_summaries: Mutex<Vec<Summary>>,
+    /// Summaries handed back that could not be sealed, each with the number
+    /// of seal attempts so far and the earliest time of the next one
+    /// ([`FailureWindow::restore`]).
+    unsealed_summaries: Mutex<Vec<(Summary, i64)>>,
+    /// Failed seals so far, per (peer, window start).
+    seal_failures: Mutex<HashMap<(String, i64), u32>>,
 }
+
+/// A summary whose seal fails is tried this many times in all. A seal that
+/// fails after its record reached the ledger (its sequence counter did not
+/// commit) leaves a record behind, so the retries are bounded, not endless.
+pub const MAX_SEAL_ATTEMPTS: u32 = 3;
+/// Seconds before a failed seal is tried again, times the attempts so far.
+const RETRY_BACKOFF_S: i64 = 60;
 
 impl Default for FailureWindow {
     fn default() -> Self {
@@ -73,16 +83,33 @@ impl FailureWindow {
             window_s,
             peers: Mutex::new(HashMap::new()),
             unsealed_summaries: Mutex::new(Vec::new()),
+            seal_failures: Mutex::new(HashMap::new()),
         }
     }
 
     /// Hold a summary whose seal failed (a write error), so a later tick
-    /// hands it back instead of the count being lost.
-    pub fn restore(&self, summary: Summary) {
+    /// hands it back after a backoff instead of the count being lost.
+    /// Returns `false`, holding nothing, once [`MAX_SEAL_ATTEMPTS`] seals of
+    /// it have failed.
+    pub fn restore(&self, summary: Summary, now: i64) -> bool {
+        let key = (summary.peer.clone(), summary.window_start);
+        let mut failures = self
+            .seal_failures
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let failed = failures.entry(key.clone()).or_insert(0);
+        *failed += 1;
+        if *failed >= MAX_SEAL_ATTEMPTS {
+            failures.remove(&key);
+            return false;
+        }
+        let retry_at = now + RETRY_BACKOFF_S * i64::from(*failed);
+        drop(failures);
         self.unsealed_summaries
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push(summary);
+            .push((summary, retry_at));
+        true
     }
 
     fn window_of(&self, now: i64) -> i64 {
@@ -141,12 +168,17 @@ impl FailureWindow {
             .peers
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut due = std::mem::take(
-            &mut *self
-                .unsealed_summaries
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-        );
+        let mut due = Vec::new();
+        self.unsealed_summaries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .retain(|(summary, retry_at)| {
+                if *retry_at > now {
+                    return true;
+                }
+                due.push(summary.clone());
+                false
+            });
         peers.retain(|peer, entry| {
             if entry.window >= window {
                 return true;
@@ -240,12 +272,30 @@ mod tests {
         window.admit("a", T0 + 1);
         let due = window.due_summaries(T0 + 3600);
         assert_eq!(due.len(), 1);
-        window.restore(due[0].clone());
-        assert_eq!(window.due_summaries(T0 + 3601), due);
+        let now = T0 + 3600;
+        assert!(window.restore(due[0].clone(), now));
+        assert!(window.due_summaries(now + 59).is_empty(), "backs off");
+        assert_eq!(window.due_summaries(now + 60), due);
         assert!(
-            window.due_summaries(T0 + 3602).is_empty(),
+            window.due_summaries(now + 61).is_empty(),
             "once sealed, gone"
         );
+    }
+
+    #[test]
+    fn a_summary_that_keeps_failing_is_given_up_after_the_attempt_limit() {
+        let window = FailureWindow::new(1, 3600);
+        window.admit("a", T0);
+        window.admit("a", T0 + 1);
+        let summary = window.due_summaries(T0 + 3600).remove(0);
+        let mut now = T0 + 3600;
+        for _ in 1..MAX_SEAL_ATTEMPTS {
+            assert!(window.restore(summary.clone(), now));
+            now += 600;
+            assert_eq!(window.due_summaries(now).len(), 1);
+        }
+        assert!(!window.restore(summary, now), "no more than the limit");
+        assert!(window.due_summaries(now + 6000).is_empty());
     }
 
     #[test]

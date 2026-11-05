@@ -24,6 +24,17 @@ function paneCRow(overrides: Partial<PaneCRow>): PaneCRow {
   }
 }
 
+describe('a failed exchange row', () => {
+  it('is local, never open: nothing of theirs will arrive for it', () => {
+    const [row] = buildExchangeLedgerRows(
+      [paneCRow({ role_tag: 'FAILED', theirs: { state: 'absent', capsule_id: null } as never })],
+      new Map()
+    )
+    expect(row.localOnly).toBe(true)
+    expect(exchangeStateFilterValue(row)).toBe('local')
+  })
+})
+
 describe('buildExchangeLedgerRows', () => {
   it('Checks is an em-dash for a clean row, never a count', () => {
     const [row] = buildExchangeLedgerRows([paneCRow({ has_issue: false })], new Map())

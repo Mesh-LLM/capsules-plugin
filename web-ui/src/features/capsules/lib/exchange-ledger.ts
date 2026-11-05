@@ -128,6 +128,9 @@ export function isLocalOnly(
   state: RightCellState,
   ownRecord: CapsuleRecord | Record<string, unknown> | null | undefined
 ): boolean {
+  // A failed exchange has no other side to wait for: nothing of theirs will
+  // arrive for it, so it is never `open`.
+  if (row.role_tag === 'FAILED') return true
   return (
     row.role_tag === 'SERVED' &&
     counterparty === null &&

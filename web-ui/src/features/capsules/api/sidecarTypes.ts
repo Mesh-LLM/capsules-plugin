@@ -62,9 +62,10 @@ export type PaneBRungCell = PaneState & {
 
 /** `role_and_count_cell`. Direction-of-exchange fact, never a trust signal. */
 export type PaneBRoleCell = PaneState & {
-  role?: 'both' | 'you_to_them' | 'them_to_you' | 'unknown'
+  role?: 'both' | 'you_to_them' | 'them_to_you' | 'failed' | 'unknown'
   you_to_them_count?: number
   them_to_you_count?: number
+  failed_count?: number
   exchange_count?: number
 }
 

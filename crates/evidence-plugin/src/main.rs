@@ -359,11 +359,13 @@ async fn observe_failed_exchange(
     let failures = splits.failures.clone();
     let sealed = tokio::task::spawn_blocking(move || {
         if let Some(summary) = closed {
-            if seal_unsealed_failures(&capsules_for_seal, checkpoints_for_seal.as_ref(), &summary)
-                .is_none()
-            {
-                failures.restore(summary);
-            }
+            seal_or_restore(
+                &capsules_for_seal,
+                checkpoints_for_seal.as_ref(),
+                &failures,
+                summary,
+                chrono::Utc::now().timestamp(),
+            );
         }
         if admit == failure_window::Admit::Seal {
             seal_observed_host_exchange(
@@ -380,6 +382,39 @@ async fn observe_failed_exchange(
         Err(join_error) => {
             tracing::warn!(%join_error, "failed-exchange seal task did not complete");
         }
+    }
+}
+
+/// Seal `summary`; when that fails, hold it for a bounded number of retries
+/// (`FailureWindow::restore`) so a write error does not lose the count.
+fn seal_or_restore(
+    capsules: &CapsuleState,
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
+    failures: &failure_window::FailureWindow,
+    summary: failure_window::Summary,
+    now: i64,
+) {
+    if seal_unsealed_failures(capsules, checkpoints, &summary).is_some() {
+        return;
+    }
+    if !failures.restore(summary.clone(), now) {
+        tracing::warn!(
+            peer = %summary.peer,
+            unsealed = summary.unsealed,
+            "giving up on the unsealed-failures summary after repeated seal failures"
+        );
+    }
+}
+
+/// Seal every summary whose window has closed, as the plugin's tick does.
+fn seal_due_summaries(
+    capsules: &CapsuleState,
+    checkpoints: Option<&checkpoint_cadence::CheckpointHandle>,
+    failures: &failure_window::FailureWindow,
+    now: i64,
+) {
+    for summary in failures.due_summaries(now) {
+        seal_or_restore(capsules, checkpoints, failures, summary, now);
     }
 }
 
@@ -1208,14 +1243,12 @@ fn spawn_split_tick(
             );
             if let Err(join_error) = tokio::task::spawn_blocking(move || {
                 seal_released_splits(&capsules, checkpoints.as_ref(), &splits, &lifecycle_events);
-                for summary in splits
-                    .failures
-                    .due_summaries(chrono::Utc::now().timestamp())
-                {
-                    if seal_unsealed_failures(&capsules, checkpoints.as_ref(), &summary).is_none() {
-                        splits.failures.restore(summary);
-                    }
-                }
+                seal_due_summaries(
+                    &capsules,
+                    checkpoints.as_ref(),
+                    &splits.failures,
+                    chrono::Utc::now().timestamp(),
+                );
             })
             .await
             {
@@ -3373,6 +3406,55 @@ mod failed_exchange_tests {
             node.splits.failures.due_summaries(later).is_empty(),
             "one summary per peer per window"
         );
+    }
+
+    /// The failure that opens a new window seals the summary of the one it
+    /// closes, before its own record; the tick seals a window nobody reopens.
+    #[tokio::test]
+    async fn the_next_window_and_the_tick_each_seal_the_summary_once() {
+        let mut node = Node::new();
+        node.splits.failures = Arc::new(failure_window::FailureWindow::new(1, 1));
+        let failure = |id: &str| {
+            let mut event = failed_event("raw_proxy", Some(402), "payment_required");
+            event["exchange_id"] = json!(id);
+            event["requested_by_node_id"] = json!(ASKER);
+            event
+        };
+        node.observe(&failure("a")).await;
+        node.observe(&failure("b")).await; // over the cap: counted only
+        assert_eq!(node.sealed().len(), 1);
+        tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
+        node.observe(&failure("c")).await; // closes the window: summary, then itself
+        let sealed = node.sealed();
+        assert_eq!(sealed.len(), 3, "a, the summary, c");
+        assert_eq!(poc(&sealed[1])["unsealed_failures"]["count"], 1);
+        assert!(poc(&sealed[2]).get("unsealed_failures").is_none());
+
+        // `c` fit its window's cap, so closing that window seals no summary.
+        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+        node.observe(&failure("d")).await;
+        node.observe(&failure("e")).await;
+        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+        seal_due_summaries(
+            &node.capsules,
+            None,
+            &node.splits.failures,
+            chrono::Utc::now().timestamp(),
+        );
+        let sealed = node.sealed();
+        assert_eq!(
+            sealed.len(),
+            5,
+            "d, then the tick's summary; e is over the cap"
+        );
+        assert_eq!(poc(&sealed[4])["unsealed_failures"]["count"], 1);
+        seal_due_summaries(
+            &node.capsules,
+            None,
+            &node.splits.failures,
+            chrono::Utc::now().timestamp(),
+        );
+        assert_eq!(node.sealed().len(), 5, "once");
     }
 
     /// The requester side seals every failure of its own: the cap is a

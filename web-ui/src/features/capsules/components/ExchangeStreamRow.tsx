@@ -333,7 +333,7 @@ export function ExchangeStreamRow({
   const localOnly = row.localOnly && !askOutcome
   const servedForPay = isServedForPay(row.raw)
   const gatedText =
-    row.roleTag !== 'SERVED' ? OTHER_SIDE_NOT_KNOWN_TEXT : servedForPay ? PAYER_NOT_RECORDED_TEXT : NO_OTHER_SIDE_TEXT
+    row.roleTag === 'FAILED' ? NO_OTHER_SIDE_TEXT : row.roleTag !== 'SERVED' ? OTHER_SIDE_NOT_KNOWN_TEXT : servedForPay ? PAYER_NOT_RECORDED_TEXT : NO_OTHER_SIDE_TEXT
   const cellText = gatedByCounterparty ? gatedText : rightCellText(state)
   // The face says the verdict in plain words, naming the other node; the
   // longer sentences (the state's own, and what an ask returned and how it

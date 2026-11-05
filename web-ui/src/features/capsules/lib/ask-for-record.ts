@@ -126,6 +126,8 @@ export function otherSideNodeId(record: CapsuleRecord | Record<string, unknown> 
 
 export function askTarget(record: CapsuleRecord | Record<string, unknown> | null | undefined): AskTarget | null {
   const poc = pocBlock(record)
+  // A failed exchange binds no digest and has no record of theirs to ask for.
+  if (poc?.outcome === 'failed') return null
   const recordedNonce = str(poc?.client_nonce)
   const nonce = recordedNonce === HOST_SERVED_NO_NONCE ? null : recordedNonce
   const effect = obj(obj(record)?.effect)

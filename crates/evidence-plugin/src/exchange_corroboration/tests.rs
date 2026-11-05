@@ -346,7 +346,7 @@ fn a_failed_half_is_not_a_half_of_the_answer() {
     assert_eq!(halves.len(), 1, "the failed half is not listed");
     assert_eq!(halves[0].role, "served");
 
-    let alone = node_with(&[failed.clone()], &node_key());
+    let alone = node_with(std::slice::from_ref(&failed), &node_key());
     assert_eq!(
         refused(&ask(alone.path(), &unsigned(&key), true)),
         Some(Reason::NoSuchSubject)
