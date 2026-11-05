@@ -58,7 +58,9 @@ side is not capped.
   `served` or `requested`, and counts it on neither side.
 - **Service History** (`service_history/1`) counts served exchanges: a failed record is not one. The
   definition document is unchanged, so its digest is too; the exclusion is in how the node reads its
-  records (`evidence_log::leaf_facts`).
+  records (`evidence_log::leaf_facts`), which is the only place the counts read records.
+- **Provider receipts** root at the record of an exchange the node served: a failed record is not
+  that record, so a failed exchange has no receipt bundle.
 - **Exchange corroboration** (`exchange_corroboration/1`) answers with the halves that bind digests: a
   failed half binds none, so it is not listed, and a nonce with only failed halves is
   `no_such_subject`.

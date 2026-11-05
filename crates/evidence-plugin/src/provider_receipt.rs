@@ -399,6 +399,47 @@ mod tests {
         ));
     }
 
+    /// A provider's record of a request it refused has role `served` and
+    /// names the host's exchange id, but it is not an exchange the node
+    /// served: no receipt bundle roots at it (evidencebook#205).
+    #[test]
+    fn a_failed_record_is_not_the_served_record_a_receipt_roots_at() {
+        use crate::capsule_emit::{HostProvenance, ObservedHostExchange};
+        use crate::lifecycle_channel::DispatchPath;
+        use crate::producer::capsule::FailedExchange;
+        let (_a, dir) = dirs();
+        let (a, _) = (tempfile::tempdir().unwrap(), ());
+        two_nodes(a.path(), dir.path(), WALLET);
+        let state = CapsuleState::open(dir.path(), "provider-node").unwrap();
+        state
+            .emit_for_observed_host_exchange(&ObservedHostExchange {
+                model: "m",
+                exchange_id: Some(HOST_EXCHANGE),
+                request_digest: None,
+                response_digest: None,
+                tool_calls_digest: None,
+                reasoning_digest: None,
+                usage: None,
+                host_provenance: HostProvenance::default(),
+                dispatch_path: DispatchPath::RawProxy,
+                nonce: None,
+                peer_capsule_id: None,
+                peer_capsule_id_provenance: None,
+                twin_bracket_id: None,
+                response_text_digest: None,
+                failure: Some(FailedExchange {
+                    class: Some("upstream_error".into()),
+                    unsealed: None,
+                }),
+            })
+            .unwrap();
+        cut(&state);
+        assert!(matches!(
+            bundle(state.ledger_dir(), &key(&state), HOST_EXCHANGE),
+            Err(Failure::Refused(Refusal::NoExchange))
+        ));
+    }
+
     #[test]
     fn the_route_answer_names_a_refusal_and_rejects_an_empty_id() {
         let (_a, dir) = dirs();

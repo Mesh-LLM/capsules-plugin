@@ -38,6 +38,15 @@ The period policy is Steven's ruling of 2026-10-22 (action-state-group/evidenceb
 Its digest, which the counts name, is
 `0d4b28af7ebfca01a49c1ad59e74b7d9bff0e6712dd3478b4ee35b8ff6af5150`.
 
+## What counts as served
+
+`exchanges_served` counts exchanges this node served. A record with
+`x-mesh-poc-v1.outcome: "failed"` is not one, even though a provider's has `role: "served"`: it
+records a request that failed or was refused (action-state-group/evidencebook#205,
+[FAILED-EXCHANGES.md](FAILED-EXCHANGES.md)), and an absent `outcome` means served. The definition
+document is unchanged, and so is its digest: the node leaves such a record out when it reads its
+records (`evidence_log::leaf_facts`), the one place the counts read them.
+
 ## What is answered
 
 - **The subject:** `full_history`. Any other subject is refused `policy_declined`.
