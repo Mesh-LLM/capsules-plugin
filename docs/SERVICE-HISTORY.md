@@ -45,7 +45,9 @@ Its digest, which the counts name, is
 records a request that failed or was refused (action-state-group/evidencebook#205,
 [FAILED-EXCHANGES.md](FAILED-EXCHANGES.md)), and an absent `outcome` means served. The definition
 document is unchanged, and so is its digest: the node leaves such a record out when it reads its
-records (`evidence_log::leaf_facts`), the one place the counts read them.
+records (`evidence_log::leaf_facts`), the one place the counts read them. The definition document
+does not express that exclusion: a count recomputed from the records by that document alone would
+run a failed provider record (role `served`) as served and differ from the node's.
 
 ## What is answered
 

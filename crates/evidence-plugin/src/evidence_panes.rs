@@ -1396,7 +1396,22 @@ fn own_failed_count(
     records
         .iter()
         .filter(|r| !is_received_record(r, received_provenance) && is_failed(r))
-        .count()
+        .map(failures_in)
+        .sum()
+}
+
+/// The failures a failed record stands for: one, or for a provider's summary
+/// record the `unsealed_failures.count` it did not seal one by one.
+fn failures_in(record: &Value) -> usize {
+    unsealed_failures(record).map_or(1, |count| count as usize)
+}
+
+/// The count on a summary record (`x-mesh-poc-v1.unsealed_failures`).
+fn unsealed_failures(record: &Value) -> Option<u64> {
+    poc_block(record)?
+        .get("unsealed_failures")?
+        .get("count")?
+        .as_u64()
 }
 
 /// One `claims_refused` gate input per own record of this peer whose other
@@ -2394,6 +2409,9 @@ fn build_pane_c_list_with_settlements(
         rows.push(json!({
             "exchange_key": exchange_key,
             "role_tag": role_tag(anchor),
+            // On the one summary record a provider seals for the failures it
+            // did not seal one by one: how many (null on every other row).
+            "unsealed_failures": unsealed_failures(anchor),
             "counterparty": counterparty,
             // `header_state`/`properties`/`has_issue` need the nine-key
             // assurance map (`build_assurance_map`), which is cryptographic
@@ -5395,6 +5413,13 @@ mod tests {
         let none = HashMap::new();
         assert_eq!(distinct_exchange_count(&records, &none), 3);
         assert_eq!(own_failed_count(&records, &none), 2);
+        // A provider's summary stands for the failures it did not seal.
+        let mut summary = failed("s");
+        summary["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"]["unsealed_failures"] =
+            json!({ "count": 3, "window_start": "2026-09-01T00:00:00Z", "window_s": 3600 });
+        let mut with_summary = records.clone();
+        with_summary.push(summary);
+        assert_eq!(own_failed_count(&with_summary, &none), 5);
         assert_eq!(own_role_counts(&records, &none), (3, 0));
     }
 

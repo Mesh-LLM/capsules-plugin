@@ -643,9 +643,26 @@ describe('ExchangeStreamRow — a failed exchange (evidencebook#205)', () => {
       const button = screen.getByRole('button', { name })
       expect(button).toBeDisabled()
       expect(button.closest('[data-census-chip]')).toHaveTextContent(
-        'The exchange failed, so there is no record of theirs to ask for.'
+        'The exchange failed. Failed exchanges are not shared, so there is nothing of theirs to ask for.'
       )
     }
+  })
+})
+
+describe('ExchangeStreamRow — a provider summary of unrecorded failures', () => {
+  it('says how many failures were not recorded', () => {
+    const base = makeRow('open_not_asked', { counterparty: null, roleTag: 'FAILED' })
+    render(
+      <ExchangeStreamRow
+        {...toggleProps()}
+        localRecord={RECORD_NAMING_NO_PEER}
+        rail={NO_RAIL}
+        row={{ ...base, raw: { ...base.raw, unsealed_failures: 3 } as never }}
+      />
+    )
+    expect(
+      screen.getByText('3 more failures from this peer in that hour were not recorded (limit 20 per hour)')
+    ).toBeInTheDocument()
   })
 })
 

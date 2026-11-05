@@ -18,8 +18,9 @@
 //! worth of failures for a peer and loses that window's summary. A summary
 //! whose seal fails is tried again, with a backoff, [`MAX_SEAL_ATTEMPTS`]
 //! times in all and then given up on (a warning in the log), so a write failure
-//! that outlasts the tries also loses it. A seal that fails after its record
-//! reached the ledger can leave up to that many copies of one summary.
+//! that outlasts the tries also loses it. A retry first looks for the summary
+//! on the ledger (a seal can fail after its record was appended), so a window
+//! has one.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -110,6 +111,15 @@ impl FailureWindow {
             || chrono::Utc::now().timestamp(),
             |clock| clock.load(Ordering::SeqCst),
         )
+    }
+
+    /// Whether a seal of `summary` has failed before: a record of it may
+    /// already be on the ledger.
+    pub fn was_tried(&self, summary: &Summary) -> bool {
+        self.seal_failures
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains_key(&(summary.peer.clone(), summary.window_start))
     }
 
     /// A summary sealed: forget its failed attempts.

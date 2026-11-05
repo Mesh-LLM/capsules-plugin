@@ -354,8 +354,11 @@ export function ExchangeStreamRow({
   const latestAsk = askOutcome?.latest ?? null
   const notOnMesh = latestAsk?.kind === 'no_reply' && latestAsk.plain === true && latestAsk.detail === NOT_ON_MESH
   const failed = row.roleTag === 'FAILED'
+  const unsealedFailures = row.raw.unsealed_failures ?? null
   const faceText = failed
-    ? FAILED_FACE_TEXT
+    ? unsealedFailures
+      ? `${unsealedFailures} more ${unsealedFailures === 1 ? 'failure' : 'failures'} from this peer in that hour ${unsealedFailures === 1 ? 'was' : 'were'} not recorded (limit 20 per hour)`
+      : FAILED_FACE_TEXT
     : gatedByCounterparty
       ? gatedText
       : rowVerdictText(state, otherSideName, notOnMesh)

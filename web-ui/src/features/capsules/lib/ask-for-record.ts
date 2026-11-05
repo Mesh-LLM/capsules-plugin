@@ -167,7 +167,7 @@ export type RowAskInput = {
   historyAsk: { kind: string } | null
 }
 
-const FAILED_NO_RECORD_TO_ASK = 'The exchange failed, so there is no record of theirs to ask for.'
+const FAILED_NO_RECORD_TO_ASK = 'The exchange failed. Failed exchanges are not shared, so there is nothing of theirs to ask for.'
 export const ASK_RECORD_LABEL = 'Ask for their record'
 export const ASK_RECORD_AGAIN_LABEL = 'Ask again for their record'
 export const ASK_HISTORY_LABEL = 'Ask for their history'

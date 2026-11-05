@@ -456,6 +456,8 @@ export type TeeFact =
 export type PaneCRow = {
   exchange_key: string
   role_tag: string
+  /** On a provider's summary record of failures it did not seal one by one: how many. */
+  unsealed_failures?: number | null
   /** A split request's records (docs/DESIGN-split-stage-records.md §7): the
    *  coordinator's main record and the stage records it carried, or -- on a
    *  stage node's own row -- that stage's block. Absent on every other row.

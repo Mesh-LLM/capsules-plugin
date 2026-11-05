@@ -392,6 +392,13 @@ fn seal_or_restore(
     summary: failure_window::Summary,
     now: i64,
 ) {
+    // A seal that failed may have failed after its record reached the ledger
+    // (the sequence counter did not commit), so a retry looks for it first:
+    // one summary per peer per window.
+    if failures.was_tried(&summary) && summary_on_ledger(capsules, &summary) {
+        failures.sealed(&summary);
+        return;
+    }
     if seal_unsealed_failures(capsules, checkpoints, &summary).is_some() {
         failures.sealed(&summary);
         return;
@@ -403,6 +410,28 @@ fn seal_or_restore(
             "giving up on the unsealed-failures summary after repeated seal failures"
         );
     }
+}
+
+/// Whether the ledger already holds the summary record of this peer and
+/// window (`unsealed_exchange_id`).
+fn summary_on_ledger(capsules: &CapsuleState, summary: &failure_window::Summary) -> bool {
+    let id = unsealed_exchange_id(summary);
+    evidence_panes::read_capsule_records(capsules.ledger_dir())
+        .iter()
+        .any(|record| {
+            record
+                .pointer("/model_attestation/compute_attestation/x-mesh-poc-v1/serving_provenance/exchange_id")
+                .and_then(Value::as_str)
+                == Some(id.as_str())
+        })
+}
+
+/// The exchange id of a summary record: one per peer per window.
+fn unsealed_exchange_id(summary: &failure_window::Summary) -> String {
+    format!(
+        "unsealed-failures:{}:{}",
+        summary.peer, summary.window_start
+    )
 }
 
 /// Seal every summary whose window has closed, as the plugin's tick does.
@@ -428,10 +457,7 @@ fn seal_unsealed_failures(
     let window_start = chrono::DateTime::from_timestamp(summary.window_start, 0)?
         .format("%Y-%m-%dT%H:%M:00Z")
         .to_string();
-    let exchange_id = format!(
-        "unsealed-failures:{}:{}",
-        summary.peer, summary.window_start
-    );
+    let exchange_id = unsealed_exchange_id(summary);
     let observed = ObservedHostExchange {
         model: "unknown",
         exchange_id: Some(&exchange_id),
@@ -3458,6 +3484,43 @@ mod failed_exchange_tests {
         assert_eq!(poc(&sealed[4])["unsealed_failures"]["count"], 1);
         tick(&node);
         assert_eq!(node.sealed().len(), 5, "once");
+    }
+
+    /// A summary whose seal failed after its record reached the ledger is not
+    /// sealed twice when it is retried.
+    #[tokio::test]
+    async fn a_retried_summary_already_on_the_ledger_is_not_sealed_again() {
+        let node = Node::new();
+        let summary = failure_window::Summary {
+            peer: ASKER.to_string(),
+            window_start: 3600,
+            window_s: 3600,
+            unsealed: 2,
+        };
+        // The first seal reached the ledger but was reported failed.
+        assert!(seal_unsealed_failures(&node.capsules, None, &summary).is_some());
+        assert!(node.splits.failures.restore(summary.clone(), 0));
+        let due = node.splits.failures.due_summaries(1_000);
+        assert_eq!(due, vec![summary.clone()]);
+        seal_or_restore(
+            &node.capsules,
+            None,
+            &node.splits.failures,
+            summary.clone(),
+            1_000,
+        );
+        assert_eq!(node.sealed().len(), 1, "one summary for the window");
+        assert!(
+            !node.splits.failures.was_tried(&summary),
+            "forgotten once found"
+        );
+        // A summary with no earlier failed seal is sealed, as before.
+        let other = failure_window::Summary {
+            window_start: 7200,
+            ..summary
+        };
+        seal_or_restore(&node.capsules, None, &node.splits.failures, other, 1_000);
+        assert_eq!(node.sealed().len(), 2);
     }
 
     /// The requester side seals every failure of its own: the cap is a
