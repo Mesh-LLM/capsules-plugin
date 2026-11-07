@@ -545,6 +545,10 @@ fn a_card_that_is_not_filed_as_loop_files_it_is_refused() {
             |c| c["stream"] = json!("../x"),
             "stream must be a plain log id",
         ),
+        (
+            |c| c["stream"] = json!(null),
+            "stream must be a plain log id",
+        ),
         (|c| c["community"] = json!("nowhere"), "community"),
         (|c| c["checkpoint_key"] = json!("AAAA"), "checkpoint_key"),
         (
@@ -585,4 +589,24 @@ fn a_legacy_zero_commitment_still_verifies() {
         });
     });
     assert_eq!(verify(&signed), Vec::<String>::new());
+}
+
+/// A staple whose result names no `evidence_stream` cannot be filed under
+/// any stream: `null` for both sides is not a match.
+#[test]
+fn a_staple_that_names_no_stream_is_refused_even_under_a_null_stream() {
+    let signed = restapled(&built(&defaults()), |card| {
+        card["artifact"] = json!(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b"{}"));
+        card["artifact_digest"] = json!(hex::encode(Sha256::digest(b"{}")));
+    });
+    // As filed under a stream, the staple is refused for naming none.
+    let named = resigned(&signed, |d| d["history_cards"][0]["stream"] = json!("a"));
+    assert!(verify(&named)
+        .iter()
+        .any(|p| p.contains("stream is not the card's own evidence_stream")));
+    // Filed under `null`, it is refused for the shape.
+    let null = resigned(&signed, |d| d["history_cards"][0]["stream"] = json!(null));
+    assert!(verify(&null)
+        .iter()
+        .any(|p| p.contains("stream must be a plain log id")));
 }

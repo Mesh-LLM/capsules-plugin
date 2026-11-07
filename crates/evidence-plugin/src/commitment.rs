@@ -461,7 +461,9 @@ pub fn verify(signed: &Signed) -> Vec<String> {
             match digest_of(&name, card) {
                 Ok(raw) => {
                     problems.extend(staple_problems(&name, &raw, &doc["key_id"]));
-                    if staple_stream(&raw).as_deref() != card["stream"].as_str() {
+                    if staple_stream(&raw).is_none()
+                        || staple_stream(&raw).as_deref() != card["stream"].as_str()
+                    {
                         problems.push(format!(
                             "{name}.stream is not the card's own evidence_stream"
                         ));
@@ -770,10 +772,10 @@ fn card_problems(cards: &Value) -> Vec<String> {
                 .map(|k| format!("unknown field {name}.{k}")),
         );
         let text = |m: &str| map.get(m).and_then(Value::as_str);
+        if map.contains_key("stream") && !text("stream").is_some_and(is_stream) {
+            problems.push(format!("{name}.stream must be a plain log id"));
+        }
         if let Some(stream) = text("stream") {
-            if !is_stream(stream) {
-                problems.push(format!("{name}.stream must be a plain log id"));
-            }
             if streams.iter().any(|s| s.eq_ignore_ascii_case(stream)) {
                 problems.push(format!("{name} staples stream {stream} again"));
             }
