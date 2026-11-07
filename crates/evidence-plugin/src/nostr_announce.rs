@@ -337,36 +337,18 @@ fn read_key(path: &Path) -> Result<Option<SigningKey>, String> {
 }
 
 fn write_private(path: &Path, text: &str) -> std::io::Result<()> {
-    use std::os::unix::fs::OpenOptionsExt;
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(path)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    // Owner-only and never through a link on Unix; elsewhere the data
+    // directory's own access rules apply, as for the node's other keys.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+    }
+    let mut file = options.open(path)?;
     file.write_all(text.as_bytes())?;
     file.sync_all()
-}
-
-/// The note `doctor` shows when the mailbox key is not the one the last
-/// accepted publish used: a key file that was lost or replaced makes a new
-/// key (`mailbox_key`), whose commitment goes to every relay again. The
-/// events the old key signed stay on the relays; a verifier takes the newest
-/// commitment per node (ECC V4), so they are stale, not wrong.
-pub fn key_change(data_dir: &Path, current: &str) -> Option<String> {
-    let old = std::fs::read_to_string(data_dir.join(LAST_FILE)).ok()?;
-    let old = old.trim();
-    (old != current).then(|| {
-        format!(
-            "the mailbox key changed from {old} to {current} (the key file was lost or replaced): \
-             the commitment names the new key and is published again under it; events signed by \
-             {old} stay on the relays until they expire and are older commitments"
-        )
-    })
-}
-
-fn note_published(data_dir: &Path, current: &str) {
-    let _ = std::fs::write(data_dir.join(LAST_FILE), format!("{current}\n"));
 }
 
 // ---------------------------------------------------------------------

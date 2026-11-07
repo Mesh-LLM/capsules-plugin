@@ -370,12 +370,15 @@ fn the_mailbox_key_is_made_once_kept_private_and_never_the_node_key() {
     let first = mailbox_key(dir.path()).unwrap();
     let again = mailbox_key(dir.path()).unwrap();
     assert_eq!(first.to_bytes(), again.to_bytes());
-    use std::os::unix::fs::PermissionsExt;
-    let mode = std::fs::metadata(dir.path().join(KEY_FILE))
-        .unwrap()
-        .permissions()
-        .mode();
-    assert_eq!(mode & 0o777, 0o600);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(dir.path().join(KEY_FILE))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
     let leftovers: Vec<_> = std::fs::read_dir(dir.path()).unwrap().flatten().collect();
     assert_eq!(leftovers.len(), 1, "no staged copy is left behind");
     std::fs::write(dir.path().join(KEY_FILE), "not a key").unwrap();
