@@ -509,15 +509,24 @@ fn two_first_uses_at_once_end_with_one_key_and_no_staging_file() {
 }
 
 #[test]
-fn a_relay_that_drips_its_handshake_loses_its_connection_and_its_thread() {
-    // Accepts, then sends a byte every 100 ms and never completes a handshake.
+fn a_relay_that_drips_its_handshake_is_cut_off_at_the_connection_lifetime() {
+    // Accepts, answers with a well-formed start of an upgrade response and
+    // then sends one byte of a header every 100 ms for ever: no per-read
+    // timeout fires and no parse error ends it, only the watchdog can.
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
     std::thread::spawn(move || {
         for stream in listener.incoming().flatten() {
             std::thread::spawn(move || {
+                use std::io::Read;
                 let mut stream = stream;
-                while stream.write_all(b"x").is_ok() {
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf);
+                let head = b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nX-Slow: ";
+                if stream.write_all(head).is_err() {
+                    return;
+                }
+                while stream.write_all(b"a").is_ok() {
                     std::thread::sleep(Duration::from_millis(100));
                 }
             });
@@ -525,8 +534,16 @@ fn a_relay_that_drips_its_handshake_loses_its_connection_and_its_thread() {
     });
     let started = Instant::now();
     let outcome = publish_to(&url, &key(), NODE, &octets(&commitment()), 1);
+    let took = started.elapsed();
     assert!(matches!(outcome, Outcome::Unreachable(_)), "{outcome:?}");
-    assert!(started.elapsed() < CONNECTION_LIFETIME * 2 + Duration::from_secs(2));
+    // Two attempts (the whole event, then the digest alone), each held to
+    // the lifetime and cut at it: never shorter, so it was not a parse
+    // error, and never much longer.
+    assert!(took >= CONNECTION_LIFETIME, "ended early after {took:?}");
+    assert!(
+        took < CONNECTION_LIFETIME * 2 + Duration::from_secs(2),
+        "held for {took:?}"
+    );
 }
 
 #[test]
@@ -565,4 +582,31 @@ fn a_relay_still_being_published_to_gets_no_second_thread() {
     );
     assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
     std::thread::sleep(Duration::from_secs(3));
+}
+
+#[test]
+fn a_relay_is_free_again_as_soon_as_its_result_is_in() {
+    // The next announce, made the moment the first returns, must find the
+    // relay free: the guard is released before the result is sent.
+    let url = "wss://free.example".to_string();
+    let route = route_to(&[&url]);
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    for round in 0..200 {
+        let seen = calls.clone();
+        let tried = announce(
+            &book(),
+            &key(),
+            NODE,
+            &commitment(),
+            &route,
+            "t",
+            round,
+            move |_: &str, _: &SigningKey, _: &str, _: &[u8], _: i64| {
+                seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Outcome::Accepted
+            },
+        );
+        assert_eq!(tried, 1, "round {round} found the relay still busy");
+    }
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 200);
 }

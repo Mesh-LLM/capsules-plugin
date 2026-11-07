@@ -711,9 +711,13 @@ pub fn announce(
         );
         let (octets, publish) = (octets.clone(), publish.clone());
         std::thread::spawn(move || {
-            let _flight = flight;
+            // The guard travels with the result and is released by whoever
+            // takes it in (below), or here if nobody does or the worker
+            // panics: there is no moment when the result is in and the relay
+            // still reads as busy.
+            let flight = flight;
             let outcome = publish(&url, &key, &node_id, &octets, at);
-            let _ = send.send((url, outcome));
+            let _ = send.send((url, outcome, flight));
         });
     }
     drop(send);
@@ -722,7 +726,11 @@ pub fn announce(
     while results.len() < launched.len() {
         let left = until.saturating_duration_since(Instant::now());
         match receive.recv_timeout(left) {
-            Ok(done) => results.push(done),
+            // Dropping the guard here frees the relay before this returns.
+            Ok((url, outcome, flight)) => {
+                drop(flight);
+                results.push((url, outcome));
+            }
             Err(_) => break,
         }
     }
