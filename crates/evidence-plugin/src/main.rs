@@ -43,6 +43,7 @@ mod leg_catch_up;
 mod lifecycle_channel;
 mod mesh_evidence_bridge;
 mod network_join;
+mod nostr_announce;
 mod owner_maintenance;
 mod peer_blocks_seen;
 mod peer_commitments;
@@ -2023,6 +2024,12 @@ async fn main() -> anyhow::Result<()> {
                 .await;
             }
         });
+    }
+    // The commitment goes to its Nostr relays while `advertise_evidence_requests`
+    // is on (Mesh-LLM/capsules-plugin#212); with it off the task publishes nothing.
+    {
+        let self_peer = self_peer::SelfPeer::new(&data_dir);
+        nostr_announce::spawn(capsules.clone(), move || self_peer.current());
     }
     let evidence_pub_key_pem = capsules.public_key_pem();
     let own_public_key = capsules.public_key();

@@ -328,6 +328,7 @@ pub fn build(
     node_id: &str,
     policy: &Policy,
     binding: Option<&str>,
+    route: Option<&crate::nostr_announce::Route>,
 ) -> Result<Signed, Unbuilt> {
     let key = responder.signing_key;
     let key_id = key_id(key);
@@ -384,6 +385,9 @@ pub fn build(
     });
     if let Some(digest) = binding {
         doc[CONTROLLER_BINDING] = json!({ "digest": digest });
+    }
+    if let Some(route) = route {
+        doc["ask"]["nostr"] = route.to_json();
     }
     let signed = Signed {
         commitment: sign(doc, key),
@@ -632,6 +636,7 @@ fn shape_problems(doc: &Value) -> Vec<String> {
     };
     let mut problems = Vec::new();
     let schema = schema(&doc["profile"]);
+    let legacy = doc["profile"] == LEGACY_COMMITMENT_PROFILE;
     for (name, members) in schema.iter().chain(&OPTIONAL) {
         let (name, members) = (*name, *members);
         let Some(v) = map.get(name) else {
@@ -656,6 +661,7 @@ fn shape_problems(doc: &Value) -> Vec<String> {
                         inner
                             .keys()
                             .filter(|k| !members.contains(&k.as_str()))
+                            .filter(|k| !(name == "ask" && k.as_str() == "nostr" && !legacy))
                             .map(|k| format!("unknown field {name}.{k}")),
                     );
                     true
@@ -683,6 +689,9 @@ fn shape_problems(doc: &Value) -> Vec<String> {
             if !is_hex64(&text(&doc[name])) {
                 problems.push(format!("{name} is not 64 lowercase hex"));
             }
+        }
+        if let Some(route) = doc["ask"].get("nostr") {
+            problems.extend(crate::nostr_announce::route_problems(route));
         }
         if doc.get(CONTROLLER_BINDING).is_some()
             && !is_hex64(&text(&doc[CONTROLLER_BINDING]["digest"]))

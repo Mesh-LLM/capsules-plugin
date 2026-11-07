@@ -19,7 +19,7 @@ witness:                     [] | [{endpoint, public_key?}, ...]   # default: []
 With these defaults a node sends a peer two things on its own: its sealed
 record of a completed exchange, only to the other side of that exchange
 (`share_record_at_completion`); and, once a referee has judged a pair, the
-verdict to the nodes it judges (`share_adjudications`). It advertises nothing.
+verdict to the nodes it judges (`share_adjudications`). It advertises nothing unless `advertise_evidence_requests` is turned on.
 Set each to `off` to send nothing. It answers any node that asks whether it
 holds a half of one exchange (`share_exchange_corroboration`), any node that
 asks for its checkpoint list or `history_card/1` (below), and otherwise only
@@ -316,12 +316,19 @@ otherwise both refuse it.
 
 Off by default: this node does not tell other nodes that it answers evidence
 requests. It still answers a node that asks, under the switches above. This
-version advertises nothing, so nothing reads the switch yet: the plugin's
-`evidence-request/1` channel is declared only to its own host, so that a
-request can reach it, and mesh-llm does not pass a plugin's channels on to
-other nodes. Giving the commitment to a peer that asks for it, and the
-operator publishing it, are not advertising either; the signed policy states
-this switch's value (below).
+switch is the only thing that publishes. On, the plugin publishes its signed
+commitment to public Nostr relays as one addressable event (kind 34700, the
+placeholder of agent-action-capsule's evidence-commitment-carriers spec), to
+the relays the commitment's `ask.nostr` member lists: mesh-llm's discovery
+relays unless `CAPSULES_NOSTR_RELAYS` names others. The commitment is the
+same one a peer gets over `commitment/1`: how to ask, what is answered, the
+policy digest, the latest checkpoint and the stapled history card, no
+counts. The event is signed by a mailbox key the plugin makes for this
+(`nostr-mailbox.key` in the data directory), which signs nothing else. Off,
+nothing is published and no key is made. Giving the commitment to a peer that
+asks for it, and the operator publishing it themselves, are not this switch;
+the signed policy states its value (below). `doctor` shows the last result
+per relay.
 
 ## Verdicts (`share_adjudications`)
 

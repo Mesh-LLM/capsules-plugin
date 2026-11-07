@@ -61,6 +61,7 @@ pub const WITNESS: &str = "witness";
 pub const NOT_CHECKED: &str = "not_checked";
 pub const UNSUPPORTED: &str = "unsupported";
 pub const SHARING: &str = "sharing";
+pub const NOSTR_ANNOUNCE: &str = "nostr_announce";
 pub const POLICY_IN_COMMITMENT: &str = "policy_in_commitment";
 pub const STRANGER_VIEW: &str = "stranger_view";
 pub const IDENTIFIED_VIEW: &str = "identified_view";
@@ -82,6 +83,9 @@ pub const STATE_OFF: &str = "off";
 pub const STATE_ANSWERED: &str = "answered";
 pub const STATE_MATCH: &str = "match";
 pub const STATE_MISMATCH: &str = "mismatch";
+pub const STATE_ACCEPTED: &str = "accepted";
+pub const STATE_REJECTED: &str = "rejected";
+pub const STATE_UNREACHABLE: &str = "unreachable";
 
 /// One line of a doctor report.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -366,6 +370,7 @@ pub fn findings(
         if sharing_off { STATE_OFF } else { STATE_ON },
         switches,
     ));
+    out.extend(nostr_announce(policy));
     out.push(policy_in_commitment(responder, served, &book));
     out.push(Finding::new(
         STRANGER_VIEW,
@@ -720,6 +725,59 @@ impl JoinArgs {
         }
         Ok(())
     }
+}
+
+/// Where the commitment was last published, one finding per relay
+/// (`nostr_announce`): `off` when the switch is off, and why nothing is
+/// published when it is on and cannot be.
+fn nostr_announce(policy: &Policy) -> Vec<Finding> {
+    use crate::nostr_announce as n;
+    if !policy.advertise_evidence_requests {
+        return vec![Finding::new(
+            NOSTR_ANNOUNCE,
+            STATE_OFF,
+            "advertise_evidence_requests is off: nothing is published to any Nostr relay",
+        )];
+    }
+    let mut out = Vec::new();
+    if let Some(why) = n::blocked() {
+        out.push(Finding::new(
+            NOSTR_ANNOUNCE,
+            STATE_MISSING,
+            format!("the commitment is not being published: {why}"),
+        ));
+    }
+    for (url, s) in n::status() {
+        let state = match s.state {
+            "accepted" => STATE_ACCEPTED,
+            "rejected" => STATE_REJECTED,
+            _ => STATE_UNREACHABLE,
+        };
+        out.push(
+            Finding::new(
+                NOSTR_ANNOUNCE,
+                state,
+                format!(
+                    "{url} at {}{}",
+                    s.at,
+                    if s.detail.is_empty() {
+                        String::new()
+                    } else {
+                        format!(": {}", s.detail)
+                    }
+                ),
+            )
+            .with(s.digest),
+        );
+    }
+    if out.is_empty() {
+        out.push(Finding::new(
+            NOSTR_ANNOUNCE,
+            STATE_NOT_CHECKED,
+            "on, but nothing has been published yet (the first publish follows the first commitment, within a minute)",
+        ));
+    }
+    out
 }
 
 /// `doctor`: `{"findings": [...]}`.
