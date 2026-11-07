@@ -16,6 +16,8 @@ enum Relay {
     Caps(usize),
     /// Closes the connection at once.
     Hangs,
+    /// Closes with a Size close frame on an event with content over this.
+    ClosesOver(usize),
 }
 
 /// A relay on 127.0.0.1 that keeps every event it is sent; the URL it is at.
@@ -40,6 +42,16 @@ fn mock(behaviour: Relay) -> (String, Arc<Mutex<Vec<Value>>>) {
                     let event = parts[1].clone();
                     let id = event["id"].clone();
                     let content = event["content"].as_str().unwrap_or_default().len();
+                    if let Relay::ClosesOver(max) = behaviour {
+                        if content > max {
+                            let _ = ws.close(Some(tungstenite::protocol::CloseFrame {
+                                code: tungstenite::protocol::frame::coding::CloseCode::Size,
+                                reason: "message too big".into(),
+                            }));
+                            let _ = ws.flush();
+                            return;
+                        }
+                    }
                     let reply = match behaviour {
                         Relay::Refuses => json!(["OK", id, false, "blocked: not for this relay"]),
                         Relay::Caps(max) if content > max => {
@@ -428,4 +440,67 @@ fn a_lost_or_replaced_mailbox_key_is_noticed_and_cleared_by_a_publish() {
         None,
         "an accepted publish under the new key clears it"
     );
+}
+
+#[test]
+fn a_relay_that_closes_on_a_long_message_gets_the_digest_alone() {
+    let (url, got) = mock(Relay::ClosesOver(100));
+    let octets = octets(&commitment());
+    assert_eq!(
+        publish_to(&url, &key(), NODE, &octets, 1),
+        Outcome::Accepted
+    );
+    let got = got.lock().unwrap();
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0]["content"], "");
+}
+
+#[test]
+fn a_stalled_relay_does_not_hold_the_others_past_the_deadline() {
+    let (fast, _) = mock(Relay::Accepts);
+    let slow = "wss://slow.example".to_string();
+    let route = route_to(&[&fast, &slow]);
+    let book = book();
+    let started = Instant::now();
+    let tried = announce(
+        &book,
+        &key(),
+        NODE,
+        &commitment(),
+        &route,
+        "t",
+        5,
+        |url, key, node, octets, at| {
+            if url.starts_with("wss://slow") {
+                std::thread::sleep(Duration::from_secs(4));
+                return Outcome::Accepted;
+            }
+            publish_to(url, key, node, octets, at)
+        },
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "returned at the deadline"
+    );
+    assert_eq!(tried, 2);
+    let held = book.lock().unwrap();
+    assert_eq!(held[&fast].state, "accepted");
+    assert_eq!(held[&slow].state, "unreachable");
+}
+
+#[test]
+fn two_first_uses_at_once_end_with_one_key_and_no_staging_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().to_path_buf();
+    let keys: Vec<_> = (0..8)
+        .map(|_| {
+            let path = path.clone();
+            std::thread::spawn(move || mailbox_key(&path).unwrap().to_bytes())
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
+        .map(|h| h.join().unwrap())
+        .collect();
+    assert!(keys.iter().all(|k| *k == keys[0]));
+    assert_eq!(std::fs::read_dir(&path).unwrap().count(), 1);
 }

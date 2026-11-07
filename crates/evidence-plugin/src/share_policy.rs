@@ -315,8 +315,9 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
             config_setting(ADVERTISE_EVIDENCE_REQUESTS_KEY, config_enum(["off", "on"]))
                 .default_value(&"off")
                 .description(
-                    "Publish your signed commitment (how to ask you for evidence, no counts) to public \
-                     Nostr relays so a stranger can find you. Off publishes nothing.",
+                    "Publish your signed commitment to public Nostr relays so a stranger can find you. \
+                     It holds how to ask you for evidence, your latest checkpoint and your history \
+                     card, which show your log's size. Off publishes nothing.",
                 )
                 .label("Advertise evidence requests")
                 .category(SHOW_CATEGORY_ID, SHOW_CATEGORY_LABEL, SHOW_CATEGORY_SUMMARY, 0)

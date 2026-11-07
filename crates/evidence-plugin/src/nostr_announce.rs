@@ -30,7 +30,7 @@
 //! **Republishing.** [`tick`] runs once a minute. A relay that accepted this
 //! commitment is left alone; a changed commitment goes to every relay again,
 //! and a relay that did not accept is tried again after [`RETRY_AFTER`].
-//! [`status`] is what `doctor` and the Evidence page show: the last result
+//! [`status`] is what `doctor` shows: the last result
 //! per relay, `accepted`, `rejected` or `unreachable`.
 
 use std::collections::BTreeMap;
@@ -78,6 +78,9 @@ pub const ANNOUNCE_ONLY: &str = "announce-only: this node publishes where to fin
 
 /// A relay that did not accept is tried again after this long.
 pub const RETRY_AFTER: Duration = Duration::from_secs(300);
+
+/// How long [`announce`] waits for all relays together.
+const ANNOUNCE_DEADLINE: Duration = Duration::from_secs(if cfg!(test) { 1 } else { 30 });
 
 /// How long one relay gets to connect, accept the event and answer.
 const RELAY_TIMEOUT: Duration = Duration::from_secs(10);
@@ -284,11 +287,18 @@ pub fn mailbox_key(data_dir: &Path) -> Result<SigningKey, String> {
             break key;
         }
     };
-    let staged = data_dir.join(format!("{KEY_FILE}.{}.tmp", std::process::id()));
-    write_private(&staged, &format!("{}\n", hex::encode(key.to_bytes())))
-        .map_err(|e| format!("could not write the mailbox key: {e}"))?;
-    let linked = std::fs::hard_link(&staged, &path);
+    // A staging file of its own per call, removed whether or not it was
+    // written, so a failed write never blocks the next try and two first
+    // uses at once do not meet in one file.
+    let mut suffix = [0u8; 8];
+    getrandom::getrandom(&mut suffix).map_err(|e| format!("no random source: {e}"))?;
+    let staged = data_dir.join(format!("{KEY_FILE}.{}.tmp", hex::encode(suffix)));
+    let written = write_private(&staged, &format!("{}\n", hex::encode(key.to_bytes())));
+    let linked = written
+        .map_err(|e| format!("could not write the mailbox key: {e}"))
+        .map(|()| std::fs::hard_link(&staged, &path));
     let _ = std::fs::remove_file(&staged);
+    let linked = linked?;
     match linked {
         Ok(()) => Ok(key),
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -425,7 +435,9 @@ pub fn publish_to(url: &str, key: &SigningKey, node_id: &str, octets: &[u8], at:
     if !capped {
         match send_event(url, &full) {
             Outcome::Rejected(why) if says_too_large(&why) => {}
-            Outcome::Unreachable(why) if size > 64 * 1024 && says_too_large(&why) => {}
+            // A relay that closes or drops the connection on a message it
+            // finds too long says little: try the digest alone once.
+            Outcome::Unreachable(_) => {}
             other => return other,
         }
     }
@@ -451,8 +463,8 @@ fn relay_limit(url: &str) -> Option<usize> {
 /// One `["EVENT", event]` and the relay's `["OK", ...]` for it.
 fn send_event(url: &str, event: &Value) -> Outcome {
     let started = Instant::now();
-    let mut socket = match connect(url) {
-        Ok(socket) => socket,
+    let (mut socket, deadline) = match connect(url) {
+        Ok(pair) => pair,
         Err(why) => return Outcome::Unreachable(why),
     };
     let wanted = event["id"].as_str().unwrap_or_default().to_string();
@@ -464,12 +476,25 @@ fn send_event(url: &str, event: &Value) -> Outcome {
         if started.elapsed() > RELAY_TIMEOUT {
             break Outcome::Unreachable("no answer in time".into());
         }
+        // The time left, on the socket, so a relay that sends slowly cannot
+        // stretch one read past the deadline.
+        let left = RELAY_TIMEOUT
+            .saturating_sub(started.elapsed())
+            .max(Duration::from_millis(50));
+        deadline.set_read_timeout(Some(left)).ok();
         let message = match socket.read() {
             Ok(m) => m,
             Err(e) => break Outcome::Unreachable(format!("closed before it answered: {e}")),
         };
-        let tungstenite::Message::Text(text) = message else {
-            continue;
+        let text = match message {
+            tungstenite::Message::Text(text) => text,
+            tungstenite::Message::Close(frame) => {
+                let said = frame.map_or("no reason".to_string(), |f| {
+                    format!("{:?}: {}", f.code, f.reason)
+                });
+                break Outcome::Unreachable(format!("the relay closed the connection: {said}"));
+            }
+            _ => continue,
         };
         let Ok(Value::Array(parts)) = serde_json::from_str::<Value>(&text) else {
             continue;
@@ -496,7 +521,7 @@ impl<T: Read + Write + Send> Stream for T {}
 
 /// A WebSocket to `url` (`wss://`, or `ws://` for a local relay of a test),
 /// every step bounded by [`RELAY_TIMEOUT`].
-fn connect(url: &str) -> Result<Socket, String> {
+fn connect(url: &str) -> Result<(Socket, TcpStream), String> {
     let tls = url.starts_with("wss://");
     let rest = url
         .strip_prefix("wss://")
@@ -526,6 +551,9 @@ fn connect(url: &str) -> Result<Socket, String> {
         .map_err(|e| format!("could not connect: {e}"))?;
     tcp.set_read_timeout(Some(RELAY_TIMEOUT)).ok();
     tcp.set_write_timeout(Some(RELAY_TIMEOUT)).ok();
+    let timer = tcp
+        .try_clone()
+        .map_err(|e| format!("could not clone the socket: {e}"))?;
     let stream: Box<dyn Stream> = if tls {
         let name = rustls::pki_types::ServerName::try_from(host.clone())
             .map_err(|e| format!("bad host name: {e}"))?;
@@ -537,7 +565,7 @@ fn connect(url: &str) -> Result<Socket, String> {
     };
     let (socket, _) = tungstenite::client(url, stream)
         .map_err(|e| format!("the WebSocket handshake failed: {e}"))?;
-    Ok(socket)
+    Ok((socket, timer))
 }
 
 fn tls_config() -> Arc<rustls::ClientConfig> {
@@ -620,7 +648,7 @@ pub fn announce(
     route: &Route,
     now: &str,
     at: i64,
-    publish: impl Fn(&str, &SigningKey, &str, &[u8], i64) -> Outcome + Sync,
+    publish: impl Fn(&str, &SigningKey, &str, &[u8], i64) -> Outcome + Send + Sync + 'static,
 ) -> usize {
     let octets = octets(commitment);
     let digest = hex::encode(Sha256::digest(&octets));
@@ -632,17 +660,43 @@ pub fn announce(
             .filter(|url| due(held.get(*url), &digest))
             .collect()
     };
-    // Relays are slow and independent: one thread each, joined here.
-    let results: Vec<(String, Outcome)> = std::thread::scope(|scope| {
-        let handles: Vec<_> = todo
-            .iter()
-            .map(|url| {
-                let (octets, publish) = (&octets, &publish);
-                scope.spawn(move || ((*url).clone(), publish(url, key, node_id, octets, at)))
-            })
-            .collect();
-        handles.into_iter().filter_map(|h| h.join().ok()).collect()
-    });
+    // Relays are slow and independent: one thread each, and none is waited
+    // for past `ANNOUNCE_DEADLINE`, so one that stalls cannot hold the others'
+    // results or the next tick.
+    let (send, receive) = std::sync::mpsc::channel();
+    let octets = Arc::new(octets);
+    let publish = Arc::new(publish);
+    for url in &todo {
+        let (send, url, key, node_id) = (
+            send.clone(),
+            (*url).clone(),
+            key.clone(),
+            node_id.to_string(),
+        );
+        let (octets, publish) = (octets.clone(), publish.clone());
+        std::thread::spawn(move || {
+            let outcome = publish(&url, &key, &node_id, &octets, at);
+            let _ = send.send((url, outcome));
+        });
+    }
+    drop(send);
+    let until = Instant::now() + ANNOUNCE_DEADLINE;
+    let mut results: Vec<(String, Outcome)> = Vec::new();
+    while results.len() < todo.len() {
+        let left = until.saturating_duration_since(Instant::now());
+        match receive.recv_timeout(left) {
+            Ok(done) => results.push(done),
+            Err(_) => break,
+        }
+    }
+    for url in &todo {
+        if !results.iter().any(|(u, _)| u == *url) {
+            results.push((
+                (*url).clone(),
+                Outcome::Unreachable("no answer in time".into()),
+            ));
+        }
+    }
     let tried = results.len();
     let mut held = lock(book);
     held.retain(|url, _| route.relays.contains(url));

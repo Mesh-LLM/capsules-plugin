@@ -322,8 +322,10 @@ placeholder of agent-action-capsule's evidence-commitment-carriers spec), to
 the relays the commitment's `ask.nostr` member lists: mesh-llm's discovery
 relays unless `CAPSULES_NOSTR_RELAYS` names others. The commitment is the
 same one a peer gets over `commitment/1`: how to ask, what is answered, the
-policy digest, the latest checkpoint and the stapled history card, no
-counts. The event is signed by a mailbox key the plugin makes for this
+policy digest, the latest checkpoint and the stapled history card. It
+holds no counts of its own, but the checkpoint and the card are signed
+artifacts that show the size of your log, so publishing it makes your log's
+size, and how it grows, public. The event is signed by a mailbox key the plugin makes for this
 (`nostr-mailbox.key` in the data directory), which signs nothing else. Off,
 nothing is published and no key is made. Giving the commitment to a peer that
 asks for it, and the operator publishing it themselves, are not this switch;

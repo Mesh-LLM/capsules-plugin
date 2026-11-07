@@ -2025,12 +2025,6 @@ async fn main() -> anyhow::Result<()> {
             }
         });
     }
-    // The commitment goes to its Nostr relays while `advertise_evidence_requests`
-    // is on (Mesh-LLM/capsules-plugin#212); with it off the task publishes nothing.
-    {
-        let self_peer = self_peer::SelfPeer::new(&data_dir);
-        nostr_announce::spawn(capsules.clone(), move || self_peer.current());
-    }
     let evidence_pub_key_pem = capsules.public_key_pem();
     let own_public_key = capsules.public_key();
     let own_signing_key = capsules.signing_key().clone();
@@ -2059,6 +2053,13 @@ async fn main() -> anyhow::Result<()> {
     let lifecycle_events = Arc::new(ObservedLifecycleEvents::open(&data_dir)?);
     let self_peer = self_peer::SelfPeer::new(&data_dir);
     let self_peer_for_events = self_peer.clone();
+    // The commitment goes to its Nostr relays while `advertise_evidence_requests`
+    // is on (Mesh-LLM/capsules-plugin#212); with it off the task publishes nothing.
+    // It reads the node id from the same `SelfPeer` the host events teach.
+    {
+        let self_peer = self_peer.clone();
+        nostr_announce::spawn(capsules.clone(), move || self_peer.current());
+    }
 
     // Checkpoint cadence: on by default (see checkpoint_cadence.rs's module
     // doc). `checkpoint_shutdown_tx` held for the
