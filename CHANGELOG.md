@@ -17,6 +17,13 @@
 
 ### Changed
 
+- **The commitment is `evidence-commitment/1` (#266).** The staple moves from the single
+  `history_card` to one `history_cards` entry carrying its `stream` (the card's own log id),
+  `community` (`mesh-llm`) and `checkpoint_key` (this node's key), so capsule-cli
+  `verify --history --counterparty-key --checkpoint-key` verifies the stapled card's signatures
+  offline. The staple, policy and every other member are unchanged. A peer's `/0` commitment is
+  still read. Nodes publish `/1` from the next commitment they build; `/0` files already
+  published stay valid.
 - **Each exchange's "Save evidence file" becomes "Save receipt page" (#96, Steven's 10-29
   ruling, item 1).** The row saves one .html page for an outside party in place of the row's
   JSON. The page carries the receipt bundle the node served, checks it on open with no network,

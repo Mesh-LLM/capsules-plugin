@@ -332,7 +332,7 @@ async fn a_second_node_fetches_the_commitment_and_a_refusal_names_its_policy_dig
     assert_eq!(fetched["announced_key"], "not_announced");
     let commitment = &fetched["commitment"];
     assert_eq!(commitment["node_id"], NODE_A);
-    assert_eq!(commitment["profile"], "evidence-commitment/0");
+    assert_eq!(commitment["profile"], "evidence-commitment/1");
     // The same bytes A handed its operator a second earlier: nothing it was
     // built from changed, so A did not build or sign it again.
     assert_eq!(fetched["policy"], own["policy"]);

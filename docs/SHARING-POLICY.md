@@ -387,7 +387,7 @@ detectable by someone other than this node. It does not make the records true.
 
 The seven switches above, all but `witness`, are this node's
 disclosure policy. The node signs it as a `disclosure-policy/0` document and
-publishes it with its **commitment**, an `evidence-commitment/0` document
+publishes it with its **commitment**, an `evidence-commitment/1` document
 signed by the same key. The commitment says how the node can be asked and
 what it can answer, never what it has done, and it carries no counts. Both
 shapes are the ones evidence-network/loop's step 3 checks
@@ -431,9 +431,11 @@ change with it.
   `performed:counterparty_half`.
 - **What it carries.** The node's latest signed checkpoint, whole, and the
   `history_card/1` answer this node gives any stranger at that checkpoint
-  (the staple). A node has no commitment while it has no checkpoint, while
-  its `history_card/1` is refused (past 1024 checkpoints, #76), or while the
-  commitment would be larger than a peer reads (1 MiB).
+  (the staple), filed as one `history_cards` entry with its stream and the
+  checkpoint key so a third party can verify it offline. A node has no
+  commitment while it has no checkpoint, while its `history_card/1` is refused
+  (past 1024 checkpoints, #76), or while the commitment would be larger than a
+  peer reads (1 MiB).
 - **The staple is L0, always.** It is the `history_card/1` answer: signed
   checkpoints that show the node's records are continuous and unedited, how
   old its key is and, when a witness is configured, which witness holds them.
