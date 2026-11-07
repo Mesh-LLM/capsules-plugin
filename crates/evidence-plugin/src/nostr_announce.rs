@@ -82,6 +82,22 @@ pub const RETRY_AFTER: Duration = Duration::from_secs(300);
 /// How long [`announce`] waits for all relays together.
 const ANNOUNCE_DEADLINE: Duration = Duration::from_secs(if cfg!(test) { 1 } else { 30 });
 
+/// The most one connection lives, handshake included: at this point its
+/// socket is shut down, so a relay that drips bytes cannot keep a thread.
+const CONNECTION_LIFETIME: Duration = Duration::from_secs(if cfg!(test) { 2 } else { 20 });
+
+/// The relays a worker thread is still on, so a stalled relay never has two.
+static IN_FLIGHT: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// Removes its relay from [`IN_FLIGHT`] when the worker ends.
+struct Flight(String);
+
+impl Drop for Flight {
+    fn drop(&mut self) {
+        lock(&IN_FLIGHT).retain(|u| *u != self.0);
+    }
+}
+
 /// How long one relay gets to connect, accept the event and answer.
 const RELAY_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -554,6 +570,13 @@ fn connect(url: &str) -> Result<(Socket, TcpStream), String> {
     let timer = tcp
         .try_clone()
         .map_err(|e| format!("could not clone the socket: {e}"))?;
+    let watchdog = tcp
+        .try_clone()
+        .map_err(|e| format!("could not clone the socket: {e}"))?;
+    std::thread::spawn(move || {
+        std::thread::sleep(CONNECTION_LIFETIME);
+        let _ = watchdog.shutdown(std::net::Shutdown::Both);
+    });
     let stream: Box<dyn Stream> = if tls {
         let name = rustls::pki_types::ServerName::try_from(host.clone())
             .map_err(|e| format!("bad host name: {e}"))?;
@@ -666,7 +689,17 @@ pub fn announce(
     let (send, receive) = std::sync::mpsc::channel();
     let octets = Arc::new(octets);
     let publish = Arc::new(publish);
+    let mut launched: Vec<&String> = Vec::new();
     for url in &todo {
+        {
+            let mut busy = lock(&IN_FLIGHT);
+            if busy.contains(*url) {
+                continue;
+            }
+            busy.push((*url).clone());
+        }
+        launched.push(url);
+        let flight = Flight((*url).clone());
         let (send, url, key, node_id) = (
             send.clone(),
             (*url).clone(),
@@ -675,6 +708,7 @@ pub fn announce(
         );
         let (octets, publish) = (octets.clone(), publish.clone());
         std::thread::spawn(move || {
+            let _flight = flight;
             let outcome = publish(&url, &key, &node_id, &octets, at);
             let _ = send.send((url, outcome));
         });
@@ -682,14 +716,14 @@ pub fn announce(
     drop(send);
     let until = Instant::now() + ANNOUNCE_DEADLINE;
     let mut results: Vec<(String, Outcome)> = Vec::new();
-    while results.len() < todo.len() {
+    while results.len() < launched.len() {
         let left = until.saturating_duration_since(Instant::now());
         match receive.recv_timeout(left) {
             Ok(done) => results.push(done),
             Err(_) => break,
         }
     }
-    for url in &todo {
+    for url in &launched {
         if !results.iter().any(|(u, _)| u == *url) {
             results.push((
                 (*url).clone(),

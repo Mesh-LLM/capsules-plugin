@@ -504,3 +504,62 @@ fn two_first_uses_at_once_end_with_one_key_and_no_staging_file() {
     assert!(keys.iter().all(|k| *k == keys[0]));
     assert_eq!(std::fs::read_dir(&path).unwrap().count(), 1);
 }
+
+#[test]
+fn a_relay_that_drips_its_handshake_loses_its_connection_and_its_thread() {
+    // Accepts, then sends a byte every 100 ms and never completes a handshake.
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("ws://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            std::thread::spawn(move || {
+                let mut stream = stream;
+                while stream.write_all(b"x").is_ok() {
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+            });
+        }
+    });
+    let started = Instant::now();
+    let outcome = publish_to(&url, &key(), NODE, &octets(&commitment()), 1);
+    assert!(matches!(outcome, Outcome::Unreachable(_)), "{outcome:?}");
+    assert!(started.elapsed() < CONNECTION_LIFETIME * 2 + Duration::from_secs(2));
+}
+
+#[test]
+fn a_relay_still_being_published_to_gets_no_second_thread() {
+    let url = "wss://busy.example".to_string();
+    let route = route_to(&[&url]);
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let make = |calls: Arc<std::sync::atomic::AtomicUsize>| {
+        move |_: &str, _: &SigningKey, _: &str, _: &[u8], _: i64| {
+            calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            std::thread::sleep(Duration::from_secs(3));
+            Outcome::Accepted
+        }
+    };
+    // Two separate books so the second round is due again; the worker of the
+    // first is still running when the second starts.
+    announce(
+        &book(),
+        &key(),
+        NODE,
+        &commitment(),
+        &route,
+        "t",
+        1,
+        make(calls.clone()),
+    );
+    announce(
+        &book(),
+        &key(),
+        NODE,
+        &commitment(),
+        &route,
+        "t",
+        2,
+        make(calls.clone()),
+    );
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    std::thread::sleep(Duration::from_secs(3));
+}
