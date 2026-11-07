@@ -405,3 +405,27 @@ fn a_received_route_is_checked_as_loops_checker_does() {
             .contains("missing ask.nostr.relays")
     );
 }
+
+#[test]
+fn a_lost_or_replaced_mailbox_key_is_noticed_and_cleared_by_a_publish() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = hex::encode(mailbox_key(dir.path()).unwrap().verifying_key().to_bytes());
+    assert_eq!(
+        key_change(dir.path(), &first),
+        None,
+        "nothing published yet"
+    );
+    note_published(dir.path(), &first);
+    assert_eq!(key_change(dir.path(), &first), None, "same key");
+    std::fs::remove_file(dir.path().join(KEY_FILE)).unwrap();
+    let second = hex::encode(mailbox_key(dir.path()).unwrap().verifying_key().to_bytes());
+    assert_ne!(first, second, "a lost key file makes a new key");
+    let note = key_change(dir.path(), &second).expect("the change is reported");
+    assert!(note.contains(&first) && note.contains(&second));
+    note_published(dir.path(), &second);
+    assert_eq!(
+        key_change(dir.path(), &second),
+        None,
+        "an accepted publish under the new key clears it"
+    );
+}

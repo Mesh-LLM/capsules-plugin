@@ -739,7 +739,10 @@ fn nostr_announce(policy: &Policy) -> Vec<Finding> {
             "advertise_evidence_requests is off: nothing is published to any Nostr relay",
         )];
     }
-    let mut out = Vec::new();
+    let mut out = vec![Finding::new(NOSTR_ANNOUNCE, STATE_ON, n::ANNOUNCE_ONLY)];
+    if let Some(note) = n::key_note() {
+        out.push(Finding::new(NOSTR_ANNOUNCE, STATE_MISMATCH, note));
+    }
     if let Some(why) = n::blocked() {
         out.push(Finding::new(
             NOSTR_ANNOUNCE,
@@ -770,7 +773,7 @@ fn nostr_announce(policy: &Policy) -> Vec<Finding> {
             .with(s.digest),
         );
     }
-    if out.is_empty() {
+    if out.len() == 1 {
         out.push(Finding::new(
             NOSTR_ANNOUNCE,
             STATE_NOT_CHECKED,

@@ -330,6 +330,24 @@ asks for it, and the operator publishing it themselves, are not this switch;
 the signed policy states its value (below). `doctor` shows the last result
 per relay.
 
+**Announce-only.** The route is announce-only until loop#305: the plugin
+publishes where to find the node, and does not read the Nostr mailbox. An ask
+sent there is not answered, so do not send one; `doctor` says so whenever the
+switch is on.
+
+**A lost or rotated mailbox key.** The key lives only in `nostr-mailbox.key`.
+If that file is lost or replaced, the plugin makes a new key at the next
+publish (a damaged file is an error, never silently replaced). `doctor` then
+reports the finding `nostr_announce` as `mismatch`, naming the old and the new
+public key, until a publish under the new key is accepted by some relay (the
+old key is remembered in `nostr-mailbox.published`). The commitment names the
+new key in `ask.nostr.mailbox_key`, so its digest changes and it is published
+to every relay again under the new key. Events the old key signed are not
+replaced (an addressable event is per key); they stay until the relay drops
+them and are older commitments, which a verifier discards for the newest
+`issued_at` per node (carriers spec V4). To rotate on purpose, delete
+`nostr-mailbox.key`.
+
 ## Verdicts (`share_adjudications`)
 
 On by default (`deliver_to_subjects`, since #163; a delivered verdict cannot be recalled). When it is on and a referee's verdict

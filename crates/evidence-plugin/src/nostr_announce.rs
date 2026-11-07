@@ -68,6 +68,14 @@ pub const ENV_RELAYS: &str = "CAPSULES_NOSTR_RELAYS";
 /// The mailbox key, 64 hex and a newline, in the data directory.
 pub const KEY_FILE: &str = "nostr-mailbox.key";
 
+/// The mailbox public key of the last accepted publish, kept so a lost or
+/// replaced key file is noticed (`key_change`).
+pub const LAST_FILE: &str = "nostr-mailbox.published";
+
+/// What `doctor` says whenever the route is on: the route is announce-only.
+pub const ANNOUNCE_ONLY: &str = "announce-only: this node publishes where to find it and does not \
+    read the Nostr mailbox, so an ask sent there is not answered until loop#305 lands; do not send one";
+
 /// A relay that did not accept is tried again after this long.
 pub const RETRY_AFTER: Duration = Duration::from_secs(300);
 
@@ -314,6 +322,27 @@ fn write_private(path: &Path, text: &str) -> std::io::Result<()> {
     file.sync_all()
 }
 
+/// The note `doctor` shows when the mailbox key is not the one the last
+/// accepted publish used: a key file that was lost or replaced makes a new
+/// key (`mailbox_key`), whose commitment goes to every relay again. The
+/// events the old key signed stay on the relays; a verifier takes the newest
+/// commitment per node (ECC V4), so they are stale, not wrong.
+pub fn key_change(data_dir: &Path, current: &str) -> Option<String> {
+    let old = std::fs::read_to_string(data_dir.join(LAST_FILE)).ok()?;
+    let old = old.trim();
+    (old != current).then(|| {
+        format!(
+            "the mailbox key changed from {old} to {current} (the key file was lost or replaced): \
+             the commitment names the new key and is published again under it; events signed by \
+             {old} stay on the relays until they expire and are older commitments"
+        )
+    })
+}
+
+fn note_published(data_dir: &Path, current: &str) {
+    let _ = std::fs::write(data_dir.join(LAST_FILE), format!("{current}\n"));
+}
+
 // ---------------------------------------------------------------------
 // The event
 // ---------------------------------------------------------------------
@@ -544,6 +573,14 @@ pub struct RelayStatus {
 
 static STATUS: Mutex<BTreeMap<String, RelayStatus>> = Mutex::new(BTreeMap::new());
 
+/// A pending [`key_change`] note, until a publish under the new key is accepted.
+static KEY_NOTE: Mutex<Option<String>> = Mutex::new(None);
+
+/// The mailbox key change `doctor` reports, if one is pending.
+pub fn key_note() -> Option<String> {
+    lock(&KEY_NOTE).clone()
+}
+
 /// Why the last [`tick`] published nothing, when it could not.
 static BLOCKED: Mutex<Option<String>> = Mutex::new(None);
 
@@ -648,7 +685,8 @@ pub fn tick(capsules: &crate::capsule_emit::CapsuleState, node_id: Option<&str>)
         let key = mailbox_key(data_dir)?;
         let now = crate::evidence_answer::now_utc();
         let at = chrono::Utc::now().timestamp();
-        Ok(Some(announce(
+        *lock(&KEY_NOTE) = key_change(data_dir, &route.mailbox_key);
+        let tried = announce(
             &STATUS,
             &key,
             node_id,
@@ -657,7 +695,12 @@ pub fn tick(capsules: &crate::capsule_emit::CapsuleState, node_id: Option<&str>)
             &now,
             at,
             publish_to,
-        )))
+        );
+        if lock(&STATUS).values().any(|r| r.state == "accepted") {
+            note_published(data_dir, &route.mailbox_key);
+            *lock(&KEY_NOTE) = None;
+        }
+        Ok(Some(tried))
     })();
     *lock(&BLOCKED) = match result {
         Ok(_) => None,

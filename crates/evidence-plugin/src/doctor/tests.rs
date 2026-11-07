@@ -605,3 +605,21 @@ fn nostr_announce_is_off_by_default_and_says_nothing_is_published() {
     assert_eq!(f.state, STATE_OFF);
     assert!(f.detail.contains("nothing is published"));
 }
+
+#[test]
+fn nostr_announce_on_says_the_route_is_announce_only() {
+    let found = {
+        let policy = Policy {
+            advertise_evidence_requests: true,
+            ..defaults()
+        };
+        let dir = corpus();
+        let served = serve(dir.path(), &policy, Some(NODE));
+        with(dir.path(), &policy, |r| {
+            findings(r, &policy, &served, &Witnesses::default(), None, false).unwrap()
+        })
+    };
+    let f = state(&found, NOSTR_ANNOUNCE);
+    assert_eq!(f.state, STATE_ON);
+    assert!(f.detail.contains("announce-only") && f.detail.contains("loop#305"));
+}
