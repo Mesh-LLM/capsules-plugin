@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.16
+
 ### Added
 
 - **A failed exchange leaves a record on each side that saw it (action-state-group/evidencebook#205).**
