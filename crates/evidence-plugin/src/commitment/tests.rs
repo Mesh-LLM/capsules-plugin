@@ -57,14 +57,15 @@ fn restapled(signed: &Signed, edit: impl FnOnce(&mut Value)) -> Signed {
     resigned(signed, |d| {
         let mut card: Value = serde_json::from_slice(
             &base64::engine::general_purpose::STANDARD
-                .decode(d["history_card"]["bytes"].as_str().unwrap())
+                .decode(d["history_cards"][0]["bytes"].as_str().unwrap())
                 .unwrap(),
         )
         .unwrap();
         edit(&mut card);
         let raw = serde_json::to_vec(&card).unwrap();
-        d["history_card"]["bytes"] = json!(base64::engine::general_purpose::STANDARD.encode(&raw));
-        d["history_card"]["sha256"] = json!(hex::encode(Sha256::digest(&raw)));
+        d["history_cards"][0]["bytes"] =
+            json!(base64::engine::general_purpose::STANDARD.encode(&raw));
+        d["history_cards"][0]["sha256"] = json!(hex::encode(Sha256::digest(&raw)));
     })
 }
 
@@ -171,9 +172,13 @@ fn a_built_commitment_has_exactly_the_members_and_verifies() {
         .map(String::as_str)
         .collect();
     members.sort_unstable();
-    let mut schema: Vec<&str> = SCHEMA.iter().map(|(n, _)| *n).collect();
+    let mut schema: Vec<&str> = super::schema(&doc["profile"])
+        .iter()
+        .map(|(n, _)| *n)
+        .collect();
     schema.sort_unstable();
     assert_eq!(members, schema);
+    assert_eq!(doc["profile"], "evidence-commitment/1");
     assert_eq!(doc["node_id"], NODE);
     assert_eq!(doc["key_id"], key_id(&key()));
     assert_eq!(doc["issued_at"], NOW);
@@ -226,8 +231,12 @@ fn the_checkpoint_is_the_latest_and_the_staple_is_what_a_stranger_gets() {
     let cps = corpus_ledger_dir(dir.path(), &key());
     let signed = built(&defaults());
     let raw = |member: &str| {
+        let entry = match member {
+            "history_card" => &signed.commitment["history_cards"][0],
+            m => &signed.commitment[m],
+        };
         base64::engine::general_purpose::STANDARD
-            .decode(signed.commitment[member]["bytes"].as_str().unwrap())
+            .decode(entry["bytes"].as_str().unwrap())
             .unwrap()
     };
     // A checkpoint's anchor digest is the SHA-256 of its statement.
@@ -262,11 +271,11 @@ fn no_setting_changes_the_staple() {
         "the settings are in the signed policy"
     );
     assert_eq!(
-        plain.commitment["history_card"],
-        wide.commitment["history_card"]
+        plain.commitment["history_cards"],
+        wide.commitment["history_cards"]
     );
     assert_eq!(
-        plain.commitment["history_card"]["derivation"],
+        plain.commitment["history_cards"][0]["derivation"],
         "history_card/1"
     );
     for signed in [&plain, &wide] {
@@ -274,7 +283,11 @@ fn no_setting_changes_the_staple() {
         // adds no member above L0.
         assert_eq!(verify(signed), Vec::<String>::new());
         let raw = base64::engine::general_purpose::STANDARD
-            .decode(signed.commitment["history_card"]["bytes"].as_str().unwrap())
+            .decode(
+                signed.commitment["history_cards"][0]["bytes"]
+                    .as_str()
+                    .unwrap(),
+            )
             .unwrap();
         let text = String::from_utf8(raw).unwrap();
         assert!(!text.contains("service_history") && !text.contains("standard_history"));
@@ -494,4 +507,82 @@ fn a_commitment_larger_than_a_peer_reads_is_not_offered() {
     signed.policy = vec![b' '; crate::mesh_evidence_bridge::MAX_SIDE_STREAM_BYTES as usize];
     let err = fits(&signed).unwrap_err();
     assert!(err.contains("larger than a peer reads"), "{err}");
+}
+
+/// The staple is filed as loop's and capsule-cli's `evidence-commitment/1`
+/// reads it: one card under the stream the card itself names, in the
+/// `mesh-llm` community, with the key that signed the checkpoint, so a third
+/// party can verify the staple offline (Mesh-LLM/capsules-plugin#266).
+#[test]
+fn the_staple_is_one_card_filed_under_its_own_stream_with_the_checkpoint_key() {
+    let signed = built(&defaults());
+    let doc = &signed.commitment;
+    assert!(doc.get("history_card").is_none());
+    let cards = doc["history_cards"].as_array().unwrap();
+    assert_eq!(cards.len(), 1);
+    let card = &cards[0];
+    let raw = base64::engine::general_purpose::STANDARD
+        .decode(card["bytes"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(card["stream"], staple_stream(&raw).unwrap());
+    assert_eq!(card["community"], "mesh-llm");
+    assert_eq!(card["derivation"], "history_card/1");
+    assert_eq!(card["sha256"], hex::encode(Sha256::digest(&raw)));
+    let spki = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(card["checkpoint_key"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(spki, super::spki(&key().verifying_key()));
+}
+
+#[test]
+fn a_card_that_is_not_filed_as_loop_files_it_is_refused() {
+    for (edit, says) in [
+        (
+            (|c: &mut Value| c["stream"] = json!("other/stream")) as fn(&mut Value),
+            "stream is not the card's own evidence_stream",
+        ),
+        (
+            |c| c["stream"] = json!("../x"),
+            "stream must be a plain log id",
+        ),
+        (|c| c["community"] = json!("nowhere"), "community"),
+        (|c| c["checkpoint_key"] = json!("AAAA"), "checkpoint_key"),
+        (
+            |c| c["extra"] = json!("x"),
+            "unknown field history_cards[0].extra",
+        ),
+        (
+            |c| {
+                c.as_object_mut().unwrap().remove("community");
+            },
+            "missing history_cards[0].community",
+        ),
+    ] {
+        let bad = resigned(&built(&defaults()), |d| edit(&mut d["history_cards"][0]));
+        let problems = verify(&bad);
+        assert!(
+            problems.iter().any(|p| p.contains(says)),
+            "{says}: {problems:?}"
+        );
+    }
+    let empty = resigned(&built(&defaults()), |d| d["history_cards"] = json!([]));
+    assert!(verify(&empty)
+        .iter()
+        .any(|p| p.contains("at least one card")));
+}
+
+/// A peer that still signs `/0` is read as before: one `history_card`.
+#[test]
+fn a_legacy_zero_commitment_still_verifies() {
+    let signed = resigned(&built(&defaults()), |d| {
+        let card = d["history_cards"][0].clone();
+        d.as_object_mut().unwrap().remove("history_cards");
+        d["profile"] = json!("evidence-commitment/0");
+        d["history_card"] = json!({
+            "derivation": card["derivation"],
+            "sha256": card["sha256"],
+            "bytes": card["bytes"],
+        });
+    });
+    assert_eq!(verify(&signed), Vec::<String>::new());
 }

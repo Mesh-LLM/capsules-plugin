@@ -2,7 +2,10 @@
 //! says how the node can be asked for evidence and what it can answer, never
 //! what it has done. It carries no counts.
 //!
-//! **Shapes.** The commitment is `evidence-commitment/0` and its policy is
+//! **Shapes.** The commitment is `evidence-commitment/1`, with the staple
+//! filed as one `history_cards` entry that names its stream and the
+//! checkpoint key, so a third party verifies the staple offline (a `/0`, with
+//! a bare `history_card`, is still read from a peer). Its policy is
 //! `disclosure-policy/0`, exactly as evidence-network/loop checks them
 //! (`steps/03-advertise.md`, `scripts/check_commitment.py`): the members
 //! below and no others, each signed with this node's key by Ed25519 over the
@@ -46,7 +49,13 @@ use sha2::{Digest, Sha256};
 use crate::evidence_answer::{self, Outcome, Responder};
 use crate::share_policy;
 
-pub const COMMITMENT_PROFILE: &str = "evidence-commitment/0";
+pub const COMMITMENT_PROFILE: &str = "evidence-commitment/1";
+/// The profile this plugin signed until `/1`; a peer's commitment of it is
+/// still read, as one card (loop's `PROFILE_0`).
+pub const LEGACY_COMMITMENT_PROFILE: &str = "evidence-commitment/0";
+/// The community a mesh node's stapled card belongs to (loop's
+/// `history_cards.DEFAULT_COMMUNITY`).
+pub const COMMUNITY: &str = "mesh-llm";
 pub const POLICY_PROFILE: &str = "disclosure-policy/0";
 /// The stapled answer's format: the plugin's flat interop reply.
 pub const STAPLE_PROFILE: &str = "evidence-interop/0";
@@ -342,6 +351,9 @@ pub fn build(
         }
         Outcome::Unanswerable(why) => return Err(Unbuilt::passing(why)),
     };
+    let stream = staple_stream(&staple).ok_or_else(|| {
+        Unbuilt::lasting("this node's history_card/1 names no evidence_stream".into())
+    })?;
     let policy_bytes = policy.signed_bytes(key);
     let b64 = |raw: &[u8]| base64::engine::general_purpose::STANDARD.encode(raw);
     let sha = |raw: &[u8]| hex::encode(Sha256::digest(raw));
@@ -361,7 +373,14 @@ pub fn build(
         "checkpoint": {"sha256": sha(&statement), "bytes": b64(&statement)},
         "human_gated": false,
         "answers_within": ANSWERS_WITHIN,
-        "history_card": {"derivation": "history_card/1", "sha256": sha(&staple), "bytes": b64(&staple)},
+        "history_cards": [{
+            "stream": stream,
+            "community": COMMUNITY,
+            "derivation": "history_card/1",
+            "sha256": sha(&staple),
+            "bytes": b64(&staple),
+            "checkpoint_key": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(spki(&key.verifying_key())),
+        }],
     });
     if let Some(digest) = binding {
         doc[CONTROLLER_BINDING] = json!({ "digest": digest });
@@ -414,21 +433,43 @@ pub fn verify(signed: &Signed) -> Vec<String> {
             problems.push("signature does not verify under spki".into());
         }
     }
-    let digest_of = |member: &str| -> Result<Vec<u8>, String> {
+    let digest_of = |name: &str, member: &Value| -> Result<Vec<u8>, String> {
         let raw = base64::engine::general_purpose::STANDARD
-            .decode(doc[member]["bytes"].as_str().unwrap_or_default())
-            .map_err(|_| format!("{member}.bytes is not base64"))?;
-        if hex::encode(Sha256::digest(&raw)) != doc[member]["sha256"] {
-            return Err(format!("{member}.bytes do not match {member}.sha256"));
+            .decode(member["bytes"].as_str().unwrap_or_default())
+            .map_err(|_| format!("{name}.bytes is not base64"))?;
+        if hex::encode(Sha256::digest(&raw)) != member["sha256"] {
+            return Err(format!("{name}.bytes do not match {name}.sha256"));
         }
         Ok(raw)
     };
-    if let Err(e) = digest_of("checkpoint") {
+    if let Err(e) = digest_of("checkpoint", &doc["checkpoint"]) {
         problems.push(e);
     }
-    match digest_of("history_card") {
-        Ok(raw) => problems.extend(staple_problems(&raw, &doc["key_id"])),
-        Err(e) => problems.push(e),
+    if doc["profile"] == LEGACY_COMMITMENT_PROFILE {
+        match digest_of("history_card", &doc["history_card"]) {
+            Ok(raw) => problems.extend(staple_problems("history_card", &raw, &doc["key_id"])),
+            Err(e) => problems.push(e),
+        }
+    } else {
+        for (i, card) in doc["history_cards"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .enumerate()
+        {
+            let name = format!("history_cards[{i}]");
+            match digest_of(&name, card) {
+                Ok(raw) => {
+                    problems.extend(staple_problems(&name, &raw, &doc["key_id"]));
+                    if staple_stream(&raw).as_deref() != card["stream"].as_str() {
+                        problems.push(format!(
+                            "{name}.stream is not the card's own evidence_stream"
+                        ));
+                    }
+                }
+                Err(e) => problems.push(e),
+            }
+        }
     }
     if hex::encode(Sha256::digest(&signed.policy)) != doc["lcap"]["policy_digest"] {
         problems.push("lcap.policy_digest is not the sha256 of the policy bytes".into());
@@ -532,7 +573,9 @@ pub(crate) fn key_of(doc: &Value) -> Result<VerifyingKey, String> {
     VerifyingKey::from_bytes(&raw).map_err(|_| "spki is not a valid Ed25519 key".into())
 }
 
-/// The members, and each object member's members, exactly (loop's `SCHEMA`).
+/// The members, and each object member's members, exactly (loop's `SCHEMA`
+/// for `/0`; `/1` swaps `history_card` for the list `history_cards`, see
+/// [`schema`]).
 const SCHEMA: [(&str, &[&str]); 13] = [
     ("profile", &[]),
     ("node_id", &[]),
@@ -552,6 +595,29 @@ const SCHEMA: [(&str, &[&str]); 13] = [
     ("sig", &["alg", "canon", "value"]),
 ];
 
+/// The members of one `history_cards` entry (loop's `CARD_MEMBERS` and
+/// `CARD_OPTIONAL`).
+const CARD_MEMBERS: [&str; 6] = [
+    "stream",
+    "community",
+    "derivation",
+    "sha256",
+    "bytes",
+    "checkpoint_key",
+];
+
+/// The schema of `profile`'s commitment: `/0` holds `history_card`, `/1`
+/// holds the list `history_cards` in its place.
+fn schema(profile: &Value) -> Vec<(&'static str, &'static [&'static str])> {
+    let legacy = profile == LEGACY_COMMITMENT_PROFILE;
+    SCHEMA
+        .iter()
+        .filter(|(n, _)| legacy || *n != "history_card")
+        .copied()
+        .chain((!legacy).then_some(("history_cards", &[][..])))
+        .collect()
+}
+
 /// The member that names this node's controller binding by its digest.
 pub const CONTROLLER_BINDING: &str = "controller_binding";
 
@@ -563,7 +629,8 @@ fn shape_problems(doc: &Value) -> Vec<String> {
         return vec!["not a JSON object".into()];
     };
     let mut problems = Vec::new();
-    for (name, members) in SCHEMA.iter().chain(&OPTIONAL) {
+    let schema = schema(&doc["profile"]);
+    for (name, members) in schema.iter().chain(&OPTIONAL) {
         let (name, members) = (*name, *members);
         let Some(v) = map.get(name) else {
             if !OPTIONAL.iter().any(|(n, _)| *n == name) {
@@ -573,6 +640,7 @@ fn shape_problems(doc: &Value) -> Vec<String> {
         };
         let ok = match (name, members.is_empty()) {
             ("human_gated", _) => v.is_boolean(),
+            ("history_cards", _) => v.is_array(),
             (_, true) => v.is_string(),
             (_, false) => match v.as_object() {
                 Some(inner) => {
@@ -599,12 +667,14 @@ fn shape_problems(doc: &Value) -> Vec<String> {
     }
     problems.extend(
         map.keys()
-            .filter(|k| !SCHEMA.iter().chain(&OPTIONAL).any(|(n, _)| n == k))
+            .filter(|k| !schema.iter().chain(&OPTIONAL).any(|(n, _)| n == k))
             .map(|k| format!("unknown field {k}")),
     );
     if problems.is_empty() {
-        if doc["profile"] != COMMITMENT_PROFILE {
-            problems.push(format!("profile must be {COMMITMENT_PROFILE}"));
+        if doc["profile"] != COMMITMENT_PROFILE && doc["profile"] != LEGACY_COMMITMENT_PROFILE {
+            problems.push(format!(
+                "profile must be {LEGACY_COMMITMENT_PROFILE} or {COMMITMENT_PROFILE}"
+            ));
         }
         let text = |v: &Value| v.as_str().unwrap_or_default().to_string();
         for name in ["node_id", "key_id"] {
@@ -641,8 +711,12 @@ fn shape_problems(doc: &Value) -> Vec<String> {
         {
             problems.push("lcap.predicate_classes must be a list of <kind>:<source>".into());
         }
-        if doc["history_card"]["derivation"] != "history_card/1" {
-            problems.push("history_card.derivation must be history_card/1".into());
+        if doc["profile"] == LEGACY_COMMITMENT_PROFILE {
+            if doc["history_card"]["derivation"] != "history_card/1" {
+                problems.push("history_card.derivation must be history_card/1".into());
+            }
+        } else {
+            problems.extend(card_problems(&doc["history_cards"]));
         }
         let lists = [
             &doc["ask"]["bindings"],
@@ -666,6 +740,86 @@ fn shape_problems(doc: &Value) -> Vec<String> {
         }
     }
     problems
+}
+
+/// Loop's `card_field_errors`: a non-empty list of cards with exactly the
+/// members, each stream a plain log id and no stream twice (case aside), the
+/// community known, the checkpoint key an Ed25519 SPKI, sorted by stream.
+fn card_problems(cards: &Value) -> Vec<String> {
+    let cards = cards.as_array().map(Vec::as_slice).unwrap_or_default();
+    if cards.is_empty() {
+        return vec!["history_cards must hold at least one card".into()];
+    }
+    let mut problems = Vec::new();
+    let mut streams: Vec<String> = Vec::new();
+    for (i, card) in cards.iter().enumerate() {
+        let name = format!("history_cards[{i}]");
+        let Some(map) = card.as_object() else {
+            problems.push(format!("{name} must be an object"));
+            continue;
+        };
+        problems.extend(
+            CARD_MEMBERS
+                .iter()
+                .filter(|m| **m != "checkpoint_key" && !map.contains_key(**m))
+                .map(|m| format!("missing {name}.{m}")),
+        );
+        problems.extend(
+            map.keys()
+                .filter(|k| !CARD_MEMBERS.contains(&k.as_str()))
+                .map(|k| format!("unknown field {name}.{k}")),
+        );
+        let text = |m: &str| map.get(m).and_then(Value::as_str);
+        if let Some(stream) = text("stream") {
+            if !is_stream(stream) {
+                problems.push(format!("{name}.stream must be a plain log id"));
+            }
+            if streams.iter().any(|s| s.eq_ignore_ascii_case(stream)) {
+                problems.push(format!("{name} staples stream {stream} again"));
+            }
+            streams.push(stream.to_string());
+        }
+        if text("community") != Some(COMMUNITY) && map.contains_key("community") {
+            problems.push(format!("{name}.community is not a known community"));
+        }
+        if map.contains_key("derivation") && text("derivation") != Some("history_card/1") {
+            problems.push(format!("{name}.derivation must be history_card/1"));
+        }
+        if map.contains_key("sha256") && !text("sha256").is_some_and(is_hex64) {
+            problems.push(format!("{name}.sha256 is not 64 lowercase hex"));
+        }
+        if let Some(key) = map.get("checkpoint_key") {
+            if !key.as_str().is_some_and(is_ed25519_spki) {
+                problems.push(format!(
+                    "{name}.checkpoint_key is not an Ed25519 SubjectPublicKeyInfo"
+                ));
+            }
+        }
+    }
+    if streams.windows(2).any(|w| w[0] > w[1]) {
+        problems.push("history_cards must be sorted by stream".into());
+    }
+    problems
+}
+
+/// A book's log id as loop's `STREAM` takes it: plain names joined by `/`,
+/// each of letters, digits, `.`, `_` and `-`, not starting with a symbol.
+fn is_stream(s: &str) -> bool {
+    !s.is_empty()
+        && s.split('/').all(|seg| {
+            seg.starts_with(|c: char| c.is_ascii_alphanumeric())
+                && seg
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+        })
+}
+
+/// An Ed25519 SubjectPublicKeyInfo in base64url or base64, padded or not.
+fn is_ed25519_spki(s: &str) -> bool {
+    let url = s.replace('+', "-").replace('/', "_");
+    base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(url.trim_end_matches('='))
+        .is_ok_and(|der| der.len() == 44 && der.starts_with(&ED25519_SPKI_PREFIX))
 }
 
 fn is_hex64(s: &str) -> bool {
@@ -740,7 +894,8 @@ fn count_problems(value: &Value, path: &mut Vec<String>) -> Vec<String> {
                 path.push(k.clone());
                 let opaque = path.len() == 2
                     && path[1] == "bytes"
-                    && matches!(path[0].as_str(), "checkpoint" | "history_card");
+                    && matches!(path[0].as_str(), "checkpoint" | "history_card")
+                    || path.len() == 3 && path[0] == "history_cards" && path[2] == "bytes";
                 if !opaque {
                     if tokens(k).iter().any(|t| COUNT_WORDS.contains(&t.as_str())) {
                         problems.push(format!("{}: a key named as a count", here(path)));
@@ -788,21 +943,36 @@ fn tokens(name: &str) -> Vec<String> {
         .collect()
 }
 
-fn staple_problems(raw: &[u8], key_id: &Value) -> Vec<String> {
+/// The log id the staple's `history_card/1` result names (`evidence_stream`),
+/// the stream its commitment entry is filed under.
+fn staple_stream(raw: &[u8]) -> Option<String> {
+    let card: Value = serde_json::from_slice(raw).ok()?;
+    let artifact = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(card.get("artifact")?.as_str()?)
+        .ok()?;
+    let result: Value = serde_json::from_slice(&artifact).ok()?;
+    result
+        .get("evidence_stream")?
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+fn staple_problems(name: &str, raw: &[u8], key_id: &Value) -> Vec<String> {
     let Ok(card) = serde_json::from_slice::<Map<String, Value>>(raw) else {
-        return vec!["history_card.bytes are not a JSON answer".into()];
+        return vec![format!("{name}.bytes are not a JSON answer")];
     };
     if card.get("profile").and_then(Value::as_str) != Some(STAPLE_PROFILE) {
-        return vec![format!("history_card is not an {STAPLE_PROFILE} answer")];
+        return vec![format!("{name} is not an {STAPLE_PROFILE} answer")];
     }
     let mut problems = Vec::new();
     if card.get("derivation").and_then(Value::as_str) != Some("history_card/1") {
-        problems.push("history_card answer's derivation is not history_card/1".into());
+        problems.push(format!("{name} answer's derivation is not history_card/1"));
     }
     if card.get("responder") != Some(key_id) {
-        problems.push(
-            "history_card is not presented by its subject: its responder is not key_id".into(),
-        );
+        problems.push(format!(
+            "{name} is not presented by its subject: its responder is not key_id"
+        ));
     }
     // Both must be present: a staple with neither has no history in it.
     let artifact = card.get("artifact").and_then(Value::as_str).and_then(|a| {
@@ -816,8 +986,9 @@ fn staple_problems(raw: &[u8], key_id: &Value) -> Vec<String> {
         _ => false,
     };
     if !matches {
-        problems
-            .push("history_card answer's artifact_digest is not the sha256 of its artifact".into());
+        problems.push(format!(
+            "{name} answer's artifact_digest is not the sha256 of its artifact"
+        ));
     }
     problems
 }

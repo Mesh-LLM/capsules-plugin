@@ -1645,7 +1645,7 @@ fn with_evidence_operations(
     builder = builder.mcp_item(
         mcp::tool(commitment_bridge::OWN_COMMITMENT_OPERATION)
             .description(
-                "This node's signed commitment (evidence-commitment/0) and the signed disclosure \
+                "This node's signed commitment (evidence-commitment/1) and the signed disclosure \
                  policy it commits to: what this node can be asked and how, never what it has done. \
                  The policy is base64 bytes, published beside the commitment as \
                  policies/<node_id>.json.",
