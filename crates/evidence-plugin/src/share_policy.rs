@@ -141,11 +141,9 @@ pub(crate) fn shares_standard_history_for(raw: Option<&str>) -> bool {
 }
 
 /// This process's own env var for `advertise_evidence_requests`: off unless
-/// switched on (`on`, `1`, `true` or `yes`). This version has nothing that
-/// advertises evidence requests, so nothing reads it yet: the plugin's
-/// `evidence-request/1` channel is declared only to its own host, so that a
-/// request can reach it, and mesh-llm does not pass a plugin's channels on to
-/// other nodes. The signed disclosure policy states its value.
+/// switched on (`on`, `1`, `true` or `yes`). On, `nostr_announce` publishes
+/// the signed commitment to the relays it lists. The signed disclosure policy
+/// states its value.
 pub const ENV_ADVERTISE_EVIDENCE_REQUESTS: &str = "CAPSULES_ADVERTISE_EVIDENCE_REQUESTS";
 
 /// Whether this node advertises that it answers evidence requests.
@@ -316,7 +314,12 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
         .setting(
             config_setting(ADVERTISE_EVIDENCE_REQUESTS_KEY, config_enum(["off", "on"]))
                 .default_value(&"off")
-                .description("Coming: this version advertises nothing and no node reads this yet.")
+                .description(
+                    "Publish your signed commitment to public Nostr relays so others can find this \
+                     node's record. It carries your latest checkpoint and history card, which \
+                     show your log's size. Asks sent there are not read yet. Off publishes \
+                     nothing.",
+                )
                 .label("Advertise evidence requests")
                 .category(SHOW_CATEGORY_ID, SHOW_CATEGORY_LABEL, SHOW_CATEGORY_SUMMARY, 0)
                 .order(3),
@@ -603,7 +606,7 @@ mod tests {
         };
         assert!(text(STOP_ROUTING_AFTER_KEY).contains("`allow_peer_blocks = true`"));
         assert!(!text(STOP_ROUTING_AFTER_KEY).contains("Peer block requests"));
-        assert!(text(ADVERTISE_EVIDENCE_REQUESTS_KEY).contains("advertises nothing"));
+        assert!(text(ADVERTISE_EVIDENCE_REQUESTS_KEY).contains("Off publishes nothing"));
         let record = text(RECORD_AT_COMPLETION_KEY);
         assert!(record.contains("With checkpointing on"));
         assert!(record.contains("when your exchanges ended"));

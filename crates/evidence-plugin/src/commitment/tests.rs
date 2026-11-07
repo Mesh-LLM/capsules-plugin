@@ -38,7 +38,7 @@ pub(crate) fn built(policy: &Policy) -> Signed {
         node_id: Some(NODE),
         policy_digest: Some(&digest),
     };
-    build(&responder, NODE, policy, None).unwrap()
+    build(&responder, NODE, policy, None, None).unwrap()
 }
 
 /// `signed` with `edit` applied to its commitment, signed again.
@@ -317,7 +317,7 @@ fn no_checkpoint_means_no_commitment() {
         node_id: Some(NODE),
         policy_digest: None,
     };
-    let err = build(&responder, NODE, &policy, None).unwrap_err();
+    let err = build(&responder, NODE, &policy, None, None).unwrap_err();
     assert!(err.why.contains("no checkpoint"), "{err:?}");
     assert!(!err.lasting);
 }
@@ -609,4 +609,58 @@ fn a_staple_that_names_no_stream_is_refused_even_under_a_null_stream() {
     assert!(verify(&null)
         .iter()
         .any(|p| p.contains("stream must be a plain log id")));
+}
+
+fn route() -> crate::nostr_announce::Route {
+    crate::nostr_announce::Route {
+        mailbox_key: hex::encode(
+            k256::schnorr::SigningKey::from_bytes(&[9; 32])
+                .unwrap()
+                .verifying_key()
+                .to_bytes(),
+        ),
+        relays: vec!["wss://relay.damus.io".into(), "wss://nos.lol".into()],
+    }
+}
+
+/// `ask.nostr` is signed into the commitment when a route is given
+/// (carriers spec section 3), and a commitment without one is as before.
+#[test]
+fn the_nostr_route_is_signed_into_ask_and_checked() {
+    let plain = built(&defaults());
+    assert!(plain.commitment["ask"].get("nostr").is_none());
+    let with = resigned(&plain, |d| d["ask"]["nostr"] = route().to_json());
+    assert_eq!(verify(&with), Vec::<String>::new());
+    assert_eq!(
+        with.commitment["ask"]["nostr"]["relays"][1],
+        "wss://nos.lol"
+    );
+    // A key that is not a point, a repeated relay and a stray member are refused.
+    let bad_key = resigned(&plain, |d| {
+        d["ask"]["nostr"] = route().to_json();
+        d["ask"]["nostr"]["mailbox_key"] = json!("ff".repeat(32));
+    });
+    assert!(verify(&bad_key).iter().any(|p| p.contains("mailbox_key")));
+    let twice = resigned(&plain, |d| {
+        d["ask"]["nostr"] = route().to_json();
+        d["ask"]["nostr"]["relays"] = json!(["wss://nos.lol", "wss://nos.lol"]);
+    });
+    assert!(verify(&twice).iter().any(|p| p.contains("repeats")));
+    let stray = resigned(&plain, |d| d["ask"]["extra"] = json!(1));
+    assert!(verify(&stray)
+        .iter()
+        .any(|p| p.contains("unknown field ask.extra")));
+}
+
+/// A `/0` commitment has no Nostr route: the member is `/1`'s.
+#[test]
+fn a_legacy_zero_commitment_with_a_route_is_refused() {
+    let signed = resigned(&built(&defaults()), |d| {
+        let card = d["history_cards"][0].clone();
+        d.as_object_mut().unwrap().remove("history_cards");
+        d["profile"] = json!("evidence-commitment/0");
+        d["history_card"] = json!({"derivation": card["derivation"], "sha256": card["sha256"], "bytes": card["bytes"]});
+        d["ask"]["nostr"] = route().to_json();
+    });
+    assert!(verify(&signed).iter().any(|p| p.contains("ask.nostr")));
 }

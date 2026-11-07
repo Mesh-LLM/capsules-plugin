@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Added
+
+- **`advertise_evidence_requests` on publishes the signed commitment to Nostr relays (#212).**
+  With the switch on (it is off by default), the plugin makes a mailbox key (a secp256k1 key in
+  `nostr-mailbox.key` in the data directory, owner-only, separate from the node key and the
+  operator's Nostr key), names it and the relays in the commitment's `ask.nostr` member, and
+  publishes the commitment as one addressable event (kind 34700, tags `d` node id, `t`
+  `evidence-commitment`, `x` digest; content the commitment in base64url) to each relay, again
+  when the commitment changes. A relay that caps events below the commitment's size gets the
+  digest alone, never an edited commitment. The relays are mesh-llm's discovery relays unless
+  `CAPSULES_NOSTR_RELAYS` lists others. `doctor` shows the last result per relay (`accepted`,
+  `rejected`, `unreachable`). With the switch off nothing is published and no key is made. The
+  kind is the placeholder of the carriers spec (agent-action-capsule#546).
+
 ## 0.1.16
 
 ### Added

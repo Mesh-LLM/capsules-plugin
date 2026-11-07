@@ -75,9 +75,16 @@ static LAST: Slot = std::sync::Mutex::new(None);
 
 type Slot = std::sync::Mutex<Option<(BuiltFrom, Result<Signed, String>)>>;
 
-/// This node's id, the policy's digest, the latest checkpoint's anchor, and
-/// the digest of the held controller binding that applies, if any.
-type BuiltFrom = (String, String, String, Option<String>);
+/// This node's id, the policy's digest, the latest checkpoint's anchor, the
+/// digest of the held controller binding that applies, if any, and the Nostr
+/// route it advertises, if any.
+type BuiltFrom = (
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<crate::nostr_announce::Route>,
+);
 
 /// What `slot` holds for `key`, or `build`'s result, kept in `slot` unless
 /// it is a failure that might not repeat. The lock is held through `build`,
@@ -111,10 +118,32 @@ pub(crate) fn own(capsules: &CapsuleState, node_id: Option<&str>) -> Result<Sign
         let digest = responder.policy_digest.unwrap_or_default().to_string();
         let anchor = commitment::latest_anchor(responder)?;
         let binding = held_digest(capsules, responder);
+        // A route that cannot be made (a bad relay list, an unreadable key
+        // file) leaves the commitment without one; `nostr_announce` and
+        // `doctor` say why.
+        let route = capsules.ledger_dir().parent().and_then(|dir| {
+            crate::nostr_announce::route(dir, policy.advertise_evidence_requests)
+                .ok()
+                .flatten()
+        });
         cached(
             &LAST,
-            (node_id.to_string(), digest, anchor, binding.clone()),
-            || commitment::build(responder, node_id, policy, binding.as_deref()),
+            (
+                node_id.to_string(),
+                digest,
+                anchor,
+                binding.clone(),
+                route.clone(),
+            ),
+            || {
+                commitment::build(
+                    responder,
+                    node_id,
+                    policy,
+                    binding.as_deref(),
+                    route.as_ref(),
+                )
+            },
         )
     })
 }
@@ -416,7 +445,15 @@ mod tests {
     #[test]
     fn a_commitment_or_a_lasting_failure_is_built_once_per_key() {
         let slot: Slot = std::sync::Mutex::new(None);
-        let key = |anchor: &str| ("n".to_string(), "d".to_string(), anchor.to_string(), None);
+        let key = |anchor: &str| {
+            (
+                "n".to_string(),
+                "d".to_string(),
+                anchor.to_string(),
+                None,
+                None,
+            )
+        };
         let builds = std::sync::atomic::AtomicUsize::new(0);
         let (signed, _) = frame();
         let signed = Signed::from_wire(&signed).unwrap();
@@ -448,6 +485,7 @@ mod tests {
             "d".to_string(),
             "a".to_string(),
             Some("b".repeat(64)),
+            None,
         );
         assert_eq!(cached(&slot, bound, ok), Ok(signed.clone()));
         assert_eq!(count(), 2, "a new binding builds a new commitment");

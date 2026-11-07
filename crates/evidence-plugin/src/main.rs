@@ -43,6 +43,7 @@ mod leg_catch_up;
 mod lifecycle_channel;
 mod mesh_evidence_bridge;
 mod network_join;
+mod nostr_announce;
 mod owner_maintenance;
 mod peer_blocks_seen;
 mod peer_commitments;
@@ -2052,6 +2053,13 @@ async fn main() -> anyhow::Result<()> {
     let lifecycle_events = Arc::new(ObservedLifecycleEvents::open(&data_dir)?);
     let self_peer = self_peer::SelfPeer::new(&data_dir);
     let self_peer_for_events = self_peer.clone();
+    // The commitment goes to its Nostr relays while `advertise_evidence_requests`
+    // is on (Mesh-LLM/capsules-plugin#212); with it off the task publishes nothing.
+    // It reads the node id from the same `SelfPeer` the host events teach.
+    {
+        let self_peer = self_peer.clone();
+        nostr_announce::spawn(capsules.clone(), move || self_peer.current());
+    }
 
     // Checkpoint cadence: on by default (see checkpoint_cadence.rs's module
     // doc). `checkpoint_shutdown_tx` held for the

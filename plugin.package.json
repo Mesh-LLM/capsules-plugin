@@ -96,7 +96,7 @@
         "apply_mode": "static_on_load",
         "restart_scope": "none",
         "visibility": "user",
-        "description": "Coming: this version advertises nothing and no node reads this yet.",
+        "description": "Publish your signed commitment to public Nostr relays so others can find this node's record. It carries your latest checkpoint and history card, which show your log's size. Asks sent there are not read yet. Off publishes nothing.",
         "presentation": {
           "label": "Advertise evidence requests",
           "category_id": "show",
