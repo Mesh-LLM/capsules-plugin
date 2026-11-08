@@ -314,6 +314,10 @@ pub struct MeshPocV1 {
     /// member `acceptance` (design R5). `None` omits the member: an
     /// exchange outside any agreement looks as it always did.
     pub acceptance_digest: Option<String>,
+    /// The inference-deals digest that agreement's terms cite (#271), written
+    /// beside `acceptance` as `inference_deals_digest`. `None` omits it: a
+    /// session whose terms cite none is not given one.
+    pub inference_deals_digest: Option<String>,
     /// Set on a record of an exchange that FAILED. `None` omits every member
     /// below, so a served record seals byte-for-byte as it did before: an
     /// absent `outcome` means served.
@@ -349,6 +353,9 @@ impl MeshPocV1 {
         let mut block = self.block_without_acceptance();
         if let Some(digest) = &self.acceptance_digest {
             block["acceptance"] = acceptance_link(digest);
+            if let Some(pack) = &self.inference_deals_digest {
+                block[crate::agreement::DIGEST_MEMBER] = json!(pack);
+            }
         }
         block
     }
@@ -425,13 +432,19 @@ pub fn acceptance_link(acceptance_digest: &str) -> Value {
 }
 
 /// The block a settlement leg carries when it cites a service evidence
-/// agreement: `{"x-mesh-poc-v1": {"acceptance": <cites link>}}` (R5).
-pub fn leg_acceptance_blocks(acceptance_digest: &str) -> Map<String, Value> {
+/// agreement: `{"x-mesh-poc-v1": {"acceptance": <cites link>,
+/// "inference_deals_digest": <the digest its terms cite>}}` (R5, #271); the
+/// digest member is omitted when the terms cite none.
+pub fn leg_acceptance_blocks(
+    acceptance_digest: &str,
+    inference_deals_digest: Option<&str>,
+) -> Map<String, Value> {
     let mut blocks = Map::new();
-    blocks.insert(
-        "x-mesh-poc-v1".into(),
-        json!({"acceptance": acceptance_link(acceptance_digest)}),
-    );
+    let mut block = json!({"acceptance": acceptance_link(acceptance_digest)});
+    if let Some(pack) = inference_deals_digest {
+        block[crate::agreement::DIGEST_MEMBER] = json!(pack);
+    }
+    blocks.insert("x-mesh-poc-v1".into(), block);
     blocks
 }
 
@@ -1959,6 +1972,7 @@ mod tests {
                 binary_attestation: None,
                 tee_attestation: None,
                 acceptance_digest: None,
+                inference_deals_digest: None,
                 failure: None,
             },
             effect_status: "confirmed".to_string(),
@@ -2258,9 +2272,24 @@ mod tests {
             |c: &Value| c["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"].clone();
         let without = seal(&base_input(None)).unwrap();
         assert!(block(&without).get("acceptance").is_none());
+        assert!(block(&without)
+            .get(crate::agreement::DIGEST_MEMBER)
+            .is_none());
         let mut input = base_input(None);
         input.mesh_poc.acceptance_digest = Some("ab".repeat(32));
+        // Terms that cite no pack (a session accepted before #271) add none.
+        let no_pack = seal(&input).unwrap();
+        assert!(block(&no_pack)
+            .get(crate::agreement::DIGEST_MEMBER)
+            .is_none());
+        input.mesh_poc.inference_deals_digest = Some("cd".repeat(32));
         let with = seal(&input).unwrap();
+        // The record names the pack its agreement's terms cite, so a judge
+        // reading only the chain can check it (#271).
+        assert_eq!(
+            block(&with)[crate::agreement::DIGEST_MEMBER],
+            "cd".repeat(32)
+        );
         assert_eq!(
             block(&with)["acceptance"],
             json!({"type": "cites", "target": "ab".repeat(32)})
@@ -2295,7 +2324,7 @@ mod tests {
         let cited = seal_settlement_leg(
             "t".into(),
             member.clone(),
-            leg_acceptance_blocks(&"ab".repeat(32)),
+            leg_acceptance_blocks(&"ab".repeat(32), None),
             None,
             None,
             &key,
@@ -2317,7 +2346,7 @@ mod tests {
         assert!(seal_settlement_leg(
             "t".into(),
             broken,
-            leg_acceptance_blocks(&"ab".repeat(32)),
+            leg_acceptance_blocks(&"ab".repeat(32), None),
             None,
             None,
             &key

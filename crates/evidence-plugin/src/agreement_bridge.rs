@@ -500,6 +500,22 @@ fn complete_sessions(store: &Store) -> Arc<Vec<Complete>> {
     sessions
 }
 
+/// The inference-deals digest the terms of the accepted record
+/// `acceptance_digest` cite, or `None` when this node keeps no such record or
+/// its terms cite none (a session accepted before #271). A record under a
+/// session names what the session's own terms named, never this build's pack.
+pub fn cited_pack_digest(capsules: &CapsuleState, acceptance_digest: &str) -> Option<String> {
+    let store = Store::open(capsules.ledger_dir());
+    let accepted = parse(&store.get(Kind::Record, acceptance_digest)?)?;
+    let terms = accepted
+        .get("session")
+        .and_then(|s| s.get("terms"))
+        .and_then(Value::as_str)
+        .and_then(|d| store.get(Kind::Document, d))
+        .and_then(|o| parse(&o))?;
+    text(&terms, agreement::DIGEST_MEMBER).map(String::from)
+}
+
 /// The acceptance the payer's `delivered` leg cites (R12): its session with
 /// the provider at `peer`, for `model`, holding `now`.
 pub fn delivered_citation(
@@ -1354,6 +1370,18 @@ mod tests {
             Some(own_key(&p.requester))
         );
         assert_eq!(session_proposer(&p.provider, &"0".repeat(64)), None);
+        // A record under the session cites the digest the session's own
+        // terms cite; an unknown acceptance cites none (#271).
+        assert_eq!(
+            cited_pack_digest(&p.provider, &session.acceptance_digest).as_deref(),
+            Some(agreement::INFERENCE_DEALS_DIGEST)
+        );
+        assert_eq!(
+            cited_pack_digest(&p.requester, &session.acceptance_digest).as_deref(),
+            Some(agreement::INFERENCE_DEALS_DIGEST),
+            "each side names the same digest"
+        );
+        assert_eq!(cited_pack_digest(&p.provider, &"0".repeat(64)), None);
     }
 
     /// A provider serving two local GGUFs, with a session for each, cites

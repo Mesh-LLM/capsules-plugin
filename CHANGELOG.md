@@ -4,6 +4,12 @@
 
 ### Added
 
+- **Agreement terms cite the inference-deals digest (#271).** The terms document and the
+  `x-mesh-poc-v1` block of a record under a session carry `inference_deals_digest`, the
+  `pack_source_digest` of the inference-deals pack the judge applies. A provider refuses a
+  proposal whose terms cite another digest or none, so both sides seal the same one, and the
+  judge (evidencebook-skills) refuses a deal whose records cite a different pack. Both nodes need
+  this release: an older provider refuses the new terms member.
 - **`advertise_evidence_requests` on publishes the signed commitment to Nostr relays (#212).**
   With the switch on (it is off by default), the plugin makes a mailbox key (a secp256k1 key in
   `nostr-mailbox.key` in the data directory, owner-only, separate from the node key and the

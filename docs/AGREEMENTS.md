@@ -93,8 +93,10 @@ exact octets the other signed.
    the Evidence Contract, the model policy (the model the requester expects
    the provider to state it serves, by the provider's own canonical
    reference) and the terms (`spend_cap`, `unit` `msat`, `payment_ref_type`
-   `ln.payment_hash`, and `max_exchanges` when set). The record names each
-   document by its digest.
+   `ln.payment_hash`, `inference_deals_digest`, and `max_exchanges` when
+   set). The digest names the inference-deals pack the judge applies (the
+   pack's `pack_source_digest`); the provider accepts only its own. The
+   record names each document by its digest.
 2. The provider checks the documents against their digests and their shapes,
    and the records with the interop profile's own verifier, then answers with
    a signed `accepted` record.
@@ -110,9 +112,18 @@ nodes and wallets can read.
 
 A record under a session names the session's accepted record by its digest,
 as an EL `cites` link in its `x-mesh-poc-v1` block:
-`"acceptance": {"type": "cites", "target": "<digest>"}`. It is committed into
-the record's `capsule_id` like every other member. A record under no session
-has no such member.
+`"acceptance": {"type": "cites", "target": "<digest>"}`. Beside it, the
+member `"inference_deals_digest": "<digest>"` repeats the digest that
+session's terms cite, so a judge reading only the chain can check it; a
+session whose terms cite none (accepted before #271) adds none. Both are
+committed into the record's `capsule_id` like every other member. A record
+under no session has no such member.
+
+The digest is `INFERENCE_DEALS_DIGEST` in `agreement.rs`, copied from the
+pack's `compiled.json`. Any change to the pack source changes it, so a pack
+recompile in evidencebook-skills needs a plugin release that bumps the
+constant; until both nodes run it they refuse each other's proposals, and the
+judge refuses records citing the old digest.
 
 - The requester's requested half and the provider's served half cite the
   session between the two nodes for the model the host states was served.
