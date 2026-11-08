@@ -1063,6 +1063,7 @@ impl CapsuleState {
                 tee_attestation: Some(tee_attestation),
                 // This path serves a local request: no mesh counterparty, no agreement.
                 acceptance_digest: None,
+                inference_deals_digest: None,
                 failure: None,
             },
             effect_status: "confirmed".to_string(),
@@ -1675,6 +1676,9 @@ impl CapsuleState {
                 binary_attestation,
                 tee_attestation: Some(tee_attestation),
                 acceptance_digest: acceptance_digest.clone(),
+                inference_deals_digest: acceptance_digest
+                    .as_deref()
+                    .and_then(|d| crate::agreement_bridge::cited_pack_digest(self, d)),
                 failure: failure.clone(),
             },
             // Confirmed only over the host's digest of the REAL response body;

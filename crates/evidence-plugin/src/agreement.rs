@@ -45,6 +45,8 @@ pub const UNIT: &str = "msat";
 /// The `pack_source_digest` of the inference-deals pack the judge applies
 /// (evidencebook-skills `packs/inference-deals/compiled/compiled.json`).
 /// Terms cite it, so both sides name the pack the judge will run (#271).
+/// A pack recompile changes it: bump this in the same release (evidencebook-
+/// skills `tests/test_inference_deals.py` pins the value it must equal).
 pub const INFERENCE_DEALS_DIGEST: &str =
     "d8aa9967ebd346e386b3f27d1fe582902d964d30183e9fa377206b4ccb116a18";
 /// The member that carries it, in the terms document and beside

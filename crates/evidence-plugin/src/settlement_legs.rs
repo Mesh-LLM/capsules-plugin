@@ -237,9 +237,12 @@ fn built(leg: &str, role: &str, pairs: Vec<(&str, Value)>) -> anyhow::Result<Val
 }
 
 /// The blocks a leg carries: an agreement citation when it has one (R5).
-fn citation_blocks(acceptance: Option<String>) -> Map<String, Value> {
+fn citation_blocks(capsules: &CapsuleState, acceptance: Option<String>) -> Map<String, Value> {
     acceptance
-        .map(|d| crate::producer::capsule::leg_acceptance_blocks(&d))
+        .map(|d| {
+            let pack = crate::agreement_bridge::cited_pack_digest(capsules, &d);
+            crate::producer::capsule::leg_acceptance_blocks(&d, pack.as_deref())
+        })
         .unwrap_or_default()
 }
 
@@ -585,7 +588,12 @@ impl Legs {
             }
             _ => None,
         };
-        seal_with(capsules, "payee_observed", leg, citation_blocks(acceptance));
+        seal_with(
+            capsules,
+            "payee_observed",
+            leg,
+            citation_blocks(capsules, acceptance),
+        );
     }
 
     /// Payer: the agreement `exchange_id` cites, decided by `decide` the
@@ -814,7 +822,12 @@ impl Legs {
                 ),
             ],
         );
-        if let Some(sealed) = seal_with(capsules, "delivered", leg, citation_blocks(acceptance)) {
+        if let Some(sealed) = seal_with(
+            capsules,
+            "delivered",
+            leg,
+            citation_blocks(capsules, acceptance),
+        ) {
             capsules
                 .deals()
                 .on_delivered(capsules, &exchange_id, &sealed.capsule_id, unix_now());
