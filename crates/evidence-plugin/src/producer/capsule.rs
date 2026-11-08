@@ -349,6 +349,8 @@ impl MeshPocV1 {
         let mut block = self.block_without_acceptance();
         if let Some(digest) = &self.acceptance_digest {
             block["acceptance"] = acceptance_link(digest);
+            block[crate::agreement::DIGEST_MEMBER] =
+                json!(crate::agreement::INFERENCE_DEALS_DIGEST);
         }
         block
     }
@@ -430,7 +432,10 @@ pub fn leg_acceptance_blocks(acceptance_digest: &str) -> Map<String, Value> {
     let mut blocks = Map::new();
     blocks.insert(
         "x-mesh-poc-v1".into(),
-        json!({"acceptance": acceptance_link(acceptance_digest)}),
+        json!({
+            "acceptance": acceptance_link(acceptance_digest),
+            crate::agreement::DIGEST_MEMBER: crate::agreement::INFERENCE_DEALS_DIGEST,
+        }),
     );
     blocks
 }
@@ -2258,9 +2263,18 @@ mod tests {
             |c: &Value| c["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"].clone();
         let without = seal(&base_input(None)).unwrap();
         assert!(block(&without).get("acceptance").is_none());
+        assert!(block(&without)
+            .get(crate::agreement::DIGEST_MEMBER)
+            .is_none());
         let mut input = base_input(None);
         input.mesh_poc.acceptance_digest = Some("ab".repeat(32));
         let with = seal(&input).unwrap();
+        // The same record names the inference-deals pack the terms cite, so a
+        // judge reading only the chain can check it (#271).
+        assert_eq!(
+            block(&with)[crate::agreement::DIGEST_MEMBER],
+            crate::agreement::INFERENCE_DEALS_DIGEST
+        );
         assert_eq!(
             block(&with)["acceptance"],
             json!({"type": "cites", "target": "ab".repeat(32)})

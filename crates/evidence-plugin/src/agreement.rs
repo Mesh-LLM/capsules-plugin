@@ -42,6 +42,14 @@ pub const TRANSACTION_SCHEME: &str = "x-capsules/session";
 pub const PAYMENT_REF_TYPE: &str = "ln.payment_hash";
 /// The spend unit the terms name.
 pub const UNIT: &str = "msat";
+/// The `pack_source_digest` of the inference-deals pack the judge applies
+/// (evidencebook-skills `packs/inference-deals/compiled/compiled.json`).
+/// Terms cite it, so both sides name the pack the judge will run (#271).
+pub const INFERENCE_DEALS_DIGEST: &str =
+    "d8aa9967ebd346e386b3f27d1fe582902d964d30183e9fa377206b4ccb116a18";
+/// The member that carries it, in the terms document and beside
+/// `acceptance` in an `x-mesh-poc-v1` block.
+pub const DIGEST_MEMBER: &str = "inference_deals_digest";
 /// The contract every session names, by reference.
 pub const CONTRACT_REF: &str = "x-capsules/paid-session@1";
 
@@ -117,6 +125,7 @@ impl SessionTerms {
             "spend_cap": self.spend_cap_msat,
             "unit": UNIT,
             "payment_ref_type": PAYMENT_REF_TYPE,
+            DIGEST_MEMBER: INFERENCE_DEALS_DIGEST,
         });
         if let Some(n) = self.max_exchanges {
             doc["max_exchanges"] = json!(n);
@@ -138,7 +147,7 @@ pub fn read_terms(doc: &Value) -> Option<Terms> {
     if !doc.keys().all(|k| {
         matches!(
             k.as_str(),
-            "spend_cap" | "unit" | "payment_ref_type" | "max_exchanges"
+            "spend_cap" | "unit" | "payment_ref_type" | "max_exchanges" | DIGEST_MEMBER
         )
     }) {
         return None;
@@ -337,6 +346,8 @@ pub enum Refusal {
     Document(&'static str),
     #[error("the terms document is not the shape this plugin reads")]
     Terms,
+    #[error("the terms cite another inference-deals digest than the pack this node applies")]
+    PackDigest,
     #[error("the model policy is not the shape this plugin reads")]
     Policy,
     #[error("the record names another party")]
@@ -432,6 +443,9 @@ pub fn check_proposal(message: &[u8], own_key: &str, now: i64) -> Result<Checked
     let models = read_policy(&policy).ok_or(Refusal::Policy)?;
     let (terms_text, terms_doc) = named("terms", session.get("terms"))?;
     let terms = read_terms(&terms_doc).ok_or(Refusal::Terms)?;
+    if terms_doc.get(DIGEST_MEMBER).and_then(Value::as_str) != Some(INFERENCE_DEALS_DIGEST) {
+        return Err(Refusal::PackDigest);
+    }
     let window = |k: &str| {
         session
             .get(k)
@@ -1083,6 +1097,47 @@ mod tests {
             .err(),
             Some(Refusal::Window)
         );
+    }
+
+    #[test]
+    fn both_sides_seal_the_same_inference_deals_digest() {
+        let (p, q) = (key(1), key(2));
+        let proposal = proposal(&p, &q, NOW);
+        let terms: Value = serde_json::from_str(&proposal.documents[2]).unwrap();
+        assert_eq!(terms[DIGEST_MEMBER], json!(INFERENCE_DEALS_DIGEST));
+        // The provider accepts it, and its accepted record cites the same
+        // terms document by digest, so each side's sealed record names the
+        // one digest.
+        let checked = check_proposal(&proposal.to_message(), &hex_key(&q), NOW).unwrap();
+        let accepted = answer(&checked, &q, true, NOW);
+        assert_eq!(
+            accepted["session"]["terms"],
+            proposal.record["session"]["terms"]
+        );
+        assert_eq!(proposal.record["session"]["terms"], json!(digest(&terms)));
+    }
+
+    #[test]
+    fn a_proposal_citing_another_digest_or_none_is_refused() {
+        let (p, q) = (key(1), key(2));
+        let proposal = proposal(&p, &q, NOW);
+        let terms: Value = serde_json::from_str(&proposal.documents[2]).unwrap();
+        let mut other = terms.clone();
+        other[DIGEST_MEMBER] = json!("0".repeat(64));
+        let mut none = terms;
+        none.as_object_mut().unwrap().remove(DIGEST_MEMBER);
+        for bad in [other, none] {
+            assert_eq!(
+                check_proposal(
+                    &tampered(&proposal, &|m| re_document(m, &p, "terms", &bad)),
+                    &hex_key(&q),
+                    NOW
+                )
+                .err(),
+                Some(Refusal::PackDigest),
+                "{bad}"
+            );
+        }
     }
 
     #[test]

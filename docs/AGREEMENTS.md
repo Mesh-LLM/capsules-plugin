@@ -93,7 +93,7 @@ exact octets the other signed.
    the Evidence Contract, the model policy (the model the requester expects
    the provider to state it serves, by the provider's own canonical
    reference) and the terms (`spend_cap`, `unit` `msat`, `payment_ref_type`
-   `ln.payment_hash`, and `max_exchanges` when set). The record names each
+   `ln.payment_hash`, `inference_deals_digest`, and `max_exchanges` when set). The digest names the inference-deals pack the judge applies; the provider accepts only its own. The record names each
    document by its digest.
 2. The provider checks the documents against their digests and their shapes,
    and the records with the interop profile's own verifier, then answers with
@@ -110,7 +110,7 @@ nodes and wallets can read.
 
 A record under a session names the session's accepted record by its digest,
 as an EL `cites` link in its `x-mesh-poc-v1` block:
-`"acceptance": {"type": "cites", "target": "<digest>"}`. It is committed into
+`"acceptance": {"type": "cites", "target": "<digest>"}`, beside `"inference_deals_digest": "<digest>"` (the same digest the terms cite, so a judge reading only the chain can check it). It is committed into
 the record's `capsule_id` like every other member. A record under no session
 has no such member.
 
