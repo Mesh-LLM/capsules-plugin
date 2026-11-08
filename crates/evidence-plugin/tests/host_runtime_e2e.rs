@@ -513,7 +513,7 @@ async fn allowed_exchange_emits_a_signed_chained_ledgered_capsule_and_publishes_
 }
 
 /// `doctor` and `join` (Mesh-LLM/capsules-plugin#53) through the real
-/// host's console route: a fresh node lists all twelve findings, names its
+/// host's console route: a fresh node lists all thirteen findings, names its
 /// checkpoint missing, matches no probe yet, and is not joined. Neither call
 /// seals a record.
 #[tokio::test]
@@ -535,9 +535,9 @@ async fn doctor_and_join_answer_through_the_real_hosts_console() {
         .iter()
         .map(|f| f["check"].as_str().unwrap())
         .collect();
-    assert_eq!(checks.len(), 12, "{doctor:#}");
+    assert_eq!(checks.len(), 13, "{doctor:#}");
     assert_eq!(checks[0], "self_attested");
-    assert_eq!(checks[11], "probe_history_card");
+    assert_eq!(checks[12], "probe_history_card");
     let state = |check: &str| {
         findings
             .iter()
