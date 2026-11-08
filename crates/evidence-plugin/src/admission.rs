@@ -421,6 +421,12 @@ impl Admission {
             .store(on, std::sync::atomic::Ordering::Relaxed);
     }
 
+    /// A peer joined the mesh: have its history card asked for now, ahead of
+    /// its first request ([`base::Base::peer_joined`]).
+    pub fn peer_joined(&self, peer: &str) {
+        self.base.peer_joined(peer);
+    }
+
     /// Start the rows' background card asks and local refresh.
     pub fn start(&self, context: mesh_llm_plugin::PluginContext<'static>) {
         let host_prices = context.host_supports(price::PRICING_CAPABILITY);

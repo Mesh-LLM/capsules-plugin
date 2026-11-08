@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed
+
+- **A peer's `history_card/1` is asked for when the peer joins, not at the first request (#270).**
+  On a peer-up event the plugin waits (up to two minutes, off the request path) for the peer's
+  announced record key and then asks for its card through the existing background ask, so the
+  first request to a peer that joined earlier reads the card rows instead of `not_read`. The
+  24 h cache, the hourly retry and the `not_read` fallback for a peer that never answers are
+  unchanged, and the rows still decide nothing.
+
 ### Added
 
 - **Agreement terms cite the inference-deals digest (#271).** The terms document and the
