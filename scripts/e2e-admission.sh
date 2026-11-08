@@ -4,11 +4,10 @@
 # serves the model; the requester routes to it, and its admission hook decides
 # each attempt. The run asserts, from the requester's own book:
 #
-#   1. its first attempt to the provider is GO (the default) and seals the
-#      five rows, the card ones `not_read`, with the card asked for in the
-#      background;
-#   2. once the card is read, the next attempt is still GO (the rows decide
-#      nothing), cites the card by commitment, and reads identity `pass` and
+#   1. the provider's history card is asked for when it joins (#270), in the
+#      background, and read before any request is made;
+#   2. its first attempt to the provider is GO (the default, the rows decide
+#      nothing), cites that card by commitment, and reads identity `pass` and
 #      key age `fail` (the provider's key is minutes old);
 #   3. restarted with the provider on its deny list, the requester refuses
 #      the attempt (403) and seals a NO from the deny list, with its rows;
@@ -161,29 +160,33 @@ failure_policy = "required"
 start_node requester "$REQUESTER_API" "$REQUESTER_CONSOLE" "$grant" --client --join "$token"
 wait_for 300 "the requester can route to the provider's model" lists_model "$REQUESTER_API"
 
-# --- 1. the first attempt: GO, the rows sealed --------------------------------
+# --- 1. the card is asked for when the provider joins (#270) ----------------
+# Nothing has been requested yet: the plugin asks the peer for its history card
+# on the join, in the background, so the card is read before the first request.
+wait_for 60 "the requester read the provider's history card at join, before any request" card_read
+[ "$(decision_count)" = 0 ] || { echo "a decision was sealed before the first request" >&2; exit 1; }
+
+# --- 2. the first attempt: GO, citing the card already read -----------------
 code=$(chat "$REQUESTER_API" 1)
 [ "$code" = 200 ] || { echo "the first request was refused: HTTP $code $(cat "$out/chat-1.json")" >&2; exit 1; }
 first=$(decisions | head -n 1)
 echo "first decision: $first"
 echo "$first" | jq -e '.verdict == "GO" and .source == "default"
-  and .reads[1] == {"kind": "history_card", "state": "not_read"}
-  and (.rows | length) == 5 and (.rows[0] | {row, result}) == {"row": "identity", "result": "not_read"}
+  and .reads[1].kind == "history_card" and .reads[1].derivation == "history_card/1"
+  and (.reads[1].commitment.digest | test("^[0-9a-f]{64}$"))
+  and (.rows | length) == 5
+  and (.rows[0] | {row, result}) == {"row": "identity", "result": "pass"}
+  and (.rows[1] | {row, result}) == {"row": "key_age", "result": "fail"}
   and (has("limit") | not)' > /dev/null \
-  || { echo "the first decision is not a GO with its rows sealed" >&2; exit 1; }
-
-# --- 2. the card is read in the background; the next attempt cites it -------
-wait_for 60 "the requester read the provider's history card" card_read
+  || { echo "the first decision is not a GO citing the card read at join" >&2; exit 1; }
 before=$(decision_count)
 code=$(chat "$REQUESTER_API" 2)
 [ "$code" = 200 ] || { echo "the second request was refused: HTTP $code $(cat "$out/chat-2.json")" >&2; exit 1; }
 second=$(decisions | sed -n "$((before + 1))p")
 echo "second decision: $second"
 echo "$second" | jq -e '.verdict == "GO" and .source == "default"
-  and .reads[1].kind == "history_card" and .reads[1].derivation == "history_card/1"
-  and (.reads[1].commitment.digest | test("^[0-9a-f]{64}$"))
-  and (.rows[0] | {row, result}) == {"row": "identity", "result": "pass"}
-  and (.rows[1] | {row, result}) == {"row": "key_age", "result": "fail"}' > /dev/null \
+  and .reads[1].kind == "history_card"
+  and (.rows[0] | {row, result}) == {"row": "identity", "result": "pass"}' > /dev/null \
   || { echo "the second decision is not a GO citing the card" >&2; exit 1; }
 # The card ask was sealed as an evidence_request before it was sent (loop step
 # 7), and its response, citing it, records the artifact the provider answered.

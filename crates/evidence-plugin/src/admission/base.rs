@@ -60,6 +60,12 @@ const CARD_TTL: Duration = Duration::from_secs(24 * 3600);
 /// The least time between two asks of one peer.
 const ASK_RETRY: Duration = Duration::from_secs(3600);
 pub const REFRESH: Duration = Duration::from_secs(60);
+/// How long a joined peer is waited on for its announced record key before
+/// the join gives up; its card is then asked for with the first request, as
+/// before. The key arrives on the host's console poll, after the join.
+const JOIN_KEY_WAIT: Duration = Duration::from_secs(120);
+/// How often the wait looks for the key.
+const JOIN_KEY_STEP: Duration = Duration::from_secs(2);
 
 /// The base pack this plugin ships, as a decision cites it.
 pub const PACK_ID: &str = "asg/mesh_admission_base/1.0.0";
@@ -227,6 +233,8 @@ pub struct Base {
     /// What the refreshes have read of the chain so far.
     scan: Mutex<ChainScan>,
     asks: OnceLock<tokio::sync::mpsc::UnboundedSender<String>>,
+    /// Peers whose join is waiting on their announced key, one wait each.
+    joining: Mutex<BTreeSet<String>>,
     /// The node's book of asks: each card ask is sealed in it before it is
     /// sent (loop step 7). `None` only where no node state exists (tests).
     capsules: Option<Arc<crate::capsule_emit::CapsuleState>>,
@@ -240,6 +248,7 @@ impl Base {
             facts: RwLock::new(None),
             scan: Mutex::default(),
             asks: OnceLock::new(),
+            joining: Mutex::default(),
             capsules: None,
         }
     }
@@ -447,6 +456,59 @@ impl Base {
             .facts
             .write()
             .expect("the facts lock is never poisoned") = facts;
+    }
+
+    /// `peer` (a node id) joined the mesh: ask for its card now, in the
+    /// background, so the first request to it reads the card rows rather than
+    /// `not_read`. The ask needs the peer's announced record key (a card
+    /// cannot verify without it, and a failed ask is not retried for
+    /// [`ASK_RETRY`]), so this waits for the key, up to [`JOIN_KEY_WAIT`].
+    /// The ask goes through the same due check as a request's
+    /// ([`CARD_TTL`], [`ASK_RETRY`], one in flight), and nothing waiting on a
+    /// request ever waits on this. A peer whose key never comes is asked at
+    /// its first request, as before.
+    pub fn peer_joined(self: &Arc<Self>, peer: &str) {
+        let key_peer = peer.to_ascii_lowercase();
+        self.peer_joined_within(peer, JOIN_KEY_WAIT, JOIN_KEY_STEP, move || {
+            let registry = crate::peer_keys::registry();
+            crate::peer_keys::announced_key_in(registry.as_deref(), &key_peer)
+        });
+    }
+
+    fn peer_joined_within(
+        self: &Arc<Self>,
+        peer: &str,
+        wait: Duration,
+        step: Duration,
+        key_of: impl Fn() -> Option<String> + Send + 'static,
+    ) {
+        let peer = peer.to_ascii_lowercase();
+        if !self
+            .joining
+            .lock()
+            .expect("the joining lock is never poisoned")
+            .insert(peer.clone())
+        {
+            return;
+        }
+        let base = self.clone();
+        tokio::spawn(async move {
+            let deadline = tokio::time::Instant::now() + wait;
+            loop {
+                if let Some(key) = key_of() {
+                    base.card(&peer, Some(&key.to_ascii_lowercase()), Instant::now());
+                    break;
+                }
+                if tokio::time::Instant::now() >= deadline {
+                    break;
+                }
+                tokio::time::sleep(step).await;
+            }
+            base.joining
+                .lock()
+                .expect("the joining lock is never poisoned")
+                .remove(&peer);
+        });
     }
 
     /// Start the background ask of peers' cards and the local refresh, for

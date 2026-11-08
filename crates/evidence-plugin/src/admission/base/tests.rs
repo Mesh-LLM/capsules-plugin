@@ -1047,3 +1047,67 @@ fn a_bad_requested_file_leaves_the_rows_not_read_but_the_chain_is_still_taken_in
     assert_eq!(facts_of(&base), None);
     assert_eq!(base.scan.lock().unwrap().records.len(), 2);
 }
+
+#[tokio::test]
+async fn a_joined_peer_is_asked_for_its_card_once_its_key_is_known() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let base = Arc::new(Base::new(dir.path().to_path_buf()));
+    let (sender, mut asks) = tokio::sync::mpsc::unbounded_channel();
+    base.asks.set(sender).unwrap();
+    let key = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
+    let seen = key.clone();
+    base.peer_joined_within(
+        PEER,
+        Duration::from_secs(5),
+        Duration::from_millis(10),
+        move || seen.lock().unwrap().clone(),
+    );
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    assert!(asks.try_recv().is_err(), "no key yet, no ask");
+    *key.lock().unwrap() = Some(KEY.to_uppercase());
+    let asked = tokio::time::timeout(Duration::from_secs(2), asks.recv()).await;
+    assert_eq!(asked.unwrap().as_deref(), Some(PEER));
+    // The first request after the join finds the ask already in flight.
+    base.read_keyed(PEER, Instant::now(), Utc::now());
+    assert!(asks.try_recv().is_err(), "one ask, not two");
+}
+
+#[tokio::test]
+async fn a_peer_whose_key_never_comes_is_not_asked_at_join_and_falls_back() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let base = Arc::new(Base::new(dir.path().to_path_buf()));
+    let (sender, mut asks) = tokio::sync::mpsc::unbounded_channel();
+    base.asks.set(sender).unwrap();
+    base.peer_joined_within(
+        PEER,
+        Duration::from_millis(50),
+        Duration::from_millis(10),
+        || None,
+    );
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(asks.try_recv().is_err());
+    // The wait ended; the request's own ask still happens, rows not_read.
+    let read = base.read_keyed(PEER, Instant::now(), Utc::now());
+    assert_eq!(read.rows[..2], [RowResult::NotRead; 2]);
+    assert_eq!(asks.try_recv().as_deref(), Ok(PEER));
+}
+
+#[tokio::test]
+async fn a_second_join_of_a_peer_does_not_ask_twice_and_a_cached_card_is_not_asked_again() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let base = Arc::new(Base::new(dir.path().to_path_buf()));
+    let (sender, mut asks) = tokio::sync::mpsc::unbounded_channel();
+    base.asks.set(sender).unwrap();
+    let key = || Some(KEY.to_uppercase());
+    let step = Duration::from_millis(10);
+    base.peer_joined_within(PEER, Duration::from_secs(1), step, key);
+    base.peer_joined_within(PEER, Duration::from_secs(1), step, key);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(asks.try_recv().as_deref(), Ok(PEER));
+    assert!(asks.try_recv().is_err());
+    // Card read: a rejoin within the 24 h cache asks nothing.
+    base.record_card(PEER, card(30), Instant::now());
+    base.peer_joined_within(PEER, Duration::from_secs(1), step, key);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(asks.try_recv().is_err());
+}

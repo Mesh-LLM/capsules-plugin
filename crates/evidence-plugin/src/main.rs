@@ -2106,6 +2106,7 @@ async fn main() -> anyhow::Result<()> {
         capsules.clone(),
     ));
     let admission_for_rows = peer_admission.clone();
+    let admission_for_join = peer_admission.clone();
     // the record-push responder's
     // citing-record seal writes to the SAME single-writer ledger -- one
     // `CapsuleState`, shared by Arc, never a second writer.
@@ -2364,6 +2365,15 @@ async fn main() -> anyhow::Result<()> {
     .customize(move |plugin| {
         plugin.on_mesh_event(move |event, context| {
             let self_peer = self_peer_for_events.clone();
+            // A peer joined: its history card is asked for now, so the
+            // first request to it reads the card rows (`admission::base`).
+            if event.kind == mesh_llm_plugin::proto::mesh_event::Kind::PeerUp as i32 {
+                if let Some(peer) = event.peer.as_ref().map(|p| p.peer_id.as_str()) {
+                    if !peer.is_empty() && peer != event.local_peer_id {
+                        admission_for_join.peer_joined(peer);
+                    }
+                }
+            }
             if self_peer.learn(&event.local_peer_id) {
                 tracing::info!(peer_id = %event.local_peer_id, "own mesh peer id reported by the host");
             }
