@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.17
+
 ### Changed
 
 - **A peer's `history_card/1` is asked for when the peer joins, not at the first request (#270).**
