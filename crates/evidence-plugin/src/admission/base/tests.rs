@@ -1111,3 +1111,33 @@ async fn a_second_join_of_a_peer_does_not_ask_twice_and_a_cached_card_is_not_ask
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert!(asks.try_recv().is_err());
 }
+
+#[tokio::test]
+async fn a_request_during_the_join_key_wait_sends_no_keyless_ask() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let base = Arc::new(Base::new(dir.path().to_path_buf()));
+    let (sender, mut asks) = tokio::sync::mpsc::unbounded_channel();
+    base.asks.set(sender).unwrap();
+    let key = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
+    let seen = key.clone();
+    base.peer_joined_within(
+        PEER,
+        Duration::from_secs(5),
+        Duration::from_millis(10),
+        move || seen.lock().unwrap().clone(),
+    );
+    // A request arrives before the key does.
+    let read = base.read_with_key(PEER, None, Instant::now(), Utc::now());
+    assert_eq!(read.rows[..2], [RowResult::NotRead; 2]);
+    assert!(
+        asks.try_recv().is_err(),
+        "no ask without a key during the join wait"
+    );
+    *key.lock().unwrap() = Some(KEY.to_string());
+    let asked = tokio::time::timeout(Duration::from_secs(2), asks.recv()).await;
+    assert_eq!(
+        asked.unwrap().as_deref(),
+        Some(PEER),
+        "the join asks once the key lands"
+    );
+}

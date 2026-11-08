@@ -228,4 +228,4 @@ if [ "$(decisions | grep -c -- "$provider_id")" -gt 0 ]; then
   echo "an admission record names the provider in clear" >&2
   exit 1
 fi
-echo "PASS: GO with the rows sealed, GO citing the history card, then a deny-list NO with its rows, between two real nodes"
+echo "PASS: card read at join, GO citing it twice, then a deny-list NO with its rows, between two real nodes"

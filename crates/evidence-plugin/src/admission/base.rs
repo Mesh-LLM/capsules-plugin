@@ -23,7 +23,9 @@
 //! and the verdict stays the operator's config's (the lists and the default).
 //! An adverse adjudication is a `fail` in the disputes row and never blocks on
 //! its own; the operator makes it a NO in config. A card not read yet is asked
-//! for in the background, and its rows read `not_read` until it comes. Every
+//! for in the background, and its rows read `not_read` until it comes. It is
+//! first asked for when the peer joins, once the peer's key is announced
+//! ([`Base::peer_joined`]), and otherwise at the first request. Every
 //! threshold is a placeholder, fixed here and cited by the policy digest.
 //!
 //! The rows are decided by capsule-engine's admission evaluator
@@ -360,7 +362,16 @@ impl Base {
         let retry_due = entry
             .asked_at
             .is_none_or(|asked| at.duration_since(asked) >= ASK_RETRY);
-        if stale && retry_due && !entry.in_flight {
+        // A peer whose join is waiting on its key is asked by the join once
+        // the key lands: a keyless ask now would fail and, for `ASK_RETRY`,
+        // block that one.
+        let key_awaited = key.is_none()
+            && self
+                .joining
+                .lock()
+                .expect("the joining lock is never poisoned")
+                .contains(peer);
+        if stale && retry_due && !entry.in_flight && !key_awaited {
             if let Some(asks) = self.asks.get() {
                 if asks.send(peer.to_string()).is_ok() {
                     entry.in_flight = true;
