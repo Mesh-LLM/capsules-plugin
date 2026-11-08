@@ -145,7 +145,15 @@ provider_key=$(openssl pkey -pubin -in "$(node_home provider)/.local/share/capsu
 
 # --- the requester: routes to the provider, admission granted ----------------
 # It knows the provider's record key, so the card can verify (identity).
-NODE_ENV=(RUST_LOG=capsules=info CAPSULES_PEER_KEYS="$(jq -cn --arg id "$provider_id" --arg k "$provider_key" '{($id): $k}')")
+# E2E_ANNOUNCED_KEYS=1 leaves CAPSULES_PEER_KEYS out, so the provider's key
+# can only come from the host's announced plugin keys (mesh-llm #2299) and the
+# card ask at join has to wait for it.
+NODE_ENV=(RUST_LOG=capsules=info)
+if [ "${E2E_ANNOUNCED_KEYS:-}" = 1 ]; then
+  NODE_ENV+=(CAPSULES_HOST_CONSOLE_URL="http://127.0.0.1:$REQUESTER_CONSOLE")
+else
+  NODE_ENV+=(CAPSULES_PEER_KEYS="$(jq -cn --arg id "$provider_id" --arg k "$provider_key" '{($id): $k}')")
+fi
 grant='
 [plugin.openai_exchange_grant]
 endpoints = ["chat_completions", "completions", "responses"]
@@ -163,7 +171,7 @@ wait_for 300 "the requester can route to the provider's model" lists_model "$REQ
 # --- 1. the card is asked for when the provider joins (#270) ----------------
 # Nothing has been requested yet: the plugin asks the peer for its history card
 # on the join, in the background, so the card is read before the first request.
-wait_for 60 "the requester read the provider's history card at join, before any request" card_read
+wait_for 240 "the requester read the provider's history card at join, before any request" card_read
 [ "$(decision_count)" = 0 ] || { echo "a decision was sealed before the first request" >&2; exit 1; }
 
 # --- 2. the first attempt: GO, citing the card already read -----------------
@@ -211,6 +219,8 @@ mv "$logs/requester.log" "$logs/requester-1.log"
 NODE_ENV+=(CAPSULES_ADMISSION_DENY="$provider_id")
 start_node requester "$REQUESTER_API" "$REQUESTER_CONSOLE" "$grant" --client --join "$token"
 wait_for 300 "the restarted requester can route to the provider's model" lists_model "$REQUESTER_API"
+# The restarted requester asks for the card at join again (its cache is gone).
+wait_for 240 "the restarted requester read the provider's history card at join" card_read
 before=$(decision_count)
 code=$(chat "$REQUESTER_API" 3)
 [ "$code" = 403 ] || { echo "the denied request was not refused: HTTP $code $(cat "$out/chat-3.json")" >&2; exit 1; }

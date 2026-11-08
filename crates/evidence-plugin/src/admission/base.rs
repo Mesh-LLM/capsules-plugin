@@ -507,10 +507,12 @@ impl Base {
             let deadline = tokio::time::Instant::now() + wait;
             loop {
                 if let Some(key) = key_of() {
+                    tracing::info!(%peer, "joined peer's key is known: its card is asked for");
                     base.card(&peer, Some(&key.to_ascii_lowercase()), Instant::now());
                     break;
                 }
                 if tokio::time::Instant::now() >= deadline {
+                    tracing::info!(%peer, "joined peer's key never came: its card waits for its first request");
                     break;
                 }
                 tokio::time::sleep(step).await;

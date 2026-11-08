@@ -2370,6 +2370,7 @@ async fn main() -> anyhow::Result<()> {
             if event.kind == mesh_llm_plugin::proto::mesh_event::Kind::PeerUp as i32 {
                 if let Some(peer) = event.peer.as_ref().map(|p| p.peer_id.as_str()) {
                     if !peer.is_empty() && peer != event.local_peer_id {
+                        tracing::info!(%peer, "peer joined: its history card will be asked for");
                         admission_for_join.peer_joined(peer);
                     }
                 }
