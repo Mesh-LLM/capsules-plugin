@@ -1376,6 +1376,11 @@ mod tests {
             cited_pack_digest(&p.provider, &session.acceptance_digest).as_deref(),
             Some(agreement::INFERENCE_DEALS_DIGEST)
         );
+        assert_eq!(
+            cited_pack_digest(&p.requester, &session.acceptance_digest).as_deref(),
+            Some(agreement::INFERENCE_DEALS_DIGEST),
+            "each side names the same digest"
+        );
         assert_eq!(cited_pack_digest(&p.provider, &"0".repeat(64)), None);
     }
 
