@@ -197,7 +197,7 @@ capsule-engine = { git = "https://github.com/action-state-group/capsule-engine",
 # Class 1 verification of a received half (capsule-emit main moved it here),
 # and, with `inference-history`, the Service History's derivation and checks
 # (`service_history`, evidencebook#322). capsule-emit still builds on 0.8.0, so
-# two lines of this crate are in the tree until it moves; 0.10.0 is the latest release.
+# two lines of this crate are in the tree until it moves.
 agent-action-capsule = { version = "0.10.0", features = ["strict", "inference-history"] }
 # The witness's own record of this log (`witness_status`): one blocking GET,
 # no redirects, a capped body. Already in the tree through capsule-emit.
