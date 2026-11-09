@@ -440,6 +440,15 @@ impl WitnessStateStore for ChainLog {
         self.log.pending_witnesses(now, limit)
     }
 
+    fn pending_witnesses_for(
+        &self,
+        witness_id: &str,
+        now: Timestamp,
+        limit: usize,
+    ) -> cll::log::Result<Vec<WitnessState>> {
+        self.log.pending_witnesses_for(witness_id, now, limit)
+    }
+
     fn get_witness(
         &self,
         witness_id: &str,

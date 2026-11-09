@@ -223,6 +223,9 @@ fn signed_envelope(
             derive: Some(&derive),
             derivations: None,
             requester: None,
+            // The plugin answers no standard_history derivation; None is the
+            // behavior it had before the field existed (DerivationUnsupported).
+            standard_card: None,
         },
         b.signing_key,
         b.issued_at,
@@ -441,7 +444,7 @@ struct Stated {
 /// The profile identifier a request names: its `profile` member, or
 /// `evidence-interop/0` when it has none (profile §3.3 step 2). `None` when
 /// the member is not text. This node answers and checks `evidence-interop/0`
-/// and `evidence-interop/1` ([`envelope::PROFILES`]), each with its own
+/// and `evidence-interop/1` (the evidence_answer module's ANSWERED_PROFILES), each with its own
 /// refusal reasons (IP v1 §6.3).
 pub fn requested_profile(request: &Map<String, Value>) -> Option<&str> {
     match request.get("profile") {
