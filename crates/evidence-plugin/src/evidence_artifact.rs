@@ -441,10 +441,16 @@ struct Stated {
     cp: DecodedCheckpointCose,
 }
 
+/// The profile identifiers this node answers and checks (`evidence-interop/0`
+/// and `/1`). evidence-request 0.5.0 implements `/2` as well, which this node
+/// does not: a request naming it is refused, and an answer to one is not
+/// believed.
+pub(crate) const ANSWERED_PROFILES: [&str; 2] = [envelope::PROFILE, envelope::PROFILE_V1];
+
 /// The profile identifier a request names: its `profile` member, or
 /// `evidence-interop/0` when it has none (profile §3.3 step 2). `None` when
 /// the member is not text. This node answers and checks `evidence-interop/0`
-/// and `evidence-interop/1` (the evidence_answer module's ANSWERED_PROFILES), each with its own
+/// and `evidence-interop/1` ([`ANSWERED_PROFILES`]), each with its own
 /// refusal reasons (IP v1 §6.3).
 pub fn requested_profile(request: &Map<String, Value>) -> Option<&str> {
     match request.get("profile") {
@@ -480,7 +486,9 @@ pub fn check(
         Ok(Value::Object(map)) => requested_profile(&map).map(str::to_string),
         _ => None,
     };
-    let Some(asked) = asked.filter(|p| p == &env.profile) else {
+    let Some(asked) =
+        asked.filter(|p| p == &env.profile && ANSWERED_PROFILES.contains(&p.as_str()))
+    else {
         return fail("the answer is not under the profile the request named");
     };
     env.verify_for_profile(&asked, key, sent)
@@ -1435,6 +1443,7 @@ mod tests {
         for profile in [
             json!("evidence-interop/0"),
             json!("evidence-interop/1"),
+            json!("evidence-interop/2"),
             json!(7),
         ] {
             let mut asked: Value = serde_json::from_slice(&sent).unwrap();

@@ -296,13 +296,6 @@ fn under_profile(reason: Reason, v1: bool) -> Reason {
     }
 }
 
-/// The profile identifiers this node answers (`evidence-interop/0` and `/1`).
-/// evidence-request 0.5.0 implements `/2` as well, which this node does not.
-const ANSWERED_PROFILES: [&str; 2] = [
-    evidence_request::envelope::PROFILE,
-    evidence_request::envelope::PROFILE_V1,
-];
-
 /// Whether the request octets ask for `evidence-interop/1`.
 fn asks_v1(request_bytes: &[u8]) -> bool {
     evidence_artifact::profile_of(request_bytes) == evidence_request::envelope::PROFILE_V1
@@ -345,8 +338,8 @@ fn answer_inner(request_bytes: &[u8], responder: &Responder<'_>, asker: &mut Ask
     // A profile this node does not implement (profile §3.3 step 4).
     // evidence-request 0.5.0 also lists `evidence-interop/2`, which this node
     // does not answer, so the list here is its own.
-    let Some(profile) =
-        evidence_artifact::requested_profile(&map).filter(|p| ANSWERED_PROFILES.contains(p))
+    let Some(profile) = evidence_artifact::requested_profile(&map)
+        .filter(|p| evidence_artifact::ANSWERED_PROFILES.contains(p))
     else {
         return refuse(Reason::RequestMalformed, kind);
     };

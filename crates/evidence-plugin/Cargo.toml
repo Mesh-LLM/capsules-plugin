@@ -157,7 +157,7 @@ capsule-emit-lib = { package = "capsule-emit", version = "0.0.12" }
 cll = { package = "checkpointed-local-log", version = "0.5.0", features = ["sqlite"] }
 # The chain's records: capsule-emit's artifact store (SQLite backend), the
 # layer its `Ledger` keeps each line in beside the CLL log, both on the node's
-# shelf, `ledger/shelf.db` (`chain_store`). The version capsule-emit 0.0.11
+# shelf, `ledger/shelf.db` (`chain_store`). The version capsule-emit 0.0.12
 # and the shelf both use, so they pass records through one crate.
 capsule-emit-artifact = { version = "0.0.3", features = ["sqlite"] }
 # The shelf's host table beside CLL's and the artifact store's tables (the
@@ -196,8 +196,8 @@ evidencebook = { version = "=0.0.15", features = ["deal", "shelf"] }
 capsule-engine = { git = "https://github.com/action-state-group/capsule-engine", rev = "c7701385b87b68c631803e5d0adeee4d617ff5d4" }
 # Class 1 verification of a received half (capsule-emit main moved it here),
 # and, with `inference-history`, the Service History's derivation and checks
-# (`service_history`, evidencebook#322). capsule-emit still builds on 0.8.0, so
-# two lines of this crate are in the tree until it moves.
+# (`service_history`, evidencebook#322). capsule-emit 0.0.12 builds on 0.10.0 too, so
+# one line of this crate is in the tree.
 agent-action-capsule = { version = "0.10.0", features = ["strict", "inference-history"] }
 # The witness's own record of this log (`witness_status`): one blocking GET,
 # no redirects, a capped body. Already in the tree through capsule-emit.

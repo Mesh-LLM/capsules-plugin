@@ -8,7 +8,10 @@
   agent-action-capsule line and one checkpointed-local-log line are in the build (it carried two of each),
   with capsule-emit 0.0.12, capsule-emit-artifact 0.0.3 and evidence-request 0.5.0. The node still answers
   `evidence-interop/0` and `/1` only: a request naming `/2`, which evidence-request 0.5.0 also lists, is
-  still `request_malformed`.
+  still `request_malformed`, and an answer to one is not believed. `evidence-request` appears twice in the build (0.5.0, and 0.4.1
+  through agent-action-capsule 0.10.0, which uses only its time, status and controller-binding modules). capsule-emit 0.0.12
+  sends witness registration through its own HTTP client, which refuses a witness response whose `entry_hash_scheme` is not
+  `legacy`.
 
 ## 0.1.18
 
