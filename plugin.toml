@@ -1,2 +1,7 @@
 name = "capsules"
 version = "0.1.17"
+# The MeshLLM host versions this release supports, as a semver range: comma-separated
+# comparators (>=, >, <=, <, =, ^, ~) on MAJOR.MINOR.PATCH. Set per release; mesh-llm reads it
+# to tell a compatible plugin from one a host upgrade must repair. Read by
+# scripts/check-plugin-toml.sh, which package.sh runs.
+mesh_llm = ">=0.78.0"
