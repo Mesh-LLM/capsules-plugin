@@ -7,9 +7,9 @@
 ### Changed
 
 - **The package declares the oldest host it works with (#283, #284).** `plugin.toml` now carries
-  `min_host_version = "0.78.0"`, which the host keeps with the install and judges a host upgrade
-  against, and `package.sh` refuses to build a package without it. No behavior change on a 0.78 or
-  newer host.
+  `min_host_version = "0.78.0"`, the oldest host this release works with, for mesh-llm's planned
+  upgrade check (Mesh-LLM/mesh-llm#2978, not yet in a release). `package.sh` refuses to build a
+  package without it.
 - **The referee's `split_margin_threshold` defaults to 4.41 again (#282, Steven's ruling
   2026-11-10).** 0.1.17 shipped it at 0 (#257, for the Devcon S08 demo's 0.5B models), which turned
   off the guard against accusing an honest node whose backend split on a near-tie. Unset now reads as
