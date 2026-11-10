@@ -256,6 +256,9 @@ jobs:
           cargo build --locked --manifest-path crates/evidence-plugin/Cargo.toml --bin capsules
           (cd web-ui && pnpm install --frozen-lockfile && pnpm build)
 
+      - name: plugin.toml declares min_host_version
+        run: scripts/plugin-toml.test.sh
+
       - name: Package twice and compare
         env:
           SOURCE_DATE_EPOCH: "0"
