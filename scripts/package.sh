@@ -38,7 +38,7 @@ core=$(printf '%s' "$version" | sed -n 's/^\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9
 [ -n "$core" ] || fail "version $version is not MAJOR.MINOR.PATCH[-PRERELEASE]"
 declared=$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' "$root/plugin.toml")
 [ "$declared" = "$core" ] || fail "plugin.toml declares $declared, the release is $version; bump plugin.toml first"
-mesh_llm=$("$root/scripts/check-plugin-toml.sh" "$root/plugin.toml") || fail "plugin.toml must declare the MeshLLM versions it supports"
+min_host=$("$root/scripts/check-plugin-toml.sh" "$root/plugin.toml") || fail "plugin.toml must declare the oldest MeshLLM host it supports (min_host_version)"
 [ -x "$binary" ] || fail "no executable at $binary"
 [ "$(ls "$root/bundle" 2>/dev/null)" = "register-mesh-plugin-ui.js" ] ||
   fail "bundle/ must hold exactly register-mesh-plugin-ui.js (run pnpm build in web-ui/)"
@@ -76,6 +76,6 @@ archive=$out/$PLUGIN-$version-$target.tar.gz
 ( cd "$work" && "$tar" --sort=name --format=ustar --owner=0 --group=0 --numeric-owner \
     --mtime="@${SOURCE_DATE_EPOCH:-0}" -cf - "$PLUGIN" ) | gzip -n -9 > "$archive"
 # Read the requirement back out of the archive: what ships must carry it.
-shipped=$(gzip -dc "$archive" | "$tar" -xOf - "$PLUGIN/plugin.toml" | sed -n 's/^mesh_llm *= *"\([^"]*\)".*/\1/p')
-[ "$shipped" = "$mesh_llm" ] || fail "the archive's plugin.toml does not carry mesh_llm = \"$mesh_llm\""
+shipped=$(gzip -dc "$archive" | "$tar" -xOf - "$PLUGIN/plugin.toml" | sed -n 's/^min_host_version *= *"\([^"]*\)".*/\1/p')
+[ "$shipped" = "$min_host" ] || fail "the archive's plugin.toml does not carry min_host_version = \"$min_host\""
 sha "$archive"
