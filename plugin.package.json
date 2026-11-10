@@ -200,11 +200,11 @@
           "allow_additional_properties": false
         },
         "required": false,
-        "default_json": "0.0",
+        "default_json": "4.41",
         "apply_mode": "static_on_load",
         "restart_scope": "none",
         "visibility": "user",
-        "description": "The least margin, in nats, between the referee's top two words at the split for it to name a twin; below it the ruling is inconclusive. The default 0 names a twin at any split, near-ties and exact ties included, so the guard against accusing an honest node whose backend split on a near-tie is off. Set 4.41 if your nodes mix platforms or batching: that is the rule, twice the largest margin seen between honest backends. Every verdict records the margin and the threshold it was judged by.",
+        "description": "When two machines answer the same request differently, a third node (the referee) re-answers it and checks how sure the model was at the word where the answers split: the gap, in nats, between its top two words. It names a machine as wrong only if that gap is at least this margin; below it the ruling is inconclusive and counts against no one. Honest machines on different hardware were seen to differ by up to 2.20, so the default 4.41 leaves a safety gap. Lowering it (demos use 0) lets small models reach a verdict, but honest nodes can then be accused. Every verdict records the margin and the threshold it was judged by.",
         "presentation": {
           "label": "Referee's least margin to name a twin",
           "category_id": "differ",
