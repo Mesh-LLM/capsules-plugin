@@ -1,6 +1,6 @@
 # Split-margin measurement (#155)
 
-This is where `SPLIT_MARGIN_RULE_NATS` (`crates/evidence-plugin/src/referee/verdict.rs`), the rule's 4.41 nats, comes from. The node applies the `split_margin_threshold` setting, default 0.
+This is where `SPLIT_MARGIN_RULE_NATS` (`crates/evidence-plugin/src/referee/verdict.rs`), the rule's 4.41 nats, comes from. The node applies the `split_margin_threshold` setting, default 4.41 (#282; it was 0 in 0.1.15 to 0.1.17, for the Devcon S08 demo).
 
 The question it answers: on honest nodes serving the same weights, how far can a backend move the gap between the top two next tokens? A referee's word names a twin only when its own gap at the split is wider than any such move.
 

@@ -139,8 +139,8 @@ describe('the lowered referee margin', () => {
   })
 
   it('shows the page notice only when the node reports a lowered margin', () => {
-    expect(loweredMarginNotice({ threshold: '0.000000', lowered: true })).toContain('lowered to 0 nats')
-    expect(loweredMarginNotice({ threshold: '4.410000', lowered: false })).toBeNull()
+    expect(loweredMarginNotice({ threshold: '0.000000', rule: '4.410000', lowered: true })).toContain('lowered to 0 nats')
+    expect(loweredMarginNotice({ threshold: '4.410000', rule: '4.410000', lowered: false })).toBeNull()
     expect(loweredMarginNotice(undefined)).toBeNull()
   })
 })

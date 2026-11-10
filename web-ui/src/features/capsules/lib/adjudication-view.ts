@@ -111,11 +111,14 @@ export function loweredMarginVerdictLine(record: VerdictRecordJson): string | nu
 }
 
 /** The page notice when this node's referee margin is below the rule. */
-export function loweredMarginNotice(margin: { threshold: string; lowered: boolean } | null | undefined): string | null {
+export function loweredMarginNotice(
+  margin: { threshold: string; rule: string; lowered: boolean } | null | undefined
+): string | null {
   if (!margin?.lowered) return null
   const nats = Number(margin.threshold)
   if (!Number.isFinite(nats)) return null
-  return `This node’s referee margin is lowered to ${natsText(nats)} nats (the default is ${SPLIT_MARGIN_RULE}). It names a node wrong on a closer split, so honest nodes can be accused. Change it under Configuration › Plugins.`
+  const rule = Number(margin.rule)
+  return `This node’s referee margin is lowered to ${natsText(nats)} nats (the default is ${natsText(Number.isFinite(rule) ? rule : SPLIT_MARGIN_RULE)}). It names a node wrong on a closer split, so honest nodes can be accused. Change it under Configuration › Plugins.`
 }
 
 /** Whether the plugin could check the verdict: the referee's signature, and
