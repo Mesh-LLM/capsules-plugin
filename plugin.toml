@@ -1,5 +1,5 @@
 name = "capsules"
-version = "0.1.17"
+version = "0.1.18"
 # The oldest MeshLLM host this release works with (inclusive), as MAJOR.MINOR.PATCH. The
 # host retains it with the install and judges a host upgrade against it (mesh-llm#2971,
 # #2978). 0.78.0 is the first host with the events and plugin APIs the README lists as "in
