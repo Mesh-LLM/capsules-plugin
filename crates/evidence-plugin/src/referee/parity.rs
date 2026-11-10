@@ -560,8 +560,8 @@ fn run_request(case: &Value) -> Vec<Value> {
 
 type Runner = fn(&Value) -> Vec<Value>;
 
-/// The corpus states the rule's threshold (4.41 nats, #159), not the node's
-/// default of 0, so every path is run with it pinned.
+/// The corpus states the rule's threshold (4.41 nats, #159), so every path is
+/// run with it pinned and an operator's own setting cannot move the answers.
 pub(crate) fn at_the_rule<T>(f: impl FnOnce() -> T) -> T {
     verdict::with_threshold(verdict::SPLIT_MARGIN_RULE_NATS, f)
 }

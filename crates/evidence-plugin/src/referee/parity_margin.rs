@@ -504,9 +504,9 @@ fn ruling_at(split: f64, threshold: f64) -> Value {
     answers.into_iter().next().expect("one answer")
 }
 
-/// The default threshold is 0 (Ethan, 2026-11-03): a referee names a twin on
-/// a 0.0002-nat split, as in the S08 measurement, and seals the margin and
-/// the 0 it was judged by.
+/// A threshold of 0 (what the Devcon S08 demo sets; the default is 4.41,
+/// #282): a referee names a twin on a 0.0002-nat split, as in the S08
+/// measurement, and seals the margin and the 0 it was judged by.
 #[test]
 fn threshold_zero_names_a_twin_on_a_near_tie() {
     let answer = ruling_at(0.000_2, 0.0);

@@ -56,6 +56,10 @@ vi.mock('@/features/capsules/api/sidecarClient', () => ({
   })
 }))
 
+vi.mock('@/features/capsules/api/verdictClient', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/capsules/api/verdictClient')>()),
+  fetchRefereeMargin: vi.fn(async () => ({ unit: 'nats', threshold: '4.410000', rule: '4.410000', lowered: false }))
+}))
 vi.mock('@/features/capsules/api/recordsClient', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/capsules/api/recordsClient')>()
   return {
@@ -754,6 +758,24 @@ describe('LedgerPageContent', () => {
     render(<LedgerPageContent />, { wrapper: makeWrapper() })
     await screen.findByTestId('hero-your-records')
     expect(screen.queryByTestId('hero-exchange-text-notice')).not.toBeInTheDocument()
+  })
+
+  it('says under the hero when the referee margin is lowered below 4.41, and nothing at the default', async () => {
+    const { fetchRefereeMargin } = await import('@/features/capsules/api/verdictClient')
+    render(<LedgerPageContent />, { wrapper: makeWrapper() })
+    await screen.findByTestId('hero-your-records')
+    expect(screen.queryByTestId('hero-lowered-margin')).not.toBeInTheDocument()
+    cleanup()
+    vi.mocked(fetchRefereeMargin).mockResolvedValueOnce({
+      unit: 'nats',
+      threshold: '0.000000',
+      rule: '4.410000',
+      lowered: true
+    })
+    render(<LedgerPageContent />, { wrapper: makeWrapper() })
+    expect(await screen.findByTestId('hero-lowered-margin')).toHaveTextContent(
+      'This node’s referee margin is lowered to 0 nats (the default is 4.41).'
+    )
   })
 
   it('after keeping is turned off, says how much kept text is still held, and Delete now opens Clean up records', async () => {

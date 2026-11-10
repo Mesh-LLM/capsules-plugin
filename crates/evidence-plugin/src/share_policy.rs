@@ -53,7 +53,7 @@ pub const STOP_ROUTING_WINDOW_KEY: &str = "stop_routing_window_days";
 pub const ADJUDICATE_DIFFERING_TWINS_KEY: &str = "adjudicate_differing_twins";
 pub const REFEREE_BAR_DAYS_KEY: &str = "referee_bar_days";
 /// The least top-2 margin, in nats, at which the referee names a twin
-/// (`CAPSULES_SPLIT_MARGIN_THRESHOLD`; `crate::referee::verdict`). Default 0.
+/// (`CAPSULES_SPLIT_MARGIN_THRESHOLD`; `crate::referee::verdict`). Default 4.41.
 pub const SPLIT_MARGIN_THRESHOLD_KEY: &str = "split_margin_threshold";
 
 /// This process's own runtime env var for `share_record_at_completion` --
@@ -369,15 +369,17 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
         )
         .setting(
             config_setting(SPLIT_MARGIN_THRESHOLD_KEY, config_float())
-                .default_value(&0.0)
+                .default_value(&4.41)
                 .description(
-                    "The least margin, in nats, between the referee's top two words at the split \
-                     for it to name a twin; below it the ruling is inconclusive. The default 0 \
-                     names a twin at any split, near-ties and exact ties included, so the guard against \
-                     accusing an honest node whose backend split on a near-tie is off. Set 4.41 \
-                     if your nodes mix platforms or batching: that is the rule, twice the largest margin seen between \
-                     honest backends. Every verdict records the margin and the threshold it \
-                     was judged by.",
+                    "Referee margin (4.41). When two nodes give different answers to the same \
+                     request, a third node re-answers it and checks how sure the model was at the \
+                     word where they split. It only names a node as wrong if it was sure by at least \
+                     this margin. Honest machines with different hardware differ by up to about 2.2, \
+                     so 4.41 leaves a safety gap. Below the margin the result is \"inconclusive\" and \
+                     counts against no one. Lowering it lets small demo models reach a verdict, but \
+                     honest nodes can then be accused. Every verdict records the margin and the \
+                     threshold it was judged by; the Evidence page says when the margin is below \
+                     4.41.",
                 )
                 .label("Referee's least margin to name a twin")
                 .category(DIFFER_CATEGORY_ID, DIFFER_CATEGORY_LABEL, DIFFER_CATEGORY_SUMMARY, 1)
@@ -671,7 +673,7 @@ mod tests {
             (STOP_ROUTING_AFTER_KEY, None, v(&[])),
             (STOP_ROUTING_WINDOW_KEY, Some("30"), v(&[])),
             (REFEREE_BAR_DAYS_KEY, Some("30"), v(&[])),
-            (SPLIT_MARGIN_THRESHOLD_KEY, Some("0.0"), v(&[])),
+            (SPLIT_MARGIN_THRESHOLD_KEY, Some("4.41"), v(&[])),
             (
                 ADJUDICATIONS_KEY,
                 Some("\"deliver_to_subjects\""),
