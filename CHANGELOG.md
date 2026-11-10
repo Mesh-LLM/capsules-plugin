@@ -9,7 +9,7 @@
   off the guard against accusing an honest node whose backend split on a near-tie. Unset now reads as
   the rule, 4.41: twice the largest margin measured between honest backends (2.20 nats). A demo that
   wants verdicts at any split sets `CAPSULES_SPLIT_MARGIN_THRESHOLD=0` (or the setting) itself; the
-  Devcon S08 image does. Nodes that set the value explicitly are unaffected; every verdict still seals
+  Devcon S08 scripts do (action-state-group/devcon-workshop#92). Nodes that set the value explicitly are unaffected; every verdict still seals
   the margin and the threshold it was judged by.
 - **The margin setting now has a plain-words (?) explanation** (Configuration, and
   `docs/TWIN-REFEREE-SELECTION.md`), and **the Evidence page says when the margin is below 4.41**: a
