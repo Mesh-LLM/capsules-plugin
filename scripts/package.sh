@@ -76,6 +76,8 @@ archive=$out/$PLUGIN-$version-$target.tar.gz
 ( cd "$work" && "$tar" --sort=name --format=ustar --owner=0 --group=0 --numeric-owner \
     --mtime="@${SOURCE_DATE_EPOCH:-0}" -cf - "$PLUGIN" ) | gzip -n -9 > "$archive"
 # Read the requirement back out of the archive: what ships must carry it.
-shipped=$(gzip -dc "$archive" | "$tar" -xOf - "$PLUGIN/plugin.toml" | sed -n 's/^min_host_version *= *"\([^"]*\)".*/\1/p')
+mkdir "$work/readback"
+gzip -dc "$archive" | "$tar" -xOf - "$PLUGIN/plugin.toml" > "$work/readback/plugin.toml"
+shipped=$("$root/scripts/check-plugin-toml.sh" "$work/readback/plugin.toml") || fail "the archive's plugin.toml fails the min_host_version check"
 [ "$shipped" = "$min_host" ] || fail "the archive's plugin.toml does not carry min_host_version = \"$min_host\""
 sha "$archive"

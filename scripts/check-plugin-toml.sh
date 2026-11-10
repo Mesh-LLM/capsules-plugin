@@ -14,9 +14,12 @@ KEY=min_host_version
 file=${1:-plugin.toml}
 [ -f "$file" ] || { echo "check-plugin-toml: no file $file" >&2; exit 1; }
 
-value=$(sed -n "s/^$KEY *= *\"\([^\"]*\)\" *\(#.*\)\{0,1\}\$/\1/p" "$file")
-[ -n "$value" ] || { echo "check-plugin-toml: $file declares no $KEY = \"MAJOR.MINOR.PATCH\"" >&2; exit 1; }
-[ "$(printf '%s\n' "$value" | wc -l)" -eq 1 ] || { echo "check-plugin-toml: $file declares $KEY more than once" >&2; exit 1; }
+# Only the top level counts: a key under a [table] is another key to TOML.
+top=$(sed '/^[[:space:]]*\[/,$d' "$file")
+n=$(printf '%s\n' "$top" | sed -n "s/^[[:space:]]*$KEY[[:space:]]*=.*/x/p" | wc -l)
+[ "$n" -le 1 ] || { echo "check-plugin-toml: $file declares $KEY more than once" >&2; exit 1; }
+value=$(printf '%s\n' "$top" | sed -n "s/^$KEY *= *\"\([^\"]*\)\" *\(#.*\)\{0,1\}\$/\1/p")
+[ -n "$value" ] || { echo "check-plugin-toml: $file declares no top-level $KEY = \"MAJOR.MINOR.PATCH\"" >&2; exit 1; }
 printf '%s\n' "$value" | grep -q '^[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$' ||
   { echo "check-plugin-toml: $KEY = \"$value\" in $file is not MAJOR.MINOR.PATCH" >&2; exit 1; }
 printf '%s\n' "$value"

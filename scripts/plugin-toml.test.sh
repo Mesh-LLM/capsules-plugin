@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # scripts/check-plugin-toml.sh on good and bad plugin.toml files, and the
 # repository's own plugin.toml. package.sh runs the check, so a package that
-# passes carries the key; CI also reads it back out of the built archive.
+# passes carries the key; package.sh also reads it back out of the built archive.
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 check=$root/scripts/check-plugin-toml.sh
@@ -25,6 +25,10 @@ expect bad 'min_host_version = "v0.78.0"'            "v prefix"
 expect bad 'mesh_llm = "0.78.0"'                     "the old key name"
 expect bad "min_host_version = '0.78.0'"             "single quotes"
 
+printf 'name = "x"\nmin_host_version = "0.1.0"\nmin_host_version = ""\n' > "$tmp/plugin.toml"
+if "$check" "$tmp/plugin.toml" >/dev/null 2>&1; then echo "FAIL: duplicate with an empty value accepted" >&2; fails=$((fails + 1)); fi
+printf 'name = "x"\n[extra]\nmin_host_version = "0.78.0"\n' > "$tmp/plugin.toml"
+if "$check" "$tmp/plugin.toml" >/dev/null 2>&1; then echo "FAIL: key under a table accepted" >&2; fails=$((fails + 1)); fi
 printf 'name = "x"\nmin_host_version = "0.1.0"\nmin_host_version = "0.2.0"\n' > "$tmp/plugin.toml"
 if "$check" "$tmp/plugin.toml" >/dev/null 2>&1; then echo "FAIL: duplicate key accepted" >&2; fails=$((fails + 1)); fi
 
