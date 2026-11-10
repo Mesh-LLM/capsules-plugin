@@ -371,15 +371,15 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
             config_setting(SPLIT_MARGIN_THRESHOLD_KEY, config_float())
                 .default_value(&4.41)
                 .description(
-                    "When two machines answer the same request differently, a third node (the \
-                     referee) re-answers it and checks how sure the model was at the word where the \
-                     answers split: the gap, in nats, between its top two words. It names a machine \
-                     as wrong only if that gap is at least this margin; below it the ruling is \
-                     inconclusive and counts against no one. Honest machines on different hardware \
-                     were seen to differ by up to 2.20, so the default 4.41 leaves a safety gap. \
-                     Lowering it (demos use 0) lets small models reach a verdict, but honest nodes \
-                     can then be accused. Every verdict records the margin and the threshold it was \
-                     judged by.",
+                    "Referee margin (4.41). When two nodes give different answers to the same \
+                     request, a third node re-answers it and checks how sure the model was at the \
+                     word where they split. It only names a node as wrong if it was sure by at least \
+                     this margin. Honest machines with different hardware differ by up to about 2.2, \
+                     so 4.41 leaves a safety gap. Below the margin the result is \"inconclusive\" and \
+                     counts against no one. Lowering it lets small demo models reach a verdict, but \
+                     honest nodes can then be accused. Every verdict records the margin and the \
+                     threshold it was judged by; the Evidence page says when the margin is below \
+                     4.41.",
                 )
                 .label("Referee's least margin to name a twin")
                 .category(DIFFER_CATEGORY_ID, DIFFER_CATEGORY_LABEL, DIFFER_CATEGORY_SUMMARY, 1)

@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { fetchVerdictRecord } from '@/features/capsules/api/verdictClient'
 import {
   shortId,
+  loweredMarginVerdictLine,
   verdictRecordFacts,
   verdictSentence,
   verdictSignatureText
@@ -58,6 +59,11 @@ export function VerdictRecordDialog({ capsuleId, open, onOpenChange }: VerdictRe
               <p data-testid="verdict-record-verdict">
                 {verdictSentence(facts.verdict)}
               </p>
+              {loweredMarginVerdictLine(record.data) ? (
+                <p data-testid="verdict-record-lowered-margin" role="note">
+                  {loweredMarginVerdictLine(record.data)}
+                </p>
+              ) : null}
               <p data-testid="verdict-record-signature">{verdictSignatureText(record.data)}</p>
               {record.data.signed_by_key_id ? (
                 <p className="text-fg-dim">Signed by key {shortId(record.data.signed_by_key_id)}.</p>

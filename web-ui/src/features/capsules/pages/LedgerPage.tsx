@@ -31,6 +31,8 @@ import {
   noReportNote,
   sealedNote
 } from '@/features/capsules/lib/what-happened'
+import { fetchRefereeMargin } from '@/features/capsules/api/verdictClient'
+import { loweredMarginNotice } from '@/features/capsules/lib/adjudication-view'
 import { announcedKeyFor, askForHistory, askForRecord } from '@/features/capsules/api/evidenceRequestClient'
 import {
   judgeAskReply,
@@ -1671,6 +1673,15 @@ export function LedgerPageContent({ focusExchangeKey }: { focusExchangeKey?: str
     return map
   }, [ledgerQuery.data])
 
+  // The referee margin in force; the page says so when it is below the rule
+  // (display only: each verdict seals the margin it was judged by).
+  const refereeMarginQuery = useQuery({
+    queryKey: ['ledger', 'referee-margin'],
+    queryFn: fetchRefereeMargin,
+    refetchInterval: 30_000,
+    retry: false
+  })
+  const loweredMargin = loweredMarginNotice(refereeMarginQuery.data)
   const nodePubKeyPem = ledgerQuery.data?.nodePubKeyPem ?? null
   const sidecarConnected = paneAStatusQuery.isSuccess
   // Look finding 6: a replayed fixture run reads "Sample data", never "Live".
@@ -1737,8 +1748,13 @@ export function LedgerPageContent({ focusExchangeKey }: { focusExchangeKey?: str
           titleId="evidence-title"
           titleLevel="h1"
           annotation={
-            heroLine || exchangeText ? (
+            heroLine || exchangeText || loweredMargin ? (
               <>
+                {loweredMargin ? (
+                  <p className="type-caption mt-1 text-foreground" data-testid="hero-lowered-margin" role="note">
+                    {loweredMargin}
+                  </p>
+                ) : null}
                 {heroLine ? (
                   <p className="type-caption mt-1 text-fg-dim" data-testid="hero-status-line">
                     {heroLine}

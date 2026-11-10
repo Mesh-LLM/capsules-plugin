@@ -160,15 +160,22 @@ about a node's future answers.
 | --- | --- | --- |
 | `adjudicate_differing_twins` | `CAPSULES_ADJUDICATE_DIFFERING_TWINS` | off (`on`, `1`, `true` or `yes` turns it on) |
 | `referee_bar_days` | `CAPSULES_REFEREE_BAR_DAYS` | 30 |
-| `split_margin_threshold` | `CAPSULES_SPLIT_MARGIN_THRESHOLD` | 0 (nats) |
+| `split_margin_threshold` | `CAPSULES_SPLIT_MARGIN_THRESHOLD` | 4.41 (nats) |
 | `stop_routing_after_contradictions` | `CAPSULES_STOP_ROUTING_AFTER_CONTRADICTIONS` | off |
 | `stop_routing_window_days` | `CAPSULES_STOP_ROUTING_WINDOW_DAYS` | 30 |
 
-`split_margin_threshold` is the least margin, in nats, between the referee's top two words
-at the split for it to name a twin (section 1). **At the default 0 the false-accusation guard is
-off:** the referee names a twin on any split, including a near-tie or an exact tie that honest backends could
-have split on (the S08 demo's measured margin was 0.000208 nats). If your twins run on mixed platforms (CUDA, CPU, Metal) or with nondeterministic batching, set it to **4.41** to restore
-the rule of #155/#159 (twice the largest honest CUDA-CPU margin measured, 2.20 nats; Sherlock2).
+**Referee margin (4.41).** When two nodes give different answers to the same request, a third node
+re-answers it and checks how sure the model was at the word where they split. It only names a node as
+wrong if it was sure by at least this margin. Honest machines with different hardware differ by up to
+about 2.2, so 4.41 leaves a safety gap. Below the margin the result is "inconclusive" and counts against
+no one. Lowering it lets small demo models reach a verdict, but honest nodes can then be accused.
+
+`split_margin_threshold` is that margin: the least gap, in nats, between the referee's top two words
+at the split for it to name a twin (section 1). The default is **4.41**: twice the largest honest
+CUDA-CPU margin measured, 2.20 nats (#155/#159; Sherlock2). A demo whose small models split on near-ties
+(the S08 demo's measured margin was 0.000208 nats) sets it to 0 itself, in its own configuration
+(`CAPSULES_SPLIT_MARGIN_THRESHOLD=0`); at 0 the false-accusation guard is off. When the margin is below
+4.41 the Evidence page says so, and so does every verdict dialog (its sealed `split_margin.threshold`).
 It takes a non-negative number of nats; a value that is negative or not a number reads as 4.41,
 never as a looser one, and one past 1,000,000 (the largest margin there is) is capped at 1,000,000. It is read at each ruling, so a change in the console applies to the next
 one. A referee with no margin to read stays `inconclusive` at any threshold. Every verdict seals

@@ -3,6 +3,8 @@ import type { DeliveredAdjudication, VerdictRecordJson } from '@/features/capsul
 import {
   deliveredVerdictLine,
   issuedVerdictLine,
+  loweredMarginNotice,
+  loweredMarginVerdictLine,
   parseVerdict,
   verdictRecordFacts,
   verdictSentence,
@@ -109,5 +111,36 @@ describe('adjudication view -- a referee’s verdict in plain words', () => {
     for (const wire of ['inconclusive', 'not_comparable']) {
       expect(deliveredVerdictLine(delivered({ verdict: wire }))).not.toMatch(/contradicted|wrong/)
     }
+  })
+})
+
+function sealedAt(threshold: string | undefined): VerdictRecordJson {
+  return {
+    capsule: {
+      model_attestation: {
+        compute_attestation: {
+          adjudication: { verdict: 'inconclusive', ...(threshold ? { split_margin: { unit: 'nats', threshold } } : {}) }
+        }
+      }
+    },
+    signed_by_key_id: null,
+    verify_ok: true
+  }
+}
+
+describe('the lowered referee margin', () => {
+  it('says so on a verdict judged below 4.41 and on nothing else', () => {
+    expect(loweredMarginVerdictLine(sealedAt('0.000000'))).toContain('0 nats, below the 4.41 default')
+    expect(loweredMarginVerdictLine(sealedAt('2.500000'))).toContain('2.5 nats')
+    expect(loweredMarginVerdictLine(sealedAt('4.410000'))).toBeNull()
+    expect(loweredMarginVerdictLine(sealedAt('9.000000'))).toBeNull()
+    expect(loweredMarginVerdictLine(sealedAt(undefined))).toBeNull()
+    expect(loweredMarginVerdictLine({ capsule: {}, signed_by_key_id: null, verify_ok: false })).toBeNull()
+  })
+
+  it('shows the page notice only when the node reports a lowered margin', () => {
+    expect(loweredMarginNotice({ threshold: '0.000000', lowered: true })).toContain('lowered to 0 nats')
+    expect(loweredMarginNotice({ threshold: '4.410000', lowered: false })).toBeNull()
+    expect(loweredMarginNotice(undefined)).toBeNull()
   })
 })

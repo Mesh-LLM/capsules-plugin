@@ -4,13 +4,18 @@
 
 ### Changed
 
-- **The referee's `split_margin_threshold` defaults to 4.41 again (#282).** 0.1.17 shipped it at 0
-  (#257, for the Devcon S08 demo's 0.5B models), which turned off the guard against accusing an
-  honest node whose backend split on a near-tie. Unset now reads as the rule, 4.41: twice the
-  largest margin measured between honest backends (2.20 nats). A demo that wants verdicts at any
-  split sets `CAPSULES_SPLIT_MARGIN_THRESHOLD=0` (or the setting) itself. The setting's
-  Configuration help now explains the margin in plain words. Nodes that set the value explicitly
-  are unaffected; every verdict still seals the margin and the threshold it was judged by.
+- **The referee's `split_margin_threshold` defaults to 4.41 again (#282, Steven's ruling
+  2026-11-10).** 0.1.17 shipped it at 0 (#257, for the Devcon S08 demo's 0.5B models), which turned
+  off the guard against accusing an honest node whose backend split on a near-tie. Unset now reads as
+  the rule, 4.41: twice the largest margin measured between honest backends (2.20 nats). A demo that
+  wants verdicts at any split sets `CAPSULES_SPLIT_MARGIN_THRESHOLD=0` (or the setting) itself; the
+  Devcon S08 image does. Nodes that set the value explicitly are unaffected; every verdict still seals
+  the margin and the threshold it was judged by.
+- **The margin setting now has a plain-words (?) explanation** (Configuration, and
+  `docs/TWIN-REFEREE-SELECTION.md`), and **the Evidence page says when the margin is below 4.41**: a
+  notice under the page title, a new `referee-margin` plugin route behind it, and a line in each
+  verdict's record dialog that was judged below 4.41. Display only: the threshold stays sealed in
+  each verdict.
 
 ## 0.1.17
 

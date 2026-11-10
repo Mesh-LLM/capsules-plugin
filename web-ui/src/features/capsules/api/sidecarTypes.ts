@@ -633,6 +633,15 @@ export type IssuedAdjudication = {
   halves: string[]
 }
 
+/** `http/referee-margin`: the referee margin this node applies now, in nats
+ *  as decimal text, the 4.41 rule, and whether the former is below the latter. */
+export type RefereeMarginJson = {
+  unit: 'nats'
+  threshold: string
+  rule: string
+  lowered: boolean
+}
+
 /** `http/ledger/verdict?capsule_id=…`: one signed verdict record, with the
  *  plugin's own check of its signature. */
 export type VerdictRecordJson = {

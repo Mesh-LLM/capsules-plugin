@@ -12,6 +12,7 @@
 //! | `ledger/disclosure?capsule_id=` | `{disclosure}`, the kept request/response text, or null |
 //! | `panes/pane-a`, `panes/pane-b` | the pane JSON ([`crate::evidence_panes`]) |
 //! | `panes/pane-c[?exchange_id=]` | the Exchanges list, or one exchange's drilldown |
+//! | `referee-margin` | `{threshold, rule, lowered}`: the referee margin in force now, in nats (decimal text), the 4.41 rule, and whether the former is below the latter |
 //! | `peer-key?peer=` | `{announced_key_id}`: the key the operator says that peer signs with, or null |
 //! | `lookup?exchange_id=` or `?client_nonce=` | `{found, exchange_key, capsule_id, role}`: this node's own record of that exchange, for the console's chat and Logs contributions |
 //!
@@ -96,6 +97,22 @@ pub fn peer_key_json(registry: Option<&str>, peer: &Value) -> Result<Value, Plug
         ));
     };
     Ok(json!({ "announced_key_id": announced_key_in(registry, peer) }))
+}
+
+/// `referee-margin`: the split-margin threshold this node applies now (the
+/// setting, read as the referee reads it at each ruling), the 4.41 rule, and
+/// whether the threshold is below it. Display only: the threshold a verdict
+/// was judged by is sealed in the verdict (#282).
+pub fn referee_margin_json() -> Value {
+    use crate::referee::{margin, verdict};
+    let threshold = verdict::split_margin_threshold();
+    let rule = margin::micro(verdict::SPLIT_MARGIN_RULE_NATS);
+    json!({
+        "unit": "nats",
+        "threshold": margin::decimal(threshold),
+        "rule": margin::decimal(rule),
+        "lowered": threshold < rule,
+    })
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -305,6 +322,18 @@ pub fn with_routes(
                 }),
         );
     }
+
+    builder = builder.http_item(
+        http::get("/referee-margin")
+            .binding_id("evidence_referee_margin")
+            .description(
+                "The referee margin this node applies now, the 4.41 rule, and whether it is lowered.",
+            )
+            .input::<NoArgs>()
+            .handle(move |_args, _context| {
+                Box::pin(async move { Ok(referee_margin_json()) })
+            }),
+    );
 
     builder = builder.http_item(
         http::get("/peer-key")
@@ -530,6 +559,7 @@ mod tests {
                 "/panes/pane-b",
                 "/panes/pane-c",
                 "/peer-key",
+                "/referee-margin",
             ]
             .iter()
             .map(|p| (get, p.to_string()))
@@ -542,6 +572,21 @@ mod tests {
                 binding.path
             );
         }
+    }
+
+    #[test]
+    fn the_referee_margin_route_says_when_the_threshold_is_below_the_rule() {
+        use crate::referee::verdict::with_threshold;
+        let at_rule = with_threshold(4.41, referee_margin_json);
+        assert_eq!(at_rule["threshold"], "4.410000");
+        assert_eq!(at_rule["rule"], "4.410000");
+        assert_eq!(at_rule["lowered"], false);
+        let above = with_threshold(9.0, referee_margin_json);
+        assert_eq!(above["lowered"], false);
+        let demo = with_threshold(0.0, referee_margin_json);
+        assert_eq!(demo["threshold"], "0.000000");
+        assert_eq!(demo["lowered"], true);
+        assert_eq!(demo["unit"], "nats");
     }
 
     #[test]

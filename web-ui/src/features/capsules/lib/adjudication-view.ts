@@ -83,6 +83,41 @@ export function verdictRecordFacts(record: VerdictRecordJson): VerdictRecordFact
   }
 }
 
+/** The margin rule: the default `split_margin_threshold`, in nats (#282). */
+export const SPLIT_MARGIN_RULE = 4.41
+
+/** The threshold a verdict was judged by, in nats, read off its sealed
+ *  `split_margin` block; null when the block holds none (the referee was not
+ *  asked, or the record predates the block). */
+export function verdictMarginThreshold(record: VerdictRecordJson): number | null {
+  const attestation = (record.capsule.model_attestation ?? null) as Record<string, unknown> | null
+  const compute = (attestation?.compute_attestation ?? null) as Record<string, unknown> | null
+  const block = (compute?.adjudication ?? null) as Record<string, unknown> | null
+  const margin = (block?.split_margin ?? null) as Record<string, unknown> | null
+  const nats = typeof margin?.threshold === 'string' ? Number(margin.threshold) : NaN
+  return Number.isFinite(nats) ? nats : null
+}
+
+function natsText(nats: number): string {
+  return String(Number(nats.toFixed(6)))
+}
+
+/** The line a verdict shows when its margin was below the rule; null when it
+ *  was judged at the rule or above, or the record carries none. */
+export function loweredMarginVerdictLine(record: VerdictRecordJson): string | null {
+  const threshold = verdictMarginThreshold(record)
+  if (threshold === null || threshold >= SPLIT_MARGIN_RULE) return null
+  return `Judged at a lowered referee margin: ${natsText(threshold)} nats, below the ${SPLIT_MARGIN_RULE} default. Honest nodes can be named wrong at this setting.`
+}
+
+/** The page notice when this node's referee margin is below the rule. */
+export function loweredMarginNotice(margin: { threshold: string; lowered: boolean } | null | undefined): string | null {
+  if (!margin?.lowered) return null
+  const nats = Number(margin.threshold)
+  if (!Number.isFinite(nats)) return null
+  return `This node’s referee margin is lowered to ${natsText(nats)} nats (the default is ${SPLIT_MARGIN_RULE}). It names a node wrong on a closer split, so honest nodes can be accused. Change it under Configuration › Plugins.`
+}
+
 /** Whether the plugin could check the verdict: the referee's signature, and
  *  this node's chain recording it. */
 export function verdictSignatureText(record: VerdictRecordJson): string {
