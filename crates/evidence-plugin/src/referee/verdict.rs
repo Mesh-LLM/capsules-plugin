@@ -7,7 +7,7 @@
 //! similarity threshold, and without a referee it is inconclusive. Only a
 //! referee's re-answer can name a twin, and only the twin the referee did
 //! not agree with, and only when the referee's own top-2 margin at the split
-//! is at least the operator's threshold ([`ENV_SPLIT_MARGIN_THRESHOLD`], 0 unless
+//! is at least the operator's threshold ([`ENV_SPLIT_MARGIN_THRESHOLD`], 4.41 unless
 //! set; #155): below it, honest
 //! backends could have split there, so the ruling is inconclusive.
 
@@ -56,13 +56,13 @@ pub const SPLIT_MARGIN_RULE_NATS: f64 = 4.41;
 /// equal to it names the twin; a lower one is `inconclusive`.
 pub const ENV_SPLIT_MARGIN_THRESHOLD: &str = "CAPSULES_SPLIT_MARGIN_THRESHOLD";
 
-/// What the node applies when the operator has not set it (Ethan,
-/// 2026-11-03): 0, so the referee names a twin at any split, near-ties
-/// included. That turns off the guard against accusing an honest node whose
-/// backend split on a near-tie; set [`SPLIT_MARGIN_RULE_NATS`] (4.41) to
-/// restore it. Every sealed `split_margin` block records the margin and the
-/// threshold in effect.
-pub const DEFAULT_SPLIT_MARGIN_THRESHOLD_NATS: f64 = 0.0;
+/// What the node applies when the operator has not set it: the rule,
+/// [`SPLIT_MARGIN_RULE_NATS`] (4.41), so the guard against accusing an
+/// honest node whose backend split on a near-tie is on by default
+/// (Mesh-LLM/capsules-plugin#282, Steven 2026-11-10; it was 0 from #257 for
+/// the Devcon S08 demo, which now sets 0 itself). Every sealed `split_margin`
+/// block records the margin and the threshold in effect.
+pub const DEFAULT_SPLIT_MARGIN_THRESHOLD_NATS: f64 = SPLIT_MARGIN_RULE_NATS;
 
 /// The threshold a setting reads as, in micro-nats: unset or empty is the
 /// default; a non-negative finite number of nats is itself, a number past
@@ -533,9 +533,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_threshold_setting_defaults_to_zero_and_reads_a_number_of_nats() {
+    fn the_threshold_setting_defaults_to_the_rule_and_reads_a_number_of_nats() {
         for unset in [None, Some(""), Some("  ")] {
-            assert_eq!(split_margin_threshold_from(unset), 0, "{unset:?}");
+            assert_eq!(split_margin_threshold_from(unset), 4_410_000, "{unset:?}");
         }
         assert_eq!(split_margin_threshold_from(Some("0")), 0);
         assert_eq!(split_margin_threshold_from(Some("4.41")), 4_410_000);

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Changed
+
+- **The referee's `split_margin_threshold` defaults to 4.41 again (#282).** 0.1.17 shipped it at 0
+  (#257, for the Devcon S08 demo's 0.5B models), which turned off the guard against accusing an
+  honest node whose backend split on a near-tie. Unset now reads as the rule, 4.41: twice the
+  largest margin measured between honest backends (2.20 nats). A demo that wants verdicts at any
+  split sets `CAPSULES_SPLIT_MARGIN_THRESHOLD=0` (or the setting) itself. The setting's
+  Configuration help now explains the margin in plain words. Nodes that set the value explicitly
+  are unaffected; every verdict still seals the margin and the threshold it was judged by.
+
 ## 0.1.17
 
 ### Changed
