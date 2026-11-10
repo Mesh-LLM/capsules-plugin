@@ -4,7 +4,7 @@ import {
   deliveredVerdictLine,
   issuedVerdictLine,
   loweredMarginNotice,
-  loweredMarginVerdictLine,
+  marginVerdictLine,
   parseVerdict,
   verdictRecordFacts,
   verdictSentence,
@@ -129,13 +129,16 @@ function sealedAt(threshold: string | undefined): VerdictRecordJson {
 }
 
 describe('the lowered referee margin', () => {
-  it('says so on a verdict judged below 4.41 and on nothing else', () => {
-    expect(loweredMarginVerdictLine(sealedAt('0.000000'))).toContain('0 nats, below the 4.41 default')
-    expect(loweredMarginVerdictLine(sealedAt('2.500000'))).toContain('2.5 nats')
-    expect(loweredMarginVerdictLine(sealedAt('4.410000'))).toBeNull()
-    expect(loweredMarginVerdictLine(sealedAt('9.000000'))).toBeNull()
-    expect(loweredMarginVerdictLine(sealedAt(undefined))).toBeNull()
-    expect(loweredMarginVerdictLine({ capsule: {}, signed_by_key_id: null, verify_ok: false })).toBeNull()
+  it('shows the margin on every sealed verdict and warns only below 4.41', () => {
+    expect(marginVerdictLine(sealedAt('0.000000'))).toEqual({
+      text: expect.stringContaining('0 nats, below the 4.41 default'),
+      lowered: true
+    })
+    expect(marginVerdictLine(sealedAt('2.500000'))?.text).toContain('2.5 nats')
+    expect(marginVerdictLine(sealedAt('4.410000'))).toEqual({ text: 'Judged at referee margin 4.41 nats.', lowered: false })
+    expect(marginVerdictLine(sealedAt('9.000000'))?.lowered).toBe(false)
+    expect(marginVerdictLine(sealedAt(undefined))).toBeNull()
+    expect(marginVerdictLine({ capsule: {}, signed_by_key_id: null, verify_ok: false })).toBeNull()
   })
 
   it('shows the page notice only when the node reports a lowered margin', () => {

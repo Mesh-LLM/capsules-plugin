@@ -175,7 +175,7 @@ at the split for it to name a twin (section 1). The default is **4.41**: twice t
 CUDA-CPU margin measured, 2.20 nats (#155/#159; Sherlock2). A demo whose small models split on near-ties
 (the S08 demo's measured margin was 0.000208 nats) sets it to 0 itself, in its own configuration
 (`CAPSULES_SPLIT_MARGIN_THRESHOLD=0`); at 0 the false-accusation guard is off. When the margin is below
-4.41 the Evidence page says so, and the record dialog of each verdict judged below 4.41 says so (from its sealed `split_margin.threshold`).
+4.41 the Evidence page says so, and every verdict's record dialog shows the margin it was judged by (from its sealed `split_margin.threshold`), with a warning when that was below 4.41.
 It takes a non-negative number of nats; a value that is negative or not a number reads as 4.41,
 never as a looser one, and one past 1,000,000 (the largest margin there is) is capped at 1,000,000. It is read at each ruling, so a change in the console applies to the next
 one. A referee with no margin to read stays `inconclusive` at any threshold. Every verdict seals

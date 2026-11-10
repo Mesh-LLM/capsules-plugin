@@ -102,12 +102,17 @@ function natsText(nats: number): string {
   return String(Number(nats.toFixed(6)))
 }
 
-/** The line a verdict shows when its margin was below the rule; null when it
- *  was judged at the rule or above, or the record carries none. */
-export function loweredMarginVerdictLine(record: VerdictRecordJson): string | null {
+/** The line a verdict shows for the referee margin it was judged by: always
+ *  when the record seals one, with a warning when it was below the rule; null
+ *  when the record carries none. */
+export function marginVerdictLine(record: VerdictRecordJson): { text: string; lowered: boolean } | null {
   const threshold = verdictMarginThreshold(record)
-  if (threshold === null || threshold >= SPLIT_MARGIN_RULE) return null
-  return `Judged at a lowered referee margin: ${natsText(threshold)} nats, below the ${SPLIT_MARGIN_RULE} default. Honest nodes can be named wrong at this setting.`
+  if (threshold === null) return null
+  if (threshold >= SPLIT_MARGIN_RULE) return { text: `Judged at referee margin ${natsText(threshold)} nats.`, lowered: false }
+  return {
+    text: `Judged at a lowered referee margin: ${natsText(threshold)} nats, below the ${SPLIT_MARGIN_RULE} default. Honest nodes can be named wrong at this setting.`,
+    lowered: true
+  }
 }
 
 /** The page notice when this node's referee margin is below the rule. */

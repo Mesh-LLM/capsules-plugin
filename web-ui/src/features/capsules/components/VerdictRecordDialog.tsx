@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { fetchVerdictRecord } from '@/features/capsules/api/verdictClient'
 import {
   shortId,
-  loweredMarginVerdictLine,
+  marginVerdictLine,
   verdictRecordFacts,
   verdictSentence,
   verdictSignatureText
@@ -37,6 +37,7 @@ export function VerdictRecordDialog({ capsuleId, open, onOpenChange }: VerdictRe
     staleTime: 60_000
   })
   const facts = record.data ? verdictRecordFacts(record.data) : null
+  const margin = record.data ? marginVerdictLine(record.data) : null
 
   return (
     <SharedModal onOpenChange={onOpenChange} open={open}>
@@ -59,9 +60,12 @@ export function VerdictRecordDialog({ capsuleId, open, onOpenChange }: VerdictRe
               <p data-testid="verdict-record-verdict">
                 {verdictSentence(facts.verdict)}
               </p>
-              {loweredMarginVerdictLine(record.data) ? (
-                <p data-testid="verdict-record-lowered-margin" role="note">
-                  {loweredMarginVerdictLine(record.data)}
+              {margin ? (
+                <p
+                  data-testid={margin.lowered ? 'verdict-record-lowered-margin' : 'verdict-record-margin'}
+                  role={margin.lowered ? 'note' : undefined}
+                >
+                  {margin.text}
                 </p>
               ) : null}
               <p data-testid="verdict-record-signature">{verdictSignatureText(record.data)}</p>
