@@ -8,8 +8,9 @@
 # the same archive. It follows mesh-llm's plugin package contract
 # (docs/plugins/README.md in Mesh-LLM/mesh-llm):
 #   - asset name:      <plugin-name>-<version>-<target-triple>.tar.gz
+#                      (.zip for x86_64-pc-windows-msvc)
 #   - archive root:    one directory named exactly <plugin-name>
-#   - inside the root: the executable, plugin.toml, plugin-manifest.json
+#   - inside the root: the executable (.exe on Windows), plugin.toml, plugin-manifest.json
 #     (printed by the executable itself and required to equal the reviewed
 #     plugin.package.json), bundle/ (the Evidence page), README.md
 #     (INSTALL.md), LICENSE. Nothing else: never keys, ledgers or
@@ -18,7 +19,8 @@
 # name `mesh-llm plugins install --name` takes).
 #
 # Unix targets ship .tar.gz only: mesh-llm's .zip extractor does not restore
-# the executable bit.
+# the executable bit. Windows ships .zip, the archive mesh-llm resolves for a
+# windows target.
 #
 # Only this workflow's CI builds are published. A locally built package is a
 # dry run: its executable embeds the build machine's paths.
@@ -114,10 +116,16 @@ jobs:
         include:
           - target: aarch64-apple-darwin
             os: macos-15
+            exe: ""
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-22.04
+            exe: ""
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-22.04-arm
+            exe: ""
+          - target: x86_64-pc-windows-msvc
+            os: windows-2025
+            exe: .exe
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -145,15 +153,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export RUSTFLAGS="--remap-path-prefix=${GITHUB_WORKSPACE}=/build --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo --remap-path-prefix=${HOME}=/home"
+          if [ "$RUNNER_OS" = Windows ]; then
+            # rustc sees Windows paths; Git Bash's $HOME is a /c/... path.
+            home="$USERPROFILE"
+            cargo_home="${CARGO_HOME:-$USERPROFILE\\.cargo}"
+          else
+            home="$HOME"
+            cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+          fi
+          export RUSTFLAGS="--remap-path-prefix=${GITHUB_WORKSPACE}=/build --remap-path-prefix=${cargo_home}=/cargo --remap-path-prefix=${home}=/home"
           cargo build --locked --release --target ${{ matrix.target }} --bin "$PLUGIN_NAME"
 
       - name: No build-machine paths in the executable
         shell: bash
         run: |
           set -euo pipefail
-          bin="target/${{ matrix.target }}/release/$PLUGIN_NAME"
-          if strings "$bin" | grep -F -e "$GITHUB_WORKSPACE" -e "$HOME/"; then
+          bin="target/${{ matrix.target }}/release/$PLUGIN_NAME${{ matrix.exe }}"
+          home="$HOME/"
+          if [ "$RUNNER_OS" = Windows ]; then home="$USERPROFILE\\"; fi
+          if grep -a -o -F -e "$GITHUB_WORKSPACE" -e "$home" "$bin"; then
             echo "::error::the executable embeds a build-machine path"
             exit 1
           fi
@@ -179,8 +197,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out
-          cp "target/${{ matrix.target }}/release/$PLUGIN_NAME" out/
-          "out/$PLUGIN_NAME" --print-package-manifest > out/plugin-manifest.json
+          cp "target/${{ matrix.target }}/release/$PLUGIN_NAME${{ matrix.exe }}" out/
+          "out/$PLUGIN_NAME${{ matrix.exe }}" --print-package-manifest > out/plugin-manifest.json
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -229,13 +247,15 @@ jobs:
           set -euo pipefail
           SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
           export SOURCE_DATE_EPOCH
-          for target in aarch64-apple-darwin x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
+          for target in aarch64-apple-darwin x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-pc-windows-msvc; do
             dir="bins/bin-$target"
-            chmod +x "$dir/$PLUGIN_NAME"   # artifacts do not keep the executable bit
-            scripts/package.sh "$VERSION" "$target" "$dir/$PLUGIN_NAME" dist "$dir/plugin-manifest.json"
+            exe=
+            case "$target" in *-windows-*) exe=.exe ;; esac
+            chmod +x "$dir/$PLUGIN_NAME$exe"   # artifacts do not keep the executable bit
+            scripts/package.sh "$VERSION" "$target" "$dir/$PLUGIN_NAME$exe" dist "$dir/plugin-manifest.json"
           done
-          (cd dist && sha256sum ./*.tar.gz | sed 's#  \./#  #' | sort -k2 > SHA256SUMS && cat SHA256SUMS)
-          test "$(wc -l < dist/SHA256SUMS)" -eq 3
+          (cd dist && sha256sum ./*.tar.gz ./*.zip | sed 's#  \./#  #' | sort -k2 > SHA256SUMS && cat SHA256SUMS)
+          test "$(wc -l < dist/SHA256SUMS)" -eq 4
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -270,6 +290,7 @@ jobs:
         with:
           subject-path: |
             dist/*.tar.gz
+            dist/*.zip
             dist/SHA256SUMS
 
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
@@ -279,5 +300,6 @@ jobs:
           body_path: INSTALL.md
           files: |
             dist/*.tar.gz
+            dist/*.zip
             dist/SHA256SUMS
           fail_on_unmatched_files: true

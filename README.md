@@ -16,7 +16,7 @@ The plugin's id is **`capsules`**: the name it installs under, its data
 directory, its settings' prefix (`CAPSULES_*`) and its page route
 (`/plugins/capsules/evidence`). The repository has the same name, so
 `mesh-llm plugins install Mesh-LLM/capsules` finds its release assets
-(`capsules-<version>-<target>.tar.gz`) with no `--name`.
+(`capsules-<version>-<target>.tar.gz`, `.zip` on Windows) with no `--name`.
 
 Until 0.1.3 the plugin was called `capsule-emit-mesh`. A node upgrading from
 it keeps its key and records: see "Upgrading from capsule-emit-mesh" in
@@ -27,7 +27,7 @@ it keeps its key and records: see "Upgrading from capsule-emit-mesh" in
 [`INSTALL.md`](INSTALL.md): download a release package for your platform,
 check it, and install it with `mesh-llm plugins install --archive`. Release
 packages are built by `.github/workflows/release.yml` from a tag in this
-repository, for macOS arm64 and Linux x86_64/arm64.
+repository, for macOS arm64, Linux x86_64/arm64 and Windows x86_64.
 
 ## What works today
 
