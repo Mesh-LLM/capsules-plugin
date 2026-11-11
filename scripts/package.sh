@@ -18,7 +18,7 @@
 #                  build); by default the binary is run to print it.
 #
 # Needs GNU tar (`tar` on Linux, `gtar` elsewhere), gzip, jq and a sha256 tool,
-# and python3 for the Windows .zip.
+# and Info-ZIP's zip and unzip for the Windows .zip.
 # The archive is byte-for-byte deterministic for the same inputs: sorted
 # entries, owner 0, fixed modes, mtime SOURCE_DATE_EPOCH (or 0), gzip -n.
 # Unix targets get .tar.gz only: mesh-llm's .zip extractor does not keep the
@@ -79,10 +79,19 @@ mkdir -p "$out"
 archive=$out/$PLUGIN-$version-$target.$ext
 mkdir "$work/readback"
 if [ "$ext" = zip ]; then
-  python3 "$root/scripts/zip-deterministic.py" "$work" "$PLUGIN" "$archive"
+  # The .zip counterpart of the tar flags: files only, in sorted order, no
+  # extra fields (-X), every mtime SOURCE_DATE_EPOCH. zip stores local time
+  # and cannot date anything before 1980, so it runs in UTC and the epoch is
+  # raised to 1980-01-01.
+  epoch=${SOURCE_DATE_EPOCH:-0}
+  [ "$epoch" -ge 315532800 ] || epoch=315532800
+  find "$stage" -exec touch -h -d "@$epoch" {} +
+  zip_out=$(cd "$out" && pwd)/$(basename "$archive")
+  rm -f "$zip_out"
+  ( cd "$work" && find "$PLUGIN" -type f | LC_ALL=C sort |
+      TZ=UTC zip -X -D -9 -q "$zip_out" -@ )
   # Read the requirement back out of the archive: what ships must carry it.
-  python3 -c 'import sys, zipfile; sys.stdout.buffer.write(zipfile.ZipFile(sys.argv[1]).read(sys.argv[2]))' \
-    "$archive" "$PLUGIN/plugin.toml" > "$work/readback/plugin.toml"
+  unzip -p "$archive" "$PLUGIN/plugin.toml" > "$work/readback/plugin.toml"
 else
   ( cd "$work" && "$tar" --sort=name --format=ustar --owner=0 --group=0 --numeric-owner \
       --mtime="@${SOURCE_DATE_EPOCH:-0}" -cf - "$PLUGIN" ) | gzip -n -9 > "$archive"

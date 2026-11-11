@@ -274,4 +274,4 @@ jobs:
           scripts/package.sh "$version" x86_64-pc-windows-msvc "$bin" zip-a
           scripts/package.sh "$version" x86_64-pc-windows-msvc "$bin" zip-b
           cmp zip-a/*.zip zip-b/*.zip
-          python3 -c 'import sys, zipfile; print("\n".join(zipfile.ZipFile(sys.argv[1]).namelist()))' zip-a/*.zip
+          unzip -Z1 zip-a/*.zip
