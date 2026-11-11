@@ -336,8 +336,10 @@ fn answer_inner(request_bytes: &[u8], responder: &Responder<'_>, asker: &mut Ask
         _ => return refuse(Reason::RequestMalformed, kind),
     };
     // A profile this node does not implement (profile §3.3 step 4).
+    // evidence-request 0.5.0 also lists `evidence-interop/2`, which this node
+    // does not answer, so the list here is its own.
     let Some(profile) = evidence_artifact::requested_profile(&map)
-        .filter(|p| evidence_request::envelope::PROFILES.contains(p))
+        .filter(|p| evidence_artifact::ANSWERED_PROFILES.contains(p))
     else {
         return refuse(Reason::RequestMalformed, kind);
     };
