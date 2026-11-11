@@ -15,7 +15,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40e21e140db3bb0773e7b00d50bc2efa5983765eb888ea97de71f85a74da944c"
 dependencies = [
  "base64 0.22.1",
- "checkpointed-local-log",
+ "checkpointed-local-log 0.4.0",
  "ed25519-dalek",
  "evidence-request",
  "hex",
@@ -27,12 +27,12 @@ dependencies = [
 
 [[package]]
 name = "agent-action-capsule"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f5a684ca3c9daf693cbb77b9cab8b4124e4746614dfdd9efc675256b09a1830"
+checksum = "490f58497264cf106a47a4a5b394093f4f4d4d99b29c86ed1cf9ed2355ae5e47"
 dependencies = [
  "base64 0.22.1",
- "checkpointed-local-log",
+ "checkpointed-local-log 0.5.0",
  "ed25519-dalek",
  "evidence-request",
  "hex",
@@ -259,7 +259,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "capsule-emit-artifact",
- "checkpointed-local-log",
+ "checkpointed-local-log 0.4.0",
  "chrono",
  "coset",
  "ed25519-dalek",
@@ -346,6 +346,24 @@ dependencies = [
  "hex",
  "libc",
  "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 1.0.69",
+ "ureq",
+]
+
+[[package]]
+name = "checkpointed-local-log"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ec489715bc08d10eb0b0a995217951ed1f9db3c2db76d30923300a81ca8b063"
+dependencies = [
+ "base64 0.22.1",
+ "coset",
+ "ed25519-dalek",
+ "hex",
+ "libc",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -721,14 +739,14 @@ dependencies = [
 name = "evidence-plugin"
 version = "0.1.18"
 dependencies = [
- "agent-action-capsule 0.9.0",
+ "agent-action-capsule 0.10.0",
  "anyhow",
  "axum",
  "base64 0.22.1",
  "capsule-emit",
  "capsule-emit-artifact",
  "capsule-engine",
- "checkpointed-local-log",
+ "checkpointed-local-log 0.4.0",
  "chrono",
  "ciborium",
  "coset",
@@ -772,7 +790,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c9946dd4944a44519f90ee9f01bac2b654d76f6dbaa78c93281e05fb2ed64a2f"
 dependencies = [
  "base64 0.22.1",
- "checkpointed-local-log",
+ "checkpointed-local-log 0.4.0",
  "ciborium",
  "coset",
  "ed25519-dalek",
@@ -794,7 +812,7 @@ dependencies = [
  "base64 0.22.1",
  "boon",
  "capsule-emit-artifact",
- "checkpointed-local-log",
+ "checkpointed-local-log 0.4.0",
  "ciborium",
  "ed25519-dalek",
  "evidence-request",

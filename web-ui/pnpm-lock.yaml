@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@action-state-group/agent-action-capsule':
-        specifier: 0.10.0
-        version: 0.10.0(@action-state-group/cll@0.3.0(@types/node@26.4.1))
+        specifier: 0.14.0
+        version: 0.14.0(@action-state-group/cll@0.3.0(@types/node@26.4.1))
       '@action-state-group/capsule-viewer':
         specifier: 0.14.0
         version: 0.14.0(@types/node@26.4.1)
@@ -120,8 +120,8 @@ importers:
 
 packages:
 
-  '@action-state-group/agent-action-capsule@0.10.0':
-    resolution: {integrity: sha512-H0hlCj2aZEPQIGoloI2/ObVzs+xFSvu00ZKHTTTbFMOr14h5hwILH3fYMKfM2VkdFBT14LYhVFGOtvsKRT9WEw==}
+  '@action-state-group/agent-action-capsule@0.13.1':
+    resolution: {integrity: sha512-3W2t+6eCmGFTwTBjfV6AvD5YkvxTZ9y/jCW6BBc27f5tyEBh6CCQFVEdzQ5+QKr95PktnVpXabl3PJFes+6W0w==}
     engines: {node: '>=20'}
     peerDependencies:
       '@action-state-group/cll': 0.3.0
@@ -129,8 +129,8 @@ packages:
       '@action-state-group/cll':
         optional: true
 
-  '@action-state-group/agent-action-capsule@0.13.1':
-    resolution: {integrity: sha512-3W2t+6eCmGFTwTBjfV6AvD5YkvxTZ9y/jCW6BBc27f5tyEBh6CCQFVEdzQ5+QKr95PktnVpXabl3PJFes+6W0w==}
+  '@action-state-group/agent-action-capsule@0.14.0':
+    resolution: {integrity: sha512-QLdgnu8gRGsEGBMui+c2CB3LP/sGI6nsUpR5d5qbV81T93kUfUjQJnI6LoZN6NGQObLpO7xKk1ztlwt53Wxm0Q==}
     engines: {node: '>=20'}
     peerDependencies:
       '@action-state-group/cll': 0.3.0
@@ -1883,11 +1883,11 @@ packages:
 
 snapshots:
 
-  '@action-state-group/agent-action-capsule@0.10.0(@action-state-group/cll@0.3.0(@types/node@26.4.1))':
+  '@action-state-group/agent-action-capsule@0.13.1(@action-state-group/cll@0.3.0(@types/node@26.4.1))':
     optionalDependencies:
       '@action-state-group/cll': 0.3.0(@types/node@26.4.1)
 
-  '@action-state-group/agent-action-capsule@0.13.1(@action-state-group/cll@0.3.0(@types/node@26.4.1))':
+  '@action-state-group/agent-action-capsule@0.14.0(@action-state-group/cll@0.3.0(@types/node@26.4.1))':
     optionalDependencies:
       '@action-state-group/cll': 0.3.0(@types/node@26.4.1)
 

@@ -17,7 +17,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@action-state-group/agent-action-capsule": "0.10.0",
+    "@action-state-group/agent-action-capsule": "0.14.0",
     "@action-state-group/capsule-viewer": "0.14.0",
     "@action-state-group/cll": "0.3.0",
     "@noble/curves": "1.9.7",
