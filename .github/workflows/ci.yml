@@ -269,3 +269,9 @@ jobs:
           scripts/package.sh "$version" x86_64-unknown-linux-gnu "$bin" out-b
           cmp out-a/*.tar.gz out-b/*.tar.gz
           tar -tzf out-a/*.tar.gz | sort
+          # The Windows .zip path, with this build standing in for the
+          # Windows executable (only the archive format differs).
+          scripts/package.sh "$version" x86_64-pc-windows-msvc "$bin" zip-a
+          scripts/package.sh "$version" x86_64-pc-windows-msvc "$bin" zip-b
+          cmp zip-a/*.zip zip-b/*.zip
+          unzip -Z1 zip-a/*.zip

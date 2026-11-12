@@ -286,7 +286,8 @@ through.
 ## Install
 
 One path, the same on macOS 11 or newer (Apple Silicon) and on Linux with
-glibc 2.35 or newer (x86_64 or arm64).
+glibc 2.35 or newer (x86_64 or arm64). Windows x86_64 takes the same steps in
+PowerShell with a `.zip`, shown after step 3.
 
 **1. Download the package for your machine and the checksum file** from the
 [releases page](https://github.com/Mesh-LLM/capsules/releases),
@@ -328,6 +329,19 @@ which is public here.
 ```bash
 mesh-llm plugins install --archive "capsules-$VERSION-$TARGET.tar.gz" \
   --name capsules --version "$VERSION"
+```
+
+On Windows 10 or 11 (x86_64), in PowerShell, with `$VERSION` set to the
+release as above:
+
+```powershell
+$TARGET = "x86_64-pc-windows-msvc"
+$BASE = "https://github.com/Mesh-LLM/capsules/releases/download/v$VERSION"
+Invoke-WebRequest "$BASE/capsules-$VERSION-$TARGET.zip" -OutFile "capsules-$VERSION-$TARGET.zip"
+Invoke-WebRequest "$BASE/SHA256SUMS" -OutFile SHA256SUMS
+# Must equal the file's line in SHA256SUMS:
+(Get-FileHash "capsules-$VERSION-$TARGET.zip" -Algorithm SHA256).Hash.ToLower()
+mesh-llm plugins install --archive "capsules-$VERSION-$TARGET.zip" --name capsules --version $VERSION
 ```
 
 `mesh-llm plugins install Mesh-LLM/capsules` installs a release straight

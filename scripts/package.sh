@@ -3,9 +3,9 @@
 # Build one platform's plugin package, following mesh-llm's plugin package
 # contract (docs/plugins/README.md in Mesh-LLM/mesh-llm):
 #
-#   capsules-<version>-<target>.tar.gz
+#   capsules-<version>-<target>.tar.gz   (.zip for x86_64-pc-windows-msvc)
 #     capsules/
-#       capsules                   the executable
+#       capsules                   the executable (capsules.exe on Windows)
 #       plugin.toml
 #       plugin-manifest.json                printed by the executable itself
 #       bundle/register-mesh-plugin-ui.js   the Evidence page
@@ -17,10 +17,13 @@
 #                  binary cannot run here (packaging another platform's
 #                  build); by default the binary is run to print it.
 #
-# Needs GNU tar (`tar` on Linux, `gtar` elsewhere), gzip, jq and a sha256 tool.
+# Needs GNU tar (`tar` on Linux, `gtar` elsewhere), gzip, jq and a sha256 tool,
+# and Info-ZIP's zip and unzip for the Windows .zip.
 # The archive is byte-for-byte deterministic for the same inputs: sorted
 # entries, owner 0, fixed modes, mtime SOURCE_DATE_EPOCH (or 0), gzip -n.
-# Only .tar.gz: mesh-llm's .zip extractor does not keep the executable bit.
+# Unix targets get .tar.gz only: mesh-llm's .zip extractor does not keep the
+# executable bit. Windows gets .zip, the archive mesh-llm resolves for a
+# windows target; it needs no executable bit.
 set -eu
 
 PLUGIN=capsules
@@ -31,7 +34,8 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 fail() { echo "package: $*" >&2; exit 1; }
 
 case "$target" in
-  aarch64-apple-darwin|x86_64-unknown-linux-gnu|aarch64-unknown-linux-gnu) ;;
+  aarch64-apple-darwin|x86_64-unknown-linux-gnu|aarch64-unknown-linux-gnu) exe= ext=tar.gz ;;
+  x86_64-pc-windows-msvc) exe=.exe ext=zip ;;
   *) fail "unsupported target $target" ;;
 esac
 core=$(printf '%s' "$version" | sed -n 's/^\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)\(-[0-9A-Za-z.-][0-9A-Za-z.-]*\)\{0,1\}$/\1/p')
@@ -62,22 +66,38 @@ fi
 [ "$(jq -S . "$stage/plugin-manifest.json")" = "$(jq -S . "$root/plugin.package.json")" ] ||
   fail "the binary's manifest differs from plugin.package.json"
 
-cp "$binary" "$stage/$PLUGIN"
+cp "$binary" "$stage/$PLUGIN$exe"
 cp "$root/plugin.toml" "$root/LICENSE" "$stage/"
 cp "$root/INSTALL.md" "$stage/README.md"
 cp "$root/bundle/register-mesh-plugin-ui.js" "$stage/bundle/"
 
 find "$stage" -type d -exec chmod 755 {} +
 find "$stage" -type f -exec chmod 644 {} +
-chmod 755 "$stage/$PLUGIN"
+chmod 755 "$stage/$PLUGIN$exe"
 
 mkdir -p "$out"
-archive=$out/$PLUGIN-$version-$target.tar.gz
-( cd "$work" && "$tar" --sort=name --format=ustar --owner=0 --group=0 --numeric-owner \
-    --mtime="@${SOURCE_DATE_EPOCH:-0}" -cf - "$PLUGIN" ) | gzip -n -9 > "$archive"
-# Read the requirement back out of the archive: what ships must carry it.
+archive=$out/$PLUGIN-$version-$target.$ext
 mkdir "$work/readback"
-gzip -dc "$archive" | "$tar" -xOf - "$PLUGIN/plugin.toml" > "$work/readback/plugin.toml"
+if [ "$ext" = zip ]; then
+  # The .zip counterpart of the tar flags: files only, in sorted order, no
+  # extra fields (-X), every mtime SOURCE_DATE_EPOCH. zip stores local time
+  # and cannot date anything before 1980, so it runs in UTC and the epoch is
+  # raised to 1980-01-01.
+  epoch=${SOURCE_DATE_EPOCH:-0}
+  [ "$epoch" -ge 315532800 ] || epoch=315532800
+  find "$stage" -exec touch -h -d "@$epoch" {} +
+  zip_out=$(cd "$out" && pwd)/$(basename "$archive")
+  rm -f "$zip_out"
+  ( cd "$work" && find "$PLUGIN" -type f | LC_ALL=C sort |
+      TZ=UTC zip -X -D -9 -q "$zip_out" -@ )
+  # Read the requirement back out of the archive: what ships must carry it.
+  unzip -p "$archive" "$PLUGIN/plugin.toml" > "$work/readback/plugin.toml"
+else
+  ( cd "$work" && "$tar" --sort=name --format=ustar --owner=0 --group=0 --numeric-owner \
+      --mtime="@${SOURCE_DATE_EPOCH:-0}" -cf - "$PLUGIN" ) | gzip -n -9 > "$archive"
+  # Read the requirement back out of the archive: what ships must carry it.
+  gzip -dc "$archive" | "$tar" -xOf - "$PLUGIN/plugin.toml" > "$work/readback/plugin.toml"
+fi
 shipped=$("$root/scripts/check-plugin-toml.sh" "$work/readback/plugin.toml") || fail "the archive's plugin.toml fails the min_host_version check"
 [ "$shipped" = "$min_host" ] || fail "the archive's plugin.toml does not carry min_host_version = \"$min_host\""
 sha "$archive"
