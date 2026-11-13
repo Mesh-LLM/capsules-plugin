@@ -527,8 +527,8 @@ fn attack_d_a_half_naming_other_weights_is_refused() {
 /// - the provider holds nothing from the requester: a client node's id is new
 ///   each start, so no key names it, and every push from it was refused
 ///   `signature_unverified`;
-/// - a provider that lies consistently about its weights is still not caught
-///   at receipt: the requester's own half names no weights to compare with.
+/// - the requester's own half names the weights the provider served, so a
+///   provider that lies consistently about them is caught at receipt.
 #[test]
 #[ignore = "needs the data directories of a real two-node run (scripts/e2e-two-node.sh)"]
 fn the_host_names_both_sides_and_the_requester_holds_the_providers_record() {
@@ -638,10 +638,22 @@ fn the_host_names_both_sides_and_the_requester_holds_the_providers_record() {
         );
     }
 
+    // The host names the weights in the requester's own half (mesh-llm 0.79),
+    // so a provider that lies consistently about them is caught at receipt:
+    // the weights the requester's half names are the ones the provider's
+    // served halves name.
+    let served_weights: std::collections::BTreeSet<String> = run
+        .provider
+        .halves("served")
+        .iter()
+        .flat_map(crate::record_push_receive::weights_claims)
+        .collect();
+    assert_eq!(served_weights.len(), 1, "one model was served");
     for half in run.requester.halves("requested") {
-        assert!(
-            crate::record_push_receive::weights_claims(&half).is_empty(),
-            "the requester's own half names weights: a consistent liar can now be caught at receipt; check this note"
+        assert_eq!(
+            crate::record_push_receive::weights_claims(&half),
+            served_weights,
+            "the requester's own half names the weights the provider served"
         );
     }
 }
@@ -1210,9 +1222,12 @@ fn a_third_node_corroborates_an_exchange_with_both_sides() {
         assert_eq!(ys[0]["independence"], json!({"state": "not_established"}));
     }
 
+    // Z's key is bound by no host, so a provider that shares nothing cannot
+    // tell Z from a stranger and refuses the unproven request
+    // (evidence-interop/1); with sharing on, the same request is answered.
     assert_eq!(
         declined["ys"][0]["outcome"],
-        json!({"state": "signed_refusal", "reason": "policy_declined"}),
+        json!({"state": "signed_refusal", "reason": "request_unauthenticated"}),
         "{declined:#}"
     );
     let y = &agreed["ys"][0]["outcome"];

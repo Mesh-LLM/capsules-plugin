@@ -147,7 +147,8 @@ in `crates/evidence-plugin/src/two_node_e2e.rs` run over what each node wrote:
 - a third node, party to no exchange, runs `historical_reference` on the
   first one: keyed on the client nonce the requester's record binds, the
   requester's half verifies under its key; the provider, with
-  `share_exchange_corroboration` off, answers with a signed `policy_declined`,
+  `share_exchange_corroboration` off, refuses with a signed `request_unauthenticated`
+  (the third node's key is bound by no host),
   and with it on, its half verifies under its key and agrees. Independence
   stays `not_established` (action-state-group/evidencebook#47, T1).
 - the real-host tests (`tests/host_runtime_e2e.rs`, see

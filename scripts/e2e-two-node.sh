@@ -146,8 +146,18 @@ node_key() {
   openssl pkey -pubin -in "$(plugin_data "$1")/keys/node-key.pub.pem" -outform DER \
     | tail -c 32 | od -An -v -tx1 | tr -d ' \n'
 }
-# setting NODE LINE: add a line to the node's [plugin.settings] (the last table).
-setting() { printf '%s\n' "$2" >> "$(node_home "$1")/config.toml"; }
+# setting NODE LINE: set a line in the node's [plugin.settings] (the last
+# table), replacing an earlier line for the same key: TOML refuses duplicates.
+setting() {
+  local cfg key tmp
+  cfg="$(node_home "$1")/config.toml"
+  key=${2%%=*}
+  tmp=$(mktemp)
+  grep -v "^${key}=" "$cfg" > "$tmp" || true
+  printf '%s\n' "$2" >> "$tmp"
+  cat "$tmp" > "$cfg"
+  rm -f "$tmp"
+}
 # tool CONSOLE OPERATION BODY: POST to one of the plugin's operations.
 tool() {
   curl -fsS -X POST -H 'content-type: application/json' -d "$3" \
@@ -425,17 +435,24 @@ wait_for 180 "the requester sealed the absence of its unanswered ask" absent
 # exchange, keyed on the client nonce X's record binds, then the provider (Y)
 # for Y's half, and checks each answer under that node's key. It is given
 # X's record and both nodes' keys; both nodes now run, so the requester's id
-# is known. First with the provider declining (the default), then with it
+# is known. First with the provider declining (off), then with it
 # answering.
 requester_key=$(node_key requester)
 [ ${#requester_key} = 64 ] || { echo "could not read the requester's public key" >&2; exit 1; }
+# Both defaults are on; the requester's is set anyway so the run does not
+# depend on it, and the provider's is turned off for the declined run.
 setting requester 'share_exchange_corroboration = "on"'
+setting provider 'share_exchange_corroboration = "off"'
 NODE_ENV=(CAPSULES_PEER_KEYS="$(jq -cn --arg p "$provider_id" --arg pk "$provider_key" \
   --arg r "$requester_id" --arg rk "$requester_key" '{($p): $pk, ($r): $rk}')")
 start_node corroborator "$CORROBORATOR_API" "$CORROBORATOR_CONSOLE" --client --join "$token"
 wait_for 300 "the corroborator has joined the mesh" lists_model "$CORROBORATOR_API"
+# Read the whole chain first: jq's first() stops reading, and a closed pipe
+# would fail the pipeline under pipefail.
+requester_chain=$(chain requester)
 jq -cn 'first(inputs | select(.model_attestation.compute_attestation["x-mesh-poc-v1"].role? == "requested"))' \
-  "$(plugin_data requester)/ledger/capsules.jsonl" > "$out/x-record.json"
+  <<<"$requester_chain" > "$out/x-record.json"
+[ -s "$out/x-record.json" ] || { echo "no requested half in the requester's chain" >&2; exit 1; }
 # corroborate NAME Y_STATE: one historical reference, kept as NAME.json; it
 # passes when X's half was obtained and the provider's outcome is Y_STATE.
 corroborate() {
