@@ -3,12 +3,14 @@
 //! `scripts/e2e-two-node.sh` starts two unmodified `mesh-llm` nodes on one
 //! machine, each running this plugin: the provider serves a small model, the
 //! requester serves nothing and sends its chat completions to the provider
-//! over the mesh. After both nodes have stopped, the script copies each
-//! node's plugin data directory and runs these tests over the copies:
+//! over the mesh. A third node, the corroborator, then asks each of them for
+//! its half of one exchange. After the nodes have stopped, the script copies
+//! each node's plugin data directory and runs these tests over the copies:
 //!
 //! ```sh
 //! E2E_REQUESTER_DIR=<copy> E2E_PROVIDER_DIR=<copy> E2E_EXCHANGES=<n> \
-//!   E2E_JOIN_DIR=<run dir> E2E_UNANSWERED_PEER=<id> CAPSULES_TEST_PERIOD_LENGTH_S=120 \
+//!   E2E_JOIN_DIR=<run dir> E2E_UNANSWERED_PEER=<id> E2E_CORROBORATOR_DIR=<copy> \
+//!   CAPSULES_TEST_PERIOD_LENGTH_S=120 \
 //!   cargo test --locked --bin capsules --features test-period-policy -- \
 //!   --ignored --test-threads=1 two_node_e2e::
 //! ```
@@ -16,7 +18,7 @@
 //! With the run's two-minute Service History definition, as the nodes had it.
 //!
 //! Every check calls the plugin's own code (the ledger reload, the receiver,
-//! the Evidence pane builder) on what the two nodes actually wrote. Every
+//! the Evidence pane builder) on what the nodes actually wrote. Every
 //! mutation happens on a scratch copy; the collected directories are never
 //! changed.
 //!
@@ -525,8 +527,8 @@ fn attack_d_a_half_naming_other_weights_is_refused() {
 /// - the provider holds nothing from the requester: a client node's id is new
 ///   each start, so no key names it, and every push from it was refused
 ///   `signature_unverified`;
-/// - a provider that lies consistently about its weights is still not caught
-///   at receipt: the requester's own half names no weights to compare with.
+/// - the requester's own half names the weights the provider served, so a
+///   provider that lies consistently about them is caught at receipt.
 #[test]
 #[ignore = "needs the data directories of a real two-node run (scripts/e2e-two-node.sh)"]
 fn the_host_names_both_sides_and_the_requester_holds_the_providers_record() {
@@ -636,10 +638,22 @@ fn the_host_names_both_sides_and_the_requester_holds_the_providers_record() {
         );
     }
 
+    // The host names the weights in the requester's own half (mesh-llm 0.79),
+    // so a provider that lies consistently about them is caught at receipt:
+    // the weights the requester's half names are the ones the provider's
+    // served halves name.
+    let served_weights: std::collections::BTreeSet<String> = run
+        .provider
+        .halves("served")
+        .iter()
+        .flat_map(crate::record_push_receive::weights_claims)
+        .collect();
+    assert_eq!(served_weights.len(), 1, "one model was served");
     for half in run.requester.halves("requested") {
-        assert!(
-            crate::record_push_receive::weights_claims(&half).is_empty(),
-            "the requester's own half names weights: a consistent liar can now be caught at receipt; check this note"
+        assert_eq!(
+            crate::record_push_receive::weights_claims(&half),
+            served_weights,
+            "the requester's own half names the weights the provider served"
         );
     }
 }
@@ -880,7 +894,7 @@ fn the_referees_verdict_is_sealed_on_both_nodes() {
             "{side}: {record:#}"
         );
     }
-    // Stock mesh-llm (0.78.x) rejects `logprobs`, so the referee's answer
+    // Stock mesh-llm (0.78.x through the 0.79.0 pinned here) rejects `logprobs`, so the referee's answer
     // carries none and it has no margin at the split to name a twin by
     // (#155): the ruling is `inconclusive`, sealed with why. A server that
     // serves logprobs (Mesh-LLM/mesh-llm#2565, in no stable release yet)
@@ -1146,4 +1160,84 @@ fn the_history_page_route_served_each_nodes_own_answer() {
     .unwrap();
     let check = verified_for(&service_request, &service_history, &run.provider);
     assert_eq!(check["state"], "artifact", "{check:#}");
+}
+
+/// evidencebook#47's T1: the corroborator, party to no exchange, asked the
+/// requester (X) for its half of the run's first exchange and then the
+/// provider (Y) for Y's, each once per run, keyed on the client nonce X's
+/// record binds. Declining, Y's outcome is its signed refusal, not an
+/// absence; answering, the two halves agree, each verified under its own
+/// node's key. Independence is never derived.
+#[test]
+#[ignore = "needs the data directories of a real two-node run (scripts/e2e-two-node.sh)"]
+fn a_third_node_corroborates_an_exchange_with_both_sides() {
+    use crate::exchange_corroboration::RUNS_FILENAME;
+    let run = Run::from_env();
+    let (requester_id, provider_id) = (run.requester.peer_id(), run.provider.peer_id());
+    let dir = std::env::var("E2E_CORROBORATOR_DIR")
+        .expect("E2E_CORROBORATOR_DIR must name the corroborator's plugin data directory");
+    let logged: Vec<Value> = read_jsonl(&Path::new(&dir).join("ledger").join(RUNS_FILENAME))
+        .into_iter()
+        .map(|line| line["result"].clone())
+        .collect();
+    let declined = join_output("corroboration-declined.json");
+    let agreed = join_output("corroboration-agreed.json");
+    assert!(logged.contains(&declined), "the declined run is in Z's log");
+    assert_eq!(logged.last(), Some(&agreed), "the agreeing run is Z's last");
+
+    // The key is the nonce X's record binds, and nothing else.
+    let x_record = &run.requester.halves("requested")[0];
+    let key = crate::evidence_log::client_nonce_digest(x_record).expect("X's half binds a nonce");
+    let effect = |record: &Value, member: &str| record["effect"][member].clone();
+    let y_record = run
+        .provider
+        .halves("served")
+        .into_iter()
+        .find(|r| crate::evidence_log::client_nonce_digest(r).as_deref() == Some(key.as_str()))
+        .expect("the provider's half binds the same nonce");
+
+    for result in [&declined, &agreed] {
+        assert_eq!(
+            result["join_key"],
+            json!({"kind": "client_nonce_sha256", "value": key}),
+            "{result:#}"
+        );
+        let x = &result["x"];
+        assert_eq!(x["peer_id"], json!(requester_id), "{result:#}");
+        assert_eq!(x["outcome"]["state"], "half_obtained", "{result:#}");
+        assert_eq!(x["half"]["role"], "requested", "{result:#}");
+        for member in ["request_digest", "response_digest"] {
+            assert_eq!(x["half"][member], effect(x_record, member), "{result:#}");
+        }
+        // One entry per Y, and nothing summarized across them.
+        let ys = result["ys"].as_array().expect("ys");
+        assert_eq!(ys.len(), 1, "{result:#}");
+        assert_eq!(
+            result.as_object().unwrap().keys().collect::<Vec<_>>(),
+            ["join_key", "x", "ys"],
+            "{result:#}"
+        );
+        assert_eq!(ys[0]["peer_id"], json!(provider_id), "{result:#}");
+        assert_eq!(ys[0]["frame"], json!({"basis": "x_record_names_y"}));
+        assert_eq!(ys[0]["independence"], json!({"state": "not_established"}));
+    }
+
+    // Z's key is bound by no host, so a provider that shares nothing cannot
+    // tell Z from a stranger and refuses the unproven request
+    // (evidence-interop/1); with sharing on, the same request is answered.
+    assert_eq!(
+        declined["ys"][0]["outcome"],
+        json!({"state": "signed_refusal", "reason": "request_unauthenticated"}),
+        "{declined:#}"
+    );
+    let y = &agreed["ys"][0]["outcome"];
+    assert_eq!(y["state"], "agree", "{agreed:#}");
+    let y_half = &y["y_half"];
+    assert_eq!(y_half["role"], "served", "{agreed:#}");
+    assert_eq!(y_half["client_nonce_sha256"], json!(key), "{agreed:#}");
+    for member in ["request_digest", "response_digest"] {
+        assert!(y_half[member].is_string(), "{agreed:#}");
+        assert_eq!(y_half[member], effect(&y_record, member), "{agreed:#}");
+        assert_eq!(y_half[member], agreed["x"]["half"][member], "{agreed:#}");
+    }
 }
