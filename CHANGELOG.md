@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Settlement records seal for payment events relayed from the local pay-lightning plugin.** The settlement
+  consumer accepted `payment.lifecycle.v1` only from an empty `source_peer_id`, but mesh-llm relays a local
+  plugin's channel messages with source `plugin:<id>` (Mesh-LLM/mesh-llm#2731), so pay-lightning's events were
+  refused and step 06 settlement stayed unchecked. It now also accepts exactly `plugin:pay-lightning` with a
+  non-peer-id target; mesh frames and every other plugin origin are still refused.
+
 ### Changed
 
 - **Built with agent-action-capsule 0.10.0, checkpointed-local-log 0.5.0 and evidencebook 0.0.15.** One
