@@ -360,11 +360,23 @@ pub(crate) fn is_lower_hex_32(s: &str) -> bool {
 /// wrote. So a message with an empty source and a non-empty target that is not
 /// a peer id can only be the local broadcast. Payment lifecycle events are
 /// this node's own observations; anything else is refused before parsing.
+///
+/// The host also relays a local plugin's channel messages (Mesh-LLM/mesh-llm
+/// #2731: pay-lightning's `payment.lifecycle.v1`) with `source_peer_id` set to
+/// `plugin:<id>` (`local_plugin_origin`, `plugin/channel_broadcast.rs`). Only
+/// `plugin:pay-lightning` is accepted. The target check still applies, so a
+/// mesh frame that merely writes that source is refused: it reaches local
+/// plugins only with an empty or peer-id target.
 pub(crate) fn is_local_host_broadcast(source_peer_id: &str, target_peer_id: &str) -> bool {
     let target_is_peer_id =
         target_peer_id.len() == 64 && target_peer_id.bytes().all(|b| b.is_ascii_hexdigit());
-    source_peer_id.is_empty() && !target_peer_id.is_empty() && !target_is_peer_id
+    let local_source = source_peer_id.is_empty() || source_peer_id == LOCAL_PAYMENT_PLUGIN_ORIGIN;
+    local_source && !target_peer_id.is_empty() && !target_is_peer_id
 }
+
+/// `source_peer_id` the host stamps on messages relayed from the local
+/// pay-lightning plugin.
+const LOCAL_PAYMENT_PLUGIN_ORIGIN: &str = "plugin:pay-lightning";
 
 #[cfg(test)]
 pub(crate) fn host_shaped_event(
@@ -411,6 +423,34 @@ mod tests {
         assert!(!is_local_host_broadcast("", &our_peer_id.to_uppercase()));
         // A named sender is never the local broadcast.
         assert!(!is_local_host_broadcast(&"cd".repeat(32), "capsules"));
+    }
+
+    #[test]
+    fn the_local_pay_lightning_origin_is_accepted_and_nothing_else_plugin_shaped() {
+        assert!(is_local_host_broadcast("plugin:pay-lightning", "capsules"));
+        // Another plugin, a prefix/suffix variant, or a different case.
+        assert!(!is_local_host_broadcast("plugin:other", "capsules"));
+        assert!(!is_local_host_broadcast(
+            "plugin:pay-lightning2",
+            "capsules"
+        ));
+        assert!(!is_local_host_broadcast(
+            "plugin:pay-lightning ",
+            "capsules"
+        ));
+        assert!(!is_local_host_broadcast("Plugin:pay-lightning", "capsules"));
+        assert!(!is_local_host_broadcast("plugin:", "capsules"));
+        // A mesh frame writing that source: target empty or our peer id.
+        let our_peer_id = "ab".repeat(32);
+        assert!(!is_local_host_broadcast("plugin:pay-lightning", ""));
+        assert!(!is_local_host_broadcast(
+            "plugin:pay-lightning",
+            &our_peer_id
+        ));
+        assert!(!is_local_host_broadcast(
+            "plugin:pay-lightning",
+            &our_peer_id.to_uppercase()
+        ));
     }
     use serde_json::json;
 
