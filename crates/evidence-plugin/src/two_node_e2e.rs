@@ -18,7 +18,7 @@
 //! With the run's two-minute Service History definition, as the nodes had it.
 //!
 //! Every check calls the plugin's own code (the ledger reload, the receiver,
-//! the Evidence pane builder) on what the two nodes actually wrote. Every
+//! the Evidence pane builder) on what the nodes actually wrote. Every
 //! mutation happens on a scratch copy; the collected directories are never
 //! changed.
 //!
@@ -894,7 +894,7 @@ fn the_referees_verdict_is_sealed_on_both_nodes() {
             "{side}: {record:#}"
         );
     }
-    // Stock mesh-llm (0.78.x) rejects `logprobs`, so the referee's answer
+    // Stock mesh-llm (0.78.x through the 0.79.0 pinned here) rejects `logprobs`, so the referee's answer
     // carries none and it has no margin at the split to name a twin by
     // (#155): the ruling is `inconclusive`, sealed with why. A server that
     // serves logprobs (Mesh-LLM/mesh-llm#2565, in no stable release yet)
