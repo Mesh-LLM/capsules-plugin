@@ -99,6 +99,9 @@ impl Drop for Flight {
     }
 }
 
+/// The most one relay message may be, bytes.
+const MAX_MESSAGE: usize = 2 * 1024 * 1024;
+
 /// How long one relay gets to connect, accept the event and answer.
 pub(crate) const RELAY_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -601,7 +604,12 @@ pub(crate) fn connect(url: &str) -> Result<(Socket, TcpStream), String> {
     } else {
         Box::new(tcp)
     };
-    let (socket, _) = tungstenite::client(url, stream)
+    // A relay is not trusted with this process's memory: the largest message
+    // is a request event at its content cap (`nostr_mailbox::MAX_CONTENT`).
+    let config = tungstenite::protocol::WebSocketConfig::default()
+        .max_message_size(Some(MAX_MESSAGE))
+        .max_frame_size(Some(MAX_MESSAGE));
+    let (socket, _) = tungstenite::client::client_with_config(url, stream, Some(config))
         .map_err(|e| format!("the WebSocket handshake failed: {e}"))?;
     Ok((socket, timer))
 }

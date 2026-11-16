@@ -56,8 +56,28 @@ pub const POLL: Duration = Duration::from_secs(5);
 /// closed.
 pub const LOOKBACK: i64 = 300;
 
-/// The most request events read from one relay in one round.
+/// The most request events read from one relay in one page.
 const LIMIT: usize = 64;
+
+/// The most pages (each older than the last) read from one relay in a round.
+const PAGES: usize = 4;
+
+/// The most bytes of events one page holds; a relay that sends more is cut off.
+const PAGE_BYTES: usize = 8 * 1024 * 1024;
+
+/// The most tags a request event may carry.
+const MAX_TAGS: usize = 16;
+
+/// A request event stamped more than this many seconds ahead of this node's
+/// clock is not answered: its stamp would keep its id in [`ANSWERED_FILE`].
+const SKEW: i64 = 60;
+
+/// The most ids [`ANSWERED_FILE`] keeps (the newest).
+const MAX_ANSWERED: usize = 2048;
+
+/// A round stops starting new work after this long, so one slow relay cannot
+/// hold the others past the commitment's `answers_within`.
+const BUDGET: Duration = Duration::from_secs(40);
 
 /// The most a request event's content may be (base64url text): a few KB is
 /// a request, and the mesh path reads at most 1 MiB.
@@ -88,10 +108,20 @@ pub fn verify_event(raw: &Value) -> Result<Event, String> {
             .map(str::to_string)
             .ok_or(format!("no {name}"))
     };
+    // Before anything is copied or hashed.
+    if raw["content"]
+        .as_str()
+        .is_some_and(|c| c.len() > MAX_CONTENT)
+    {
+        return Err("the content is too large".into());
+    }
     let (id, pubkey, sig, content) = (text("id")?, text("pubkey")?, text("sig")?, text("content")?);
     let created_at = raw["created_at"].as_i64().ok_or("no created_at")?;
     let kind = raw["kind"].as_u64().ok_or("no kind")?;
     let mut tags = Vec::new();
+    if raw["tags"].as_array().ok_or("no tags")?.len() > MAX_TAGS {
+        return Err("too many tags".into());
+    }
     for tag in raw["tags"].as_array().ok_or("no tags")? {
         let parts = tag.as_array().ok_or("a tag is not an array")?;
         tags.push(
@@ -187,6 +217,7 @@ pub fn fetch(url: &str, filter: &Value) -> Result<Vec<Value>, String> {
         ))
         .map_err(|e| format!("could not send: {e}"))?;
     let mut events = Vec::new();
+    let mut bytes = 0;
     let outcome = loop {
         let left = RELAY_TIMEOUT.saturating_sub(started.elapsed());
         if left.is_zero() {
@@ -208,10 +239,11 @@ pub fn fetch(url: &str, filter: &Value) -> Result<Vec<Value>, String> {
         };
         match parts.first().and_then(Value::as_str) {
             Some("EVENT") if parts.get(1).and_then(Value::as_str) == Some(sub) => {
+                bytes += text.len();
                 if let Some(event) = parts.get(2) {
                     events.push(event.clone());
                 }
-                if events.len() >= LIMIT {
+                if events.len() >= LIMIT || bytes >= PAGE_BYTES {
                     break Ok(());
                 }
             }
@@ -239,16 +271,25 @@ pub fn fetch(url: &str, filter: &Value) -> Result<Vec<Value>, String> {
 /// The request event ids answered, read from [`ANSWERED_FILE`] in `dir`;
 /// those older than twice [`LOOKBACK`] are dropped, since [`round`] no longer
 /// reads them.
-pub fn answered(dir: &Path, now: i64) -> BTreeMap<String, i64> {
-    std::fs::read_to_string(dir.join(ANSWERED_FILE))
-        .unwrap_or_default()
+/// A file that exists and cannot be read is an error, never an empty set: an
+/// empty set would answer everything again.
+pub fn answered(dir: &Path, now: i64) -> Result<BTreeMap<String, i64>, String> {
+    let text = match std::fs::read_to_string(dir.join(ANSWERED_FILE)) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(format!("{ANSWERED_FILE} could not be read: {e}")),
+    };
+    let mut kept: Vec<(String, i64)> = text
         .lines()
         .filter_map(|line| {
             let (id, at) = line.split_once(' ')?;
             Some((id.to_string(), at.parse::<i64>().ok()?))
         })
         .filter(|(_, at)| *at > now - 2 * LOOKBACK)
-        .collect()
+        .collect();
+    kept.sort_by_key(|(_, at)| std::cmp::Reverse(*at));
+    kept.truncate(MAX_ANSWERED);
+    Ok(kept.into_iter().collect())
 }
 
 /// Write `ids` to [`ANSWERED_FILE`] in `dir`, whole and renamed into place.
@@ -285,33 +326,73 @@ pub fn status() -> BTreeMap<String, RelayRead> {
     lock(&STATUS).clone()
 }
 
+/// The request events `url` holds for `mailbox_key`, newest first, in pages
+/// of [`LIMIT`] each older than the last, at most [`PAGES`] of them: a relay
+/// that always returns the same newest page cannot hide an older request.
+fn read_pages(url: &str, mailbox_key: &str, now: i64) -> Result<Vec<Value>, String> {
+    let mut all: Vec<Value> = Vec::new();
+    let mut until: Option<i64> = None;
+    for _ in 0..PAGES {
+        let mut filter = json!({
+            "kinds": [REQUEST_KIND],
+            "#p": [mailbox_key],
+            "since": now - LOOKBACK,
+            "limit": LIMIT,
+        });
+        if let Some(until) = until {
+            filter["until"] = json!(until);
+        }
+        let page = fetch(url, &filter)?;
+        let oldest = page.iter().filter_map(|e| e["created_at"].as_i64()).min();
+        let full = page.len() >= LIMIT;
+        all.extend(page);
+        match (full, oldest) {
+            // The next page starts at the oldest stamp seen (`until` is
+            // inclusive, so events sharing it are read again and skipped by
+            // id). A page that did not get older steps one second back: more
+            // than a page of requests in one second are not all read.
+            (true, Some(at)) => until = Some(if until == Some(at) { at - 1 } else { at }),
+            _ => break,
+        }
+    }
+    Ok(all)
+}
+
 /// One read of the mailbox on every relay of `relays`. `answer` turns request
 /// octets into the signed reply octets, or `None` when there is nothing to
-/// sign. Returns the request event ids answered.
+/// sign; `active` says whether the switch is still on, and is asked before
+/// each relay and each answer. Returns the request event ids answered.
 pub async fn round<A, F>(
     dir: &Path,
     key: &SigningKey,
     relays: &[String],
     now: i64,
+    active: impl Fn() -> bool,
     answer: A,
 ) -> Vec<String>
 where
     A: Fn(Vec<u8>) -> F,
     F: std::future::Future<Output = Option<Vec<u8>>>,
 {
+    let began = Instant::now();
     let mailbox_key = hex::encode(key.verifying_key().to_bytes());
-    let mut done = answered(dir, now);
+    let mut done = match answered(dir, now) {
+        Ok(done) => done,
+        Err(why) => {
+            // Answering without the record of what was answered could answer
+            // a request twice.
+            tracing::warn!(%why, "the mailbox is not read");
+            return Vec::new();
+        }
+    };
     let mut answered_now = Vec::new();
     for url in relays {
-        let filter = json!({
-            "kinds": [REQUEST_KIND],
-            "#p": [mailbox_key],
-            "since": now - LOOKBACK,
-            "limit": LIMIT,
-        });
+        if !active() || began.elapsed() > BUDGET {
+            break;
+        }
         let read = {
-            let (url, filter) = (url.clone(), filter.clone());
-            tokio::task::spawn_blocking(move || fetch(&url, &filter))
+            let (url, mailbox_key) = (url.clone(), mailbox_key.clone());
+            tokio::task::spawn_blocking(move || read_pages(&url, &mailbox_key, now))
                 .await
                 .unwrap_or_else(|e| Err(e.to_string()))
         };
@@ -324,22 +405,31 @@ where
         };
         let mut count = 0;
         for raw in events {
+            if !active() || began.elapsed() > BUDGET {
+                break;
+            }
             let Ok(request) = verify_event(&raw) else {
                 continue;
             };
-            // The relay is not trusted to filter by `since` or by `#p`.
-            if done.contains_key(&request.id) || request.created_at < now - LOOKBACK {
+            // The relay is not trusted to filter by `since` or by `#p`; a
+            // stamp ahead of this clock is not kept in the answered set.
+            if done.contains_key(&request.id)
+                || request.created_at < now - LOOKBACK
+                || request.created_at > now + SKEW
+            {
                 continue;
             }
             let Some(octets) = request_octets(&request, &mailbox_key) else {
                 continue;
             };
-            // Marked before the answer is built, so a crash between the
-            // two never answers the request twice (NMB §6); the asker then
-            // records an absence.
+            // Kept before the answer is built, so a crash between the two
+            // never answers the request twice (NMB §6; the asker then records
+            // an absence). If it cannot be kept, the request is not answered.
             done.insert(request.id.clone(), request.created_at);
             if let Err(e) = keep(dir, &done) {
                 tracing::warn!(error = %e, "the answered request ids could not be kept");
+                done.remove(&request.id);
+                break;
             }
             let Some(reply) = answer(octets).await else {
                 continue;
@@ -378,6 +468,10 @@ fn note(url: &str, state: &'static str, detail: String, answered: usize) {
     );
 }
 
+fn on() -> bool {
+    crate::commitment::Policy::current().advertise_evidence_requests
+}
+
 /// A task in the plugin's runtime: every [`POLL`], read the mailbox while
 /// `advertise_evidence_requests` is on.
 pub fn spawn(
@@ -389,7 +483,7 @@ pub fn spawn(
         every.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             every.tick().await;
-            if !crate::commitment::Policy::current().advertise_evidence_requests {
+            if !on() {
                 lock(&STATUS).clear();
                 continue;
             }
@@ -402,9 +496,10 @@ pub fn spawn(
             let Ok(key) = crate::nostr_announce::mailbox_key(&dir) else {
                 continue;
             };
+            lock(&STATUS).retain(|url, _| route.relays.contains(url));
             let now = chrono::Utc::now().timestamp();
             let own = self_peer.learned();
-            round(&dir, &key, &route.relays, now, |octets| {
+            round(&dir, &key, &route.relays, now, on, |octets| {
                 crate::mesh_evidence_bridge::answer_in_process(
                     capsules.clone(),
                     octets,

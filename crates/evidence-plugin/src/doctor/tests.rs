@@ -623,3 +623,21 @@ fn nostr_announce_on_says_the_mailbox_is_read() {
     assert_eq!(f.state, STATE_ON);
     assert!(f.detail.contains("answers evidence requests") && f.detail.contains("not encrypted"));
 }
+
+#[test]
+fn sharing_standard_history_with_the_mailbox_on_says_the_answer_is_public() {
+    let policy = Policy {
+        advertise_evidence_requests: true,
+        share_standard_history: true,
+        ..defaults()
+    };
+    let dir = corpus();
+    let served = serve(dir.path(), &policy, Some(NODE));
+    let found = with(dir.path(), &policy, |r| {
+        findings(r, &policy, &served, &Witnesses::default(), None, false).unwrap()
+    });
+    let f = state(&found, NOSTR_MAILBOX);
+    assert!(
+        f.detail.contains("share_standard_history") && f.detail.contains("published on the relay")
+    );
+}

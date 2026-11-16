@@ -169,6 +169,7 @@ fn a_request_is_answered_with_a_reply_event_the_asker_can_check() {
         &mailbox(),
         &[url],
         NOW,
+        || true,
         move |octets| {
             log.lock().unwrap().push(octets);
             std::future::ready(Some(b"{\"signed\":\"answer\"}".to_vec()))
@@ -208,13 +209,14 @@ fn a_request_event_is_answered_once_across_rounds_and_restarts() {
             &mailbox(),
             std::slice::from_ref(&url),
             at,
+            || true,
             |_| std::future::ready(Some(b"{}".to_vec())),
         ))
     };
     assert_eq!(again(NOW).len(), 1);
     assert_eq!(again(NOW + 5).len(), 0, "the same round again");
     // a restart reads the ids from the data directory
-    assert_eq!(answered(&d, NOW + 10).len(), 1);
+    assert_eq!(answered(&d, NOW + 10).unwrap().len(), 1);
     assert_eq!(again(NOW + 10).len(), 0, "after a restart");
     assert_eq!(got.lock().unwrap().len(), 1);
 }
@@ -230,9 +232,14 @@ fn what_is_not_a_verified_current_request_to_this_key_gets_no_reply() {
     let (url, got) = relay(vec![tampered, elsewhere, old]);
     let d = dir();
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let done = rt.block_on(round(&d, &mailbox(), &[url], NOW, |_| {
-        std::future::ready(Some(b"{}".to_vec()))
-    }));
+    let done = rt.block_on(round(
+        &d,
+        &mailbox(),
+        &[url],
+        NOW,
+        || true,
+        |_| std::future::ready(Some(b"{}".to_vec())),
+    ));
     assert!(done.is_empty());
     assert!(got.lock().unwrap().is_empty());
 }
@@ -249,12 +256,13 @@ fn a_request_this_node_cannot_sign_for_gets_no_reply_and_is_not_asked_again() {
             &mailbox(),
             std::slice::from_ref(&url),
             at,
+            || true,
             |_| std::future::ready(None),
         ));
         assert!(done.is_empty());
     }
     assert!(got.lock().unwrap().is_empty());
-    assert_eq!(answered(&d, NOW + 5).len(), 1);
+    assert_eq!(answered(&d, NOW + 5).unwrap().len(), 1);
 }
 
 #[test]
@@ -272,6 +280,7 @@ fn a_relay_that_cannot_be_reached_is_reported_and_the_next_is_read() {
         &mailbox(),
         &[dead.clone(), url.clone()],
         NOW,
+        || true,
         |_| std::future::ready(Some(b"{}".to_vec())),
     ));
     assert_eq!(done.len(), 1);
@@ -288,9 +297,14 @@ async fn the_node_answers_a_mailbox_request_as_it_answers_a_mesh_stream() {
     let d = dir();
     let capsules =
         Arc::new(crate::capsule_emit::CapsuleState::open(&d, "node-under-test").unwrap());
-    let done = round(&d, &mailbox(), &[url], NOW, |octets| {
-        crate::mesh_evidence_bridge::answer_in_process(capsules.clone(), octets, None)
-    })
+    let done = round(
+        &d,
+        &mailbox(),
+        &[url],
+        NOW,
+        || true,
+        |octets| crate::mesh_evidence_bridge::answer_in_process(capsules.clone(), octets, None),
+    )
     .await;
     assert_eq!(done.len(), 1);
     let reply = verify_event(&got.lock().unwrap()[0]).unwrap();
@@ -306,4 +320,213 @@ async fn the_node_answers_a_mailbox_request_as_it_answers_a_mesh_stream() {
             .contains(&evidence_request::digest::request_digest(sent)),
         "{answer}"
     );
+}
+
+/// Sherlock2's acceptance condition for loop#442: nostr-mailbox-v0 has no
+/// requester authentication (§4.1), so every mailbox asker is a stranger, and
+/// a record or a full history is refused to one over the mailbox as over the
+/// mesh.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_record_or_history_request_over_the_mailbox_is_refused() {
+    let to = key_hex(&mailbox());
+    let digest = "ab".repeat(32);
+    let asked = [
+        json!({"subject": {"record": digest}, "coverage": {"min_freshness": 1}}),
+        json!({"subject": {"full_history": null}, "coverage": {"min_freshness": 1}}),
+        json!({"subject": {"range": {"from": 0, "to": 1}}, "coverage": {"min_freshness": 1}}),
+    ];
+    for ask in asked {
+        let sent = serde_json::to_vec(&ask).unwrap();
+        let (url, got) = relay(vec![request(&to, &sent, NOW - 3)]);
+        let d = dir();
+        let capsules =
+            Arc::new(crate::capsule_emit::CapsuleState::open(&d, "node-under-test").unwrap());
+        let done = round(
+            &d,
+            &mailbox(),
+            &[url],
+            NOW,
+            || true,
+            |octets| crate::mesh_evidence_bridge::answer_in_process(capsules.clone(), octets, None),
+        )
+        .await;
+        assert_eq!(done.len(), 1, "{ask}");
+        let reply = verify_event(&got.lock().unwrap()[0]).unwrap();
+        let octets = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(&reply.content)
+            .unwrap();
+        let answer: Value = serde_json::from_slice(&octets).unwrap();
+        assert!(
+            answer.get("reason").is_some() && answer.get("artifact").is_none(),
+            "a stranger over the mailbox gets a refusal of {ask}, got {answer}"
+        );
+    }
+}
+
+#[test]
+fn a_request_stamped_in_the_future_is_not_answered_or_kept() {
+    let to = key_hex(&mailbox());
+    let (url, got) = relay(vec![request(&to, b"{}", NOW + 100_000)]);
+    let d = dir();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let done = rt.block_on(round(
+        &d,
+        &mailbox(),
+        &[url],
+        NOW,
+        || true,
+        |_| std::future::ready(Some(b"{}".to_vec())),
+    ));
+    assert!(done.is_empty() && got.lock().unwrap().is_empty());
+    assert!(answered(&d, NOW).unwrap().is_empty());
+}
+
+#[test]
+fn a_request_is_not_answered_when_the_answered_ids_cannot_be_kept_or_read() {
+    let to = key_hex(&mailbox());
+    let (url, got) = relay(vec![request(&to, b"{}", NOW - 3)]);
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let reply = |_: Vec<u8>| std::future::ready(Some(b"{}".to_vec()));
+    // a directory that does not exist: the id cannot be kept
+    let missing = dir().join("gone");
+    let done = rt.block_on(round(
+        &missing,
+        &mailbox(),
+        std::slice::from_ref(&url),
+        NOW,
+        || true,
+        reply,
+    ));
+    assert!(done.is_empty());
+    // a record that exists and cannot be read as text: the round does nothing
+    let d = dir();
+    std::fs::create_dir(d.join(ANSWERED_FILE)).unwrap();
+    assert!(answered(&d, NOW).is_err());
+    let done = rt.block_on(round(
+        &d,
+        &mailbox(),
+        std::slice::from_ref(&url),
+        NOW,
+        || true,
+        reply,
+    ));
+    assert!(done.is_empty());
+    assert!(got.lock().unwrap().is_empty());
+}
+
+#[test]
+fn an_older_request_behind_a_full_page_is_still_read() {
+    let to = key_hex(&mailbox());
+    // 64 newer requests fill the first page; the older one is on the next
+    let mut stored: Vec<Value> = (0..LIMIT as i64)
+        .map(|i| request(&to, format!("{{\"n\":{i}}}").as_bytes(), NOW - 1))
+        .collect();
+    stored.push(request(&to, b"{\"old\":1}", NOW - 100));
+    let (url, got) = paged_relay(stored);
+    let d = dir();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let done = rt.block_on(round(
+        &d,
+        &mailbox(),
+        &[url],
+        NOW,
+        || true,
+        |_| std::future::ready(Some(b"{}".to_vec())),
+    ));
+    assert_eq!(done.len(), LIMIT + 1);
+    assert_eq!(got.lock().unwrap().len(), LIMIT + 1);
+}
+
+#[test]
+fn a_switch_turned_off_mid_round_stops_the_answers() {
+    let to = key_hex(&mailbox());
+    let (url, got) = relay(vec![
+        request(&to, b"{\"a\":1}", NOW - 3),
+        request(&to, b"{\"a\":2}", NOW - 2),
+    ]);
+    let d = dir();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let asked = std::cell::Cell::new(0);
+    let done = rt.block_on(round(
+        &d,
+        &mailbox(),
+        &[url],
+        NOW,
+        || {
+            asked.set(asked.get() + 1);
+            asked.get() <= 2 // the relay, the first answer; then off
+        },
+        |_| std::future::ready(Some(b"{}".to_vec())),
+    ));
+    assert_eq!(done.len(), 1);
+    assert_eq!(got.lock().unwrap().len(), 1);
+}
+
+/// A relay that honours `until` and `limit`, newest first, as NIP-01 says.
+fn paged_relay(stored: Vec<Value>) -> (String, Arc<Mutex<Vec<Value>>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("ws://{}", listener.local_addr().unwrap());
+    let got = Arc::new(Mutex::new(Vec::new()));
+    let seen = got.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let (seen, stored) = (seen.clone(), stored.clone());
+            std::thread::spawn(move || {
+                let Ok(mut ws) = tungstenite::accept(stream) else {
+                    return;
+                };
+                while let Ok(tungstenite::Message::Text(text)) = ws.read() {
+                    let parts: Vec<Value> = serde_json::from_str(&text).unwrap();
+                    match parts[0].as_str().unwrap() {
+                        "REQ" => {
+                            let until = parts[2]["until"].as_i64().unwrap_or(i64::MAX);
+                            let limit = parts[2]["limit"].as_u64().unwrap() as usize;
+                            let mut page: Vec<&Value> = stored
+                                .iter()
+                                .filter(|e| e["created_at"].as_i64().unwrap() <= until)
+                                .collect();
+                            page.sort_by_key(|e| {
+                                std::cmp::Reverse(e["created_at"].as_i64().unwrap())
+                            });
+                            for event in page.into_iter().take(limit) {
+                                let frame = json!(["EVENT", parts[1], event]);
+                                ws.send(tungstenite::Message::text(frame.to_string()))
+                                    .unwrap();
+                            }
+                            let _ = ws.send(tungstenite::Message::text(
+                                json!(["EOSE", parts[1]]).to_string(),
+                            ));
+                        }
+                        "EVENT" => {
+                            let id = parts[1]["id"].clone();
+                            seen.lock().unwrap().push(parts[1].clone());
+                            let _ = ws.send(tungstenite::Message::text(
+                                json!(["OK", id, true, ""]).to_string(),
+                            ));
+                        }
+                        _ => {}
+                    }
+                }
+            });
+        }
+    });
+    (url, got)
+}
+
+#[test]
+fn an_event_with_too_much_content_or_too_many_tags_is_not_read() {
+    let to = key_hex(&mailbox());
+    let big = signed_event(
+        &asker(),
+        REQUEST_KIND,
+        json!([["p", to], ["m", MEDIA]]),
+        &"A".repeat(MAX_CONTENT + 1),
+        NOW,
+    );
+    assert!(verify_event(&big).unwrap_err().contains("too large"));
+    let tags: Vec<Value> = (0..=MAX_TAGS)
+        .map(|i| json!(["x", i.to_string()]))
+        .collect();
+    let many = signed_event(&asker(), REQUEST_KIND, json!(tags), "", NOW);
+    assert!(verify_event(&many).unwrap_err().contains("too many tags"));
 }

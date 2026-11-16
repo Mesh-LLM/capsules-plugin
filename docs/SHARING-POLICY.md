@@ -341,7 +341,11 @@ back as a reply event (kind 4701) on the relay the request came from. A
 request that does not verify, or that this node cannot sign an answer for,
 gets no reply. The events are not encrypted: whoever reads the relay sees the
 request and the answer, so list only relays that authenticate their readers.
-With the switch off nothing is read. `doctor` shows, per relay, whether the
+Mailbox requests carry no requester authentication, so every asker over the
+mailbox is a stranger: a record or a full history is refused, and what the
+switches above give to any asker (`share_standard_history` on) is answered to a
+mailbox request and so published on the relay. With the switch off nothing is
+read. `doctor` shows, per relay, whether the
 mailbox could be read.
 
 **A lost or rotated mailbox key.** The key lives only in `nostr-mailbox.key`.

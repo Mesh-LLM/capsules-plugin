@@ -743,6 +743,18 @@ fn nostr_announce(policy: &Policy) -> Vec<Finding> {
         )];
     }
     let mut out = vec![Finding::new(NOSTR_ANNOUNCE, STATE_ON, n::MAILBOX_READ)];
+    if policy.share_standard_history {
+        // A mailbox asker is a stranger (nostr-mailbox-v0 §4.1: no requester
+        // authentication), so what Standard History shares to any asker is
+        // answered on the relay, readable by whoever reads it (NMB §8).
+        out.push(Finding::new(
+            NOSTR_MAILBOX,
+            STATE_ON,
+            "share_standard_history is on: Standard History is answered to any asker, so a \
+             mailbox request gets it and the answer is published on the relay, readable by \
+             everyone who reads it",
+        ));
+    }
     if let Some(note) = n::key_note() {
         out.push(Finding::new(NOSTR_ANNOUNCE, STATE_MISMATCH, note));
     }
