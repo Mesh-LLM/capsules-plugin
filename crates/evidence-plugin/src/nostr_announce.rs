@@ -282,7 +282,7 @@ pub fn route_problems(route: &Value) -> Vec<String> {
     problems
 }
 
-fn is_xonly_key(text: &str) -> bool {
+pub(crate) fn is_xonly_key(text: &str) -> bool {
     text.len() == 64
         && text
             .bytes()

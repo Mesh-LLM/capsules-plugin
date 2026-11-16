@@ -44,6 +44,7 @@ mod lifecycle_channel;
 mod mesh_evidence_bridge;
 mod network_join;
 mod nostr_announce;
+mod nostr_ask;
 mod nostr_mailbox;
 mod owner_maintenance;
 mod peer_blocks_seen;
@@ -1547,6 +1548,28 @@ fn with_evidence_operations(
                         context,
                         capsules.clone(),
                         self_id,
+                    ))
+                }
+            }),
+    );
+    builder = builder.mcp_item(
+        mcp::tool(nostr_ask::OPERATION)
+            .description(
+                "Ask a node over the Nostr mailbox its commitment advertises (ask.nostr: the \
+                 mailbox key and relays), as a stranger: the request is sealed in this node's \
+                 book of asks, published as a kind 4700 event, and the kind 4701 reply is read, \
+                 checked under the responder's key and sealed as the response, or as the \
+                 absence when its window closes. Returns the node's own artifact or signed \
+                 refusal beside its verification.",
+            )
+            .input::<nostr_ask::NostrEvidenceRequestArgs>()
+            .handle({
+                let capsules = capsules_for_delivery.clone();
+                move |args, context| {
+                    Box::pin(nostr_ask::handle_nostr_evidence_request(
+                        args,
+                        context,
+                        capsules.clone(),
                     ))
                 }
             }),
