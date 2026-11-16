@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+
+- **A node with `advertise_evidence_requests` on answers evidence requests sent to its Nostr mailbox
+  (evidence-network/loop#442).** Every five seconds it reads the kind 4700 requests addressed to its mailbox key on
+  the relays its commitment lists, checks each event's id and signature, answers each once through the same path as
+  the mesh stream (same sharing switches, same limits, same "asked of you" log) and publishes the signed envelope or
+  refusal as a kind 4701 reply on the relay it read the request from (nostr-mailbox-v0). A request it cannot sign an
+  answer for gets no reply. Every mailbox asker is answered as a stranger, whatever the request's signature says,
+  because the answer is public. `doctor` reports the last read per relay. Replaces the announce-only note.
+
 ### Fixed
 
 - **Settlement records seal for payment events relayed from the local pay-lightning plugin.** The settlement

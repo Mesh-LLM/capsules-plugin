@@ -253,10 +253,32 @@ pub fn with_responder<T>(
     own_node: Option<&str>,
     f: impl FnOnce(&Responder<'_>, &Policy) -> T,
 ) -> T {
+    with_responder_for(capsules, now, own_node, false, f)
+}
+
+/// [`with_responder`], and with `strangers_only` a responder that binds no
+/// key to any node: a signed request then proves no principal and reads as an
+/// unsigned one, answered only what a stranger gets. For a carrier that
+/// publishes its answers to whoever reads them (nostr-mailbox-v0 §8).
+pub fn with_responder_for<T>(
+    capsules: &crate::capsule_emit::CapsuleState,
+    now: &str,
+    own_node: Option<&str>,
+    strangers_only: bool,
+    f: impl FnOnce(&Responder<'_>, &Policy) -> T,
+) -> T {
     let policy = Policy::current();
     let digest = policy.digest(capsules.signing_key());
-    let announced = crate::peer_keys::announced::snapshot();
-    let configured = crate::settings::var(crate::peer_keys::ENV_PEER_KEYS).ok();
+    let announced = if strangers_only {
+        Default::default()
+    } else {
+        crate::peer_keys::announced::snapshot()
+    };
+    let configured = if strangers_only {
+        None
+    } else {
+        crate::settings::var(crate::peer_keys::ENV_PEER_KEYS).ok()
+    };
     let own_key = hex::encode(capsules.public_key());
     let responder = Responder {
         ledger_dir: capsules.ledger_dir(),

@@ -332,10 +332,22 @@ asks for it, and the operator publishing it themselves, are not this switch;
 the signed policy states its value (below). `doctor` shows the last result
 per relay.
 
-**Announce-only.** The route is announce-only until loop#305: the plugin
-publishes where to find the node, and does not read the Nostr mailbox. An ask
-sent there is not answered, so do not send one; `doctor` says so whenever the
-switch is on.
+**The mailbox is read.** With the switch on, the plugin also reads the
+mailbox the commitment names: every few seconds it asks each listed relay for
+the requests addressed to the mailbox key (kind 4700) and answers each one
+once, with the same signed artifact or signed refusal that it gives a
+stranger asking over the mesh (never as a counterparty, however the request is
+signed, since the answer is public); the answer goes
+back as a reply event (kind 4701) on the relay the request came from. A
+request that does not verify, or that this node cannot sign an answer for,
+gets no reply. The events are not encrypted: whoever reads the relay sees the
+request and the answer, so list only relays that authenticate their readers.
+Over the mailbox every asker is a stranger, and a requester signature inside
+the request proves nothing: a record or a full history is refused, and what the
+switches above give to any asker (`share_standard_history` on) is answered to a
+mailbox request and so published on the relay. With the switch off nothing is
+read. `doctor` shows, per relay, whether the
+mailbox could be read.
 
 **A lost or rotated mailbox key.** The key lives only in `nostr-mailbox.key`.
 If that file is lost or replaced, the plugin makes a new key at the next

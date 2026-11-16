@@ -2731,6 +2731,26 @@ pub(crate) mod tests {
         assert_eq!(verified["state"], json!("artifact"), "{verified}");
     }
 
+    /// A carrier that publishes its answers (the Nostr mailbox) answers a
+    /// counterparty's properly signed request as it answers a stranger: the
+    /// same bytes the registry binds to a counterparty are answered when the
+    /// node knows the key, and refused when it knows no key at all.
+    #[test]
+    fn a_signed_counterparty_request_is_refused_by_a_responder_that_binds_no_key() {
+        let ledger = corpus_ledger();
+        let dir = node(&ledger);
+        let bytes = signed_by("node-a", &node_a_record(&ledger));
+        assert!(matches!(
+            ask_by_default(dir.path(), &bytes),
+            Outcome::Answered { .. }
+        ));
+        let none = std::collections::BTreeMap::new();
+        assert_eq!(
+            refused(&ask_keyed(dir.path(), &bytes, &none, None)),
+            Some(Reason::NotAuthorized)
+        );
+    }
+
     /// `request` for node-a's record, asked of a node whose registry is
     /// `announced` and `configured`, under the default sharing settings.
     fn ask_keyed(

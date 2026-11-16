@@ -328,7 +328,7 @@ async fn bridge_inbound_evidence_stream(
     )
     .await??;
 
-    let response_bytes = match answer_in_process(capsules, request_bytes, own_node).await {
+    let response_bytes = match answer_in_process(capsules, request_bytes, own_node, false).await {
         Some(bytes) => bytes,
         // Nothing this node can sign: send nothing, never an unsigned
         // stand-in. The requester records an absence.
@@ -345,10 +345,15 @@ async fn bridge_inbound_evidence_stream(
 
 /// Answer in-process, on the blocking pool (the answer reads the ledger and
 /// signs), and log it. `None` when there is nothing to send.
-async fn answer_in_process(
+///
+/// `strangers_only` answers as to a stranger whatever the request proves, and
+/// never as the referee: for a carrier whose answers are public (the Nostr
+/// mailbox, `nostr_mailbox`).
+pub(crate) async fn answer_in_process(
     capsules: std::sync::Arc<crate::capsule_emit::CapsuleState>,
     request_bytes: Vec<u8>,
     own_node: Option<String>,
+    strangers_only: bool,
 ) -> Option<Vec<u8>> {
     let for_rule = capsules.clone();
     let answered = tokio::task::spawn_blocking(move || {
@@ -356,23 +361,28 @@ async fn answer_in_process(
         let parsed = serde_json::from_slice::<serde_json::Value>(&request_bytes).ok();
         // A verdict this node issues lands on its own counts: the opt-in
         // stop-routing rule looks again (it does nothing while off).
-        let adjudicate = parsed
-            .as_ref()
-            .is_some_and(crate::referee::service::is_adjudicate_request);
+        let adjudicate = !strangers_only
+            && parsed
+                .as_ref()
+                .is_some_and(crate::referee::service::is_adjudicate_request);
         // The pool is chosen by what the request proves; classifying costs a
         // signature check, so it is skipped when both pools are full.
         let permit = IN_FLIGHT.get_or_init(InFlight::new).try_acquire_with(|| {
-            proves_principal(
-                parsed.as_ref(),
-                adjudicate,
-                &now,
-                own_node.as_deref(),
-                &hex::encode(capsules.public_key()),
-            )
+            if strangers_only {
+                None
+            } else {
+                proves_principal(
+                    parsed.as_ref(),
+                    adjudicate,
+                    &now,
+                    own_node.as_deref(),
+                    &hex::encode(capsules.public_key()),
+                )
+            }
         });
         // Past the in-flight cap, an adjudicate request is declined like any
         // other (below), before any work on it.
-        if permit.is_ok() {
+        if permit.is_ok() && !strangers_only {
             if let Some(verdict_or_refusal) =
                 referee_answer(&capsules, &request_bytes, &now, own_node.as_deref())
             {
@@ -384,10 +394,11 @@ async fn answer_in_process(
             .ledger_dir()
             .parent()
             .and_then(crate::evidence_routes::EvidenceSource::received_log_dir);
-        let outcome = crate::commitment::with_responder(
+        let outcome = crate::commitment::with_responder_for(
             &capsules,
             &now,
             own_node.as_deref(),
+            strangers_only,
             |responder, _| {
                 crate::evidence_answer::answer_and_log(
                     &request_bytes,

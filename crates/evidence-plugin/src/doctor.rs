@@ -62,6 +62,9 @@ pub const NOT_CHECKED: &str = "not_checked";
 pub const UNSUPPORTED: &str = "unsupported";
 pub const SHARING: &str = "sharing";
 pub const NOSTR_ANNOUNCE: &str = "nostr_announce";
+/// The Nostr mailbox read (`nostr_mailbox`): one finding per relay, `on` when
+/// its last read worked.
+pub const NOSTR_MAILBOX: &str = "nostr_mailbox";
 pub const POLICY_IN_COMMITMENT: &str = "policy_in_commitment";
 pub const STRANGER_VIEW: &str = "stranger_view";
 pub const IDENTIFIED_VIEW: &str = "identified_view";
@@ -739,7 +742,19 @@ fn nostr_announce(policy: &Policy) -> Vec<Finding> {
             "advertise_evidence_requests is off: nothing is published to any Nostr relay",
         )];
     }
-    let mut out = vec![Finding::new(NOSTR_ANNOUNCE, STATE_ON, n::ANNOUNCE_ONLY)];
+    let mut out = vec![Finding::new(NOSTR_ANNOUNCE, STATE_ON, n::MAILBOX_READ)];
+    if policy.share_standard_history {
+        // A mailbox asker is a stranger (nostr-mailbox-v0 §4.1: no requester
+        // authentication), so what Standard History shares to any asker is
+        // answered on the relay, readable by whoever reads it (NMB §8).
+        out.push(Finding::new(
+            NOSTR_MAILBOX,
+            STATE_ON,
+            "share_standard_history is on: Standard History is answered to any asker, so a \
+             mailbox request gets it and the answer is published on the relay, readable by \
+             everyone who reads it",
+        ));
+    }
     if let Some(note) = n::key_note() {
         out.push(Finding::new(NOSTR_ANNOUNCE, STATE_MISMATCH, note));
     }
@@ -772,6 +787,27 @@ fn nostr_announce(policy: &Policy) -> Vec<Finding> {
             )
             .with(s.digest),
         );
+    }
+    for (url, r) in crate::nostr_mailbox::status() {
+        let state = if r.state == "read" {
+            STATE_ON
+        } else {
+            STATE_UNREACHABLE
+        };
+        out.push(Finding::new(
+            NOSTR_MAILBOX,
+            state,
+            format!(
+                "{url} at {}: {} request(s) answered since start{}",
+                r.at,
+                r.answered,
+                if r.detail.is_empty() {
+                    String::new()
+                } else {
+                    format!("; {}", r.detail)
+                }
+            ),
+        ));
     }
     if out.len() == 1 {
         out.push(Finding::new(
