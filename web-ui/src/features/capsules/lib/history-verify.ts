@@ -324,8 +324,9 @@ export async function verifyHistoryReply(replyText: string): Promise<HistoryVerd
     if (!entry || !statement) return fail('checkpoints', `Checkpoint ${i + 1} is not readable.`)
     const meta = (await verifyCheckpoint(statement)) ? await checkpointMetadata(statement) : undefined
     if (!meta) {
-      // A checkpoint whose time is not RFC 3339 text is refused for its format, not for a failed signature: say so, and name the field.
-      if (checkpointRejectionField(statement) === 'issued_at') {
+      // A checkpoint whose time is not RFC 3339 text but whose signature verifies is refused for its format, not for a failed
+      // signature: say so, and name the field. If the signature fails, `checkpointRejectionField` names nothing and the signature failure shows.
+      if ((await checkpointRejectionField(statement)) === 'issued_at') {
         return fail('checkpoints', `Checkpoint ${i + 1}: \`issued_at\` is not in the expected format (a format rejection, not a failed signature).`)
       }
       return fail('checkpoints', `Checkpoint ${i + 1} does not verify.`)
