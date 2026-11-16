@@ -397,13 +397,14 @@ pub fn build(
     Ok(signed)
 }
 
-/// A peer reads at most `MAX_SIDE_STREAM_BYTES` of a `commitment/1` reply,
-/// and the staple inside it is a whole answer, base64-encoded again: a
-/// commitment whose frame is larger could be built but never fetched, so it
-/// is not offered at all.
+/// A peer reads at most `MAX_COMMITMENT_BYTES` of a `commitment/1` reply.
+/// The staple inside it is a whole answer (at most `MAX_ANSWER_BYTES`),
+/// base64-encoded again, so the cap is above the answer's: a commitment whose
+/// frame is larger could be built but never fetched, so it is not offered at
+/// all.
 pub(crate) fn fits(signed: &Signed) -> Result<(), String> {
     let size = serde_json::to_vec(&signed.to_wire()).map_or(usize::MAX, |b| b.len());
-    let cap = crate::mesh_evidence_bridge::MAX_SIDE_STREAM_BYTES as usize;
+    let cap = crate::mesh_evidence_bridge::MAX_COMMITMENT_BYTES as usize;
     if size > cap {
         return Err(format!(
             "the commitment would be {size} bytes, larger than a peer reads ({cap})"

@@ -9,6 +9,14 @@
   plugin's channel messages with source `plugin:<id>` (Mesh-LLM/mesh-llm#2731), so pay-lightning's events were
   refused and step 06 settlement stayed unchecked. It now also accepts exactly `plugin:pay-lightning` with a
   non-peer-id target; mesh frames and every other plugin origin are still refused.
+- **A node with a long ledger can serve its commitment again (#76).** The staple is a whole
+  `history_card/1` answer, base64-encoded again inside the commitment, so a node's frame passed
+  the 1 MiB a peer read at about 300 checkpoints (a lab node's was 1,135,361 bytes) and
+  `commitment/1` answered with an error, which left loop step 12 (Join) unchecked. A peer now
+  reads up to 2 MiB of a `commitment/1` reply, which holds the largest commitment this node can
+  build; every other side-stream keeps its 1 MiB cap. The commitment's wire shape is unchanged.
+  A peer on an older release still reads 1 MiB, so it cannot fetch a commitment past that size
+  until it updates. The card itself is still refused past 1024 checkpoints (#76).
 
 ### Changed
 
