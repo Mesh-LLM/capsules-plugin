@@ -119,6 +119,13 @@ pub(crate) fn next_stream_id(prefix: &str) -> String {
 /// -- 1 MiB is generous headroom, not a constraint anyone legitimate hits.
 pub(crate) const MAX_SIDE_STREAM_BYTES: u64 = 1024 * 1024;
 
+/// The cap on a `commitment/1` reply, the one side-stream a legitimate
+/// answer can fill past [`MAX_SIDE_STREAM_BYTES`]: its staple is a whole
+/// `history_card/1` answer (at most [`MAX_SIDE_STREAM_BYTES`]) base64-encoded
+/// again (4/3), beside a checkpoint and a policy. 2 MiB holds the largest
+/// commitment this plugin can build and is still bounded.
+pub(crate) const MAX_COMMITMENT_BYTES: u64 = 2 * 1024 * 1024;
+
 /// Bounded replacement for `read_to_end` on a side-stream: reads at most
 /// [`MAX_SIDE_STREAM_BYTES`] and errors -- naming `what` -- when the peer
 /// sends more, instead of buffering an attacker-chosen amount of memory.
@@ -126,16 +133,28 @@ pub(crate) async fn read_to_end_bounded<R>(reader: R, what: &str) -> std::io::Re
 where
     R: tokio::io::AsyncRead + Unpin,
 {
+    read_to_end_capped(reader, what, MAX_SIDE_STREAM_BYTES).await
+}
+
+/// [`read_to_end_bounded`] with a cap of the caller's choosing.
+pub(crate) async fn read_to_end_capped<R>(
+    reader: R,
+    what: &str,
+    cap: u64,
+) -> std::io::Result<Vec<u8>>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
     let mut bytes = Vec::new();
     // Read ONE byte past the cap so "exactly at the cap" and "over the cap"
     // are distinguishable without trusting the peer to half-close honestly.
-    let mut bounded = reader.take(MAX_SIDE_STREAM_BYTES + 1);
+    let mut bounded = reader.take(cap + 1);
     bounded.read_to_end(&mut bytes).await?;
-    if bytes.len() as u64 > MAX_SIDE_STREAM_BYTES {
+    if bytes.len() as u64 > cap {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             format!(
-                "{what} exceeded the {MAX_SIDE_STREAM_BYTES}-byte side-stream cap -- refusing \
+                "{what} exceeded the {cap}-byte side-stream cap -- refusing \
                  an unbounded peer-controlled read"
             ),
         ));
@@ -1363,6 +1382,28 @@ mod tests {
         let mut derived = ask("nonce-once");
         derived["derivation"] = serde_json::json!("history_card/1");
         assert_eq!(asked_digests(&derived, ledger), None);
+    }
+
+    #[tokio::test]
+    async fn read_to_end_capped_takes_the_callers_cap() {
+        let cap = MAX_COMMITMENT_BYTES;
+        let at = vec![7u8; cap as usize];
+        assert_eq!(
+            read_to_end_capped(at.as_slice(), "test bytes", cap)
+                .await
+                .unwrap()
+                .len() as u64,
+            cap
+        );
+        let over = vec![7u8; cap as usize + 1];
+        let err = read_to_end_capped(over.as_slice(), "test bytes", cap)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("test bytes exceeded"), "{err}");
+        // The ordinary cap is unchanged.
+        assert!(read_to_end_bounded(at.as_slice(), "test bytes")
+            .await
+            .is_err());
     }
 
     /// The remote-OOM bound: bytes up to the cap pass through untouched; one

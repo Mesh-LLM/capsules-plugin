@@ -38,7 +38,9 @@ use tokio::io::AsyncWriteExt;
 use crate::capsule_emit::CapsuleState;
 use crate::commitment::{self, Signed};
 use crate::evidence_answer::Responder;
-use crate::mesh_evidence_bridge::{env_millis, next_stream_id, read_to_end_bounded};
+use crate::mesh_evidence_bridge::{
+    env_millis, next_stream_id, read_to_end_bounded, read_to_end_capped, MAX_COMMITMENT_BYTES,
+};
 
 /// The mesh channel, declared on both ends, and the tag the requester puts
 /// in its open's `metadata_json`.
@@ -274,7 +276,7 @@ pub async fn handle_fetch(
     let bytes = tokio::time::timeout(Duration::from_millis(requester_idle_timeout_ms()), async {
         write_half.write_all(b"{}").await?;
         write_half.shutdown().await?;
-        read_to_end_bounded(read_half, "peer commitment response").await
+        read_to_end_capped(read_half, "peer commitment response", MAX_COMMITMENT_BYTES).await
     })
     .await
     .map_err(|_| PluginError::internal("peer does not serve a commitment"))?

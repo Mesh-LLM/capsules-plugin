@@ -17,13 +17,18 @@ pub(crate) fn defaults() -> Policy {
 /// A commitment over the parity corpus, signed by its node, under `policy`.
 pub(crate) fn built(policy: &Policy) -> Signed {
     let dir = tempfile::tempdir().unwrap();
+    corpus_ledger_dir(dir.path(), &key());
+    built_over(dir.path(), policy)
+}
+
+/// A commitment over the ledger in `dir`, signed by the node, under `policy`.
+fn built_over(dir: &std::path::Path, policy: &Policy) -> Signed {
     let key = key();
-    corpus_ledger_dir(dir.path(), &key);
     let digest = policy.digest(&key);
     let announced = BTreeMap::new();
     let replay = ReplayCache::default();
     let responder = Responder {
-        ledger_dir: dir.path(),
+        ledger_dir: dir,
         signing_key: &key,
         now: NOW,
         history_segments: policy.history_segments,
@@ -500,11 +505,59 @@ fn a_refusal_names_the_digest_of_the_policy_it_was_refused_under() {
     assert_eq!(signed.commitment["lcap"]["policy_digest"], digest);
 }
 
+/// A node with a long ledger (loop lab-3's commitment was 1,135,361 bytes):
+/// a checkpoint after every line, so the staple's chain is long. The frame is
+/// past the 1 MiB an ordinary side-stream reply may be, is still offered, and
+/// verifies as a peer verifies it.
+#[test]
+fn a_commitment_over_a_long_ledger_is_offered_and_verifies() {
+    const LONG: usize = 300;
+    use crate::evidence_request_parity::{checkpoints_cut_at, served, write_jsonl};
+    let key = key();
+    let ledger: Vec<Value> = (0..LONG)
+        .map(|i| {
+            served(
+                "node-a",
+                "model-x",
+                "confirmed",
+                "10.000",
+                json!({"nonce": format!("n-{i}")}),
+            )
+        })
+        .collect();
+    let times: Vec<String> = (0..LONG)
+        .map(|i| format!("2026-09-28T{:02}:{:02}:00Z", i / 60, i % 60))
+        .collect();
+    let cuts: Vec<(usize, &str)> = times
+        .iter()
+        .enumerate()
+        .map(|(i, t)| (i + 1, t.as_str()))
+        .collect();
+    let cps = checkpoints_cut_at(&ledger, &key, &cuts);
+    let dir = tempfile::tempdir().unwrap();
+    write_jsonl(
+        &dir.path().join(crate::evidence_log::CAPSULES_FILE),
+        &ledger,
+    );
+    let lines: Vec<Value> = cps.iter().map(|c| c.line()).collect();
+    write_jsonl(
+        &dir.path().join(crate::evidence_log::CHECKPOINTS_FILE),
+        &lines,
+    );
+
+    let signed = built_over(dir.path(), &defaults());
+    let size = serde_json::to_vec(&signed.to_wire()).unwrap().len();
+    let ordinary = crate::mesh_evidence_bridge::MAX_SIDE_STREAM_BYTES as usize;
+    assert!(size > ordinary, "{size} bytes does not exceed {ordinary}");
+    assert!(fits(&signed).is_ok());
+    assert_eq!(verify(&signed), Vec::<String>::new());
+}
+
 #[test]
 fn a_commitment_larger_than_a_peer_reads_is_not_offered() {
     let mut signed = built(&defaults());
     assert!(fits(&signed).is_ok());
-    signed.policy = vec![b' '; crate::mesh_evidence_bridge::MAX_SIDE_STREAM_BYTES as usize];
+    signed.policy = vec![b' '; crate::mesh_evidence_bridge::MAX_COMMITMENT_BYTES as usize];
     let err = fits(&signed).unwrap_err();
     assert!(err.contains("larger than a peer reads"), "{err}");
 }
