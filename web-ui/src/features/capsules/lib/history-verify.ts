@@ -11,12 +11,12 @@
 //
 // It does NOT check, and says so on the page, what only the node's own
 // checker runs: the witness receipts, the reply envelope's signature, and
-// the digest of the request it answers (cll 0.3.0 has no browser verifier for
+// the digest of the request it answers (cll has no browser verifier for
 // those). A page never calls those checks passed.
 //
 // This file is bundled twice: into the Evidence page (tests) and, as an IIFE,
 // into every saved page (`saved-pages.ts`), so it imports only the cll
-// browser build and uses no DOM.
+// browser build and the DOM-free `cose.ts` (to read a checkpoint's key), and uses no DOM.
 import { coseSign1KeyId } from '@/features/capsules/lib/cose'
 import { checkpointMetadata, checkpointRejectionField, leafCount, verifyCheckpoint, verifyConsistency } from '@cll-browser'
 
