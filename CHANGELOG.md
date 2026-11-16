@@ -30,7 +30,7 @@
 
 ### Fixed
 
-- **A saved History page names the field when a checkpoint is refused for the format of its `issued_at`.** The page said
+- **A saved History page names the field when a checkpoint is refused for the format of its `issued_at` (#296).** The page said
   "Checkpoint N does not verify.", which reads as tampering. When the checkpoint is signed by the key that answered and only its
   `issued_at` is not RFC 3339 text, it now says "Checkpoint N: `issued_at` is not in the expected format (a format
   rejection, not a failed signature)." A checkpoint whose signature fails still shows the signature failure, and one signed by another key still shows
