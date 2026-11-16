@@ -352,6 +352,12 @@ mailbox request and so published on the relay. With the switch off nothing is
 read. `doctor` shows, per relay, whether the
 mailbox could be read.
 
+A request this node sends over a mailbox is published on the relay for
+everyone to read, so the `nostr_evidence_request` tool sends only what a
+stranger may ask (`checkpoints`, `history_card/1`) unless its caller says, with
+`publish_subject: true`, that the subject is public, and never a request that
+carries a requester's identity.
+
 **A lost or rotated mailbox key.** The key lives only in `nostr-mailbox.key`.
 If that file is lost or replaced, the plugin makes a new key at the next
 publish (a damaged file is an error, never silently replaced). `doctor` then

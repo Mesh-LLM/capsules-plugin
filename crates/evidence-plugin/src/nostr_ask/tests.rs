@@ -35,6 +35,7 @@ fn args(relay: &str, responder_key: &str, request: Value) -> NostrEvidenceReques
         responder_key: responder_key.to_string(),
         request,
         verify: true,
+        publish_subject: false,
     }
 }
 
@@ -43,7 +44,7 @@ fn the_route_and_the_responder_key_are_checked_before_anything_is_sealed() {
     let ok = args(
         "wss://relay.example",
         &"ab".repeat(32),
-        json!({"subject": {"checkpoints": null}}),
+        json!({"subject": {"checkpoints": null}, "coverage": {"min_freshness": 1}}),
     );
     // the all-"ab" key is not a valid Ed25519 point, so use a real one
     let real = hex::encode(
@@ -282,4 +283,49 @@ async fn the_mailbox_keys_reply_is_found_under_newer_events_of_other_keys() {
     .expect("found")
     .unwrap();
     assert_eq!(got, b"{\"mine\":1}");
+}
+
+#[test]
+fn a_request_that_is_not_for_a_stranger_or_names_its_asker_is_not_sent_unless_published_on_purpose()
+{
+    let real = hex::encode(
+        ed25519_dalek::SigningKey::from_bytes(&[3; 32])
+            .verifying_key()
+            .to_bytes(),
+    );
+    let with = |request: Value, publish: bool| {
+        let mut a = args("wss://relay.example", &real, request);
+        a.publish_subject = publish;
+        check(&a)
+    };
+    let checkpoints = json!({"subject": {"checkpoints": null}, "coverage": {"min_freshness": 1}});
+    let card = json!({"subject": {"checkpoints": null}, "derivation": "history_card/1", "coverage": {"min_freshness": 1}});
+    assert!(with(checkpoints.clone(), false).is_ok());
+    assert!(with(card, false).is_ok());
+    for subject in [
+        json!({"record": "ab".repeat(32)}),
+        json!({"correlation": "n-1"}),
+        json!({"full_history": null}),
+        json!({"range": [0, 1]}),
+    ] {
+        let ask = json!({"subject": subject, "coverage": {"min_freshness": 1}});
+        assert!(
+            with(ask.clone(), false)
+                .unwrap_err()
+                .contains("publish_subject"),
+            "{ask}"
+        );
+        assert!(
+            with(ask, true).is_ok(),
+            "the caller said it publishes the subject"
+        );
+    }
+    for name in ["requester_auth", "requester_id"] {
+        let mut ask = checkpoints.clone();
+        ask[name] = json!("x");
+        assert!(
+            with(ask.clone(), true).unwrap_err().contains(name),
+            "never, even published: {ask}"
+        );
+    }
 }

@@ -72,6 +72,14 @@ pub struct NostrEvidenceRequestArgs {
     /// On unless the caller turns it off.
     #[serde(default = "verify_by_default")]
     pub verify: bool,
+    /// A request is published on the relay for everyone to read (NMB §8).
+    /// Only `checkpoints` and `history_card/1`, which a stranger is answered,
+    /// go without this; any other subject (an exchange, a record, a
+    /// history) needs the caller to say, here, that it publishes it. A
+    /// request that carries a requester's identity (`requester_auth`,
+    /// `requester_id`) is never sent.
+    #[serde(default)]
+    pub publish_subject: bool,
 }
 
 fn verify_by_default() -> bool {
@@ -97,8 +105,27 @@ fn check(args: &NostrEvidenceRequestArgs) -> Result<ed25519_dalek::VerifyingKey,
     }
     let key = crate::mesh_evidence_bridge::verifying_key(&args.responder_key)
         .ok_or("responder_key is not 64 lowercase hex of an Ed25519 key")?;
-    if !args.request.is_object() {
+    let Some(map) = args.request.as_object() else {
         return Err("request is not a map".into());
+    };
+    if let Some(name) = ["requester_auth", "requester_id"]
+        .into_iter()
+        .find(|name| map.contains_key(*name))
+    {
+        return Err(format!(
+            "request carries {name}: a mailbox request is public and asks as a stranger"
+        ));
+    }
+    let bytes =
+        evidence_request::jcs::to_string(&args.request).map_err(|e| format!("request: {e}"))?;
+    let parsed = evidence_request::request::parse_json(bytes.as_bytes())
+        .map_err(|e| format!("request: {e}"))?;
+    if !args.publish_subject && !crate::evidence_answer::stranger_safe(&parsed) {
+        return Err(
+            "this request's subject would be published on the relay and a stranger is refused \
+             it: only checkpoints and history_card/1 go without publish_subject: true"
+                .into(),
+        );
     }
     Ok(key)
 }
