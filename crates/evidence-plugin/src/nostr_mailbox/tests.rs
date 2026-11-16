@@ -533,3 +533,35 @@ fn an_event_with_too_much_content_or_too_many_tags_is_not_read() {
     let many = signed_event(&asker(), REQUEST_KIND, json!(tags), "", NOW);
     assert!(verify_event(&many).unwrap_err().contains("too many tags"));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_adjudicate_request_over_the_mailbox_is_not_answered_by_the_referee() {
+    let to = key_hex(&mailbox());
+    let sent = br#"{"subject":{"kind":"adjudicate"},"halves":[]}"#;
+    let (url, got) = relay(vec![request(&to, sent, NOW - 3)]);
+    let d = dir();
+    let capsules =
+        Arc::new(crate::capsule_emit::CapsuleState::open(&d, "node-under-test").unwrap());
+    let done = round(
+        &d,
+        &mailbox(),
+        &[url],
+        NOW,
+        || true,
+        |octets| {
+            crate::mesh_evidence_bridge::answer_in_process(capsules.clone(), octets, None, true)
+        },
+    )
+    .await;
+    assert_eq!(done.len(), 1);
+    let reply = verify_event(&got.lock().unwrap()[0]).unwrap();
+    let octets = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(&reply.content)
+        .unwrap();
+    let answer: Value = serde_json::from_slice(&octets).unwrap();
+    assert!(
+        answer.get("reason").is_some(),
+        "a refusal as to any stranger, no verdict: {answer}"
+    );
+    assert!(answer.get("verdict").is_none());
+}

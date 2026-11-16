@@ -382,7 +382,7 @@ pub(crate) async fn answer_in_process(
         });
         // Past the in-flight cap, an adjudicate request is declined like any
         // other (below), before any work on it.
-        if permit.is_ok() {
+        if permit.is_ok() && !strangers_only {
             if let Some(verdict_or_refusal) =
                 referee_answer(&capsules, &request_bytes, &now, own_node.as_deref())
             {
