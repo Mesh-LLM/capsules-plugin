@@ -132,8 +132,8 @@ fn carriage_key() -> SigningKey {
     }
 }
 
-/// The request event (NMB §4.1) for `octets`, signed by `key`, expiring at
-/// `deadline` (unix seconds).
+/// The request event (NMB §4.1) for `octets`, signed by `key`, expiring when the
+/// waiting window closes (`deadline`, unix seconds).
 pub fn request_event(
     key: &SigningKey,
     mailbox_key: &str,
@@ -206,10 +206,21 @@ async fn wait_for_reply(
     let mut by_content = 0usize;
     let mut tried: std::collections::BTreeSet<String> = Default::default();
     loop {
+        // Every relay at once, and the mailbox key's own replies apart from
+        // the rest (`authors`), so a relay that is slow, or newer events of
+        // other keys, cannot hide the reply that counts (NMB §4.2).
+        let mut reads = tokio::task::JoinSet::new();
         for url in &relays {
-            let filter = json!({"kinds": [REPLY_KIND], "#e": [request_id], "limit": 64});
-            let to = url.clone();
-            let read = tokio::task::spawn_blocking(move || fetch(&to, &filter)).await;
+            for authors in [true, false] {
+                let mut filter = json!({"kinds": [REPLY_KIND], "#e": [request_id], "limit": 64});
+                if authors {
+                    filter["authors"] = json!([mailbox_key]);
+                }
+                let to = url.clone();
+                reads.spawn_blocking(move || fetch(&to, &filter));
+            }
+        }
+        while let Some(read) = reads.join_next().await {
             let Ok(Ok((events, _))) = read else { continue };
             for raw in events {
                 let Ok(event) = verify_event(&raw) else {
@@ -241,7 +252,7 @@ fn caller_wait() -> Duration {
 }
 
 /// The `nostr_evidence_request` tool. Returns `{answer, request_digest,
-/// verification}` as `mesh_evidence_request` does, or an error; an ask the
+/// verification}` as `mesh_evidence_request` does (minus its `held`, which only the mesh path records), or an error; an ask the
 /// reply to which has not come yet is recorded as pending until its window
 /// closes and sealed as the response or the absence then.
 pub async fn handle_nostr_evidence_request(

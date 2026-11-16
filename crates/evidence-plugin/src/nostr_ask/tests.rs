@@ -250,3 +250,36 @@ async fn a_request_is_sealed_sent_answered_by_a_node_on_the_mailbox_and_recorded
     assert_ne!(sent[0]["pubkey"], mailbox_hex());
     let _ = (me_dir, asked_dir);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_mailbox_keys_reply_is_found_under_newer_events_of_other_keys() {
+    let rid = "ab".repeat(32);
+    let stranger = SigningKey::from_bytes(&[5; 32]).unwrap();
+    let at = |key: &SigningKey, octets: &[u8], t: i64| {
+        signed_event(
+            key,
+            REPLY_KIND,
+            json!([["e", rid], ["p", "00"], ["m", MEDIA]]),
+            &base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(octets),
+            t,
+        )
+    };
+    // the real reply is older than 64 events from another key
+    let mut events = vec![at(&mailbox(), b"{\"mine\":1}", 1_790_000_000)];
+    for i in 0..70 {
+        events.push(at(
+            &stranger,
+            format!("{{\"n\":{i}}}").as_bytes(),
+            1_790_000_100 + i,
+        ));
+    }
+    let url = relay_store(Store::with(events));
+    let got = tokio::time::timeout(
+        Duration::from_secs(3),
+        wait_for_reply(vec![url], mailbox_hex(), rid.clone(), |_| false),
+    )
+    .await
+    .expect("found")
+    .unwrap();
+    assert_eq!(got, b"{\"mine\":1}");
+}

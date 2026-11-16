@@ -32,7 +32,11 @@ fn matches(filter: &Value, event: &Value) -> bool {
         })
     };
     let at = event["created_at"].as_i64().unwrap();
-    kind && tag("#p", "p")
+    let authors = filter["authors"]
+        .as_array()
+        .is_none_or(|a| a.contains(&event["pubkey"]));
+    kind && authors
+        && tag("#p", "p")
         && tag("#e", "e")
         && filter["since"].as_i64().is_none_or(|s| at >= s)
         && filter["until"].as_i64().is_none_or(|u| at <= u)
