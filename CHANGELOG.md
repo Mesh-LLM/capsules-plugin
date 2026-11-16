@@ -2,29 +2,35 @@
 
 ## Unreleased
 
+## 0.1.19
+
 ### Added
 
-- **A `nostr_evidence_request` tool asks a node over the Nostr mailbox its commitment advertises (evidence-network/loop#443).**
+- **A `nostr_evidence_request` tool asks a node over the Nostr mailbox its commitment advertises (evidence-network/loop#443, #295).**
   Given the node's `ask.nostr` (mailbox key and relays) and its evidence key, it seals the request in the book of
   asks first, publishes it as a kind 4700 event under a carriage key made for that request, reads the kind 4701
   replies, and records the reply as the response (checked under the evidence key) or, when the window closes with
   none, the absence (nostr-mailbox-v0). The request is not signed as this node: a mailbox asker is a stranger.
-- **`CAPSULES_NOSTR_RELAY_MAP` points an advertised relay at another address.** A JSON object from the `wss://` relay
+- **`CAPSULES_NOSTR_RELAY_MAP` points an advertised relay at another address (#295).** A JSON object from the `wss://` relay
   URL a commitment names to the `ws://` or `wss://` address this node connects to for it, as Goose's
   `GOOSE_RELAY_MAP` does, so a lab can run one relay on its own host for both ecosystems. The commitment keeps the
   advertised URL.
 
 - **A node with `advertise_evidence_requests` on answers evidence requests sent to its Nostr mailbox
-  (evidence-network/loop#442).** Every five seconds it reads the kind 4700 requests addressed to its mailbox key on
+  (evidence-network/loop#442, #293).** Every five seconds it reads the kind 4700 requests addressed to its mailbox key on
   the relays its commitment lists, checks each event's id and signature, answers each once through the same path as
   the mesh stream (same sharing switches, same limits, same "asked of you" log) and publishes the signed envelope or
   refusal as a kind 4701 reply on the relay it read the request from (nostr-mailbox-v0). A request it cannot sign an
   answer for gets no reply. Every mailbox asker is answered as a stranger, whatever the request's signature says,
   because the answer is public. `doctor` reports the last read per relay. Replaces the announce-only note.
 
+- **Releases publish a Windows x86_64 `.zip` (#290).** From 0.1.19 the release workflow builds
+  `x86_64-pc-windows-msvc` and attaches `capsules-<version>-x86_64-pc-windows-msvc.zip`; INSTALL.md has the
+  PowerShell steps.
+
 ### Fixed
 
-- **A saved History page names the field when a checkpoint is refused for the format of its `issued_at`.** The page said
+- **A saved History page names the field when a checkpoint is refused for the format of its `issued_at` (#296).** The page said
   "Checkpoint N does not verify.", which reads as tampering. When the checkpoint is signed by the key that answered and only its
   `issued_at` is not RFC 3339 text, it now says "Checkpoint N: `issued_at` is not in the expected format (a format
   rejection, not a failed signature)." A checkpoint whose signature fails still shows the signature failure, and one signed by another key still shows
@@ -33,7 +39,7 @@
   consumer accepted `payment.lifecycle.v1` only from an empty `source_peer_id`, but mesh-llm relays a local
   plugin's channel messages with source `plugin:<id>` (Mesh-LLM/mesh-llm#2731), so pay-lightning's events were
   refused and step 06 settlement stayed unchecked. It now also accepts exactly `plugin:pay-lightning` with a
-  non-peer-id target; mesh frames and every other plugin origin are still refused.
+  non-peer-id target; mesh frames and every other plugin origin are still refused (#292).
 - **A node with a long ledger can serve its commitment again (#76).** The staple is a whole
   `history_card/1` answer, base64-encoded again inside the commitment, so a node's frame passed
   the 1 MiB a peer read at about 300 checkpoints (a lab node's was 1,135,361 bytes) and
@@ -41,7 +47,7 @@
   reads up to 2 MiB of a `commitment/1` reply, which holds the largest commitment this node can
   build; every other side-stream keeps its 1 MiB cap. The commitment's wire shape is unchanged.
   A peer on an older release still reads 1 MiB, so it cannot fetch a commitment past that size
-  until it updates. The card itself is still refused past 1024 checkpoints (#76).
+  until it updates. The card itself is still refused past 1024 checkpoints (#76, #294).
 
 ### Changed
 
@@ -52,7 +58,8 @@
   still `request_malformed`, and an answer to one is not believed. `evidence-request` appears twice in the build (0.5.0, and 0.4.1
   through agent-action-capsule 0.10.0, which uses only its time, status and controller-binding modules). capsule-emit 0.0.12
   sends witness registration through its own HTTP client, which refuses a witness response whose `entry_hash_scheme` is not
-  `legacy`.
+  `legacy` (#278, #279).
+- **The two-node e2e adds a third node that checks an exchange against both sides' records (#101).** Test only; nothing shipped changes.
 
 ## 0.1.18
 
