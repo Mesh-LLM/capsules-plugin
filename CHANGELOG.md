@@ -15,10 +15,10 @@
 ### Fixed
 
 - **A saved History page names the field when a checkpoint is refused for the format of its `issued_at`.** The page said
-  "Checkpoint N does not verify.", which reads as tampering. When the checkpoint's signature verifies and only its
+  "Checkpoint N does not verify.", which reads as tampering. When the checkpoint is signed by the key that answered and only its
   `issued_at` is not RFC 3339 text, it now says "Checkpoint N: `issued_at` is not in the expected format (a format
-  rejection, not a failed signature)." A checkpoint whose signature fails still shows the signature failure, whatever its
-  `issued_at`. Uses `@action-state-group/cll` 0.4.0 (`checkpointRejectionField`).
+  rejection, not a failed signature)." A checkpoint whose signature fails still shows the signature failure, and one signed by another key still shows
+  "is not signed by the key that answered", whatever its `issued_at`. Uses `@action-state-group/cll` 0.4.0 (`checkpointRejectionField`).
 - **Settlement records seal for payment events relayed from the local pay-lightning plugin.** The settlement
   consumer accepted `payment.lifecycle.v1` only from an empty `source_peer_id`, but mesh-llm relays a local
   plugin's channel messages with source `plugin:<id>` (Mesh-LLM/mesh-llm#2731), so pay-lightning's events were

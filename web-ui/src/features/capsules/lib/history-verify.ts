@@ -17,6 +17,7 @@
 // This file is bundled twice: into the Evidence page (tests) and, as an IIFE,
 // into every saved page (`saved-pages.ts`), so it imports only the cll
 // browser build and uses no DOM.
+import { coseSign1KeyId } from '@/features/capsules/lib/cose'
 import { checkpointMetadata, checkpointRejectionField, leafCount, verifyCheckpoint, verifyConsistency } from '@cll-browser'
 
 /** The most checkpoints a node puts in one card (`MAX_ANSWER_CHECKPOINTS`,
@@ -325,8 +326,11 @@ export async function verifyHistoryReply(replyText: string): Promise<HistoryVerd
     const meta = (await verifyCheckpoint(statement)) ? await checkpointMetadata(statement) : undefined
     if (!meta) {
       // A checkpoint whose time is not RFC 3339 text but whose signature verifies is refused for its format, not for a failed
-      // signature: say so, and name the field. If the signature fails, `checkpointRejectionField` names nothing and the signature failure shows.
+      // signature. That signature is only proved under the statement's own key, so the format text shows only when that key is
+      // the one that answered; any other key gets the key message. A failed signature names no field and shows the failure below.
       if ((await checkpointRejectionField(statement)) === 'issued_at') {
+        const kid = coseSign1KeyId(statement)
+        if (!kid || bytesToHex(kid) !== responder) return fail('checkpoints', `Checkpoint ${i + 1} is not signed by the key that answered.`)
         return fail('checkpoints', `Checkpoint ${i + 1}: \`issued_at\` is not in the expected format (a format rejection, not a failed signature).`)
       }
       return fail('checkpoints', `Checkpoint ${i + 1} does not verify.`)

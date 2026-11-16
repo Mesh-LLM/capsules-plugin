@@ -110,11 +110,23 @@ describe('verifyHistoryReply', () => {
   }
   const failDetail = (v: Awaited<ReturnType<typeof verifyHistoryReply>>) => v.checks.find((c) => c.status === 'fail')?.detail
 
-  it('names the field when a validly signed checkpoint is refused for the format of its issued_at', async () => {
-    const v = await replaceFirstCheckpoint(SIGNED_BAD_ISSUED_AT)
+  // The key that signed SIGNED_BAD_ISSUED_AT (hex of the header's kid).
+  const THROWAWAY_KEY = '3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29'
+
+  it('names the field when a checkpoint signed by the key that answered is refused for the format of its issued_at', async () => {
+    const artifact = artifactOf(card) as { history: { checkpoint: string }[] }
+    artifact.history[0].checkpoint = SIGNED_BAD_ISSUED_AT
+    const v = await verifyHistoryReply(JSON.stringify({ ...card, responder: THROWAWAY_KEY, ...(await encodeArtifact(artifact)) }))
     expect(v.verified).toBe(false)
     expect(failed(v)).toBe('checkpoints')
     expect(failDetail(v)).toBe('Checkpoint 1: `issued_at` is not in the expected format (a format rejection, not a failed signature).')
+  })
+
+  it('does not call a malformed issued_at a format rejection when another key signed it', async () => {
+    // Anyone can sign a checkpoint with their own key: the signature holds, but not under the key that answered.
+    const v = await replaceFirstCheckpoint(SIGNED_BAD_ISSUED_AT)
+    expect(failed(v)).toBe('checkpoints')
+    expect(failDetail(v)).toBe('Checkpoint 1 is not signed by the key that answered.')
   })
 
   it('shows the signature failure, never the format text, for a malformed issued_at with a tampered signature', async () => {
