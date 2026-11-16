@@ -336,7 +336,7 @@ async fn a_record_or_history_request_over_the_mailbox_is_refused() {
         json!({"subject": {"record": digest}, "coverage": {"min_freshness": 1}}),
         json!({"subject": {"correlation": "n-1"}, "coverage": {"min_freshness": 1}}),
         json!({"subject": {"full_history": null}, "coverage": {"min_freshness": 1}}),
-        json!({"subject": {"range": {"from": 0, "to": 1}}, "coverage": {"min_freshness": 1}}),
+        json!({"subject": {"range": [0, 1]}, "coverage": {"min_freshness": 1}}),
     ];
     for ask in asked {
         let sent = serde_json::to_vec(&ask).unwrap();

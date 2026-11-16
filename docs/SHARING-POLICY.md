@@ -320,7 +320,10 @@ switch is the only thing that publishes. On, the plugin publishes its signed
 commitment to public Nostr relays as one addressable event (kind 34700, the
 placeholder of agent-action-capsule's evidence-commitment-carriers spec), to
 the relays the commitment's `ask.nostr` member lists: mesh-llm's discovery
-relays unless `CAPSULES_NOSTR_RELAYS` names others. The commitment is the
+relays unless `CAPSULES_NOSTR_RELAYS` names others (a lab that runs its own
+relay names the `wss://` URL the commitment carries, and points this node at
+the relay with `CAPSULES_NOSTR_RELAY_MAP`, a JSON object from that URL to a
+`ws://` or `wss://` address; the commitment keeps the URL). The commitment is the
 same one a peer gets over `commitment/1`: how to ask, what is answered, the
 policy digest, the latest checkpoint and the stapled history card. It
 holds no counts of its own, but the checkpoint and the card are signed
@@ -348,6 +351,12 @@ switches above give to any asker (`share_standard_history` on) is answered to a
 mailbox request and so published on the relay. With the switch off nothing is
 read. `doctor` shows, per relay, whether the
 mailbox could be read.
+
+A request this node sends over a mailbox is published on the relay for
+everyone to read, so the `nostr_evidence_request` tool sends only what a
+stranger may ask (`checkpoints`, `history_card/1`) unless its caller says, with
+`publish_subject: true`, that the subject is public, and never a request that
+carries a requester's identity.
 
 **A lost or rotated mailbox key.** The key lives only in `nostr-mailbox.key`.
 If that file is lost or replaced, the plugin makes a new key at the next

@@ -406,7 +406,7 @@ fn carries_records(req: &Request) -> bool {
 /// with no derivation, or `history_card/1`, which is resolved only over
 /// `full_history` and `checkpoints` (`evidence_log`). Neither carries a
 /// record, so neither depends on who asks.
-fn stranger_safe(req: &Request) -> bool {
+pub(crate) fn stranger_safe(req: &Request) -> bool {
     match &req.derivation {
         None => matches!(req.subject, Subject::Checkpoints),
         Some(Derivation::Token(t)) => t == DERIVATION_HISTORY_CARD,

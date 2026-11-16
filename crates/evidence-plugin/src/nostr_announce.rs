@@ -65,6 +65,13 @@ pub const DEFAULT_RELAYS: [&str; 5] = [
 /// [`DEFAULT_RELAYS`].
 pub const ENV_RELAYS: &str = "CAPSULES_NOSTR_RELAYS";
 
+/// A JSON object from a relay URL as the commitment names it to the address
+/// this node connects to instead (`ws://` or `wss://`), as Goose's
+/// `GOOSE_RELAY_MAP` does: a lab names the `wss://` relay a commitment must
+/// carry and points both nodes at a relay it runs on its own host. The
+/// commitment and the events keep the advertised URL.
+pub const ENV_RELAY_MAP: &str = "CAPSULES_NOSTR_RELAY_MAP";
+
 /// The mailbox key, 64 hex and a newline, in the data directory.
 pub const KEY_FILE: &str = "nostr-mailbox.key";
 
@@ -282,7 +289,7 @@ pub fn route_problems(route: &Value) -> Vec<String> {
     problems
 }
 
-fn is_xonly_key(text: &str) -> bool {
+pub(crate) fn is_xonly_key(text: &str) -> bool {
     text.len() == 64
         && text
             .bytes()
@@ -556,6 +563,8 @@ impl<T: Read + Write + Send> Stream for T {}
 /// A WebSocket to `url` (`wss://`, or `ws://` for a local relay of a test),
 /// every step bounded by [`RELAY_TIMEOUT`].
 pub(crate) fn connect(url: &str) -> Result<(Socket, TcpStream), String> {
+    let mapped = mapped_address(url, crate::settings::var(ENV_RELAY_MAP).ok().as_deref())?;
+    let url = mapped.as_str();
     let tls = url.starts_with("wss://");
     let rest = url
         .strip_prefix("wss://")
@@ -612,6 +621,29 @@ pub(crate) fn connect(url: &str) -> Result<(Socket, TcpStream), String> {
     let (socket, _) = tungstenite::client::client_with_config(url, stream, Some(config))
         .map_err(|e| format!("the WebSocket handshake failed: {e}"))?;
     Ok((socket, timer))
+}
+
+/// Where to connect for `url`: the address `raw` (the [`ENV_RELAY_MAP`] JSON
+/// object) names for it, else `url` itself. An address that is not a
+/// `ws://` or `wss://` URL is an error, never a fall back to the advertised
+/// relay.
+pub(crate) fn mapped_address(url: &str, raw: Option<&str>) -> Result<String, String> {
+    let Some(raw) = raw.filter(|r| !r.trim().is_empty()) else {
+        return Ok(url.to_string());
+    };
+    let map: Value = serde_json::from_str(raw)
+        .ok()
+        .filter(Value::is_object)
+        .ok_or(format!("{ENV_RELAY_MAP} is not a JSON object"))?;
+    match map.get(url) {
+        None => Ok(url.to_string()),
+        Some(Value::String(to)) if to.starts_with("ws://") || to.starts_with("wss://") => {
+            Ok(to.clone())
+        }
+        Some(_) => Err(format!(
+            "{ENV_RELAY_MAP}: {url} does not map to a ws:// or wss:// address"
+        )),
+    }
 }
 
 fn tls_config() -> Arc<rustls::ClientConfig> {

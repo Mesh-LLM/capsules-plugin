@@ -610,3 +610,33 @@ fn a_relay_is_free_again_as_soon_as_its_result_is_in() {
     }
     assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 200);
 }
+
+#[test]
+fn a_relay_map_points_an_advertised_relay_at_another_address() {
+    let map = r#"{"wss://relay.loop-lab.example": "ws://127.0.0.1:7777"}"#;
+    assert_eq!(
+        mapped_address("wss://relay.loop-lab.example", Some(map)).unwrap(),
+        "ws://127.0.0.1:7777"
+    );
+    assert_eq!(
+        mapped_address("wss://other.example", Some(map)).unwrap(),
+        "wss://other.example",
+        "a relay the map does not name is connected to as advertised"
+    );
+    assert_eq!(
+        mapped_address("wss://x.example", None).unwrap(),
+        "wss://x.example"
+    );
+    assert_eq!(
+        mapped_address("wss://x.example", Some(" ")).unwrap(),
+        "wss://x.example"
+    );
+    assert!(mapped_address("wss://x.example", Some("[1]")).is_err());
+    assert!(mapped_address("wss://x.example", Some("nope")).is_err());
+    assert!(mapped_address(
+        "wss://x.example",
+        Some(r#"{"wss://x.example": "http://y"}"#)
+    )
+    .is_err());
+    assert!(mapped_address("wss://x.example", Some(r#"{"wss://x.example": 3}"#)).is_err());
+}

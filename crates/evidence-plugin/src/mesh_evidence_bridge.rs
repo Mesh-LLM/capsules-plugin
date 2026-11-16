@@ -723,7 +723,7 @@ fn read_answer(
 
 /// The answer to a recorded ask, or its error, as [`settle_ask`] hands it
 /// to the caller still waiting.
-type Settled = Result<(serde_json::Value, serde_json::Value), SendError>;
+pub(crate) type Settled = Result<(serde_json::Value, serde_json::Value), SendError>;
 
 /// Read the reply to the recorded `asked` from `exchange` until the window
 /// closes at `closes_at`. A reply is checked by `verify` (under the peer's
@@ -731,7 +731,7 @@ type Settled = Result<(serde_json::Value, serde_json::Value), SendError>;
 /// bytes kept with it (`ask_book::record_response`); none (or one that is not JSON) is sealed as
 /// the absence once the window has closed. The caller hears through `tx`,
 /// if it is still listening.
-async fn settle_ask(
+pub(crate) async fn settle_ask(
     capsules: std::sync::Arc<crate::capsule_emit::CapsuleState>,
     asked: crate::ask_book::Asked,
     verify: impl FnOnce(&[u8], &serde_json::Value) -> serde_json::Value,
@@ -776,7 +776,7 @@ async fn settle_ask(
 }
 
 /// How long from now until `at` (RFC 3339), zero once it has passed.
-fn until(at: &str) -> Duration {
+pub(crate) fn until(at: &str) -> Duration {
     chrono::DateTime::parse_from_rfc3339(at)
         .ok()
         .and_then(|at| (at.to_utc() - chrono::Utc::now()).to_std().ok())
@@ -803,7 +803,11 @@ pub(crate) async fn absence_when_window_closes(
 
 /// `answer` checked as the reply to `sent` under `peer_id`'s announced key
 /// (`evidence_answer::verify_response`), or `no_announced_key`.
-fn verify_announced(sent: &[u8], answer: &serde_json::Value, peer_id: &str) -> serde_json::Value {
+pub(crate) fn verify_announced(
+    sent: &[u8],
+    answer: &serde_json::Value,
+    peer_id: &str,
+) -> serde_json::Value {
     let registry = crate::peer_keys::registry();
     match crate::peer_keys::announced_key_in(registry.as_deref(), peer_id)
         .and_then(|key_id| verifying_key(&key_id))
