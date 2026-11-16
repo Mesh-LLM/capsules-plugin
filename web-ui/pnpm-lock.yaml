@@ -10,13 +10,13 @@ importers:
     dependencies:
       '@action-state-group/agent-action-capsule':
         specifier: 0.14.0
-        version: 0.14.0(@action-state-group/cll@0.3.0(@types/node@26.4.1))
+        version: 0.14.0(@action-state-group/cll@0.4.0(@types/node@26.4.1))
       '@action-state-group/capsule-viewer':
         specifier: 0.14.0
         version: 0.14.0(@types/node@26.4.1)
       '@action-state-group/cll':
-        specifier: 0.3.0
-        version: 0.3.0(@types/node@26.4.1)
+        specifier: 0.4.0
+        version: 0.4.0(@types/node@26.4.1)
       '@noble/curves':
         specifier: 1.9.7
         version: 1.9.7
@@ -144,6 +144,10 @@ packages:
 
   '@action-state-group/cll@0.3.0':
     resolution: {integrity: sha512-mKWEo6Z19+dNrJVX5uF15x0j2wxWbV4O7eTg1ODAX9tNka4LQc5gIiyKfNulcuEVI/E5eL9yeJNCq7a0PFfnLQ==}
+    engines: {node: '>=22'}
+
+  '@action-state-group/cll@0.4.0':
+    resolution: {integrity: sha512-6aSocuF3Ya6JaLdoQdzImaqy095SquibgDp1kbA9RU5YO7OigBw1aGFxSH+JqdQfCpXTcugr+nPDu+R1n0E/jg==}
     engines: {node: '>=22'}
 
   '@adobe/css-tools@4.5.0':
@@ -1887,9 +1891,9 @@ snapshots:
     optionalDependencies:
       '@action-state-group/cll': 0.3.0(@types/node@26.4.1)
 
-  '@action-state-group/agent-action-capsule@0.14.0(@action-state-group/cll@0.3.0(@types/node@26.4.1))':
+  '@action-state-group/agent-action-capsule@0.14.0(@action-state-group/cll@0.4.0(@types/node@26.4.1))':
     optionalDependencies:
-      '@action-state-group/cll': 0.3.0(@types/node@26.4.1)
+      '@action-state-group/cll': 0.4.0(@types/node@26.4.1)
 
   '@action-state-group/capsule-viewer@0.14.0(@types/node@26.4.1)':
     dependencies:
@@ -1899,6 +1903,17 @@ snapshots:
       - '@types/node'
 
   '@action-state-group/cll@0.3.0(@types/node@26.4.1)':
+    dependencies:
+      '@noble/curves': 2.4.0
+      '@noble/hashes': 2.4.0
+      better-sqlite3: 13.0.3
+      cborg: 6.1.2
+      fs-ext: 2.1.1
+      mysql2: 3.24.3(@types/node@26.4.1)
+    transitivePeerDependencies:
+      - '@types/node'
+
+  '@action-state-group/cll@0.4.0(@types/node@26.4.1)':
     dependencies:
       '@noble/curves': 2.4.0
       '@noble/hashes': 2.4.0

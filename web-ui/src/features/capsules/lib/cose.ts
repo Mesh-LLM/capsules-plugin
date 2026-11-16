@@ -35,7 +35,7 @@ class CborReader {
 
   /** Reads one CBOR data item. Returns a tag number for major type 6, an
    * array of items for major type 4, a raw byte slice for major type 2/3,
-   * or a number for major type 0. Enough for a COSE_Sign1 envelope. */
+   * or a number for major type 0 or 1. Enough for a COSE_Sign1 envelope. */
   readItem(): { majorType: number; tag?: number; value: unknown } {
     const initial = this.byte()
     const majorType = initial >> 5
@@ -43,6 +43,9 @@ class CborReader {
     switch (majorType) {
       case 0: {
         return { majorType, value: this.readLength(additional) }
+      }
+      case 1: {
+        return { majorType, value: -1 - this.readLength(additional) }
       }
       case 2: {
         const len = this.readLength(additional)
@@ -147,6 +150,18 @@ export function decodeCoseSign1(bytes: Uint8Array): DecodedCoseSign1 {
   if (!(payload instanceof Uint8Array)) throw new Error('COSE_Sign1: only an attached payload is supported')
   if (!(signature instanceof Uint8Array)) throw new Error('COSE_Sign1: signature must be a byte string')
   return { protectedHeader, payload, signature }
+}
+
+/** The `kid` (label 4) of a COSE_Sign1's protected header, or undefined when the statement or its header is not readable.
+ * It only reads the header: nothing here says the signature holds or that the key is the right one. */
+export function coseSign1KeyId(bytes: Uint8Array): Uint8Array | undefined {
+  try {
+    const header = new CborReader(decodeCoseSign1(bytes).protectedHeader).readItem()
+    const kid = header.value instanceof Map ? header.value.get(4) : undefined
+    return kid instanceof Uint8Array ? kid : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /** Builds the "Signature1" Sig_structure bytes (RFC 9052 SS4.4) COSE signs over. */
