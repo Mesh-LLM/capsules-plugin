@@ -24,8 +24,9 @@
   answer for gets no reply. Every mailbox asker is answered as a stranger, whatever the request's signature says,
   because the answer is public. `doctor` reports the last read per relay. Replaces the announce-only note.
 
-- **Releases publish a Windows x86_64 `.zip` (#290).** The release workflow builds `x86_64-pc-windows-msvc` and
-  attaches a `.zip` for it; INSTALL.md has the PowerShell steps.
+- **Releases publish a Windows x86_64 `.zip` (#290).** From 0.1.19 the release workflow builds
+  `x86_64-pc-windows-msvc` and attaches `capsules-<version>-x86_64-pc-windows-msvc.zip`; INSTALL.md has the
+  PowerShell steps.
 
 ### Fixed
 
@@ -58,7 +59,7 @@
   through agent-action-capsule 0.10.0, which uses only its time, status and controller-binding modules). capsule-emit 0.0.12
   sends witness registration through its own HTTP client, which refuses a witness response whose `entry_hash_scheme` is not
   `legacy` (#278, #279).
-- **The two-node e2e adds a third node that corroborates an exchange with both sides (#101).** Test only; nothing shipped changes.
+- **The two-node e2e adds a third node that checks an exchange against both sides' records (#101).** Test only; nothing shipped changes.
 
 ## 0.1.18
 
