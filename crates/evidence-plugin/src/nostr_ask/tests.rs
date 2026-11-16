@@ -320,6 +320,21 @@ fn a_request_that_is_not_for_a_stranger_or_names_its_asker_is_not_sent_unless_pu
             "the caller said it publishes the subject"
         );
     }
+    for subject in [
+        json!({"record": "ab".repeat(32)}),
+        json!({"correlation": "n-1"}),
+    ] {
+        let ask = json!({"subject": subject, "derivation": "history_card/1", "coverage": {"min_freshness": 1}});
+        assert!(
+            with(ask.clone(), false)
+                .unwrap_err()
+                .contains("publish_subject"),
+            "{ask}"
+        );
+        assert!(with(ask, true).is_ok());
+    }
+    let card_of_history = json!({"subject": {"full_history": null}, "derivation": "history_card/1", "coverage": {"min_freshness": 1}});
+    assert!(with(card_of_history, false).is_ok());
     for name in ["requester_auth", "requester_id"] {
         let mut ask = checkpoints.clone();
         ask[name] = json!("x");

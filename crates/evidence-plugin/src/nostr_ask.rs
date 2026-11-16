@@ -120,7 +120,17 @@ fn check(args: &NostrEvidenceRequestArgs) -> Result<ed25519_dalek::VerifyingKey,
         evidence_request::jcs::to_string(&args.request).map_err(|e| format!("request: {e}"))?;
     let parsed = evidence_request::request::parse_json(bytes.as_bytes())
         .map_err(|e| format!("request: {e}"))?;
-    if !args.publish_subject && !crate::evidence_answer::stranger_safe(&parsed) {
+    // The subject of a stranger-safe derivation is checked too: `history_card/1`
+    // is answered over `checkpoints` and `full_history` only, so a record or a
+    // correlation asked under it is no stranger's ask.
+    let names_only_the_log = matches!(
+        parsed.subject,
+        evidence_request::request::Subject::Checkpoints
+            | evidence_request::request::Subject::FullHistory
+    );
+    if !args.publish_subject
+        && !(crate::evidence_answer::stranger_safe(&parsed) && names_only_the_log)
+    {
         return Err(
             "this request's subject would be published on the relay and a stranger is refused \
              it: only checkpoints and history_card/1 go without publish_subject: true"
