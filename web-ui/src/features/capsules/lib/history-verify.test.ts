@@ -95,6 +95,23 @@ describe('verifyHistoryReply', () => {
     const v = await verifyHistoryReply(JSON.stringify({ ...card, ...(await encodeArtifact(artifact)) }))
     expect(v.verified).toBe(false)
     expect(failed(v)).toBe('checkpoints')
+    // A changed signature still reads as a failed check, never as a format rejection.
+    expect(v.checks.find((c) => c.status === 'fail')?.detail).toBe('Checkpoint 1 does not verify.')
+  })
+
+  it('names the field when a checkpoint is refused for the format of its issued_at, not for its signature', async () => {
+    const artifact = artifactOf(card) as { history: { checkpoint: string }[] }
+    // The T of the first checkpoint's issued_at becomes a space: the same length, so still valid CBOR, but no longer RFC 3339.
+    const bytes = Buffer.from(artifact.history[0].checkpoint, 'hex')
+    const at = bytes.toString('latin1').search(/\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d/)
+    expect(at).toBeGreaterThan(0)
+    bytes[at + 10] = 0x20
+    artifact.history[0].checkpoint = bytes.toString('hex')
+    const v = await verifyHistoryReply(JSON.stringify({ ...card, ...(await encodeArtifact(artifact)) }))
+    expect(v.verified).toBe(false)
+    expect(failed(v)).toBe('checkpoints')
+    const detail = v.checks.find((c) => c.status === 'fail')?.detail
+    expect(detail).toBe('Checkpoint 1: `issued_at` is not in the expected format (a format rejection, not a failed signature).')
   })
 
   it('refuses a card whose checkpoints were signed by another key', async () => {
