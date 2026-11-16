@@ -72,7 +72,9 @@ const MAX_TAGS: usize = 16;
 /// clock is not answered: its stamp would keep its id in [`ANSWERED_FILE`].
 const SKEW: i64 = 60;
 
-/// The most ids [`ANSWERED_FILE`] keeps (the newest).
+/// The most ids [`ANSWERED_FILE`] holds. Past it no new request is answered
+/// until older ones expire (after twice [`LOOKBACK`]): an id dropped early
+/// would be answered again when its event is delivered again.
 const MAX_ANSWERED: usize = 2048;
 
 /// A round stops starting new work after this long, so one slow relay cannot
@@ -207,7 +209,7 @@ pub fn reply_event(key: &SigningKey, request: &Event, octets: &[u8], at: i64) ->
 
 /// The events `url` returns for one `REQ` of `filter`, up to its `EOSE`, at
 /// most [`LIMIT`] of them, and in no more than [`RELAY_TIMEOUT`].
-pub fn fetch(url: &str, filter: &Value) -> Result<Vec<Value>, String> {
+pub fn fetch(url: &str, filter: &Value) -> Result<(Vec<Value>, bool), String> {
     let started = Instant::now();
     let (mut socket, timer) = connect(url)?;
     let sub = "mailbox";
@@ -218,6 +220,9 @@ pub fn fetch(url: &str, filter: &Value) -> Result<Vec<Value>, String> {
         .map_err(|e| format!("could not send: {e}"))?;
     let mut events = Vec::new();
     let mut bytes = 0;
+    // Whether the page was cut short by its count or its bytes, so an older
+    // page may hold more.
+    let mut more = false;
     let outcome = loop {
         let left = RELAY_TIMEOUT.saturating_sub(started.elapsed());
         if left.is_zero() {
@@ -244,6 +249,7 @@ pub fn fetch(url: &str, filter: &Value) -> Result<Vec<Value>, String> {
                     events.push(event.clone());
                 }
                 if events.len() >= LIMIT || bytes >= PAGE_BYTES {
+                    more = true;
                     break Ok(());
                 }
             }
@@ -261,7 +267,7 @@ pub fn fetch(url: &str, filter: &Value) -> Result<Vec<Value>, String> {
         json!(["CLOSE", sub]).to_string(),
     ));
     let _ = socket.close(None);
-    outcome.map(|()| events)
+    outcome.map(|()| (events, more))
 }
 
 // ---------------------------------------------------------------------
@@ -279,17 +285,14 @@ pub fn answered(dir: &Path, now: i64) -> Result<BTreeMap<String, i64>, String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => return Err(format!("{ANSWERED_FILE} could not be read: {e}")),
     };
-    let mut kept: Vec<(String, i64)> = text
+    Ok(text
         .lines()
         .filter_map(|line| {
             let (id, at) = line.split_once(' ')?;
             Some((id.to_string(), at.parse::<i64>().ok()?))
         })
         .filter(|(_, at)| *at > now - 2 * LOOKBACK)
-        .collect();
-    kept.sort_by_key(|(_, at)| std::cmp::Reverse(*at));
-    kept.truncate(MAX_ANSWERED);
-    Ok(kept.into_iter().collect())
+        .collect())
 }
 
 /// Write `ids` to [`ANSWERED_FILE`] in `dir`, whole and renamed into place.
@@ -306,6 +309,9 @@ fn keep(dir: &Path, ids: &BTreeMap<String, i64>) -> std::io::Result<()> {
 // ---------------------------------------------------------------------
 // One round
 // ---------------------------------------------------------------------
+
+/// Where the next round starts among the relays.
+static START: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 /// The last result per relay, for `doctor`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -329,10 +335,18 @@ pub fn status() -> BTreeMap<String, RelayRead> {
 /// The request events `url` holds for `mailbox_key`, newest first, in pages
 /// of [`LIMIT`] each older than the last, at most [`PAGES`] of them: a relay
 /// that always returns the same newest page cannot hide an older request.
-fn read_pages(url: &str, mailbox_key: &str, now: i64) -> Result<Vec<Value>, String> {
+fn read_pages(
+    url: &str,
+    mailbox_key: &str,
+    now: i64,
+    keep_going: impl Fn() -> bool,
+) -> Result<Vec<Value>, String> {
     let mut all: Vec<Value> = Vec::new();
     let mut until: Option<i64> = None;
     for _ in 0..PAGES {
+        if !keep_going() {
+            break;
+        }
         let mut filter = json!({
             "kinds": [REQUEST_KIND],
             "#p": [mailbox_key],
@@ -342,9 +356,8 @@ fn read_pages(url: &str, mailbox_key: &str, now: i64) -> Result<Vec<Value>, Stri
         if let Some(until) = until {
             filter["until"] = json!(until);
         }
-        let page = fetch(url, &filter)?;
+        let (page, full) = fetch(url, &filter)?;
         let oldest = page.iter().filter_map(|e| e["created_at"].as_i64()).min();
-        let full = page.len() >= LIMIT;
         all.extend(page);
         match (full, oldest) {
             // The next page starts at the oldest stamp seen (`until` is
@@ -367,7 +380,7 @@ pub async fn round<A, F>(
     key: &SigningKey,
     relays: &[String],
     now: i64,
-    active: impl Fn() -> bool,
+    active: impl Fn() -> bool + Send + Sync + 'static,
     answer: A,
 ) -> Vec<String>
 where
@@ -386,13 +399,21 @@ where
         }
     };
     let mut answered_now = Vec::new();
-    for url in relays {
-        if !active() || began.elapsed() > BUDGET {
+    // Each round starts one relay further on, so a relay that eats the budget
+    // cannot keep the ones after it from ever being read.
+    let first = START.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let active = std::sync::Arc::new(active);
+    let within = || active() && began.elapsed() <= BUDGET;
+    for i in 0..relays.len() {
+        let url = &relays[(first + i) % relays.len()];
+        if !within() {
             break;
         }
         let read = {
             let (url, mailbox_key) = (url.clone(), mailbox_key.clone());
-            tokio::task::spawn_blocking(move || read_pages(&url, &mailbox_key, now))
+            let active = active.clone();
+            let ok = move || active() && began.elapsed() <= BUDGET;
+            tokio::task::spawn_blocking(move || read_pages(&url, &mailbox_key, now, ok))
                 .await
                 .unwrap_or_else(|e| Err(e.to_string()))
         };
@@ -405,7 +426,7 @@ where
         };
         let mut count = 0;
         for raw in events {
-            if !active() || began.elapsed() > BUDGET {
+            if !within() {
                 break;
             }
             let Ok(request) = verify_event(&raw) else {
@@ -422,6 +443,12 @@ where
             let Some(octets) = request_octets(&request, &mailbox_key) else {
                 continue;
             };
+            if done.len() >= MAX_ANSWERED {
+                tracing::warn!(
+                    "the mailbox answered {MAX_ANSWERED} requests lately: no more until older ones expire"
+                );
+                break;
+            }
             // Kept before the answer is built, so a crash between the two
             // never answers the request twice (NMB §6; the asker then records
             // an absence). If it cannot be kept, the request is not answered.
@@ -434,6 +461,10 @@ where
             let Some(reply) = answer(octets).await else {
                 continue;
             };
+            // The switch may have been turned off while the answer was built.
+            if !within() {
+                break;
+            }
             let event = reply_event(key, &request, &reply, now);
             let to = url.clone();
             let sent = tokio::task::spawn_blocking(move || send_event(&to, &event))
@@ -504,6 +535,7 @@ pub fn spawn(
                     capsules.clone(),
                     octets,
                     own.clone(),
+                    true,
                 )
             })
             .await;

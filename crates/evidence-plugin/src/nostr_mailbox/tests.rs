@@ -303,7 +303,9 @@ async fn the_node_answers_a_mailbox_request_as_it_answers_a_mesh_stream() {
         &[url],
         NOW,
         || true,
-        |octets| crate::mesh_evidence_bridge::answer_in_process(capsules.clone(), octets, None),
+        |octets| {
+            crate::mesh_evidence_bridge::answer_in_process(capsules.clone(), octets, None, true)
+        },
     )
     .await;
     assert_eq!(done.len(), 1);
@@ -332,6 +334,7 @@ async fn a_record_or_history_request_over_the_mailbox_is_refused() {
     let digest = "ab".repeat(32);
     let asked = [
         json!({"subject": {"record": digest}, "coverage": {"min_freshness": 1}}),
+        json!({"subject": {"correlation": "n-1"}, "coverage": {"min_freshness": 1}}),
         json!({"subject": {"full_history": null}, "coverage": {"min_freshness": 1}}),
         json!({"subject": {"range": {"from": 0, "to": 1}}, "coverage": {"min_freshness": 1}}),
     ];
@@ -347,7 +350,9 @@ async fn a_record_or_history_request_over_the_mailbox_is_refused() {
             &[url],
             NOW,
             || true,
-            |octets| crate::mesh_evidence_bridge::answer_in_process(capsules.clone(), octets, None),
+            |octets| {
+                crate::mesh_evidence_bridge::answer_in_process(capsules.clone(), octets, None, true)
+            },
         )
         .await;
         assert_eq!(done.len(), 1, "{ask}");
@@ -446,16 +451,14 @@ fn a_switch_turned_off_mid_round_stops_the_answers() {
     ]);
     let d = dir();
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let asked = std::cell::Cell::new(0);
+    let seen = got.clone();
     let done = rt.block_on(round(
         &d,
         &mailbox(),
         &[url],
         NOW,
-        || {
-            asked.set(asked.get() + 1);
-            asked.get() <= 2 // the relay, the first answer; then off
-        },
+        // on until the first reply is published, then turned off
+        move || seen.lock().unwrap().is_empty(),
         |_| std::future::ready(Some(b"{}".to_vec())),
     ));
     assert_eq!(done.len(), 1);
