@@ -72,9 +72,10 @@ pub const KEY_FILE: &str = "nostr-mailbox.key";
 /// replaced key file is noticed (`key_change`).
 pub const LAST_FILE: &str = "nostr-mailbox.published";
 
-/// What `doctor` says whenever the route is on: the route is announce-only.
-pub const ANNOUNCE_ONLY: &str = "announce-only: this node publishes where to find it and does not \
-    read the Nostr mailbox, so an ask sent there is not answered until loop#305 lands; do not send one";
+/// What `doctor` says whenever the route is on: the mailbox is read
+/// (`nostr_mailbox`), unencrypted (NMB §8).
+pub const MAILBOX_READ: &str = "this node publishes where to find it and answers evidence \
+    requests sent to that Nostr mailbox; events are not encrypted, so use relays that authenticate their readers";
 
 /// A relay that did not accept is tried again after this long.
 pub const RETRY_AFTER: Duration = Duration::from_secs(300);
@@ -99,7 +100,7 @@ impl Drop for Flight {
 }
 
 /// How long one relay gets to connect, accept the event and answer.
-const RELAY_TIMEOUT: Duration = Duration::from_secs(10);
+pub(crate) const RELAY_TIMEOUT: Duration = Duration::from_secs(10);
 
 // ---------------------------------------------------------------------
 // The route: the mailbox key and the relays
@@ -385,7 +386,6 @@ pub fn octets(commitment: &Value) -> Vec<u8> {
 /// `inline` false the content is empty and only the `x` tag names the
 /// commitment (ECC §5.3, Size).
 pub fn event(key: &SigningKey, node_id: &str, octets: &[u8], inline: bool, at: i64) -> Value {
-    let pubkey = hex::encode(key.verifying_key().to_bytes());
     let tags = json!([
         ["d", node_id],
         ["t", TAG_T],
@@ -396,8 +396,20 @@ pub fn event(key: &SigningKey, node_id: &str, octets: &[u8], inline: bool, at: i
     } else {
         String::new()
     };
+    signed_event(key, KIND, tags, &content, at)
+}
+
+/// A NIP-01 event of `kind` with `tags` and `content`, signed by `key`.
+pub(crate) fn signed_event(
+    key: &SigningKey,
+    kind: u64,
+    tags: Value,
+    content: &str,
+    at: i64,
+) -> Value {
+    let pubkey = hex::encode(key.verifying_key().to_bytes());
     // NIP-01: the id is the SHA-256 of this exact serialization.
-    let serial = serde_json::to_string(&json!([0, pubkey, at, KIND, tags, content]))
+    let serial = serde_json::to_string(&json!([0, pubkey, at, kind, tags, content]))
         .expect("a JSON value serializes");
     let id = Sha256::digest(serial.as_bytes());
     let mut aux = [0u8; 32];
@@ -407,7 +419,7 @@ pub fn event(key: &SigningKey, node_id: &str, octets: &[u8], inline: bool, at: i
         "id": hex::encode(id),
         "pubkey": pubkey,
         "created_at": at,
-        "kind": KIND,
+        "kind": kind,
         "tags": tags,
         "content": content,
         "sig": hex::encode(sig.to_bytes()),
@@ -480,7 +492,7 @@ fn relay_limit(url: &str) -> Option<usize> {
 }
 
 /// One `["EVENT", event]` and the relay's `["OK", ...]` for it.
-fn send_event(url: &str, event: &Value) -> Outcome {
+pub(crate) fn send_event(url: &str, event: &Value) -> Outcome {
     let started = Instant::now();
     let (mut socket, deadline) = match connect(url) {
         Ok(pair) => pair,
@@ -533,14 +545,14 @@ fn send_event(url: &str, event: &Value) -> Outcome {
     outcome
 }
 
-type Socket = tungstenite::WebSocket<Box<dyn Stream>>;
+pub(crate) type Socket = tungstenite::WebSocket<Box<dyn Stream>>;
 
-trait Stream: Read + Write + Send {}
+pub(crate) trait Stream: Read + Write + Send {}
 impl<T: Read + Write + Send> Stream for T {}
 
 /// A WebSocket to `url` (`wss://`, or `ws://` for a local relay of a test),
 /// every step bounded by [`RELAY_TIMEOUT`].
-fn connect(url: &str) -> Result<(Socket, TcpStream), String> {
+pub(crate) fn connect(url: &str) -> Result<(Socket, TcpStream), String> {
     let tls = url.starts_with("wss://");
     let rest = url
         .strip_prefix("wss://")
@@ -638,7 +650,7 @@ pub fn key_note() -> Option<String> {
 /// Why the last [`tick`] published nothing, when it could not.
 static BLOCKED: Mutex<Option<String>> = Mutex::new(None);
 
-fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+pub(crate) fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
 

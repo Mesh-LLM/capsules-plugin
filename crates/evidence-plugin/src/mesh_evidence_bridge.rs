@@ -345,7 +345,7 @@ async fn bridge_inbound_evidence_stream(
 
 /// Answer in-process, on the blocking pool (the answer reads the ledger and
 /// signs), and log it. `None` when there is nothing to send.
-async fn answer_in_process(
+pub(crate) async fn answer_in_process(
     capsules: std::sync::Arc<crate::capsule_emit::CapsuleState>,
     request_bytes: Vec<u8>,
     own_node: Option<String>,

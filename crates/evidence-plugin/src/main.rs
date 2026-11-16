@@ -44,6 +44,7 @@ mod lifecycle_channel;
 mod mesh_evidence_bridge;
 mod network_join;
 mod nostr_announce;
+mod nostr_mailbox;
 mod owner_maintenance;
 mod peer_blocks_seen;
 mod peer_commitments;
@@ -2060,6 +2061,9 @@ async fn main() -> anyhow::Result<()> {
         let self_peer = self_peer.clone();
         nostr_announce::spawn(capsules.clone(), move || self_peer.current());
     }
+    // The same route is read and answered while the switch is on
+    // (evidence-network/loop#442).
+    nostr_mailbox::spawn(capsules.clone(), self_peer.clone());
 
     // Checkpoint cadence: on by default (see checkpoint_cadence.rs's module
     // doc). `checkpoint_shutdown_tx` held for the

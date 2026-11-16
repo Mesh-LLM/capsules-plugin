@@ -607,7 +607,7 @@ fn nostr_announce_is_off_by_default_and_says_nothing_is_published() {
 }
 
 #[test]
-fn nostr_announce_on_says_the_route_is_announce_only() {
+fn nostr_announce_on_says_the_mailbox_is_read() {
     let found = {
         let policy = Policy {
             advertise_evidence_requests: true,
@@ -621,5 +621,5 @@ fn nostr_announce_on_says_the_route_is_announce_only() {
     };
     let f = state(&found, NOSTR_ANNOUNCE);
     assert_eq!(f.state, STATE_ON);
-    assert!(f.detail.contains("announce-only") && f.detail.contains("loop#305"));
+    assert!(f.detail.contains("answers evidence requests") && f.detail.contains("not encrypted"));
 }
