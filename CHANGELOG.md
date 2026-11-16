@@ -9,6 +9,10 @@
   asks first, publishes it as a kind 4700 event under a carriage key made for that request, reads the kind 4701
   replies, and records the reply as the response (checked under the evidence key) or, when the window closes with
   none, the absence (nostr-mailbox-v0). The request is not signed as this node: a mailbox asker is a stranger.
+- **`CAPSULES_NOSTR_RELAY_MAP` points an advertised relay at another address.** A JSON object from the `wss://` relay
+  URL a commitment names to the `ws://` or `wss://` address this node connects to for it, as Goose's
+  `GOOSE_RELAY_MAP` does, so a lab can run one relay on its own host for both ecosystems. The commitment keeps the
+  advertised URL.
 
 - **A node with `advertise_evidence_requests` on answers evidence requests sent to its Nostr mailbox
   (evidence-network/loop#442).** Every five seconds it reads the kind 4700 requests addressed to its mailbox key on
