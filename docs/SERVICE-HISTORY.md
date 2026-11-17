@@ -191,7 +191,27 @@ total would give them away, the total is withheld too. `check` names the kind of
 `signed_by` says its result is signed by the checker, never by the node it concerns: a later audit
 result is another kind in the same member, counted separately.
 
+**Omission, `verdict_held/1`.** A node that drops a delivered verdict shows a smaller count, and
+nothing in the count shows it. A referee, or any node that holds the referee's signed delivery, can
+ask the node whether it holds a verdict by the verdict's capsule id: the existing
+`mesh_evidence_request` tool with
+`{"subject": {"correlation": "<verdict capsule id>"}, "coverage": {"expected_pin": "<anchor>"},
+"derivation": "f457ecb2cd0089c83129365593d3d4f8cf1e52a99424d85d1041c042fc5e0418"}`
+(the digest of [`derivations/verdict-held-1.json`](../derivations/verdict-held-1.json); pin an
+anchor from its `history_card/1`). Held: the signed answer lists, for each record that holds the
+verdict, the verdict's id, the record's digest and its inclusion proof under the anchor, and
+nothing else (never the ruling, the referee, a record body or who asked), the same bytes for every
+requester; the result's `verification` reads `artifact` with `held` the number of records. Not
+held: the signed `no_such_subject` refusal. An asker holding the delivery sets that refusal beside
+it: the node signed that it holds nothing for a verdict it was sent. A delivery shows the verdict
+was sent, not that it arrived, so what follows is the asker's to judge. It is answered under
+`share_standard_history`, like the counts.
+
 **Limits.** The counts are this node's own statement. The signature on each verdict was checked
 when the node sealed it. A node that does not seal a delivered verdict, or that drops one, shows a
-smaller count: omission is checked by asking the node by digest whether it holds a verdict (the
-referee's delivery), not from the counts. Nothing here scores or ranks a node.
+smaller count, which `verdict_held/1` above checks against the delivery, not the counts. The
+verdicts counted here are a different set from the ones this node's own admission reads
+(`verdict_counts::fold`, those it asked for). The text of the profile that counts verdicts this
+node did not ask for is ISH §5.3 (action-state-group/agent-action-capsule#614); the shared
+conformance vectors for verdict counts do not exist yet (ISH SH-14), and this implementation is
+tested by its own tests until they do. Nothing here scores or ranks a node.

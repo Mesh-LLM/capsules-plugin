@@ -195,6 +195,8 @@ pub fn fold(records: &[Value], requested: &HashSet<PairKey>) -> BTreeMap<String,
 /// asked (Steven u1598; ISH §5.3 rule 2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeldVerdict {
+    /// The referee-signed verdict's capsule id: what `verdict_held/1` is asked by.
+    pub verdict_capsule_id: String,
     pub referee: String,
     /// The pair of halves, sorted: a (referee, pair) counts once.
     pub pair: [String; 2],
@@ -243,6 +245,7 @@ pub fn held_about_self(record: &Value) -> Option<HeldVerdict> {
     let mut halves = [half_a.to_string(), half_b.to_string()];
     halves.sort();
     Some(HeldVerdict {
+        verdict_capsule_id: text("verdict_capsule_id")?.to_string(),
         referee: referee.to_string(),
         pair: halves,
         model_hash: text("model_hash").unwrap_or("unknown").to_string(),

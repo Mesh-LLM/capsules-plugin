@@ -332,6 +332,10 @@ fn node() -> tempfile::TempDir {
 }
 
 fn ask(dir: &Path, request: &Value) -> Outcome {
+    ask_sharing(dir, request, true)
+}
+
+fn ask_sharing(dir: &Path, request: &Value, share_standard_history: bool) -> Outcome {
     let key = key();
     let announced = announced_keys();
     evidence_answer::answer(
@@ -341,7 +345,7 @@ fn ask(dir: &Path, request: &Value) -> Outcome {
             signing_key: &key,
             now: NOW,
             history_segments: "counterparties",
-            share_standard_history: true,
+            share_standard_history,
             share_exchange_corroboration: false,
             keys: Keys {
                 announced: &announced,
@@ -933,6 +937,10 @@ fn the_service_history_reply_fixture_is_what_the_node_serves() {
 // service_history/2: the verdicts this node holds about itself
 // ---------------------------------------------------------------------
 
+fn verdict_id(i: usize) -> String {
+    hex::encode(Sha256::digest(format!("verdict-{i}")))
+}
+
 /// A verdict delivered to this node (node-a): `n` of them judge node-a
 /// contradicted, one per referee and pair.
 fn received(i: usize, verdict: &str, model_hash: &str) -> Value {
@@ -940,7 +948,7 @@ fn received(i: usize, verdict: &str, model_hash: &str) -> Value {
         "action_type": "inference",
         "model_attestation": {"compute_attestation": {"adjudication_received": {
             "verdict": verdict,
-            "verdict_capsule_id": format!("verdict-{i}"),
+            "verdict_capsule_id": verdict_id(i),
             "referee_node_id": "referee",
             "halves": [format!("half-{i}-a"), format!("half-{i}-b")],
             "half_node_ids": ["node-a", "node-z"],
@@ -1104,4 +1112,68 @@ fn a_verdict_counts_once_per_referee_and_pair_and_never_when_the_referee_is_a_pa
         .unwrap()
         .remove("model_hash");
     assert_eq!(held_about_self(&bare).unwrap().model_hash, "unknown");
+}
+
+// ---------------------------------------------------------------------
+// verdict_held/1: whether the node holds a verdict, asked by its id
+// ---------------------------------------------------------------------
+
+#[test]
+fn the_verdict_held_definition_is_the_file() {
+    use crate::verdict_held::{DEFINITION_DIGEST, DEFINITION_DOCUMENT};
+    assert_eq!(digest_of_document(DEFINITION_DOCUMENT), DEFINITION_DIGEST);
+}
+
+#[test]
+fn a_held_verdict_is_answered_with_its_record_and_a_dropped_one_is_not_held() {
+    use crate::verdict_held::{request_for, DEFINITION_DIGEST};
+    let (dir, cps) = node_with_verdicts();
+    let anchor = cps[3].anchor();
+    // Held: verdict 0 sits in the record at leaf 12.
+    let request = request_for(&verdict_id(0), &anchor);
+    let wire = answered(ask(dir.path(), &request));
+    let art = artifact_of(&wire);
+    assert_eq!(art["derivation"], json!(DEFINITION_DIGEST));
+    let entries = art["entries"].as_array().unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0]["verdict"], json!(verdict_id(0)));
+    // Ids, a digest and a proof only: never the ruling, the referee or a body.
+    let mut keys: Vec<&String> = entries[0].as_object().unwrap().keys().collect();
+    keys.sort();
+    assert_eq!(keys, ["inclusion", "record", "verdict"]);
+    let v = verified(&request, &wire);
+    assert_eq!(v["state"], json!("artifact"), "{v}");
+    assert_eq!(v["held"], json!(1));
+    // The same bytes for every requester at one anchor.
+    assert_eq!(wire, answered(ask(dir.path(), &request)));
+
+    // Not held: a verdict this node never sealed is the signed
+    // `no_such_subject`, which the asker sets beside the delivery it holds.
+    let missing = request_for(&verdict_id(99), &anchor);
+    let Outcome::Refused { .. } = ask(dir.path(), &missing) else {
+        panic!("a verdict that is not held must be refused");
+    };
+    let refusal = match ask(dir.path(), &missing) {
+        Outcome::Refused { wire, .. } => wire,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        verified(&missing, &refusal)["reason"],
+        json!("no_such_subject")
+    );
+}
+
+#[test]
+fn verdict_counts_and_the_ask_by_digest_follow_share_standard_history() {
+    use crate::verdict_held::request_for;
+    let (dir, cps) = node_with_verdicts();
+    let anchor = cps[3].anchor();
+    let counts = json!({"subject": {"full_history": null}, "coverage": {"expected_pin": anchor},
+                        "derivation": DEFINITION_DIGEST_2});
+    for request in [counts, request_for(&verdict_id(0), &anchor)] {
+        match ask_sharing(dir.path(), &request, false) {
+            Outcome::Refused { .. } => {}
+            other => panic!("an unsigned stranger must be refused when sharing is off: {other:?}"),
+        }
+    }
 }

@@ -195,9 +195,24 @@ fn signed_envelope(
         }
         _ => None,
     };
+    let held = match (&b.request.derivation, &b.request.subject) {
+        (Some(Derivation::Digest(d)), Subject::Correlation(id))
+            if d == crate::verdict_held::DEFINITION_DIGEST =>
+        {
+            Some(crate::verdict_held::entries(
+                id,
+                &served.record,
+                b.records,
+                view,
+            )?)
+        }
+        _ => None,
+    };
     let derive = |name: &str, _: &Subject, _: &evidencebook::substrate::StatedCheckpoint| {
         if name == crate::exchange_corroboration::DEFINITION_DIGEST {
             corroboration.clone().map(|v| ("entries".to_string(), v))
+        } else if name == crate::verdict_held::DEFINITION_DIGEST {
+            held.clone().map(|v| ("entries".to_string(), v))
         } else {
             None
         }
@@ -212,7 +227,7 @@ fn signed_envelope(
             at: b.at,
             // A derivation of this node's own carries no records of the
             // crate's selection: the entries are its own.
-            records: if corroboration.is_some() {
+            records: if corroboration.is_some() || held.is_some() {
                 Vec::new()
             } else {
                 b.records.to_vec()
@@ -401,6 +416,9 @@ pub struct Checked {
     /// The halves an `exchange_corroboration/1` answer states, each proven
     /// under the anchor. Empty for any other answer.
     pub halves: Vec<crate::exchange_corroboration::Half>,
+    /// The records a `verdict_held/1` answer states hold the verdict, each
+    /// proven under the anchor. Empty for any other answer.
+    pub held: Vec<String>,
     /// The witness receipts it carries, each as checked.
     pub receipts: Vec<ReceiptCheck>,
     /// What a Service History counts. `None` for any other answer.
@@ -533,6 +551,7 @@ pub fn check(
         }
         Some(Derivation::Digest(d))
             if d == crate::exchange_corroboration::DEFINITION_DIGEST
+                || d == crate::verdict_held::DEFINITION_DIGEST
                 || crate::service_history::is_derivation(env.derivation.as_ref()) =>
         {
             Some(d.as_str())
@@ -541,6 +560,7 @@ pub fn check(
     };
 
     let mut halves = Vec::new();
+    let mut held = Vec::new();
     let mut history = None;
     let (served, records, listed) = match (derivation, &env.subject) {
         (None, Subject::Record(digest)) => {
@@ -640,6 +660,15 @@ pub fn check(
                 .map_err(|why| CheckError::Answer(why.into()))?;
             (served, leaves, Vec::new())
         }
+        (Some(d), Subject::Correlation(id)) if d == crate::verdict_held::DEFINITION_DIGEST => {
+            let art = artifact_map(&env, derivation)?;
+            let served = anchor_checkpoint_only(&env, key)?;
+            check_names(&art, &served)?;
+            let leaves;
+            (held, leaves) = crate::verdict_held::check_entries(&art, id, &served.cp)
+                .map_err(|why| CheckError::Answer(why.into()))?;
+            (served, leaves, Vec::new())
+        }
         (Some(t), Subject::Record(root)) if t == crate::bundle_answer::TOKEN => {
             let served = anchor_checkpoint_only(&env, key)?;
             let leaves = crate::bundle_answer::check_artifact(
@@ -691,6 +720,7 @@ pub fn check(
         first_checkpoint_at: listed.first().map(|first| first.cp.timestamp.clone()),
         artifact_digest: env.artifact_digest.clone(),
         halves,
+        held,
         receipts,
         history,
     })

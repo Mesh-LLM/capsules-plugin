@@ -255,6 +255,7 @@ exchanges ended; the record itself goes only to the counterparty:
 | One of this node's records, when a peer asks for it by id | the peer that record names as the other side | on: an answer, never a push | `share_history_segments = "off"` |
 | This node's Service History (`service_history/1`: exchanges served per model and week, a count under 5 withheld), when a node asks | a counterparty always; any other node only when on | **off** for any other node | `share_standard_history = "on"` |
 | The verdicts referees delivered to this node about its exchanges (`service_history/2`: per week and model hash, how many `corroborated`, `contradicted`, `inconclusive` and `not_comparable`; a count under 5 withheld; counted from this node's own log, never from a list it curates), when a node asks | a counterparty always; any other node only when on | **off** for any other node | `share_standard_history = "on"` (the same switch as `service_history/1`; `/2` is listed in the commitment beside it) |
+| Whether this node holds a given referee verdict (`verdict_held/1`, asked by the verdict's id: the record's digest and an inclusion proof, or a signed "not held"; never the ruling or who asked), when a node asks | a counterparty always; any other node only when on | **off** for any other node | `share_standard_history = "on"` |
 | A signed checkpoint of the log | the witness services you name | **off**: none by default | add witnesses under **Witnesses** |
 
 The value this node is acting on is written to `sharing-effective.json` in

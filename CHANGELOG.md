@@ -9,6 +9,7 @@
 ### Added
 
 - **`service_history/2` counts the referee verdicts this node holds about itself (Mesh-LLM/capsules-plugin#289; Steven u1598).** A new definition document and digest (`derivations/service-history-2.json`); `service_history/1` is unchanged and still answered. The new `verdict_counts` member counts, per closed week and model hash, the four results the spec keeps apart (`corroborated`, `contradicted`, `inconclusive`, `not_comparable`) from the verdicts delivered to this node and sealed on its own chain, with the same floor of 5 and complementary suppression as the served counts. A verdict counts once per referee and pair of halves, whoever asked the referee (AAC spec ISH §5.3, action-state-group/agent-action-capsule#614). Shared under `share_standard_history`, like `/1`. See `docs/SERVICE-HISTORY.md`.
+- **`verdict_held/1` answers whether this node holds a given referee verdict, by the verdict's capsule id (#289).** The answer lists the holding record's digest and an inclusion proof, or is the signed `no_such_subject`, so a referee, or any node holding the delivery, can check a node's counts for an omitted verdict. The digest of `derivations/verdict-held-1.json` is listed in the commitment beside `service_history/2` and answered under `share_standard_history`.
 
 ## 0.1.19
 

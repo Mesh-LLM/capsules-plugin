@@ -139,6 +139,7 @@ fn the_answers_lists_are_pinned_and_follow_the_settings() {
             crate::exchange_corroboration::DEFINITION_DIGEST,
             crate::service_history::DEFINITION_DIGEST,
             crate::service_history::DEFINITION_DIGEST_2,
+            crate::verdict_held::DEFINITION_DIGEST,
         ]
     );
     assert_eq!(

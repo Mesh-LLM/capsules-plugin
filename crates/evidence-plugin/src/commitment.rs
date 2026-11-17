@@ -83,13 +83,14 @@ pub const ANSWERS_WITHIN: &str = "PT1M";
 /// definition this node serves (`service_history::definition_digest`), so it
 /// is read once at run time. A counterparty is answered each of them under
 /// every setting; who else gets one is the policy's to say.
-pub static DERIVATIONS: std::sync::LazyLock<[&str; 5]> = std::sync::LazyLock::new(|| {
+pub static DERIVATIONS: std::sync::LazyLock<[&str; 6]> = std::sync::LazyLock::new(|| {
     [
         "checkpoints",
         evidence_request::registry::DERIVATION_HISTORY_CARD,
         crate::exchange_corroboration::DEFINITION_DIGEST,
         crate::service_history::definition_digest(),
         crate::service_history::definition_digest_2(),
+        crate::verdict_held::DEFINITION_DIGEST,
     ]
 });
 
