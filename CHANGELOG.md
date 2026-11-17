@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- **The plugin moves to the checkpointed-local-log 0.6 stack (#300).** It now builds on agent-action-capsule 0.11.0, evidence-request 0.6.0, evidencebook 0.0.19, capsule-emit 0.0.13 and capsule-emit-artifact 0.0.4. A checkpoint this node signs carries the bare log id as the CWT `sub` (CLL -02), so every checkpoint, its anchor digest and the signatures over it differ from before; the golden answer fixtures and `vectors/no-complete-answer` are regenerated and nothing else in them changes. A witness must accept both `sub` forms before this node is deployed.
+
 ## 0.1.19
 
 ### Added
