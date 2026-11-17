@@ -159,25 +159,28 @@ verifier holding one says it did not check it.
 with a third member, `verdict_counts`. It is a new derivation with its own digest,
 `0f6cee6c5c2f57e7682137e4b40a9dcfad0f8db5a69d5bebaf99995936ea96f2`; `service_history/1` and its
 digest are unchanged and still answered. The same frame, subject, coverage, pin and period policy
-(week, floor 5, complementary suppression) apply, and a node that serves `/2` serves no
-`standard_history/1` for the same reason. It is Standard History under the same switch,
+(week, floor 5, complementary suppression) apply, and a node that serves `service_history/2` serves no
+`standard_history/1` or `/2` card for the same reason. It is Standard History under the same switch,
 `share_standard_history`. Section numbers are the profile's (ISH §4.3, §5.3, as amended by
 action-state-group/agent-action-capsule#614).
 
 **What is counted.** A referee's signed verdict about one of this node's exchanges, delivered to it
 (`share_adjudications`, #163) and sealed on its own chain as an `adjudication_received` record
-(#102). The node counts what its log holds, not a list it keeps apart. A verdict counts once per
-(referee, pair of halves), in the week the first checkpoint that covers its record commits into
-(the same rule as the served counts), whether this node or the other party asked the referee. A
-verdict whose referee is one of the two nodes counts nowhere. A verdict about another node's
-exchanges is not counted. The deciding node's own admission reads the verdicts it asked for itself
+(#102). The node counts what its log holds, not a list it keeps apart, whether this node or the
+other party asked the referee (ISH §5.3). The pair is this node's served half and another provider's
+half of the same request. This plugin counts a verdict once per (referee, pair), in the week the
+first checkpoint that covers its record commits into (the same rule as the served counts); the
+profile says "every verdict that qualifies", and the once-per-pair rule is this plugin's, so the same
+delivery sealed twice is not counted twice. A verdict whose referee is one of the two nodes counts
+nowhere. A verdict about another node's exchanges is not counted. The deciding node's own admission reads the verdicts it asked for itself
 (`verdict_counts::fold`), which is a different set.
 
 **The four results** stay four separate counts, never added, in the unit `referee_verdicts`.
-`corroborated` here is the referee's finding that the two halves agree; it is not the label
-`corroborated` of ISH §7.3 (halves from distinct controllers). The unit tells them apart. A
-contradiction naming the other node reads as `corroborated` for this one, and a contradiction
-naming this node as `contradicted`. A verdict says nothing about this node's other or later
+`corroborated` here means the referee's finding supports this node's half: the halves agree, or the
+other provider's half was found wrong. A contradiction naming the other node therefore counts as
+`corroborated` for this node, and one naming this node as `contradicted`. The profile does not
+define the four results per node, so this is a host reading. It is not the label `corroborated` of
+ISH §7.1 (halves from distinct controllers); the unit tells them apart. A verdict says nothing about this node's other or later
 answers, and "not adjudicated" is counted against no one.
 
 **The cells.** `verdict_counts` is `{"check": "referee_verdict", "signed_by": "checker",
@@ -187,31 +190,53 @@ period lists, for each of the four results in the order above, one cell per mode
 result's total, `{"dimension": {"model_hash": ..., "result": ...}}` or `{"dimension": {"result":
 ...}}`, each labelled `self_reported`. A cell under 5 is withheld, and complementary suppression
 applies within each result's table. Where two or more models are each withheld and the published
-total would give them away, the total is withheld too. `check` names the kind of check counted and
+total would give them away, the total is withheld too; that is the library's rule for these tables,
+and the profile leaves the general case open (SH-8). `check` names the kind of check counted and
 `signed_by` says its result is signed by the checker, never by the node it concerns: a later audit
 result is another kind in the same member, counted separately.
 
 **Omission, `verdict_held/1`.** A node that drops a delivered verdict shows a smaller count, and
-nothing in the count shows it. A referee, or any node that holds the referee's signed delivery, can
-ask the node whether it holds a verdict by the verdict's capsule id: the existing
-`mesh_evidence_request` tool with
+nothing in the count shows it. A node that holds the referee's signed delivery can ask this node
+whether it holds the verdict, by the verdict's capsule id (the id of the referee's verdict
+capsule, a digest: the one `derivations/verdict-held-1.json` reads as `verdict_capsule_id`, and the
+digest by which ISH §5.3 says a held verdict is named): the
+existing `mesh_evidence_request` tool with
 `{"subject": {"correlation": "<verdict capsule id>"}, "coverage": {"expected_pin": "<anchor>"},
 "derivation": "f457ecb2cd0089c83129365593d3d4f8cf1e52a99424d85d1041c042fc5e0418"}`
 (the digest of [`derivations/verdict-held-1.json`](../derivations/verdict-held-1.json); pin an
-anchor from its `history_card/1`). Held: the signed answer lists, for each record that holds the
-verdict, the verdict's id, the record's digest and its inclusion proof under the anchor, and
-nothing else (never the ruling, the referee, a record body or who asked), the same bytes for every
-requester; the result's `verification` reads `artifact` with `held` the number of records. Not
-held: the signed `no_such_subject` refusal. An asker holding the delivery sets that refusal beside
-it: the node signed that it holds nothing for a verdict it was sent. A delivery shows the verdict
-was sent, not that it arrived, so what follows is the asker's to judge. A "held" answer proves the record's digest is in the log under the anchor, not that the record carries that verdict: the entry names no record body, so a node could point at an unrelated record. It is not evidence the node holds the verdict, and an asker who needs more asks for that record under the ordinary record ask and its own policy. The check that matters is the "not held" answer. It is answered under
+anchor from its `history_card/1`). Who is answered follows `share_standard_history`: a
+counterparty always, any other node, the referee included, only where the switch is on (it is off
+by default).
+
+*Held.* The signed answer lists, for each record that holds the verdict, the verdict's id, the
+record's digest and its inclusion proof under the anchor, and nothing else (never the ruling, the
+referee, a record body or who asked), the same bytes for every requester; the result's
+`verification` reads `artifact` with `held` the number of records. It is the node's signed
+statement that the listed record holds the verdict. The proof shows only that the record's digest
+is committed under the anchor: the entry names no record body, so it does not show that the record
+carries the verdict, and an asker who needs that asks for the record under the ordinary record ask
+and its own policy. A node that answers held and counts nothing for the verdict is the omission
+this ask finds.
+
+*Not held.* The signed `no_such_subject` refusal. It is the node's signed statement that it holds no
+record counting that verdict about itself: a verdict this node holds only as a requester, or holds
+unmarked with no served half of its own, is not counted and is answered not held. An asker holding
+the delivery sets that refusal beside it: the node signed that it holds nothing counted for a
+verdict it was sent. A delivery shows the verdict was sent, not that it arrived, so what follows is
+the asker's to judge.
+
+The check runs against the node's log, not against its counts. It is answered under
 `share_standard_history`, like the counts.
 
 **Limits.** The counts are this node's own statement. The signature on each verdict was checked
 when the node sealed it. A node that does not seal a delivered verdict, or that drops one, shows a
-smaller count, which `verdict_held/1` above checks against the delivery, not the counts. The
-verdicts counted here are a different set from the ones this node's own admission reads
-(`verdict_counts::fold`, those it asked for). The text of the profile that counts verdicts this
-node did not ask for is ISH §5.3 (action-state-group/agent-action-capsule#614); the shared
-conformance vectors for verdict counts do not exist yet (ISH SH-14), and this implementation is
-tested by its own tests until they do. Nothing here scores or ranks a node.
+smaller count, which `verdict_held/1` above checks against the delivery, not the counts. The floor
+limits small counts; it does not hide who asked when one party's own asks make up a count (ISH
+§5.3, §12), so a count made of one party's asks is visible by the floor alone. The verdicts counted
+here are a different set from the ones this node's own admission reads (`verdict_counts::fold`,
+those it asked for). No admission reads `verdict_counts` yet, and the row that will read it never
+refuses on it alone. The text of the profile that counts verdicts this node did not ask for is ISH
+§5.3 (action-state-group/agent-action-capsule#614). The shared conformance vectors for the member
+are [`vectors/inference-service-history-verdicts-v0/`](https://github.com/action-state-group/agent-action-capsule/tree/main/vectors/inference-service-history-verdicts-v0)
+in agent-action-capsule (#617); they do not cover the delivery or the ask by digest (SH-14, SH-15),
+which this implementation tests by its own tests. Nothing here scores or ranks a node.
