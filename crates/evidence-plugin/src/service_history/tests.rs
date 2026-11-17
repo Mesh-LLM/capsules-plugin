@@ -928,3 +928,180 @@ fn the_service_history_reply_fixture_is_what_the_node_serves() {
         hex::encode(key.verifying_key().as_bytes())
     );
 }
+
+// ---------------------------------------------------------------------
+// service_history/2: the verdicts this node holds about itself
+// ---------------------------------------------------------------------
+
+/// A verdict delivered to this node (node-a): `n` of them judge node-a
+/// contradicted, one per referee and pair.
+fn received(i: usize, verdict: &str, model_hash: &str) -> Value {
+    crate::evidence_request_parity::sealed(json!({
+        "action_type": "inference",
+        "model_attestation": {"compute_attestation": {"adjudication_received": {
+            "verdict": verdict,
+            "verdict_capsule_id": format!("verdict-{i}"),
+            "referee_node_id": "referee",
+            "halves": [format!("half-{i}-a"), format!("half-{i}-b")],
+            "half_node_ids": ["node-a", "node-z"],
+            "held_half_capsule_id": format!("half-{i}-a"),
+            "model_hash": model_hash,
+            "received_at": "2026-01-14T07:00:00Z",
+        }}},
+    }))
+}
+
+/// The same 30 lines, with leaves 12 to 17 (week 1) the verdicts the node
+/// holds: 5 contradicted of model h1 and 1 corroborated.
+fn ledger_with_verdicts() -> Vec<Value> {
+    let mut ledger = ledger();
+    for i in 0..5 {
+        ledger[12 + i] = received(i, "contradicted:node-a", "h1");
+    }
+    ledger[17] = received(5, "corroborated", "h1");
+    ledger
+}
+
+fn node_with_verdicts() -> (tempfile::TempDir, Vec<CorpusCheckpoint>) {
+    let dir = tempfile::tempdir().unwrap();
+    let ledger = ledger_with_verdicts();
+    write_jsonl(&dir.path().join("capsules.jsonl"), &ledger);
+    let cps = checkpoints_cut_at(
+        &ledger,
+        &key(),
+        &[
+            (6, "2026-01-07T10:00:00Z"),
+            (12, WEEK_1),
+            (20, "2026-01-14T08:00:00Z"),
+            (30, WEEK_2),
+        ],
+    );
+    let lines: Vec<Value> = cps.iter().map(CorpusCheckpoint::line).collect();
+    write_jsonl(&dir.path().join("checkpoints.jsonl"), &lines);
+    (dir, cps)
+}
+
+#[test]
+fn the_second_definition_is_the_file_and_names_the_verdict_member() {
+    assert_eq!(
+        digest_of_document(DEFINITION_DOCUMENT_2),
+        DEFINITION_DIGEST_2
+    );
+    assert_ne!(DEFINITION_DIGEST, DEFINITION_DIGEST_2);
+    let d: Value = serde_json::from_str(DEFINITION_DOCUMENT_2).unwrap();
+    assert_eq!(d["name"], json!("service_history/2"));
+    assert_eq!(d["period_policy"], definition()["period_policy"]);
+    assert!(Definition::active_2().has_verdict_counts());
+    assert!(!Definition::active().has_verdict_counts());
+    assert_eq!(definition_digest_2(), DEFINITION_DIGEST_2);
+}
+
+#[test]
+fn the_verdicts_the_node_holds_are_counted_by_period_and_check() {
+    let (dir, cps) = node_with_verdicts();
+    let anchor = cps[3].anchor();
+    let request = json!({"subject": {"full_history": null}, "coverage": {"expected_pin": anchor},
+                         "derivation": DEFINITION_DIGEST_2});
+    let wire = answered(ask(dir.path(), &request));
+    let art = artifact_of(&wire);
+    assert_eq!(art["derivation"], json!(DEFINITION_DIGEST_2));
+    assert_eq!(
+        art["declared"],
+        json!(["history_card", "period_counts", "verdict_counts"])
+    );
+    let v = &art["verdict_counts"];
+    assert_eq!(v["check"], json!("referee_verdict"));
+    assert_eq!(v["signed_by"], json!("checker"));
+    // Week 0 holds no verdict; week 1 holds 5 contradicted and 1 corroborated.
+    let cell_of = |period: usize, result: &str, hash: Option<&str>| -> Value {
+        v["periods"][period]["cells"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| {
+                c["dimension"]["result"] == json!(result)
+                    && c["dimension"].get("model_hash").and_then(Value::as_str) == hash
+            })
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(
+        cell_of(0, "contradicted", None)["suppressed"],
+        json!("below_floor")
+    );
+    assert_eq!(cell_of(1, "contradicted", None)["value"], json!(5));
+    assert_eq!(cell_of(1, "contradicted", Some("h1"))["value"], json!(5));
+    // One corroborated verdict is under the floor: withheld, never a count of 1.
+    assert_eq!(
+        cell_of(1, "corroborated", None)["suppressed"],
+        json!("below_floor")
+    );
+    assert_eq!(cell_of(1, "corroborated", None)["value"], Value::Null);
+    // The served counts of /2 are /1's, over the leaves that are served.
+    assert!(art["period_counts"]["periods"].is_array());
+
+    let verified = verified(&request, &wire);
+    assert_eq!(verified["state"], json!("artifact"), "{verified}");
+    let lines: Vec<&str> = verified["lines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l.as_str().unwrap())
+        .collect();
+    assert!(lines.contains(
+        &"2026-01-12T00:00:00Z to 2026-01-19T00:00:00Z: referee verdicts contradicted, all models: 5 (self_reported, held by this node, signed by the referee)"
+    ), "{lines:?}");
+    // /1 is still answered, with no verdict member.
+    let one = answered(ask(
+        dir.path(),
+        &json!({"subject": {"full_history": null}, "coverage": {"expected_pin": cps[3].anchor()},
+                "derivation": DEFINITION_DIGEST}),
+    ));
+    assert_eq!(
+        artifact_of(&one)["declared"],
+        json!(["history_card", "period_counts"])
+    );
+}
+
+#[test]
+fn a_verdict_counts_once_per_referee_and_pair_and_never_when_the_referee_is_a_party() {
+    use crate::verdict_counts::{counted_in_order, held_about_self};
+    let first = received(0, "contradicted:node-a", "h1");
+    let again = received(0, "contradicted:node-a", "h1");
+    let mut same_pair_other_ruling = received(0, "corroborated", "h1");
+    same_pair_other_ruling["x"] = json!(1);
+    let held: Vec<_> = [&first, &again, &same_pair_other_ruling]
+        .iter()
+        .map(|r| held_about_self(r))
+        .collect();
+    assert!(held.iter().all(Option::is_some));
+    let counted = counted_in_order(&held);
+    assert_eq!(
+        counted[0],
+        Some(("h1".to_string(), "contradicted".to_string()))
+    );
+    assert_eq!(counted[1], None);
+    assert_eq!(counted[2], None);
+    // A contradiction naming the other node corroborates this one.
+    let other = received(1, "contradicted:node-z", "h1");
+    assert_eq!(held_about_self(&other).unwrap().result, "corroborated");
+    // The referee being one of the two nodes counts nowhere.
+    let mut party = received(2, "contradicted:node-a", "h1");
+    party["model_attestation"]["compute_attestation"]["adjudication_received"]["referee_node_id"] =
+        json!("node-z");
+    assert_eq!(held_about_self(&party), None);
+    // A verdict about a half this node does not hold counts nowhere, and a
+    // served record is no verdict.
+    let mut foreign = received(3, "contradicted:node-a", "h1");
+    foreign["model_attestation"]["compute_attestation"]["adjudication_received"]
+        ["held_half_capsule_id"] = json!("not-a-half");
+    assert_eq!(held_about_self(&foreign), None);
+    assert_eq!(held_about_self(&ledger()[0]), None);
+    // No model hash sealed: the cell is "unknown", not dropped.
+    let mut bare = received(4, "corroborated", "h1");
+    bare["model_attestation"]["compute_attestation"]["adjudication_received"]
+        .as_object_mut()
+        .unwrap()
+        .remove("model_hash");
+    assert_eq!(held_about_self(&bare).unwrap().model_hash, "unknown");
+}

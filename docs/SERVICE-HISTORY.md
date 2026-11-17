@@ -109,7 +109,7 @@ suppressed below the floor like any other (ISH §6.1 item 3). A later answer nev
   Where the total is published and exactly one model is suppressed, the smallest other model is
   suppressed too, with `complementary`, so the suppressed one cannot be worked out from the total.
 - **What is never counted:** latency (Steven, 2026-10-22), requested exchanges, quantization,
-  weights digests, referee verdicts and anything about who asked.
+  weights digests, referee verdicts (`service_history/2` counts them, below) and anything about who asked.
 
 ## Never beside `standard_history/1`
 
@@ -152,3 +152,46 @@ verifier holding one says it did not check it.
 - Nothing in a Service History is shown as a model having run, or as a model verified, and nothing
   in it scores or ranks a node.
 - The card shows each checkpoint's exact log size, which the weekly counts do not cover (ISH §12).
+
+## `service_history/2`: the verdicts this node holds about itself
+
+[`derivations/service-history-2.json`](../derivations/service-history-2.json) is `service_history/1`
+with a third member, `verdict_counts`. It is a new derivation with its own digest,
+`fd37c47a54e48cfdc730c1571c45547732799704fb4c0e581f6c05810f368ef0`; `service_history/1` and its
+digest are unchanged and still answered. The same frame, subject, coverage, pin and period policy
+(week, floor 5, complementary suppression) apply, and a node that serves `/2` serves no
+`standard_history/1` for the same reason. It is Standard History under the same switch,
+`share_standard_history`. Section numbers are the profile's (ISH §4.3, §5.3, as amended by
+action-state-group/agent-action-capsule#614).
+
+**What is counted.** A referee's signed verdict about one of this node's exchanges, delivered to it
+(`share_adjudications`, #163) and sealed on its own chain as an `adjudication_received` record
+(#102). The node counts what its log holds, not a list it keeps apart. A verdict counts once per
+(referee, pair of halves), in the week the first checkpoint that covers its record commits into
+(the same rule as the served counts), whether this node or the other party asked the referee. A
+verdict whose referee is one of the two nodes counts nowhere. A verdict about another node's
+exchanges is not counted. The deciding node's own admission reads the verdicts it asked for itself
+(`verdict_counts::fold`), which is a different set.
+
+**The four results** stay four separate counts, never added, in the unit `referee_verdicts`.
+`corroborated` here is the referee's finding that the two halves agree; it is not the label
+`corroborated` of ISH §7.3 (halves from distinct controllers). The unit tells them apart. A
+contradiction naming the other node reads as `corroborated` for this one, and a contradiction
+naming this node as `contradicted`. A verdict says nothing about this node's other or later
+answers, and "not adjudicated" is counted against no one.
+
+**The cells.** `verdict_counts` is `{"check": "referee_verdict", "signed_by": "checker",
+"policy": <policy digest>, "periods": [...]}` over the same closed weeks as `period_counts`. A
+period lists, for each of the four results in the order above, one cell per model hash (the
+`identity_hash` a verdict seals, `unknown` when it seals none, never the weights digest) and the
+result's total, `{"dimension": {"model_hash": ..., "result": ...}}` or `{"dimension": {"result":
+...}}`, each labelled `self_reported`. A cell under 5 is withheld, and complementary suppression
+applies within each result's table. Where two or more models are each withheld and the published
+total would give them away, the total is withheld too. `check` names the kind of check counted and
+`signed_by` says its result is signed by the checker, never by the node it concerns: a later audit
+result is another kind in the same member, counted separately.
+
+**Limits.** The counts are this node's own statement. The signature on each verdict was checked
+when the node sealed it. A node that does not seal a delivered verdict, or that drops one, shows a
+smaller count: omission is checked by asking the node by digest whether it holds a verdict (the
+referee's delivery), not from the counts. Nothing here scores or ranks a node.

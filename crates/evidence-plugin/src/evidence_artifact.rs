@@ -295,7 +295,9 @@ fn service_history_envelope(
         })
         .collect::<Result<_, Reason>>()?;
     let leaves = &view.index.leaves;
-    let counts = crate::service_history::period_counts(&cuts, &|i| {
+    let def = crate::service_history::definition_for(b.request.derivation.as_ref())
+        .ok_or(Reason::CapacityExceeded)?;
+    let counts = crate::service_history::period_counts_for(def, &cuts, &|i| {
         leaves
             .get(i as usize)
             .and_then(|l| l.facts.served.as_ref())
@@ -303,8 +305,30 @@ fn service_history_envelope(
     })?;
     let log_size = cuts.last().map_or(0, |c| c.leaves);
     let anchor = served.anchor_digest();
-    let artifact =
-        crate::service_history::artifact(&card, counts, &anchor, &served.record.log_id, log_size)?;
+    let artifact = if def.has_verdict_counts() {
+        // The verdicts this node holds about itself, in the leaves the anchor
+        // covers: each (referee, pair) once, in log order.
+        let held: Vec<_> = leaves
+            .iter()
+            .take(log_size as usize)
+            .map(|l| l.verdict.clone())
+            .collect();
+        let counted = crate::verdict_counts::counted_in_order(&held);
+        let verdicts = crate::service_history::verdict_counts(def, &cuts, &|i| {
+            counted.get(i as usize).cloned().flatten()
+        })?;
+        crate::service_history::artifact_with_verdicts(
+            def,
+            &card,
+            counts,
+            verdicts,
+            &anchor,
+            &served.record.log_id,
+            log_size,
+        )?
+    } else {
+        crate::service_history::artifact(&card, counts, &anchor, &served.record.log_id, log_size)?
+    };
     envelope::sign_with_profile(
         &profile_of(b.request_bytes),
         b.request_bytes,
@@ -509,7 +533,7 @@ pub fn check(
         }
         Some(Derivation::Digest(d))
             if d == crate::exchange_corroboration::DEFINITION_DIGEST
-                || d == crate::service_history::definition_digest() =>
+                || crate::service_history::is_derivation(env.derivation.as_ref()) =>
         {
             Some(d.as_str())
         }
@@ -564,7 +588,9 @@ pub fn check(
             let (served, listed) = card_chain(&art, key)?;
             (served, Vec::new(), listed)
         }
-        (Some(d), Subject::FullHistory) if d == crate::service_history::definition_digest() => {
+        (Some(_), Subject::FullHistory)
+            if crate::service_history::is_derivation(env.derivation.as_ref()) =>
+        {
             // A Standard History is answered only at a pinned anchor.
             if !matches!(request.coverage, Coverage::ExpectedPin(_)) {
                 return fail("a Service History is answered only under an expected_pin");
@@ -592,7 +618,8 @@ pub fn check(
                 .collect::<Result<_, CheckError>>()?;
             history = Some(
                 crate::service_history::check_artifact(
-                    crate::service_history::Definition::active(),
+                    crate::service_history::definition_for(env.derivation.as_ref())
+                        .ok_or_else(|| CheckError::Answer("not a Service History".into()))?,
                     &art,
                     &chain,
                     &served.digest,

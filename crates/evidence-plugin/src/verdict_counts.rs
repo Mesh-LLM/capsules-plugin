@@ -189,6 +189,82 @@ pub fn fold(records: &[Value], requested: &HashSet<PairKey>) -> BTreeMap<String,
     by_peer
 }
 
+/// A verdict this node holds about itself: a record of a verdict delivered to
+/// it (`adjudication_received`), counted in the History's `verdict_counts`.
+/// No "asked for by this node" gate applies: the judged node need not have
+/// asked (Steven u1598; ISH §5.3 rule 2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeldVerdict {
+    pub referee: String,
+    /// The pair of halves, sorted: a (referee, pair) counts once.
+    pub pair: [String; 2],
+    /// The model identity hash the verdict seals, `"unknown"` when it seals none.
+    pub model_hash: String,
+    /// One of [`BUCKETS`], as the verdict puts this node.
+    pub result: &'static str,
+}
+
+/// The verdict `record` holds about this node, when it is a received verdict
+/// naming a half this node holds. The judged node is the one whose half this
+/// node holds (`held_half_capsule_id`), so no node id is needed. Verdicts
+/// whose referee is one of the two nodes, or whose two nodes or halves are
+/// the same, count nowhere (as [`fold`]).
+pub fn held_about_self(record: &Value) -> Option<HeldVerdict> {
+    let attestation = record.pointer("/model_attestation/compute_attestation")?;
+    let block = attestation.get(ADJUDICATION_RECEIVED_BLOCK)?;
+    let text = |key: &str| {
+        block
+            .get(key)
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+    };
+    let (verdict, referee, held) = (
+        text("verdict")?,
+        text("referee_node_id")?,
+        text("held_half_capsule_id")?,
+    );
+    let [Some(a), Some(b)] = pair(block, "half_node_ids") else {
+        return None;
+    };
+    let [Some(half_a), Some(half_b)] = pair(block, "halves") else {
+        return None;
+    };
+    if a == b || half_a == half_b || referee == a || referee == b {
+        return None;
+    }
+    let me = if held == half_a {
+        a
+    } else if held == half_b {
+        b
+    } else {
+        return None;
+    };
+    let result = ruling_about(verdict, [a, b], me)?;
+    let mut halves = [half_a.to_string(), half_b.to_string()];
+    halves.sort();
+    Some(HeldVerdict {
+        referee: referee.to_string(),
+        pair: halves,
+        model_hash: text("model_hash").unwrap_or("unknown").to_string(),
+        result,
+    })
+}
+
+/// For leaves `0..n` in order, the `(model_hash, result)` each counts as in
+/// the History: the first verdict of each (referee, pair) counts and later
+/// ones count nowhere, so a prefix of the log gives the same cells at every
+/// later anchor.
+pub fn counted_in_order(held: &[Option<HeldVerdict>]) -> Vec<Option<(String, String)>> {
+    let mut seen: BTreeSet<(&str, &[String; 2])> = BTreeSet::new();
+    held.iter()
+        .map(|h| {
+            let h = h.as_ref()?;
+            seen.insert((h.referee.as_str(), &h.pair))
+                .then(|| (h.model_hash.clone(), h.result.to_string()))
+        })
+        .collect()
+}
+
 /// A two-string array member, or `[None, None]` when it is not exactly that.
 fn pair<'a>(block: &'a Value, key: &str) -> [Option<&'a str>; 2] {
     match block.get(key).and_then(Value::as_array).map(Vec::as_slice) {

@@ -651,9 +651,8 @@ fn answer_from(
     // A Service History is a run of whole closed periods at one pinned
     // anchor: any other subject or coverage is `policy_declined`, the same
     // for every requester, before anything is resolved (ISH §6.1 item 5).
-    let service_history = crate::service_history::is_derivation(req.derivation.as_ref());
-    let definition = crate::service_history::Definition::active();
-    if service_history && definition.declines_request(&req.subject, &req.coverage) {
+    let definition = crate::service_history::definition_for(req.derivation.as_ref());
+    if definition.is_some_and(|d| d.declines_request(&req.subject, &req.coverage)) {
         return Err(Reason::PolicyDeclined);
     }
     // 7. Resolve.
@@ -663,7 +662,7 @@ fn answer_from(
     };
     let at = serving_position(view, &anchor)?;
     // ... and only at an anchor on a period boundary (ISH §6.1 item 2).
-    if service_history && definition.declines_anchor(&index.chain[at].record.timestamp) {
+    if definition.is_some_and(|d| d.declines_anchor(&index.chain[at].record.timestamp)) {
         return Err(Reason::PolicyDeclined);
     }
 

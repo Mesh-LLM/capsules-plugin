@@ -143,6 +143,9 @@ pub struct Leaf {
     /// binds no digest, so `exchange_corroboration/1` has nothing to say of it.
     pub failed: bool,
     pub facts: LeafFacts,
+    /// A verdict this node holds about itself, delivered to it
+    /// (`verdict_counts::held_about_self`): what `service_history/2` counts.
+    pub verdict: Option<crate::verdict_counts::HeldVerdict>,
 }
 
 /// Test seam: a writer that acts between `refresh`'s read of the capsules
@@ -503,6 +506,7 @@ impl LedgerIndex {
             never_leaves: never_leaves(&record),
             failed: crate::evidence_panes::is_failed(&record),
             facts: leaf_facts(&record),
+            verdict: crate::verdict_counts::held_about_self(&record),
         });
         Ok(())
     }

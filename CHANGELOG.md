@@ -6,6 +6,10 @@
 
 - **The plugin moves to the checkpointed-local-log 0.6 stack (#300).** It now builds on agent-action-capsule 0.11.0, evidence-request 0.6.0, evidencebook 0.0.19, capsule-emit 0.0.13 and capsule-emit-artifact 0.0.4. A checkpoint this node signs carries the bare log id as the CWT `sub` (CLL -02), so every checkpoint, its anchor digest and the signatures over it differ from before; the golden answer fixtures and `vectors/no-complete-answer` are regenerated and nothing else in them changes. A witness must accept both `sub` forms before this node is deployed.
 
+### Added
+
+- **`service_history/2` counts the referee verdicts this node holds about itself (Mesh-LLM/capsules-plugin#289; Steven u1598).** A new definition document and digest (`derivations/service-history-2.json`); `service_history/1` is unchanged and still answered. The new `verdict_counts` member counts, per closed week and model hash, the four results the spec keeps apart (`corroborated`, `contradicted`, `inconclusive`, `not_comparable`) from the verdicts delivered to this node and sealed on its own chain, with the same floor of 5 and complementary suppression as the served counts. A verdict counts once per referee and pair of halves, whoever asked the referee (AAC spec ISH §5.3, action-state-group/agent-action-capsule#614). Shared under `share_standard_history`, like `/1`. See `docs/SERVICE-HISTORY.md`.
+
 ## 0.1.19
 
 ### Added

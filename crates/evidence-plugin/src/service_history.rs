@@ -90,6 +90,15 @@ pub use ish::{Counts, Cut};
 /// definition this node serves, and the one the digests below are of.
 pub const DEFINITION_DOCUMENT: &str = include_str!("../../../derivations/service-history-1.json");
 
+/// `service_history/2`: the same frame, periods and floor as `/1`, with the
+/// verdict counts member (ISH §4.3, §5.3; Mesh-LLM/capsules-plugin#289).
+pub const DEFINITION_DOCUMENT_2: &str = include_str!("../../../derivations/service-history-2.json");
+
+/// SHA-256 over the RFC 8785 bytes of [`DEFINITION_DOCUMENT_2`].
+#[cfg(test)]
+pub const DEFINITION_DIGEST_2: &str =
+    "fd37c47a54e48cfdc730c1571c45547732799704fb4c0e581f6c05810f368ef0";
+
 /// The token of the Standard History card this node never serves beside a
 /// Service History (ISH §6.1 item 8): that card counts over a window ending
 /// at any anchor, with no floor.
@@ -157,24 +166,52 @@ impl Definition {
     /// differs.
     pub(crate) fn active() -> &'static Definition {
         static ACTIVE: std::sync::OnceLock<Definition> = std::sync::OnceLock::new();
-        ACTIVE.get_or_init(|| {
-            #[allow(unused_mut)]
-            let mut document: Value =
-                serde_json::from_str(DEFINITION_DOCUMENT).expect("the definition file is JSON");
-            #[cfg(feature = "test-period-policy")]
-            {
-                let policy = &mut document["period_policy"];
-                if let Ok(epoch) = std::env::var("CAPSULES_TEST_PERIOD_EPOCH") {
-                    policy["epoch"] = serde_json::json!(epoch);
-                }
-                if let Ok(length) = std::env::var("CAPSULES_TEST_PERIOD_LENGTH_S") {
-                    let length: u64 = length.parse().expect("a whole number of seconds");
-                    policy["length_s"] = serde_json::json!(length);
-                    policy["min_length_s"] = serde_json::json!(length);
-                }
-            }
-            Definition::from_document(&document).expect("the definition file conforms")
-        })
+        ACTIVE.get_or_init(|| load(DEFINITION_DOCUMENT))
+    }
+
+    /// `service_history/2`, the definition that also carries verdict counts:
+    /// [`DEFINITION_DOCUMENT_2`] under the same test-only policy override as
+    /// [`Definition::active`].
+    pub(crate) fn active_2() -> &'static Definition {
+        static ACTIVE: std::sync::OnceLock<Definition> = std::sync::OnceLock::new();
+        ACTIVE.get_or_init(|| load(DEFINITION_DOCUMENT_2))
+    }
+
+    /// Whether this definition carries the verdict counts member.
+    pub(crate) fn has_verdict_counts(&self) -> bool {
+        self.0.has_verdict_counts()
+    }
+}
+
+fn load(text: &str) -> Definition {
+    #[allow(unused_mut)]
+    let mut document: Value = serde_json::from_str(text).expect("the definition file is JSON");
+    #[cfg(feature = "test-period-policy")]
+    {
+        let policy = &mut document["period_policy"];
+        if let Ok(epoch) = std::env::var("CAPSULES_TEST_PERIOD_EPOCH") {
+            policy["epoch"] = serde_json::json!(epoch);
+        }
+        if let Ok(length) = std::env::var("CAPSULES_TEST_PERIOD_LENGTH_S") {
+            let length: u64 = length.parse().expect("a whole number of seconds");
+            policy["length_s"] = serde_json::json!(length);
+            policy["min_length_s"] = serde_json::json!(length);
+        }
+    }
+    Definition::from_document(&document).expect("the definition file conforms")
+}
+
+/// The definition a request's derivation names: `service_history/1` or
+/// `/2`, by the digest of its definition document.
+pub(crate) fn definition_for(derivation: Option<&Derivation>) -> Option<&'static Definition> {
+    match derivation {
+        Some(Derivation::Digest(d)) if d == Definition::active().digest() => {
+            Some(Definition::active())
+        }
+        Some(Derivation::Digest(d)) if d == Definition::active_2().digest() => {
+            Some(Definition::active_2())
+        }
+        _ => None,
     }
 }
 
@@ -183,9 +220,15 @@ pub fn definition_digest() -> &'static str {
     Definition::active().digest()
 }
 
-/// Whether `derivation` names this one.
+/// The digest that names `service_history/2`.
+pub fn definition_digest_2() -> &'static str {
+    Definition::active_2().digest()
+}
+
+/// Whether `derivation` names a Service History this node serves: `/1` or
+/// `/2`.
 pub fn is_derivation(derivation: Option<&Derivation>) -> bool {
-    matches!(derivation, Some(Derivation::Digest(d)) if d == definition_digest())
+    definition_for(derivation).is_some()
 }
 
 #[cfg(test)]
@@ -209,11 +252,46 @@ pub fn next_boundary_after(t: i64) -> i64 {
 /// definition: see `agent_action_capsule::inference_history::period_counts`.
 /// Under `evidence-interop/0` the responder sends `policy_declined` for a
 /// `capacity_exceeded` too (`evidence_answer`).
+#[cfg(test)]
 pub(crate) fn period_counts(
     chain: &[Cut<'_>],
     model: &dyn Fn(u64) -> Option<String>,
 ) -> Result<Value, Reason> {
-    ish::period_counts(&Definition::active().0, chain, model).map_err(reason)
+    period_counts_for(Definition::active(), chain, model)
+}
+
+/// [`period_counts`] under `def`.
+pub(crate) fn period_counts_for(
+    def: &Definition,
+    chain: &[Cut<'_>],
+    model: &dyn Fn(u64) -> Option<String>,
+) -> Result<Value, Reason> {
+    ish::period_counts(&def.0, chain, model).map_err(reason)
+}
+
+/// The `verdict_counts` member under `def`: `verdict(i)` is the `(model_hash,
+/// result)` of the verdict the record at leaf `i` holds about this node. See
+/// `agent_action_capsule::inference_history::verdict_counts`.
+pub(crate) fn verdict_counts(
+    def: &Definition,
+    chain: &[Cut<'_>],
+    verdict: &dyn Fn(u64) -> Option<(String, String)>,
+) -> Result<Value, Reason> {
+    ish::verdict_counts(&def.0, chain, verdict).map_err(reason)
+}
+
+/// [`artifact_for`] for a definition that carries `verdict_counts`.
+pub(crate) fn artifact_with_verdicts(
+    def: &Definition,
+    card: &[u8],
+    counts: Value,
+    verdicts: Value,
+    anchor: &str,
+    stream: &str,
+    log_size: u64,
+) -> Result<Vec<u8>, Reason> {
+    ish::artifact_with_verdicts(&def.0, card, counts, verdicts, anchor, stream, log_size)
+        .map_err(reason)
 }
 
 /// The artifact's octets under this node's definition: `card` is the direct
@@ -342,6 +420,25 @@ pub fn render(
             };
             lines.push(format!(
                 "{} to {}: {what}: {value} (self_reported)",
+                period.from, period.to
+            ));
+        }
+    }
+    for period in counts.verdicts.iter().flatten() {
+        for cell in &period.cells {
+            let what = match &cell.model_hash {
+                Some(m) => format!("referee verdicts {}, model {m}", cell.result),
+                None => format!("referee verdicts {}, all models", cell.result),
+            };
+            let value = match &cell.value {
+                Ok(n) => n.to_string(),
+                Err(why) if why == "complementary" => {
+                    "withheld (another withheld count could be derived from it)".to_string()
+                }
+                Err(_) => format!("withheld (under {floor})"),
+            };
+            lines.push(format!(
+                "{} to {}: {what}: {value} (self_reported, held by this node, signed by the referee)",
                 period.from, period.to
             ));
         }
