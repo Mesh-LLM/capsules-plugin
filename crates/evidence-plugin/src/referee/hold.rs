@@ -386,19 +386,19 @@ pub fn handle_delivery(
     Ok(Ok(json!({"status": "received"})))
 }
 
-/// Whether a verdict about `halves` judges this node: one of the two is a
-/// record in this node's own ledger that it served, whoever asked the referee.
-/// A requester that asked about two other nodes' halves holds only their
-/// pushed halves, or its own requested ones, and is not judged.
-pub fn judges_this_node(ledger_dir: &Path, halves: &[&str; 2]) -> bool {
-    crate::evidence_panes::read_capsule_records(ledger_dir)
-        .iter()
-        .any(|r| {
-            r.get("capsule_id")
-                .and_then(Value::as_str)
-                .is_some_and(|id| halves.contains(&id))
+/// The half of a verdict about `halves` that judges this node: one of the two
+/// that is a record in this node's own ledger which it served, whoever asked
+/// the referee. `None` for a requester that asked about two other nodes'
+/// halves: it holds only their pushed halves, or its own requested ones, and
+/// is not judged.
+pub fn judged_half<'a>(ledger_dir: &Path, halves: &[&'a str; 2]) -> Option<&'a str> {
+    let own = crate::evidence_panes::read_capsule_records(ledger_dir);
+    halves.iter().copied().find(|half| {
+        own.iter().any(|r| {
+            r.get("capsule_id").and_then(Value::as_str) == Some(half)
                 && crate::evidence_panes::label_role(r) == "served"
         })
+    })
 }
 
 /// The model hash a held verdict seals, read from the held record itself.

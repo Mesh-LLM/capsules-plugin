@@ -754,7 +754,7 @@ mod tests {
     /// requested ones, and is not judged by the verdict.
     #[test]
     fn a_verdict_judges_this_node_only_when_one_half_is_its_own_served_record() {
-        use crate::referee::hold::judges_this_node;
+        use crate::referee::hold::judged_half;
         let dir = tempfile::tempdir().unwrap();
         let own = |id: &str, role: &str| {
             json!({"capsule_id": id, "model_attestation": {"compute_attestation": {
@@ -765,11 +765,17 @@ mod tests {
             .map(Value::to_string)
             .collect();
         std::fs::write(dir.path().join("capsules.jsonl"), lines.join("\n") + "\n").unwrap();
-        assert!(judges_this_node(dir.path(), &["served-half", "other"]));
-        assert!(judges_this_node(dir.path(), &["other", "served-half"]));
+        assert_eq!(
+            judged_half(dir.path(), &["served-half", "other"]),
+            Some("served-half")
+        );
+        assert_eq!(
+            judged_half(dir.path(), &["other", "served-half"]),
+            Some("served-half")
+        );
         // Asked for, not served; or not in this ledger at all (a pushed half).
-        assert!(!judges_this_node(dir.path(), &["asked-half", "other"]));
-        assert!(!judges_this_node(dir.path(), &["pushed-a", "pushed-b"]));
+        assert_eq!(judged_half(dir.path(), &["asked-half", "other"]), None);
+        assert_eq!(judged_half(dir.path(), &["pushed-a", "pushed-b"]), None);
     }
 
     /// The bridge seals a held verdict unmarked when this node's ledger holds
@@ -793,6 +799,49 @@ mod tests {
             .pointer("/model_attestation/compute_attestation/adjudication_received/held_as")
             .is_none());
         assert!(records.iter().filter_map(held_about_self).next().is_none());
+    }
+
+    /// Through the real seal stack: this node served one half of the pair and
+    /// is judged by the verdict whichever place it takes in the pair, and the
+    /// ruling is read about this node, not about the first half's node.
+    #[test]
+    fn a_held_verdict_about_a_served_half_is_sealed_marked_and_counted_about_this_node() {
+        use crate::capsule_emit::CapsuleState;
+        let dir = tempfile::tempdir().unwrap();
+        let state = CapsuleState::open(dir.path(), "node-under-test").unwrap();
+        let served = state
+            .emit_for_exchange(&crate::capsule_emit::tests::sample_exchange("party-1"))
+            .unwrap();
+        let mine = served.capsule["capsule_id"].as_str().unwrap().to_string();
+        assert_eq!(crate::evidence_panes::label_role(&served.capsule), "served");
+        for (position, id) in [(0usize, "1".repeat(64)), (1usize, "2".repeat(64))] {
+            let mut halves = ["other-half".to_string(), "other-half".to_string()];
+            halves[position] = mine.clone();
+            halves[1 - position] = format!("their-half-{position}");
+            // Node `me` is judged in the half named `mine`; the other node loses.
+            let nodes = if position == 0 {
+                ["me", "them"]
+            } else {
+                ["them", "me"]
+            };
+            let reply = json!({
+                "verdict": "contradicted:them", "verdict_capsule_id": id,
+                "referee_node_id": "ref", "halves": halves, "half_node_ids": nodes,
+                // What the door picks for a requester: the first half.
+                "held_half_capsule_id": halves[0], "received_from": "ref",
+                "received_at": "2026-09-28T15:01:00Z",
+            });
+            crate::record_push_bridge::seal_received_verdict(&state, &reply).unwrap();
+        }
+        let records = crate::evidence_panes::read_capsule_records(state.ledger_dir());
+        let counted: Vec<_> = records.iter().filter_map(held_about_self).collect();
+        assert_eq!(counted.len(), 2);
+        // `them` was contradicted, so this node's own half is corroborated, in
+        // both positions of the pair.
+        assert!(
+            counted.iter().all(|h| h.result == CORROBORATED),
+            "{counted:?}"
+        );
     }
 
     #[test]
