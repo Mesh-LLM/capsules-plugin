@@ -953,6 +953,7 @@ fn received(i: usize, verdict: &str, model_hash: &str) -> Value {
             "halves": [format!("half-{i}-a"), format!("half-{i}-b")],
             "half_node_ids": ["node-a", "node-z"],
             "held_half_capsule_id": format!("half-{i}-a"),
+            "held_as": "judged",
             "model_hash": model_hash,
             "received_at": "2026-01-14T07:00:00Z",
         }}},
@@ -1176,4 +1177,36 @@ fn verdict_counts_and_the_ask_by_digest_follow_share_standard_history() {
             other => panic!("an unsigned stranger must be refused when sharing is off: {other:?}"),
         }
     }
+}
+
+#[test]
+fn only_a_verdict_judging_this_node_counts_not_one_its_requester_role_holds() {
+    use crate::verdict_counts::held_about_self;
+    // A requester that asked a referee about two other nodes' halves holds the
+    // verdict without `held_as: judged`: it is about them, not about this node.
+    let mut asked = received(0, "contradicted:node-a", "h1");
+    asked["model_attestation"]["compute_attestation"]["adjudication_received"]
+        .as_object_mut()
+        .unwrap()
+        .remove("held_as");
+    assert_eq!(held_about_self(&asked), None);
+    assert!(held_about_self(&received(0, "contradicted:node-a", "h1")).is_some());
+}
+
+#[test]
+fn an_entry_repeated_does_not_count_as_two_records_held() {
+    use crate::verdict_held::request_for;
+    let (dir, cps) = node_with_verdicts();
+    let request = request_for(&verdict_id(0), &cps[3].anchor());
+    let wire = answered(ask(dir.path(), &request));
+    let mut art = artifact_of(&wire);
+    let entry = art["entries"][0].clone();
+    art.get_mut("entries")
+        .unwrap()
+        .as_array_mut()
+        .unwrap()
+        .push(entry);
+    let doubled = resigned(&request, &art, Vec::new());
+    let v = verified(&request, &doubled);
+    assert_eq!(v["state"], json!("not_evidence"), "{v}");
 }

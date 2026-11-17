@@ -326,7 +326,7 @@ fn service_history_envelope(
         let held: Vec<_> = leaves
             .iter()
             .take(log_size as usize)
-            .map(|l| l.verdict.clone())
+            .map(|l| l.verdict.clone().filter(|_| !l.never_leaves))
             .collect();
         let counted = crate::verdict_counts::counted_in_order(&held);
         let verdicts = crate::service_history::verdict_counts(def, &cuts, &|i| {

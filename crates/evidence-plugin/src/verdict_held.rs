@@ -70,11 +70,15 @@ impl resolve::Responder for VerdictView<'_, '_> {
     }
 }
 
-/// Whether `leaf` is a record of this node holding the verdict `id`.
-fn holds(leaf: &crate::evidence_log::Leaf, id: &str) -> bool {
-    leaf.verdict
-        .as_ref()
-        .is_some_and(|v| v.verdict_capsule_id == id)
+/// Whether `leaf` is a record of this node holding the verdict `id`. A record
+/// that never leaves this node is in no answer's matched set, so it holds
+/// nothing for a requester (evidencebook#206 row 4).
+pub(crate) fn holds(leaf: &crate::evidence_log::Leaf, id: &str) -> bool {
+    !leaf.never_leaves
+        && leaf
+            .verdict
+            .as_ref()
+            .is_some_and(|v| v.verdict_capsule_id == id)
 }
 
 /// The leaf indices holding the verdict the subject names, committed under
@@ -169,6 +173,9 @@ pub(crate) fn check_entries(
             .ok_or("an entry's inclusion proof is malformed")?;
         let leaf = crate::evidence_artifact::cll_proofs::inclusion_leaf(&proof)
             .ok_or("an entry's inclusion proof is malformed")?;
+        if leaves.contains(&leaf) {
+            return Err("an entry repeats a record already listed");
+        }
         let record_bytes: [u8; 32] = hex::decode(record)
             .ok()
             .and_then(|b| b.try_into().ok())

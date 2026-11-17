@@ -207,13 +207,20 @@ pub struct HeldVerdict {
 }
 
 /// The verdict `record` holds about this node, when it is a received verdict
-/// naming a half this node holds. The judged node is the one whose half this
-/// node holds (`held_half_capsule_id`), so no node id is needed. Verdicts
+/// marked `held_as: judged` (delivered for this node's own served record; a
+/// requester that asked about two other nodes' halves holds the verdict
+/// without that mark and it is not about it). The judged node is the one whose
+/// half this node holds (`held_half_capsule_id`), so no node id is needed. Verdicts
 /// whose referee is one of the two nodes, or whose two nodes or halves are
 /// the same, count nowhere (as [`fold`]).
 pub fn held_about_self(record: &Value) -> Option<HeldVerdict> {
     let attestation = record.pointer("/model_attestation/compute_attestation")?;
     let block = attestation.get(ADJUDICATION_RECEIVED_BLOCK)?;
+    if block.get("held_as").and_then(Value::as_str)
+        != Some(crate::producer::capsule::HELD_AS_JUDGED)
+    {
+        return None;
+    }
     let text = |key: &str| {
         block
             .get(key)

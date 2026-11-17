@@ -432,11 +432,20 @@ pub(crate) fn seal_received_verdict(
         twin_bracket_id: text("twin_bracket_id"),
         model_hash: model_hash.as_deref(),
     };
-    capsules.emit_adjudication_received(
+    // The verdict judges this node when it was delivered for this node's own
+    // served record (`hold_key` "own"), not to a requester that asked about
+    // two other nodes' halves ("pair").
+    let judged = held
+        .get("hold_key")
+        .and_then(|k| k.get(0))
+        .and_then(|k| k.as_str())
+        == Some("own");
+    capsules.emit_adjudication_received_as(
         &facts,
         text("held_half_capsule_id").unwrap_or(halves[0]),
         text("received_from").unwrap_or_default(),
         text("received_at").unwrap_or_default(),
+        judged,
     )?;
     Ok(())
 }

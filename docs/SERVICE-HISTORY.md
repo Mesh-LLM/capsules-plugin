@@ -204,7 +204,7 @@ nothing else (never the ruling, the referee, a record body or who asked), the sa
 requester; the result's `verification` reads `artifact` with `held` the number of records. Not
 held: the signed `no_such_subject` refusal. An asker holding the delivery sets that refusal beside
 it: the node signed that it holds nothing for a verdict it was sent. A delivery shows the verdict
-was sent, not that it arrived, so what follows is the asker's to judge. It is answered under
+was sent, not that it arrived, so what follows is the asker's to judge. A "held" answer proves the record's digest is in the log under the anchor, not that the record carries that verdict: the entry names no record body, so a node could point at an unrelated record. It is not evidence the node holds the verdict, and an asker who needs more asks for that record under the ordinary record ask and its own policy. The check that matters is the "not held" answer. It is answered under
 `share_standard_history`, like the counts.
 
 **Limits.** The counts are this node's own statement. The signature on each verdict was checked
