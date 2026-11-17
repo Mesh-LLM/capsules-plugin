@@ -199,7 +199,6 @@ fn received_reply(held: &Value) -> Value {
     let mut adjudication = held.as_object().cloned().unwrap_or_default();
     adjudication.remove("verdict_capsule");
     adjudication.remove("hold_key");
-    adjudication.remove(JUDGES_THIS_NODE);
     json!({"status": "received", "adjudication": adjudication})
 }
 
@@ -302,16 +301,6 @@ pub fn hold_delivered_verdict(
     let mut held = facts.to_map();
     held.insert("held_half_capsule_id".into(), json!(held_half));
     held.insert("hold_key".into(), key);
-    // Whether the verdict judges this node: one of its two halves is a record
-    // this node itself served, whoever asked the referee. Kept in the held
-    // line for the record sealed from it, never in the reply.
-    let self_id = peer_id_for_key_in(node.peer_keys, node.own_key_id);
-    let judges = self_id.is_some()
-        && facts.halves.iter().any(|h| {
-            own.get(h)
-                .is_some_and(|r| served_by(r) == self_id.as_deref())
-        });
-    held.insert(JUDGES_THIS_NODE.into(), json!(judges));
     held.insert("received_from".into(), json!(sender));
     held.insert("received_at".into(), json!(now));
     held.insert("verdict_capsule".into(), capsule.clone());
@@ -397,20 +386,19 @@ pub fn handle_delivery(
     Ok(Ok(json!({"status": "received"})))
 }
 
-/// The member of a held line saying the verdict judges this node's own served
-/// record (`held_judges_this_node`).
-const JUDGES_THIS_NODE: &str = "judges_this_node";
-
-/// Whether the held verdict judges this node's own served record, read from
-/// the held line (`false` for a line held before this was recorded).
-pub fn held_judges_this_node(ledger_dir: &Path, verdict_capsule_id: &str) -> bool {
-    json_lines(&ledger_dir.join(RECEIVED_ADJUDICATIONS_FILENAME))
-        .into_iter()
-        .find(|held| {
-            held.get("verdict_capsule_id").and_then(Value::as_str) == Some(verdict_capsule_id)
+/// Whether a verdict about `halves` judges this node: one of the two is a
+/// record in this node's own ledger that it served, whoever asked the referee.
+/// A requester that asked about two other nodes' halves holds only their
+/// pushed halves, or its own requested ones, and is not judged.
+pub fn judges_this_node(ledger_dir: &Path, halves: &[&str; 2]) -> bool {
+    crate::evidence_panes::read_capsule_records(ledger_dir)
+        .iter()
+        .any(|r| {
+            r.get("capsule_id")
+                .and_then(Value::as_str)
+                .is_some_and(|id| halves.contains(&id))
+                && crate::evidence_panes::label_role(r) == "served"
         })
-        .and_then(|held| held.get(JUDGES_THIS_NODE).and_then(Value::as_bool))
-        .unwrap_or(false)
 }
 
 /// The model hash a held verdict seals, read from the held record itself.

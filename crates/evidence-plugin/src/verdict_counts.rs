@@ -748,50 +748,51 @@ mod tests {
         assert_eq!(b[0].bucket, NOT_COMPARABLE);
     }
 
-    /// The record sealed from a held verdict is marked `judged` only when the
-    /// verdict judges this node's own served record, as the held line says:
-    /// the reply the bridge seals from carries no `hold_key`, so the line is
-    /// where the fact is read from.
+    /// A verdict judges this node when one of its halves is a record this node
+    /// itself served, whoever asked the referee: a requester that asked about
+    /// two other nodes' halves holds only their pushed halves or its own
+    /// requested ones, and is not judged by the verdict.
     #[test]
-    fn only_a_held_verdict_that_judges_this_node_is_sealed_as_judged() {
+    fn a_verdict_judges_this_node_only_when_one_half_is_its_own_served_record() {
+        use crate::referee::hold::judges_this_node;
+        let dir = tempfile::tempdir().unwrap();
+        let own = |id: &str, role: &str| {
+            json!({"capsule_id": id, "model_attestation": {"compute_attestation": {
+                "x-mesh-poc-v1": {"role": role}}}})
+        };
+        let lines: Vec<String> = [own("served-half", "served"), own("asked-half", "requested")]
+            .iter()
+            .map(Value::to_string)
+            .collect();
+        std::fs::write(dir.path().join("capsules.jsonl"), lines.join("\n") + "\n").unwrap();
+        assert!(judges_this_node(dir.path(), &["served-half", "other"]));
+        assert!(judges_this_node(dir.path(), &["other", "served-half"]));
+        // Asked for, not served; or not in this ledger at all (a pushed half).
+        assert!(!judges_this_node(dir.path(), &["asked-half", "other"]));
+        assert!(!judges_this_node(dir.path(), &["pushed-a", "pushed-b"]));
+    }
+
+    /// The bridge seals a held verdict unmarked when this node's ledger holds
+    /// no served half of it: such a verdict counts nowhere in the History.
+    #[test]
+    fn a_held_verdict_that_judges_no_served_half_is_sealed_unmarked_and_uncounted() {
         use crate::capsule_emit::CapsuleState;
         let dir = tempfile::tempdir().unwrap();
         let state = CapsuleState::open(dir.path(), "node-under-test").unwrap();
-        let held = |id: &str, judges: bool| {
-            json!({
-                "verdict": "contradicted:a", "verdict_capsule_id": id, "referee_node_id": "ref",
-                "halves": [format!("ha-{id}"), format!("hb-{id}")], "half_node_ids": ["a", "b"],
-                "held_half_capsule_id": format!("ha-{id}"), "received_from": "ref",
-                "received_at": "2026-09-28T15:01:00Z",
-                "hold_key": ["pair", "ref", "x"],
-                "judges_this_node": judges,
-            })
-        };
-        let (mine, other) = ("1".repeat(64), "2".repeat(64));
-        let mut lines = String::new();
-        for line in [held(&mine, true), held(&other, false)] {
-            lines += &format!("{line}\n");
-        }
-        std::fs::write(
-            state
-                .ledger_dir()
-                .join(crate::referee::hold::RECEIVED_ADJUDICATIONS_FILENAME),
-            lines,
-        )
-        .unwrap();
-        for id in [&mine, &other] {
-            // The reply the bridge is handed: no hold_key, no judges member.
-            let mut reply = held(id, true);
-            let reply = reply.as_object_mut().unwrap();
-            reply.remove("hold_key");
-            reply.remove("judges_this_node");
-            crate::record_push_bridge::seal_received_verdict(&state, &Value::Object(reply.clone()))
-                .unwrap();
-        }
+        let id = "1".repeat(64);
+        let reply = json!({
+            "verdict": "contradicted:a", "verdict_capsule_id": id, "referee_node_id": "ref",
+            "halves": ["ha", "hb"], "half_node_ids": ["a", "b"],
+            "held_half_capsule_id": "ha", "received_from": "ref",
+            "received_at": "2026-09-28T15:01:00Z",
+        });
+        crate::record_push_bridge::seal_received_verdict(&state, &reply).unwrap();
         let records = crate::evidence_panes::read_capsule_records(state.ledger_dir());
-        let counted: Vec<_> = records.iter().filter_map(held_about_self).collect();
-        assert_eq!(counted.len(), 1);
-        assert_eq!(counted[0].verdict_capsule_id, mine);
+        assert_eq!(records.len(), 1);
+        assert!(records[0]
+            .pointer("/model_attestation/compute_attestation/adjudication_received/held_as")
+            .is_none());
+        assert!(records.iter().filter_map(held_about_self).next().is_none());
     }
 
     #[test]

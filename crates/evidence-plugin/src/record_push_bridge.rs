@@ -434,9 +434,8 @@ pub(crate) fn seal_received_verdict(
     };
     // The verdict judges this node when one of its halves is this node's own
     // served record, whoever asked the referee; not when a requester asked
-    // about two other nodes' halves. Read from the held line, which the reply
-    // given here does not carry.
-    let judged = crate::referee::hold::held_judges_this_node(capsules.ledger_dir(), id);
+    // about two other nodes' halves.
+    let judged = crate::referee::hold::judges_this_node(capsules.ledger_dir(), &halves);
     capsules.emit_adjudication_received_as(
         &facts,
         text("held_half_capsule_id").unwrap_or(halves[0]),
