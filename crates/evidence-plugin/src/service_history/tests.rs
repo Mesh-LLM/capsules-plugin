@@ -1196,9 +1196,17 @@ fn only_a_verdict_judging_this_node_counts_not_one_its_requester_role_holds() {
 #[test]
 fn an_entry_repeated_does_not_count_as_two_records_held() {
     use crate::verdict_held::request_for;
+    use evidence_request::envelope::{parse_reply, Binding, Reply};
     let (dir, cps) = node_with_verdicts();
     let request = request_for(&verdict_id(0), &cps[3].anchor());
     let wire = answered(ask(dir.path(), &request));
+    // The one honest entry verifies; the same signed answer with the entry
+    // listed twice does not, with the anchor checkpoint carried as before.
+    assert_eq!(verified(&request, &wire)["held"], json!(1));
+    let Ok(Reply::Envelope(env)) = parse_reply(&serde_json::to_vec(&wire).unwrap(), Binding::Json)
+    else {
+        panic!("not an envelope");
+    };
     let mut art = artifact_of(&wire);
     let entry = art["entries"][0].clone();
     art.get_mut("entries")
@@ -1206,7 +1214,21 @@ fn an_entry_repeated_does_not_count_as_two_records_held() {
         .as_array_mut()
         .unwrap()
         .push(entry);
-    let doubled = resigned(&request, &art, Vec::new());
+    let material: Vec<(String, Vec<u8>)> = env
+        .verification
+        .iter()
+        .zip(&env.verification_content)
+        .map(|(entry, bytes)| (entry.kind.clone(), bytes.clone()))
+        .collect();
+    let doubled = resigned(&request, &art, material);
     let v = verified(&request, &doubled);
     assert_eq!(v["state"], json!("not_evidence"), "{v}");
+    assert!(
+        v["reason"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("repeats a record")
+            || v.to_string().contains("repeats a record"),
+        "{v}"
+    );
 }

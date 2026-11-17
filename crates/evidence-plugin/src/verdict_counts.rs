@@ -748,6 +748,52 @@ mod tests {
         assert_eq!(b[0].bucket, NOT_COMPARABLE);
     }
 
+    /// The record sealed from a held verdict is marked `judged` only when the
+    /// verdict judges this node's own served record, as the held line says:
+    /// the reply the bridge seals from carries no `hold_key`, so the line is
+    /// where the fact is read from.
+    #[test]
+    fn only_a_held_verdict_that_judges_this_node_is_sealed_as_judged() {
+        use crate::capsule_emit::CapsuleState;
+        let dir = tempfile::tempdir().unwrap();
+        let state = CapsuleState::open(dir.path(), "node-under-test").unwrap();
+        let held = |id: &str, judges: bool| {
+            json!({
+                "verdict": "contradicted:a", "verdict_capsule_id": id, "referee_node_id": "ref",
+                "halves": [format!("ha-{id}"), format!("hb-{id}")], "half_node_ids": ["a", "b"],
+                "held_half_capsule_id": format!("ha-{id}"), "received_from": "ref",
+                "received_at": "2026-09-28T15:01:00Z",
+                "hold_key": ["pair", "ref", "x"],
+                "judges_this_node": judges,
+            })
+        };
+        let (mine, other) = ("1".repeat(64), "2".repeat(64));
+        let mut lines = String::new();
+        for line in [held(&mine, true), held(&other, false)] {
+            lines += &format!("{line}\n");
+        }
+        std::fs::write(
+            state
+                .ledger_dir()
+                .join(crate::referee::hold::RECEIVED_ADJUDICATIONS_FILENAME),
+            lines,
+        )
+        .unwrap();
+        for id in [&mine, &other] {
+            // The reply the bridge is handed: no hold_key, no judges member.
+            let mut reply = held(id, true);
+            let reply = reply.as_object_mut().unwrap();
+            reply.remove("hold_key");
+            reply.remove("judges_this_node");
+            crate::record_push_bridge::seal_received_verdict(&state, &Value::Object(reply.clone()))
+                .unwrap();
+        }
+        let records = crate::evidence_panes::read_capsule_records(state.ledger_dir());
+        let counted: Vec<_> = records.iter().filter_map(held_about_self).collect();
+        assert_eq!(counted.len(), 1);
+        assert_eq!(counted[0].verdict_capsule_id, mine);
+    }
+
     #[test]
     fn rows_get_all_four_counts_matched_on_any_of_their_ids() {
         let dir = tempfile::tempdir().unwrap();
