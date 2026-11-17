@@ -97,7 +97,7 @@ pub const DEFINITION_DOCUMENT_2: &str = include_str!("../../../derivations/servi
 /// SHA-256 over the RFC 8785 bytes of [`DEFINITION_DOCUMENT_2`].
 #[cfg(test)]
 pub const DEFINITION_DIGEST_2: &str =
-    "fd37c47a54e48cfdc730c1571c45547732799704fb4c0e581f6c05810f368ef0";
+    "0f6cee6c5c2f57e7682137e4b40a9dcfad0f8db5a69d5bebaf99995936ea96f2";
 
 /// The token of the Standard History card this node never serves beside a
 /// Service History (ISH §6.1 item 8): that card counts over a window ending

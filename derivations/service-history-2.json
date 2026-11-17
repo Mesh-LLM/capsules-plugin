@@ -69,7 +69,14 @@
           "where": "periods[].cells[]",
           "unit": "referee_verdicts"
         }
-      ]
+      ],
+      "claims": {
+        "asserted_by": "provider",
+        "label": "provider states",
+        "where": [
+          "periods[].cells[].dimension.model_hash"
+        ]
+      }
     }
   ],
   "reads": [

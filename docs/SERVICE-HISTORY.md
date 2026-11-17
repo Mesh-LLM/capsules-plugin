@@ -157,7 +157,7 @@ verifier holding one says it did not check it.
 
 [`derivations/service-history-2.json`](../derivations/service-history-2.json) is `service_history/1`
 with a third member, `verdict_counts`. It is a new derivation with its own digest,
-`fd37c47a54e48cfdc730c1571c45547732799704fb4c0e581f6c05810f368ef0`; `service_history/1` and its
+`0f6cee6c5c2f57e7682137e4b40a9dcfad0f8db5a69d5bebaf99995936ea96f2`; `service_history/1` and its
 digest are unchanged and still answered. The same frame, subject, coverage, pin and period policy
 (week, floor 5, complementary suppression) apply, and a node that serves `/2` serves no
 `standard_history/1` for the same reason. It is Standard History under the same switch,
