@@ -638,6 +638,9 @@ fn answer_from(
     if crate::exchange_corroboration::is_derivation(req.derivation.as_ref()) {
         return corroboration_answer(req, request_bytes, principal, responder, view);
     }
+    if crate::verdict_held::is_derivation(req.derivation.as_ref()) {
+        return verdict_held_answer(req, request_bytes, responder, view);
+    }
     if crate::bundle_answer::is_derivation(req.derivation.as_ref()) {
         return bundle_answer(
             req,
@@ -651,9 +654,8 @@ fn answer_from(
     // A Service History is a run of whole closed periods at one pinned
     // anchor: any other subject or coverage is `policy_declined`, the same
     // for every requester, before anything is resolved (ISH §6.1 item 5).
-    let service_history = crate::service_history::is_derivation(req.derivation.as_ref());
-    let definition = crate::service_history::Definition::active();
-    if service_history && definition.declines_request(&req.subject, &req.coverage) {
+    let definition = crate::service_history::definition_for(req.derivation.as_ref());
+    if definition.is_some_and(|d| d.declines_request(&req.subject, &req.coverage)) {
         return Err(Reason::PolicyDeclined);
     }
     // 7. Resolve.
@@ -663,7 +665,7 @@ fn answer_from(
     };
     let at = serving_position(view, &anchor)?;
     // ... and only at an anchor on a period boundary (ISH §6.1 item 2).
-    if service_history && definition.declines_anchor(&index.chain[at].record.timestamp) {
+    if definition.is_some_and(|d| d.declines_anchor(&index.chain[at].record.timestamp)) {
         return Err(Reason::PolicyDeclined);
     }
 
@@ -781,6 +783,41 @@ fn corroboration_answer(
             return Err(Reason::NotAuthorized);
         }
     }
+    if records.len() as u64 > MAX_ANSWER_RECORDS {
+        return Err(Reason::CapacityExceeded);
+    }
+    evidence_artifact::build(
+        &Build {
+            request: req,
+            request_bytes,
+            resolved: &anchor,
+            at,
+            records: &records,
+            signing_key: responder.signing_key,
+            issued_at: responder.now,
+        },
+        view,
+    )
+}
+
+/// Steps 7 to 10 for `verdict_held/1`: resolved against the verdicts this
+/// node holds only, answered whole or refused whole (`no_such_subject` when
+/// none is held), under `share_standard_history` like the counts it checks.
+fn verdict_held_answer(
+    req: &Request,
+    request_bytes: &[u8],
+    responder: &Responder<'_>,
+    view: &LogView<'_>,
+) -> Result<Value, Reason> {
+    use crate::verdict_held as held;
+    let index = view.index;
+    let anchor = match resolve::resolve(req, &held::VerdictView(view)) {
+        Resolution::Artifact(anchor @ ResolvedAnchor::Anchor(_)) => anchor,
+        Resolution::Artifact(ResolvedAnchor::ExchangeHalf(_)) => return Err(Reason::NoSuchSubject),
+        Resolution::Refuse(reason) => return Err(reason),
+    };
+    let at = serving_position(view, &anchor)?;
+    let records = held::matching_records(req, &index.chain[at].record, view);
     if records.len() as u64 > MAX_ANSWER_RECORDS {
         return Err(Reason::CapacityExceeded);
     }
@@ -1123,6 +1160,16 @@ pub fn verify_response(
     let Ok(req) = request::parse_json(sent) else {
         return not_evidence("the request sent is not a -00 request".into());
     };
+    if crate::verdict_held::is_derivation(req.derivation.as_ref()) {
+        return match crate::evidence_artifact::check(sent, &req, response, key, &|ts_url: &str| {
+            configured_witness_key(witness_keys, ts_url)
+        }) {
+            Ok(checked) => {
+                json!({"state": "artifact", "anchor": checked.anchor, "held": checked.held.len()})
+            }
+            Err(e) => not_evidence(e.to_string()),
+        };
+    }
     if crate::exchange_corroboration::is_derivation(req.derivation.as_ref()) {
         return match crate::exchange_corroboration::verify(sent, response, key, witness_keys) {
             crate::exchange_corroboration::Verified::Halves { anchor, halves } => {

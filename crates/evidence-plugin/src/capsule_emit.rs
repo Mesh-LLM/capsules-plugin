@@ -2029,6 +2029,7 @@ impl CapsuleState {
     /// Seal this node's own record of a verdict delivered to it (see
     /// `crate::producer::capsule::seal_adjudication_received_record`). A
     /// verdict already recorded seals nothing (`Ok(None)`).
+    #[cfg(test)]
     pub fn emit_adjudication_received(
         &self,
         facts: &VerdictFacts,
@@ -2036,15 +2037,35 @@ impl CapsuleState {
         received_from: &str,
         received_at: &str,
     ) -> anyhow::Result<Option<EmittedCapsule>> {
+        self.emit_adjudication_received_as(
+            facts,
+            held_half_capsule_id,
+            received_from,
+            received_at,
+            false,
+        )
+    }
+
+    /// [`Self::emit_adjudication_received`], marking a verdict about this
+    /// node's own served record `judged` (counted in its Service History).
+    pub fn emit_adjudication_received_as(
+        &self,
+        facts: &VerdictFacts,
+        held_half_capsule_id: &str,
+        received_from: &str,
+        received_at: &str,
+        judged: bool,
+    ) -> anyhow::Result<Option<EmittedCapsule>> {
         self.emit_adjudication_record(
             crate::producer::capsule::ADJUDICATION_RECEIVED_BLOCK,
             facts,
             |head, key| {
-                crate::producer::capsule::seal_adjudication_received_record(
+                crate::producer::capsule::seal_adjudication_received_record_as(
                     facts,
                     held_half_capsule_id,
                     received_from,
                     received_at,
+                    judged,
                     head,
                     key,
                 )

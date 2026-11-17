@@ -189,6 +189,92 @@ pub fn fold(records: &[Value], requested: &HashSet<PairKey>) -> BTreeMap<String,
     by_peer
 }
 
+/// A verdict this node holds about itself: a record of a verdict delivered to
+/// it (`adjudication_received`), counted in the History's `verdict_counts`.
+/// No "asked for by this node" gate applies: the judged node need not have
+/// asked (Steven u1598; ISH §5.3 rule 2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeldVerdict {
+    /// The referee-signed verdict's capsule id: what `verdict_held/1` is asked by.
+    pub verdict_capsule_id: String,
+    pub referee: String,
+    /// The pair of halves, sorted: a (referee, pair) counts once.
+    pub pair: [String; 2],
+    /// The model identity hash the verdict seals, `"unknown"` when it seals none.
+    pub model_hash: String,
+    /// One of [`BUCKETS`], as the verdict puts this node.
+    pub result: &'static str,
+}
+
+/// The verdict `record` holds about this node, when it is a received verdict
+/// marked `held_as: judged` (delivered for this node's own served record; a
+/// requester that asked about two other nodes' halves holds the verdict
+/// without that mark and it is not about it). The judged node is the one whose
+/// half this node holds (`held_half_capsule_id`), so no node id is needed. Verdicts
+/// whose referee is one of the two nodes, or whose two nodes or halves are
+/// the same, count nowhere (as [`fold`]).
+pub fn held_about_self(record: &Value) -> Option<HeldVerdict> {
+    let attestation = record.pointer("/model_attestation/compute_attestation")?;
+    let block = attestation.get(ADJUDICATION_RECEIVED_BLOCK)?;
+    if block.get("held_as").and_then(Value::as_str)
+        != Some(crate::producer::capsule::HELD_AS_JUDGED)
+    {
+        return None;
+    }
+    let text = |key: &str| {
+        block
+            .get(key)
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+    };
+    let (verdict, referee, held) = (
+        text("verdict")?,
+        text("referee_node_id")?,
+        text("held_half_capsule_id")?,
+    );
+    let [Some(a), Some(b)] = pair(block, "half_node_ids") else {
+        return None;
+    };
+    let [Some(half_a), Some(half_b)] = pair(block, "halves") else {
+        return None;
+    };
+    if a == b || half_a == half_b || referee == a || referee == b {
+        return None;
+    }
+    let me = if held == half_a {
+        a
+    } else if held == half_b {
+        b
+    } else {
+        return None;
+    };
+    let result = ruling_about(verdict, [a, b], me)?;
+    let mut halves = [half_a.to_string(), half_b.to_string()];
+    halves.sort();
+    Some(HeldVerdict {
+        verdict_capsule_id: text("verdict_capsule_id")?.to_string(),
+        referee: referee.to_string(),
+        pair: halves,
+        model_hash: text("model_hash").unwrap_or("unknown").to_string(),
+        result,
+    })
+}
+
+/// For leaves `0..n` in order, the `(model_hash, result)` each counts as in
+/// the History: the first verdict of each (referee, pair) counts and later
+/// ones count nowhere, so a prefix of the log gives the same cells at every
+/// later anchor.
+pub fn counted_in_order(held: &[Option<HeldVerdict>]) -> Vec<Option<(String, String)>> {
+    let mut seen: BTreeSet<(&str, &[String; 2])> = BTreeSet::new();
+    held.iter()
+        .map(|h| {
+            let h = h.as_ref()?;
+            seen.insert((h.referee.as_str(), &h.pair))
+                .then(|| (h.model_hash.clone(), h.result.to_string()))
+        })
+        .collect()
+}
+
 /// A two-string array member, or `[None, None]` when it is not exactly that.
 fn pair<'a>(block: &'a Value, key: &str) -> [Option<&'a str>; 2] {
     match block.get(key).and_then(Value::as_array).map(Vec::as_slice) {
@@ -660,6 +746,102 @@ mod tests {
         let b = &fold(&records, &HashSet::new())["b"];
         assert_eq!(b.len(), 1);
         assert_eq!(b[0].bucket, NOT_COMPARABLE);
+    }
+
+    /// A verdict judges this node when one of its halves is a record this node
+    /// itself served, whoever asked the referee: a requester that asked about
+    /// two other nodes' halves holds only their pushed halves or its own
+    /// requested ones, and is not judged by the verdict.
+    #[test]
+    fn a_verdict_judges_this_node_only_when_one_half_is_its_own_served_record() {
+        use crate::referee::hold::judged_half;
+        let dir = tempfile::tempdir().unwrap();
+        let own = |id: &str, role: &str| {
+            json!({"capsule_id": id, "model_attestation": {"compute_attestation": {
+                "x-mesh-poc-v1": {"role": role}}}})
+        };
+        let lines: Vec<String> = [own("served-half", "served"), own("asked-half", "requested")]
+            .iter()
+            .map(Value::to_string)
+            .collect();
+        std::fs::write(dir.path().join("capsules.jsonl"), lines.join("\n") + "\n").unwrap();
+        assert_eq!(
+            judged_half(dir.path(), &["served-half", "other"]),
+            Some("served-half")
+        );
+        assert_eq!(
+            judged_half(dir.path(), &["other", "served-half"]),
+            Some("served-half")
+        );
+        // Asked for, not served; or not in this ledger at all (a pushed half).
+        assert_eq!(judged_half(dir.path(), &["asked-half", "other"]), None);
+        assert_eq!(judged_half(dir.path(), &["pushed-a", "pushed-b"]), None);
+    }
+
+    /// The bridge seals a held verdict unmarked when this node's ledger holds
+    /// no served half of it: such a verdict counts nowhere in the History.
+    #[test]
+    fn a_held_verdict_that_judges_no_served_half_is_sealed_unmarked_and_uncounted() {
+        use crate::capsule_emit::CapsuleState;
+        let dir = tempfile::tempdir().unwrap();
+        let state = CapsuleState::open(dir.path(), "node-under-test").unwrap();
+        let id = "1".repeat(64);
+        let reply = json!({
+            "verdict": "contradicted:a", "verdict_capsule_id": id, "referee_node_id": "ref",
+            "halves": ["ha", "hb"], "half_node_ids": ["a", "b"],
+            "held_half_capsule_id": "ha", "received_from": "ref",
+            "received_at": "2026-09-28T15:01:00Z",
+        });
+        crate::record_push_bridge::seal_received_verdict(&state, &reply).unwrap();
+        let records = crate::evidence_panes::read_capsule_records(state.ledger_dir());
+        assert_eq!(records.len(), 1);
+        assert!(records[0]
+            .pointer("/model_attestation/compute_attestation/adjudication_received/held_as")
+            .is_none());
+        assert!(records.iter().filter_map(held_about_self).next().is_none());
+    }
+
+    /// Through the real seal stack: this node served one half of the pair and
+    /// is judged by the verdict whichever place it takes in the pair, and the
+    /// ruling is read about this node, not about the first half's node.
+    #[test]
+    fn a_held_verdict_about_a_served_half_is_sealed_marked_and_counted_about_this_node() {
+        use crate::capsule_emit::CapsuleState;
+        let dir = tempfile::tempdir().unwrap();
+        let state = CapsuleState::open(dir.path(), "node-under-test").unwrap();
+        let served = state
+            .emit_for_exchange(&crate::capsule_emit::tests::sample_exchange("party-1"))
+            .unwrap();
+        let mine = served.capsule["capsule_id"].as_str().unwrap().to_string();
+        assert_eq!(crate::evidence_panes::label_role(&served.capsule), "served");
+        for (position, id) in [(0usize, "1".repeat(64)), (1usize, "2".repeat(64))] {
+            let mut halves = ["other-half".to_string(), "other-half".to_string()];
+            halves[position] = mine.clone();
+            halves[1 - position] = format!("their-half-{position}");
+            // Node `me` is judged in the half named `mine`; the other node loses.
+            let nodes = if position == 0 {
+                ["me", "them"]
+            } else {
+                ["them", "me"]
+            };
+            let reply = json!({
+                "verdict": "contradicted:them", "verdict_capsule_id": id,
+                "referee_node_id": "ref", "halves": halves, "half_node_ids": nodes,
+                // What the door picks for a requester: the first half.
+                "held_half_capsule_id": halves[0], "received_from": "ref",
+                "received_at": "2026-09-28T15:01:00Z",
+            });
+            crate::record_push_bridge::seal_received_verdict(&state, &reply).unwrap();
+        }
+        let records = crate::evidence_panes::read_capsule_records(state.ledger_dir());
+        let counted: Vec<_> = records.iter().filter_map(held_about_self).collect();
+        assert_eq!(counted.len(), 2);
+        // `them` was contradicted, so this node's own half is corroborated, in
+        // both positions of the pair.
+        assert!(
+            counted.iter().all(|h| h.result == CORROBORATED),
+            "{counted:?}"
+        );
     }
 
     #[test]

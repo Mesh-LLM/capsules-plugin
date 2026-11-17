@@ -1,0 +1,113 @@
+{
+  "profile": "inference-service-history/0",
+  "name": "service_history/2",
+  "kind": "projection",
+  "level": "standard",
+  "embeds": [
+    "history_card/1"
+  ],
+  "subjects": [
+    "full_history"
+  ],
+  "members": [
+    {
+      "name": "history_card",
+      "required": true,
+      "derivation": "history_card/1",
+      "reads": [
+        "checkpoint: v, kind, log_id, mmr_size, root, prev_size, prev_root, key_id, timestamp, signature",
+        "log: the MMR nodes of each consistency proof"
+      ],
+      "units": [
+        {
+          "where": "history (one entry per checkpoint)",
+          "unit": "checkpoints"
+        },
+        {
+          "where": "witness_receipts beside the envelope, one per receipt of a listed checkpoint",
+          "unit": "witness_receipts"
+        }
+      ]
+    },
+    {
+      "name": "period_counts",
+      "required": true,
+      "reads": [
+        "record: model_attestation.compute_attestation.x-mesh-poc-v1.role",
+        "record: model_attestation.compute_attestation.x-mesh-lifecycle-v1.observation_point",
+        "record: model_attestation.compute_attestation.x-mesh-poc-v1.serving_provenance.model_canonical_ref",
+        "checkpoint: timestamp and mmr_size of the first checkpoint that covers each record"
+      ],
+      "units": [
+        {
+          "where": "periods[].cells[]",
+          "unit": "exchanges_served"
+        }
+      ],
+      "claims": {
+        "asserted_by": "provider",
+        "label": "provider states",
+        "where": [
+          "periods[].cells[].dimension.model"
+        ]
+      }
+    },
+    {
+      "name": "verdict_counts",
+      "required": true,
+      "reads": [
+        "record: model_attestation.compute_attestation.adjudication_received.verdict",
+        "record: model_attestation.compute_attestation.adjudication_received.half_node_ids",
+        "record: model_attestation.compute_attestation.adjudication_received.halves",
+        "record: model_attestation.compute_attestation.adjudication_received.held_half_capsule_id",
+        "record: model_attestation.compute_attestation.adjudication_received.referee_node_id",
+        "record: model_attestation.compute_attestation.adjudication_received.model_hash",
+        "checkpoint: timestamp and mmr_size of the first checkpoint that covers each record"
+      ],
+      "units": [
+        {
+          "where": "periods[].cells[]",
+          "unit": "referee_verdicts"
+        }
+      ],
+      "claims": {
+        "asserted_by": "provider",
+        "label": "provider states",
+        "where": [
+          "periods[].cells[].dimension.model_hash"
+        ]
+      }
+    }
+  ],
+  "reads": [
+    "checkpoint: v, kind, log_id, mmr_size, root, prev_size, prev_root, key_id, timestamp, signature",
+    "log: the MMR nodes of each consistency proof",
+    "record: model_attestation.compute_attestation.x-mesh-poc-v1.role",
+    "record: model_attestation.compute_attestation.x-mesh-lifecycle-v1.observation_point",
+    "record: model_attestation.compute_attestation.x-mesh-poc-v1.serving_provenance.model_canonical_ref",
+    "checkpoint: timestamp and mmr_size of the first checkpoint that covers each record",
+    "record: model_attestation.compute_attestation.adjudication_received.verdict",
+    "record: model_attestation.compute_attestation.adjudication_received.half_node_ids",
+    "record: model_attestation.compute_attestation.adjudication_received.halves",
+    "record: model_attestation.compute_attestation.adjudication_received.held_half_capsule_id",
+    "record: model_attestation.compute_attestation.adjudication_received.referee_node_id",
+    "record: model_attestation.compute_attestation.adjudication_received.model_hash"
+  ],
+  "excludes": [
+    "requester identity",
+    "per-recipient release state",
+    "latency"
+  ],
+  "coverage_declaration": {
+    "kind": "stream_interval",
+    "rule": "all_records"
+  },
+  "period_policy": {
+    "epoch": "2026-01-05T00:00:00Z",
+    "length_s": 604800,
+    "min_length_s": 86400,
+    "floor": 5,
+    "suppression": "complementary"
+  },
+  "spec": "https://github.com/Mesh-LLM/capsules-plugin/blob/main/docs/SERVICE-HISTORY.md"
+}

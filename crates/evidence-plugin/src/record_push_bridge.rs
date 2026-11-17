@@ -432,11 +432,23 @@ pub(crate) fn seal_received_verdict(
         twin_bracket_id: text("twin_bracket_id"),
         model_hash: model_hash.as_deref(),
     };
-    capsules.emit_adjudication_received(
+    // The verdict judges this node when one of its halves is this node's own
+    // served record, whoever asked the referee; not when a requester asked
+    // about two other nodes' halves.
+    //
+    // The half the record names is then this node's served half, not the first
+    // of the pair the door picks for a requester: the verdict's ruling is read
+    // about the node that half belongs to.
+    let judged_half = crate::referee::hold::judged_half(capsules.ledger_dir(), &halves);
+    let judged = judged_half.is_some();
+    capsules.emit_adjudication_received_as(
         &facts,
-        text("held_half_capsule_id").unwrap_or(halves[0]),
+        judged_half
+            .or(text("held_half_capsule_id"))
+            .unwrap_or(halves[0]),
         text("received_from").unwrap_or_default(),
         text("received_at").unwrap_or_default(),
+        judged,
     )?;
     Ok(())
 }

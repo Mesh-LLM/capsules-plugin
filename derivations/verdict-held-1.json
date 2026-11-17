@@ -1,0 +1,22 @@
+{
+  "name": "verdict_held/1",
+  "kind": "projection",
+  "embeds": [],
+  "members": [
+    {"name": "verdict", "required": true, "reads": ["model_attestation.compute_attestation.adjudication_received.verdict_capsule_id"], "unit": "digest"},
+    {"name": "record", "required": true, "reads": ["capsule_id"], "unit": "digest"},
+    {"name": "inclusion", "required": true, "reads": ["the inclusion proof of record at the resolved anchor"], "unit": "proof"}
+  ],
+  "reads": [
+    "capsule_id",
+    "model_attestation.compute_attestation.adjudication_received.verdict_capsule_id"
+  ],
+  "excludes": [
+    "record bodies, payloads, artifact text and any free text",
+    "the verdict's ruling, the referee and the judged halves",
+    "counterparty identity",
+    "timestamps other than those inside the anchor checkpoint",
+    "any member naming the requester"
+  ],
+  "spec": "https://github.com/Mesh-LLM/capsules-plugin/blob/main/docs/SERVICE-HISTORY.md"
+}

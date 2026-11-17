@@ -1667,6 +1667,34 @@ pub fn seal_adjudication_received_record(
     chain_head: Option<&str>,
     signing_key: &ed25519_dalek::SigningKey,
 ) -> Result<Value, SealError> {
+    seal_adjudication_received_record_as(
+        facts,
+        held_half_capsule_id,
+        received_from,
+        received_at,
+        false,
+        chain_head,
+        signing_key,
+    )
+}
+
+/// The `held_as` value of a received verdict that judges this node: the
+/// verdict is about a record this node itself served. A requester that asked
+/// a referee about two other nodes' halves holds the verdict without it.
+pub const HELD_AS_JUDGED: &str = "judged";
+
+/// [`seal_adjudication_received_record`], marking the verdict `judged` when
+/// it is about this node's own served record (`held_as`). Only such a
+/// verdict is counted in this node's Service History.
+pub fn seal_adjudication_received_record_as(
+    facts: &VerdictFacts,
+    held_half_capsule_id: &str,
+    received_from: &str,
+    received_at: &str,
+    judged: bool,
+    chain_head: Option<&str>,
+    signing_key: &ed25519_dalek::SigningKey,
+) -> Result<Value, SealError> {
     let chain = chain_head.map(|parent| ChainLink {
         parent_capsule_id: parent.to_string(),
         relation: CHAIN_RELATION_FOLLOWS.to_string(),
@@ -1675,6 +1703,9 @@ pub fn seal_adjudication_received_record(
     block.insert("held_half_capsule_id".into(), json!(held_half_capsule_id));
     block.insert("received_from".into(), json!(received_from));
     block.insert("received_at".into(), json!(committed_time(received_at)));
+    if judged {
+        block.insert("held_as".into(), json!(HELD_AS_JUDGED));
+    }
     seal_local_citation(
         format!(
             "mesh-poc/adjudication-received/{}",

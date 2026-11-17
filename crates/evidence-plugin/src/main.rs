@@ -85,6 +85,7 @@ mod strict_json;
 #[cfg(test)]
 mod two_node_e2e;
 mod verdict_counts;
+mod verdict_held;
 mod web_ui_manifest;
 mod witness_status;
 

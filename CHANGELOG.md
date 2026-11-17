@@ -6,6 +6,11 @@
 
 - **The plugin moves to the checkpointed-local-log 0.6 stack (#300).** It now builds on agent-action-capsule 0.11.0, evidence-request 0.6.0, evidencebook 0.0.19, capsule-emit 0.0.13 and capsule-emit-artifact 0.0.4. A checkpoint this node signs carries the bare log id as the CWT `sub` (CLL -02), so every checkpoint, its anchor digest and the signatures over it differ from before; the golden answer fixtures and `vectors/no-complete-answer` are regenerated and nothing else in them changes. A witness must accept both `sub` forms before this node is deployed.
 
+### Added
+
+- **`service_history/2` counts the referee verdicts this node holds about itself (Mesh-LLM/capsules-plugin#289; action-state-group/agent-action-capsule#614, #615, #617).** A new definition document and digest (`derivations/service-history-2.json`); `service_history/1` is unchanged and still answered. The new `verdict_counts` member counts, per closed week and model hash, the four results the spec keeps apart (`corroborated`, `contradicted`, `inconclusive`, `not_comparable`) from the verdicts delivered to this node and sealed on its own chain, with the same floor of 5 and complementary suppression as the served counts. Whoever asked the referee, the node counts the verdicts its own log holds (ISH §5.3); this plugin counts a verdict once per referee and pair of halves. Shared under `share_standard_history`, like `/1`. See `docs/SERVICE-HISTORY.md`.
+- **`verdict_held/1` answers whether this node holds a given referee verdict, by the verdict's capsule id, a digest (#289).** The answer lists the holding record's digest and an inclusion proof, or is the signed `no_such_subject`, so a node holding the referee's delivery can check the node's log for an omitted verdict. A "not held" answer says only that the node holds no record counting that verdict about itself. The digest of `derivations/verdict-held-1.json` is listed in the commitment beside `service_history/2` and answered under `share_standard_history`: a counterparty always, any other node only where it is on (off by default).
+
 ## 0.1.19
 
 ### Added
