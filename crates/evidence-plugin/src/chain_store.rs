@@ -594,6 +594,8 @@ impl ChainStores {
                 authenticated_indexes: None,
                 // A host log carries no book headers to correlate.
                 correlation_members: Vec::new(),
+                // This node receives nothing into its host log.
+                receive: Default::default(),
             })
             .map_err(|e| anyhow::anyhow!("shelf {}: {e}", path.display()))?;
             let stores = shelf
