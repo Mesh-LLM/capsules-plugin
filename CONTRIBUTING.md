@@ -88,7 +88,7 @@ Once, on Linux:
 Changes to the sealing crates (`capsule-emit`, `checkpointed-local-log`) are
 tested in their own repositories and reach this one as version bumps.
 
-### Tier 2: nightly, and on the `run-e2e` label
+### Tier 2: nightly, on the `run-e2e` label, and when a change reaches what a node serves
 
 `.github/workflows/e2e.yml` runs nodes of a pinned, unmodified mesh-llm
 release on one Linux runner, each with this plugin: one serves a small model,
@@ -156,7 +156,9 @@ in `crates/evidence-plugin/src/two_node_e2e.rs` run over what each node wrote:
   fail on a build that serves a blocked model.
 
 The mesh-llm release and the model are pinned by SHA-256 in the workflow and
-cached. Add the `run-e2e` label to a pull request to run it before merge.
+cached. It runs on its own for a pull request that changes the plugin's source, tests or
+dependencies, the History page's code, `scripts/e2e-two-node.sh`, `derivations/` or the workflow
+(the `scope` job reads the changed paths); add the `run-e2e` label to run it on any other pull request.
 
 ## Test vectors
 
