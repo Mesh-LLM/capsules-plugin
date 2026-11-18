@@ -8,7 +8,7 @@
 //! nothing and never forces a checkpoint.
 //!
 //! **`probe`** asks this node's own responder `checkpoints`, then
-//! `history_card/1`, as a stranger, in process: the same
+//! `history_card/2`, as a stranger, in process: the same
 //! [`evidence_answer::answer`] call the `evidence-request/1` channel makes
 //! for a request that names no requester, with the daily reporter's request
 //! bytes. It verifies each answer under the key the node's signed commitment
@@ -137,7 +137,7 @@ pub fn probe_requests() -> [(&'static str, Vec<u8>); 2] {
         ),
         (
             PROBE_HISTORY_CARD,
-            ask(json!({"subject": {"full_history": null}, "derivation": "history_card/1"})),
+            ask(json!({"subject": {"full_history": null}, "derivation": "history_card/2"})),
         ),
     ]
 }
@@ -311,7 +311,7 @@ pub fn findings(
         None => Finding::new(
             CHECKPOINT,
             STATE_MISSING,
-            "the book has no checkpoint, so a stranger's checkpoints and history_card/1 requests \
+            "the book has no checkpoint, so a stranger's checkpoints and history_card/2 requests \
              are refused; the cadence cuts the first one after this node's first exchange",
         ),
         Some(anchor) if (book.covered as usize) < book.leaves => Finding::new(
@@ -476,7 +476,7 @@ fn probe_one(
     let asked = if check == PROBE_CHECKPOINTS {
         "checkpoints"
     } else {
-        "history_card/1"
+        "history_card/2"
     };
     let mismatch = |detail: String| Finding::new(check, STATE_MISMATCH, detail);
     if book.anchors.is_empty() {
@@ -687,7 +687,7 @@ pub fn join_report(
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 pub struct DoctorArgs {
-    /// Also ask this node's own responder checkpoints, then history_card/1,
+    /// Also ask this node's own responder checkpoints, then history_card/2,
     /// as a stranger, in process, and check both answers.
     #[serde(default)]
     pub probe: bool,
@@ -966,7 +966,7 @@ pub fn quickstart(plugin_id: &str) -> String {
          2. **Check.** `doctor` lists what is self-attested, unwitnessed, unchecked, unbound or\n\
          not shared, one finding per line, never a score. With `probe`, it also asks the\n\
          node's own responder `{cp}`, then `{hc}` (the two questions loop's daily\n\
-reporter sends; it still asks `/1`, so `doctor` shows what the reporter sees), as a stranger, in process (no\n\
+reporter sends), as a stranger, in process (no\n\
          network), and checks that each answer verifies under the key the commitment\n\
          advertises (the node's own key when it serves no commitment yet) and that the node\n\
          answers under the policy the commitment signs:\n\
@@ -1019,7 +1019,7 @@ reporter sends; it still asks `/1`, so `doctor` shows what the reporter sees), a
         commitment = tool(crate::commitment_bridge::OWN_COMMITMENT_OPERATION),
         channel = crate::commitment_bridge::COMMITMENT_CHANNEL,
         cp = STRANGER_SAFE[0],
-        hc = STRANGER_SAFE[1],
+        hc = STRANGER_SAFE[2],
     )
 }
 
