@@ -26,6 +26,12 @@
 //! deleted. `capsules.jsonl` moves in last and the shelf is set aside after
 //! it, so an earlier release reads the flat files at every point; a run cut
 //! short finishes at the next run.
+//!
+//! The flat files are readable by an earlier release only up to the checkpoints
+//! it can read: a checkpoint signed by a build on the checkpointed-local-log
+//! 0.6 stack (#300, after 0.1.19) carries the bare log id as its CWT `sub`,
+//! which 0.1.19 and earlier refuse, so this export does not make a rollback
+//! past that stack possible (#308).
 
 use std::fs;
 use std::io::{self, Write};

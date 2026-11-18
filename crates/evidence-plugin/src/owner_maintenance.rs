@@ -157,6 +157,9 @@ pub fn resolve_log_id(
     node_key_id: &str,
     log_id_setting: Option<&str>,
 ) -> anyhow::Result<String> {
+    // First, before a pending new history moves the ledger aside: a ledger
+    // written in a newer format is refused where it is (#308).
+    crate::ledger_format::check_and_stamp(&data_dir.join("ledger"))?;
     let setting = log_id_setting.map(str::trim).filter(|s| !s.is_empty());
     let base = setting
         .map(str::to_string)
@@ -1289,6 +1292,27 @@ mod tests {
     /// End to end across a restart: the old history is kept whole and still
     /// opens clean under `archive/1`, the new history opens clean, and its
     /// first record cites the old one's closing record.
+    /// A ledger marked with a newer format is refused before a pending new
+    /// history moves it into the archive (#308).
+    #[test]
+    fn a_newer_format_ledger_is_refused_before_a_pending_new_history_moves_it() {
+        let dir = temp_dir("new-history-newer-format");
+        let (m, _ids) = maintenance(&dir, 2);
+        m.start_new_history(StartNewHistoryArgs { confirm: true })
+            .unwrap();
+        drop(m);
+        let marker = dir.join("ledger").join(crate::ledger_format::FILE);
+        fs::write(&marker, "999\n").unwrap();
+        let err = resolve_log_id(&dir, "capsules", "old-shared", "node-key", None)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("written by a newer plugin"), "{err}");
+        assert!(read_pending(&dir).is_some(), "the request is still pending");
+        assert!(!dir.join("archive/1").exists(), "nothing was archived");
+        assert!(marker.exists(), "the ledger stayed where it was");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn start_new_history_archives_the_old_log_and_starts_a_cited_new_one_at_next_start() {
         let dir = temp_dir("new-history");

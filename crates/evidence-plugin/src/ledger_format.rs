@@ -13,6 +13,9 @@
 //! one do not read the marker, so it cannot protect a rollback to them; the
 //! changelog says to back the data directory up before upgrading.
 //!
+//! It is checked first, before a pending new history moves the ledger
+//! (`owner_maintenance::resolve_log_id`), and again when the ledger opens.
+//!
 //! Raise [`CURRENT`] only for a change an older build cannot read.
 
 use std::path::Path;
@@ -47,7 +50,9 @@ pub fn check_and_stamp(ledger_dir: &Path) -> anyhow::Result<()> {
         Err(e) => return Err(anyhow::anyhow!("reading {}: {e}", path.display())),
     }
     std::fs::create_dir_all(ledger_dir)?;
-    std::fs::write(&path, format!("{CURRENT}\n"))
+    // Replaced whole (written, synced, renamed): a write cut short must not
+    // leave an empty marker that refuses a sound ledger on every start.
+    crate::owner_maintenance::write_atomically(&path, format!("{CURRENT}\n").as_bytes())
         .map_err(|e| anyhow::anyhow!("writing {}: {e}", path.display()))
 }
 
