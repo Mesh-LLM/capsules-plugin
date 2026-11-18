@@ -654,30 +654,70 @@ fn a_card_that_is_not_filed_as_loop_files_it_is_refused() {
         .any(|p| p.contains("at least one card")));
 }
 
+/// A node's own `history_card/1` answer to a stranger at its latest
+/// checkpoint, as a peer that still staples `/1` carries it.
+fn real_history_card_1(dir: &std::path::Path) -> Vec<u8> {
+    let key = key();
+    let policy = defaults();
+    let digest = policy.digest(&key);
+    let announced = BTreeMap::new();
+    let replay = ReplayCache::default();
+    let responder = Responder {
+        ledger_dir: dir,
+        signing_key: &key,
+        now: NOW,
+        history_segments: policy.history_segments,
+        share_standard_history: policy.share_standard_history,
+        share_exchange_corroboration: policy.share_exchange_corroboration,
+        keys: Keys {
+            announced: &announced,
+            configured: None,
+            own_key: None,
+        },
+        replay: &replay,
+        node_id: Some(NODE),
+        policy_digest: Some(&digest),
+    };
+    let (_, anchor) = latest_checkpoint(&responder).unwrap();
+    let request = json!({
+        "subject": {"full_history": null},
+        "coverage": {"expected_pin": anchor},
+        "derivation": "history_card/1",
+    });
+    match evidence_answer::answer(&serde_json::to_vec(&request).unwrap(), &responder) {
+        Outcome::Answered { wire, .. } => serde_json::to_vec(&wire).unwrap(),
+        other => panic!("{other:?}"),
+    }
+}
+
 /// A peer that still signs `/0` is read as before: one `history_card`, a
-/// `history_card/1` answer.
+/// genuine `history_card/1` answer; a `/2` answer under the `/0` label is
+/// refused.
 #[test]
 fn a_legacy_zero_commitment_still_verifies() {
-    let legacy = |envelope: &str| {
-        let signed = restapled(&built(&defaults()), |card| {
-            card["derivation"] = json!(envelope)
-        });
-        resigned(&signed, |d| {
-            let card = d["history_cards"][0].clone();
+    let dir = tempfile::tempdir().unwrap();
+    corpus_ledger_dir(dir.path(), &key());
+    let one = real_history_card_1(dir.path());
+    let legacy = |staple: &[u8]| {
+        resigned(&built_over(dir.path(), &defaults()), |d| {
             d.as_object_mut().unwrap().remove("history_cards");
             d["profile"] = json!("evidence-commitment/0");
             d["history_card"] = json!({
                 "derivation": "history_card/1",
-                "sha256": card["sha256"],
-                "bytes": card["bytes"],
+                "sha256": hex::encode(Sha256::digest(staple)),
+                "bytes": base64::engine::general_purpose::STANDARD.encode(staple),
             });
         })
     };
-    assert_eq!(verify(&legacy("history_card/1")), Vec::<String>::new());
-    // `/0` staples only a `/1` answer: the label may not hide a `/2` one.
-    assert!(verify(&legacy("history_card/2"))
-        .iter()
-        .any(|p| p.contains("declares")));
+    assert_eq!(verify(&legacy(&one)), Vec::<String>::new());
+    let two = base64::engine::general_purpose::STANDARD
+        .decode(
+            built_over(dir.path(), &defaults()).commitment["history_cards"][0]["bytes"]
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap();
+    assert!(verify(&legacy(&two)).iter().any(|p| p.contains("declares")));
 }
 
 /// The derivation a card entry declares is the one its answer names.

@@ -1432,8 +1432,8 @@ mod tests {
 
     /// `reply` re-signed by the node key with `art` as its artifact, for the
     /// request `sent`.
-    fn resigned_by_artifact(sent: &[u8], reply: &Value, art: &Value) -> Value {
-        resigned(sent, reply, |p| {
+    fn resigned_by_artifact(key: &SigningKey, sent: &[u8], reply: &Value, art: &Value) -> Value {
+        resigned_by(key, sent, reply, |p| {
             p.artifact = serde_json::to_vec(art).unwrap();
         })
     }
@@ -2250,8 +2250,12 @@ mod tests {
         )
         .unwrap();
         art["history"].as_array_mut().unwrap().remove(1);
-        let broken = resigned_by_artifact(&bytes, &wire, &art);
-        assert!(check(&bytes, &req, &broken, &key.verifying_key(), &|_| None).is_err());
+        let broken = resigned_by_artifact(&key, &bytes, &wire, &art);
+        let err = check(&bytes, &req, &broken, &key.verifying_key(), &|_| None).unwrap_err();
+        assert!(
+            matches!(&err, CheckError::Answer(m) if m.contains("position_missing")),
+            "{err:?}"
+        );
     }
 
     /// A ranged `checkpoints` answer (ER -03 §8.1.3) is one entry per
@@ -2303,19 +2307,70 @@ mod tests {
         let mut art = art_of(&other);
         art["history"][0]["position"] = json!(0);
         let req = request::parse_json(&sent).unwrap();
-        let forged = resigned_by_artifact(&sent, &wire, &art);
-        assert!(check(&sent, &req, &forged, &key.verifying_key(), &|_| None).is_err());
-        // Positions 2 and 4 labelled as 2 and 3: not consecutive.
-        let (sent, wire) = ask(2, 3);
-        let (_, far) = ask(2, 4);
-        let mut art = art_of(&far);
-        let skipped = art["history"].as_array().unwrap()[2].clone();
-        art["history"].as_array_mut().unwrap().remove(1);
-        art["history"][1] = skipped;
-        art["history"][1]["position"] = json!(3);
+        let forged = resigned_by_artifact(&key, &sent, &wire, &art);
+        assert_eq!(
+            check(&sent, &req, &forged, &key.verifying_key(), &|_| None).unwrap_err(),
+            CheckError::Answer("the entry at position 0 does not start the stream".into())
+        );
+    }
+
+    /// Two checkpoints that are not consecutive, joined by a valid
+    /// consistency proof and labelled as positions 7 and 8, are not a ranged
+    /// list: each entry must extend the one before it.
+    #[test]
+    fn a_ranged_checkpoint_list_that_skips_checkpoints_is_refused() {
+        let cuts: Vec<usize> = (0..40).collect();
+        let (_dir, ledger, key, _ids) = producer_ledger(40, &cuts);
+        let (stated, total) = anchors_of(&ledger, &key);
+        let pin = &stated[total - 1];
+        let art_of = |wire: &Value| -> Value {
+            serde_json::from_slice(
+                &base64::Engine::decode(
+                    &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+                    wire["artifact"].as_str().unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap()
+        };
+        let ask = |request: Value| {
+            (
+                serde_json::to_vec(&request).unwrap(),
+                ask_ledger(&ledger, &key, &request).1,
+            )
+        };
+        // The card lists 7 and 23 with a valid proof from one to the other.
+        let (_, card) = ask(
+            json!({"subject": {"full_history": null}, "coverage": {"expected_pin": pin}, "derivation": "history_card/2"}),
+        );
+        let card = art_of(&card);
+        let entry = |position: u64| {
+            card["history"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|e| e["position"] == position)
+                .cloned()
+                .unwrap()
+        };
+        let (mut seven, mut far) = (entry(7), entry(23));
+        seven["consistency_from_previous"] = Value::Null;
+        far["position"] = json!(8);
+        // The proof from 23 to the anchor is a real one, from the range [23, 23].
+        let (_, tail) =
+            ask(json!({"subject": {"checkpoints": [23, 23]}, "coverage": {"expected_pin": pin}}));
+        let (sent, wire) =
+            ask(json!({"subject": {"checkpoints": [7, 8]}, "coverage": {"expected_pin": pin}}));
+        let art = json!({
+            "history": [seven, far],
+            "consistency_to_anchor": art_of(&tail)["consistency_to_anchor"],
+        });
         let req = request::parse_json(&sent).unwrap();
-        let forged = resigned_by_artifact(&sent, &wire, &art);
-        assert!(check(&sent, &req, &forged, &key.verifying_key(), &|_| None).is_err());
+        let forged = resigned_by_artifact(&key, &sent, &wire, &art);
+        assert_eq!(
+            check(&sent, &req, &forged, &key.verifying_key(), &|_| None).unwrap_err(),
+            CheckError::Answer("a ranged checkpoint does not extend the one before it".into())
+        );
     }
 
     /// A checkpoint whose line lost its COSE statement ends the chain, as
