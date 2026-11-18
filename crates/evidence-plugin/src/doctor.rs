@@ -965,7 +965,8 @@ pub fn quickstart(plugin_id: &str) -> String {
          \n\
          2. **Check.** `doctor` lists what is self-attested, unwitnessed, unchecked, unbound or\n\
          not shared, one finding per line, never a score. With `probe`, it also asks the\n\
-         node's own responder `{cp}`, then `{hc}`, as a stranger, in process (no\n\
+         node's own responder `{cp}`, then `{hc}` (the two questions loop's daily\n\
+reporter sends; it still asks `/1`, so `doctor` shows what the reporter sees), as a stranger, in process (no\n\
          network), and checks that each answer verifies under the key the commitment\n\
          advertises (the node's own key when it serves no commitment yet) and that the node\n\
          answers under the policy the commitment signs:\n\
