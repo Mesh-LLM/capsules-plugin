@@ -172,7 +172,7 @@ rusqlite = { version = "0.40", features = ["bundled"] }
 # check of Checkpointed Local Log material (`cll`) and witness receipts
 # (`receipt`). The artifact is built by evidencebook (below).
 # Pinned exactly: a new release may change what verifies.
-evidence-request = { version = "=0.6.0", features = ["cll", "receipt", "acceptance"] }
+evidence-request = { version = "=0.7.0", features = ["cll", "receipt", "acceptance"] }
 # The "asked of you" log (`evidence_answer::log_received`) is evidencebook's
 # `received` (evidencebook#35), and a ledger line is read into its
 # `served_summary` facts (`evidence_log::leaf_facts`), whose model Service
@@ -186,7 +186,7 @@ evidence-request = { version = "=0.6.0", features = ["cll", "receipt", "acceptan
 # The node's shelf (`shelf`, evidencebook#254 §7): the chain is one host log
 # on it. 0.0.12 is the first release with it, on checkpointed-local-log 0.4.0.
 # Pinned exactly: the shelf's file is a cross-language contract.
-evidencebook = { version = "=0.0.19", features = ["deal", "shelf"] }
+evidencebook = { version = "=0.0.21", features = ["deal", "shelf"] }
 # Admission's price rule (#105) is decided by capsule-engine's guard with its
 # asg/inference terms pack (capsule-engine#265, `rust/capsule-engine`), the
 # evaluator Muse's Go guard shares vectors with, so the plugin runs no second
@@ -198,7 +198,7 @@ capsule-engine = { git = "https://github.com/action-state-group/capsule-engine",
 # and, with `inference-history`, the Service History's derivation and checks
 # (`service_history`, evidencebook#322). capsule-emit 0.0.13 builds on 0.11.0 too, so
 # one line of this crate is in the tree.
-agent-action-capsule = { version = "0.11.0", features = ["strict", "inference-history"] }
+agent-action-capsule = { version = "0.12.0", features = ["strict", "inference-history"] }
 # The witness's own record of this log (`witness_status`): one blocking GET,
 # no redirects, a capped body. Already in the tree through capsule-emit.
 ureq = { version = "2", features = ["json"] }

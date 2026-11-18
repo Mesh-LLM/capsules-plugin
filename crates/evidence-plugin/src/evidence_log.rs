@@ -59,7 +59,7 @@ use cll::checkpoint::{verify_checkpoint_cose_offline, CheckpointRecord};
 use cll::mmr::{
     add_leaf, leaf_count, leaf_hash, peaks, root_from_peaks, Hash, MemoryNodeStore, NodeReader,
 };
-use evidence_request::registry::{SubjectForm, DERIVATION_HISTORY_CARD};
+use evidence_request::registry::{SubjectForm, DERIVATION_HISTORY_CARD, DERIVATION_HISTORY_CARD_2};
 use evidence_request::request::Derivation;
 use evidence_request::resolve::{Anchor, Responder};
 use serde_json::Value;
@@ -958,7 +958,9 @@ impl Responder for LogView<'_> {
     }
     fn derivation_forms(&self, derivation: &Derivation) -> Option<Vec<SubjectForm>> {
         match derivation {
-            Derivation::Token(t) if t == DERIVATION_HISTORY_CARD => {
+            Derivation::Token(t)
+                if t == DERIVATION_HISTORY_CARD || t == DERIVATION_HISTORY_CARD_2 =>
+            {
                 Some(vec![SubjectForm::FullHistory, SubjectForm::Checkpoints])
             }
             d if crate::service_history::is_derivation(Some(d)) => {

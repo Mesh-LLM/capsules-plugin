@@ -853,7 +853,7 @@ fn reply_of(page: &Value) -> Value {
 fn the_history_page_is_given_the_form_the_policy_shares() {
     let dir = node();
     let off = page_given(dir.path(), false);
-    assert_eq!(off["form"], "history_card/1");
+    assert_eq!(off["form"], "history_card/2");
     assert_eq!(off["outcome"], "answered");
     let on = page_given(dir.path(), true);
     assert_eq!(on["form"], "service_history/1");
@@ -906,7 +906,7 @@ fn without_a_boundary_checkpoint_the_page_holds_the_card() {
         &[(6, "2026-01-07T10:00:00Z"), (20, "2026-01-14T08:00:00Z")],
     );
     let page = page_given(dir.path(), true);
-    assert_eq!(page["form"], "history_card/1");
+    assert_eq!(page["form"], "history_card/2");
     assert_eq!(page["outcome"], "answered");
 }
 

@@ -5,7 +5,7 @@
 //! so it can show no more than the node's disclosure policy sends to that
 //! party (Mesh-LLM/capsules-plugin#96, Steven's 10-29 ruling). The answer is
 //! asked of this node's own responder in process, exactly as `doctor
-//! --probe` does it: an unsigned `history_card/1` request, which is
+//! --probe` does it: an unsigned `history_card/2` request, which is
 //! stranger-safe (the same artifact for every requester, no record in it).
 //! The reply is not logged as a request made of this node, because nobody
 //! made one.
@@ -33,7 +33,7 @@ use crate::evidence_answer::{self, Outcome};
 use crate::evidence_routes::NoArgs;
 
 /// The form of answer the page carries when the node shares only its card.
-pub const FORM_HISTORY_CARD: &str = "history_card/1";
+pub const FORM_HISTORY_CARD: &str = "history_card/2";
 
 /// The form it carries when `share_standard_history` is on: the Service
 /// History, which embeds the card byte for byte.
