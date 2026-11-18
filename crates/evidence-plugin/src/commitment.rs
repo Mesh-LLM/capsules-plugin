@@ -1005,7 +1005,7 @@ fn tokens(name: &str) -> Vec<String> {
         .collect()
 }
 
-/// The log id the staple's `history_card/1` result names (`evidence_stream`),
+/// The log id the staple's history card result names (`evidence_stream`),
 /// the stream its commitment entry is filed under.
 fn staple_stream(raw: &[u8]) -> Option<String> {
     let card: Value = serde_json::from_slice(raw).ok()?;

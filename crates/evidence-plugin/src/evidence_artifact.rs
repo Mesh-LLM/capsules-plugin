@@ -32,6 +32,13 @@
 //!   subject}`, each checkpoint its COSE statement in hex;
 //! - `history_card/1`: RFC 8785 of `{anchor, derivation, evidence_stream,
 //!   history, subject}`, each entry `{checkpoint, consistency_from_previous}`;
+//! - `history_card/2`: RFC 8785 of `{anchor, derivation, evidence_stream,
+//!   history, subject, window}`, each entry `{position, checkpoint, receipts,
+//!   consistency_from_previous}` (ER -03 §8.1.2); this node's witness receipts
+//!   go beside the envelope, not in `receipts`;
+//! - `checkpoints` over a range `[a, b]`: RFC 8785 of `{history,
+//!   consistency_to_anchor}`, entries as above, one per position, with the
+//!   anchor's checkpoint as the material (ER -03 §8.1.3);
 //! - `exchange_corroboration/1` (this node's own, named by its definition
 //!   digest): RFC 8785 of `{anchor, derivation, entries, evidence_stream,
 //!   subject}`, each entry the derivation's members with `inclusion` the

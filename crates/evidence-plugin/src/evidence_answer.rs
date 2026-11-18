@@ -43,7 +43,9 @@
 //!    `capacity_exceeded` over [`MAX_ANSWER_RECORDS`]. An answer that
 //!    carries no record, which the gate has nothing to decide for, has its
 //!    checkpoints counted against [`MAX_ANSWER_CHECKPOINTS`] as it is
-//!    resolved, before step 8;
+//!    resolved, before step 8. A `history_card/2` is not counted (it lists
+//!    O(log n + window) checkpoints); a ranged `checkpoints` is counted by
+//!    its own length, and past the anchor is `coverage_unsatisfiable`;
 //! 10. building and signing; an answer larger than [`MAX_ANSWER_BYTES`] on
 //!     the wire, or a fault building it → `capacity_exceeded`.
 //!
