@@ -442,7 +442,8 @@ Running it again changes nothing.
 
 2. **Check.** `doctor` lists what is self-attested, unwitnessed, unchecked, unbound or
 not shared, one finding per line, never a score. With `probe`, it also asks the
-node's own responder `checkpoints`, then `history_card/1`, as a stranger, in process (no
+node's own responder `checkpoints`, then `history_card/1` (the two questions loop's daily
+reporter sends; it still asks `/1`, so `doctor` shows what the reporter sees), as a stranger, in process (no
 network), and checks that each answer verifies under the key the commitment
 advertises (the node's own key when it serves no commitment yet) and that the node
 answers under the policy the commitment signs:

@@ -22,7 +22,7 @@ record of a completed exchange, only to the other side of that exchange
 verdict to the nodes it judges (`share_adjudications`). It advertises nothing unless `advertise_evidence_requests` is turned on.
 Set each to `off` to send nothing. It answers any node that asks whether it
 holds a half of one exchange (`share_exchange_corroboration`), any node that
-asks for its checkpoint list or `history_card/1` (below), and otherwise only
+asks for its checkpoint list (or a range of it), `history_card/1` or `history_card/2` (below), and otherwise only
 a counterparty that asks: for one of its records (`share_history_segments`)
 or for the rest of its Standard History (`share_standard_history`). The
 referee (`adjudicate_differing_twins`) is off by default too.
@@ -229,8 +229,8 @@ Under `peers` a record goes to any node proven this way, whether or not a
 record names it. An unsigned request gets no record under any setting, and
 neither does a valid signature under a key bound to no node: it proves no
 node. That signature is the one failure answered as an unsigned request would
-be, and only where an unsigned request is answered (the checkpoint list,
-`history_card/1`, and Standard History when it is shared). Every other failed
+be, and only where an unsigned request is answered (the checkpoint list or a range of it,
+`history_card/1`, `history_card/2`, and Standard History when it is shared). Every other failed
 check is refused.
 
 Each request's digest is recorded in the "asked of you" log, with the key and
@@ -238,9 +238,9 @@ node it was proven to come from (or `unbound`), the audience it named, and
 `replay`: `checked`, or `unchecked` when a key no host announced found the
 pool full.
 
-The checkpoint list, the `history_card/1` derivation and the `service_history/1`
-derivation carry no record bodies: `share_history_segments` does not govern
-them. The checkpoint list and `history_card/1` go to anyone, and
+The checkpoint list (or a range of it), the `history_card/1` and `history_card/2`
+derivations and the `service_history/1` derivation carry no record bodies: `share_history_segments` does not govern
+them. The checkpoint list (or a range of it), `history_card/1` and `history_card/2` go to anyone, and
 `share_standard_history` governs the rest (below). The cases and their
 expected answers are in the plugin's evidence-request parity run
 (`crates/evidence-plugin/src/evidence_request_parity.rs`).
@@ -248,11 +248,11 @@ expected answers are in the plugin's evidence-request parity run
 ## Standard History (`share_standard_history`)
 
 Off by default. Standard History is what an evidence request can get that
-carries no record bodies: the checkpoint list, `history_card/1` and
-`service_history/1` (and any other derivation but `exchange_corroboration/1`,
+carries no record bodies: the checkpoint list (or a range of it), `history_card/1`,
+`history_card/2` and `service_history/1` (and any other derivation but `exchange_corroboration/1`,
 below).
 
-**The checkpoint list and `history_card/1` go to anyone who asks**, whatever
+**The checkpoint list (or a range of it), `history_card/1` and `history_card/2` go to anyone who asks**, whatever
 this switch and `share_history_segments` say: an unsigned request, any node's,
 or one signed under a key no host announced (a signature that fails is still
 refused). They carry only this node's signed checkpoints and the consistency
@@ -354,7 +354,7 @@ mailbox could be read.
 
 A request this node sends over a mailbox is published on the relay for
 everyone to read, so the `nostr_evidence_request` tool sends only what a
-stranger may ask (`checkpoints`, `history_card/1`) unless its caller says, with
+stranger may ask (`checkpoints` or a range of them, `history_card/1`, `history_card/2`) unless its caller says, with
 `publish_subject: true`, that the subject is public, and never a request that
 carries a requester's identity.
 
@@ -469,7 +469,7 @@ change with it.
   from the switches it is answering under; nobody writes it down.
 - **What else the commitment says.** The ask goes to `mesh:<node_id>` over
   this plugin's evidence-request channel. The node answers `checkpoints`,
-  `history_card/1`, `exchange_corroboration/1` and `service_history/1` (the
+  `history_card/1`, `history_card/2`, `exchange_corroboration/1` and `service_history/1` (the
   last two by their definition digest), each to a counterparty under every setting; the
   policy says who else gets them. It answers the subjects `checkpoints` and
   `full_history` (`full_history` only through a derivation), plus `record`,
@@ -481,16 +481,17 @@ change with it.
   `history_card/2` answer this node gives any stranger at that checkpoint
   (the staple), filed as one `history_cards` entry with its stream and the
   checkpoint key so a third party can verify it offline. A node has no
-  commitment while it has no checkpoint, while its `history_card/2` is refused,
-  or while the commitment would be larger than a
+  commitment while it has no checkpoint, while its policy declines
+  `history_card/2` for everyone, or while the commitment would be larger than a
   peer reads (2 MiB).
 - **The staple is L0, always.** It is the `history_card/2` answer (ER -03
   §8.1.2: the first checkpoint, samples back from the anchor at 1, 2, 4, 8
   checkpoints, and the latest 16 in full, so its size grows with the log of
   the checkpoint count, not with the count; `history_card/1`, which lists
   every checkpoint, is still answered up to 1024 checkpoints and 1 MiB): signed
-  checkpoints that show the node's records are continuous and unedited, how
-  old its key is and, when a witness is configured, which witness holds them.
+  checkpoints that each extend the one listed before it, from the node's
+  first, with how old its key is. A witness's receipts, when one is
+  configured, are what show the node's history to everyone alike.
   It carries no record, counterparty, deal count or service count.
   No setting turns it off or widens it. `share_standard_history` decides who
   is answered the node's L1, the Service History (`service_history/1`): a
