@@ -102,7 +102,7 @@ mutant-referee-hold-skips-asked-check = []
 mutant-referee-ignores-split-margin = []
 
 [dependencies]
-mesh-llm-plugin = "0.78"
+mesh-llm-plugin = "0.80"
 tokio = { version = "1", features = ["full"] }
 # The ledger's re-entrant append turn (`capsule_emit::CapsuleState`): std's
 # `ReentrantLock` is not stable. Already in the tree through tokio and others.
@@ -265,8 +265,9 @@ strip = true
 opt-level = 3
 
 # `PluginContext::announce_plugin_key` (host capability `plugin_keys.v1`,
-# mesh-llm #2299) is on mesh-llm main but in no published mesh-llm-plugin yet:
-# 0.78.1 predates it. Taken from the commit the hosts run until a release
-# carries it; then this goes and the requirement above moves to that release.
+# mesh-llm #2299) is in mesh-llm 0.79.0 and later, but crates.io has no
+# mesh-llm-plugin past 0.78.1. Taken from the v0.80.0 release commit until a
+# published mesh-llm-plugin carries it; then this goes and the requirement
+# above moves to that release.
 [patch.crates-io]
-mesh-llm-plugin = { git = "https://github.com/Mesh-LLM/mesh-llm", rev = "a39211e78f3dd73cf9a94b08417c0da17e5fa5d9" }
+mesh-llm-plugin = { git = "https://github.com/Mesh-LLM/mesh-llm", rev = "2b9e64aecdcebaa4242d0718e257bbd59cbf2575" }
