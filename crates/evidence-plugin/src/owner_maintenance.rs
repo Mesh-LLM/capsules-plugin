@@ -1289,9 +1289,6 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
-    /// End to end across a restart: the old history is kept whole and still
-    /// opens clean under `archive/1`, the new history opens clean, and its
-    /// first record cites the old one's closing record.
     /// A ledger marked with a newer format is refused before a pending new
     /// history moves it into the archive (#308).
     #[test]
@@ -1313,6 +1310,9 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    /// End to end across a restart: the old history is kept whole and still
+    /// opens clean under `archive/1`, the new history opens clean, and its
+    /// first record cites the old one's closing record.
     #[test]
     fn start_new_history_archives_the_old_log_and_starts_a_cited_new_one_at_next_start() {
         let dir = temp_dir("new-history");
