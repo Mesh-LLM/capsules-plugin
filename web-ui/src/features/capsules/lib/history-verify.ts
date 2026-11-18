@@ -345,8 +345,24 @@ export async function verifyHistoryReply(replyText: string): Promise<HistoryVerd
     if (typeof window !== 'number' || !Number.isInteger(window) || window < 1 || window > MAX_WINDOW) {
       return fail('readable', 'The history_card/2 states no window from 1 to 64.')
     }
+    // The card has exactly the members ER -03 §8.1.2 gives it, over one of the two subjects that
+    // name the log; each entry has its position, checkpoint, receipts list and proof, and nothing else.
+    const sameMembers = (value: Record<string, unknown>, names: string[]) => {
+      const keys = Object.keys(value).sort()
+      return keys.length === names.length && keys.every((k, i) => k === [...names].sort()[i])
+    }
+    if (
+      !sameMembers(card, ['anchor', 'derivation', 'evidence_stream', 'history', 'subject', 'window']) ||
+      !['{"checkpoints":null}', '{"full_history":null}'].includes(jcs(card.subject))
+    ) {
+      return fail('readable', 'The history_card/2 has members other than the card\u2019s, or a subject that does not name the log.')
+    }
     for (const item of history) {
-      const at = object(item)?.position
+      const entry = object(item)
+      if (!entry || !sameMembers(entry, ['checkpoint', 'consistency_from_previous', 'position', 'receipts']) || !Array.isArray(entry.receipts)) {
+        return fail('readable', 'An entry of the history_card/2 is not a position, checkpoint, receipts list and proof.')
+      }
+      const at = entry.position
       if (typeof at !== 'number' || !Number.isSafeInteger(at) || at < 0) {
         return fail('chain', 'An entry of the history_card/2 names no position.')
       }
@@ -397,6 +413,8 @@ export async function verifyHistoryReply(replyText: string): Promise<HistoryVerd
 
   const first = links[0]
   if (first.previousSize !== 0n || first.previousRoot !== '') return fail('chain', 'The list does not start at the beginning of the log.')
+  // The first entry has nothing before it to be consistent with: its proof is null.
+  if (object(history[0])?.consistency_from_previous !== null) return fail('consistency', 'The first checkpoint carries a proof, though nothing comes before it.')
   for (let i = 1; i < links.length; i++) {
     const prev = links[i - 1]
     const next = links[i]

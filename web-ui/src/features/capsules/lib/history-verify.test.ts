@@ -252,9 +252,63 @@ describe('verifyHistoryReply', () => {
       expect(failed(await verifyHistoryReply(await reply2(dropped)))).toBe('chain')
     })
 
+    it('refuses a first entry that carries a proof, or none', async () => {
+      for (const proof of ['00', undefined]) {
+        const artifact = art2() as { history: { consistency_from_previous?: string | null }[] }
+        if (proof === undefined) delete artifact.history[0].consistency_from_previous
+        else artifact.history[0].consistency_from_previous = proof
+        const v = await verifyHistoryReply(await reply2(artifact))
+        expect(v.verified).toBe(false)
+        // A missing member is an entry that is not the card's; a proof on the first entry is no proof.
+        expect(failed(v)).toBe(proof === undefined ? 'readable' : 'consistency')
+      }
+      const one = artifactOf(card) as { history: { consistency_from_previous: string | null }[] }
+      one.history[0].consistency_from_previous = '00'
+      expect(failed(await verifyHistoryReply(JSON.stringify({ ...card, ...(await encodeArtifact(one)) })))).toBe('consistency')
+    })
+
+    it('refuses an entry whose position is missing, not an integer, negative or repeated', async () => {
+      for (const change of [
+        (e: Record<string, unknown>[]) => delete e[3].position,
+        (e: Record<string, unknown>[]) => (e[3].position = 7.5),
+        (e: Record<string, unknown>[]) => (e[3].position = -1),
+        (e: Record<string, unknown>[]) => (e[3].position = e[2].position)
+      ]) {
+        const artifact = art2() as unknown as { history: Record<string, unknown>[] }
+        change(artifact.history)
+        const v = await verifyHistoryReply(await reply2(artifact))
+        expect(v.verified).toBe(false)
+        expect(['chain', 'readable']).toContain(failed(v))
+      }
+    })
+
+    it('refuses an entry without a receipts list, an extra member, or a subject that does not name the log', async () => {
+      const noReceipts = art2() as unknown as { history: Record<string, unknown>[] }
+      delete noReceipts.history[1].receipts
+      expect(failed(await verifyHistoryReply(await reply2(noReceipts)))).toBe('readable')
+      const extra = art2() as unknown as { history: Record<string, unknown>[] }
+      extra.history[1].note = 'x'
+      expect(failed(await verifyHistoryReply(await reply2(extra)))).toBe('readable')
+      const otherSubject = art2() as unknown as { subject: unknown }
+      otherSubject.subject = { record: 'ab'.repeat(32) }
+      expect(failed(await verifyHistoryReply(await reply2(otherSubject)))).toBe('readable')
+    })
+
+    it('lists the window boundaries', () => {
+      expect(cardPositions(1, 1)).toEqual([0, 1])
+      // Window 64 at 200 covers 137 to 200; 136 is the sample 200 - 64, and 135 is neither.
+      const at200 = cardPositions(200, 64)
+      expect(at200).toContain(136)
+      expect(at200).toContain(137)
+      expect(at200).not.toContain(135)
+      // Below the window: 0 and the samples 200 - 128 and 200 - 64.
+      expect(at200.filter((p) => p < 137)).toEqual([0, 72, 136])
+    })
+
     it('refuses a history_card/1 card named as a history_card/2', async () => {
       const v = await verifyHistoryReply(JSON.stringify({ ...card, derivation: 'history_card/2' }))
       expect(v.verified).toBe(false)
+      expect(failed(v)).toBe('readable')
     })
   })
 })
