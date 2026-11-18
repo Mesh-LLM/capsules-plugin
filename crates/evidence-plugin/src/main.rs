@@ -39,6 +39,7 @@ mod history_page;
 mod host_status;
 mod ledger_checkpoints;
 mod ledger_fetch_bridge;
+mod ledger_format;
 mod leg_catch_up;
 mod lifecycle_channel;
 mod mesh_evidence_bridge;
