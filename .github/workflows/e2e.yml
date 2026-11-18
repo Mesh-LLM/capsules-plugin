@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Tier 2: real mesh-llm nodes on one runner (two, then a third that
 # corroborates one of their exchanges), each running this plugin,
-# nightly and on pull requests labelled `run-e2e`. See CONTRIBUTING.md.
+# nightly, on pull requests labelled `run-e2e` and on pull requests that
+# change what a node serves or what the History page reads (the `scope` job
+# below). See CONTRIBUTING.md.
 #
 # The mesh-llm release and the model are pinned by SHA-256 below and checked
 # after every download and every cache restore, so a cache entry can never
@@ -17,7 +19,9 @@ on:
   schedule:
     - cron: "17 4 * * *"
   pull_request:
-    types: [labeled, synchronize, reopened]
+    # `opened` is listed because a pull request whose diff selects the run must
+    # get it when it is opened, not only after a later push or label.
+    types: [opened, labeled, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -44,13 +48,52 @@ env:
   MODEL_SHA256: 74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
 
 jobs:
+  # Whether the two-node run is needed: always except on a pull request, where
+  # it is needed when the pull request carries the label `run-e2e`, or changes
+  # what a node serves or what the History page reads (the plugin's source,
+  # tests and dependencies, the web UI and its dependencies, the policy files
+  # and the join texts the binary embeds, the run's script, the definition
+  # documents, this workflow). The History page regression of #303 reached
+  # main because the job ran only on the label. Paths are read from git with
+  # the base branch passed as data, never into the script text.
+  scope:
+    name: scope of the two-node run
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.scope.outputs.run }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          LABELED: ${{ contains(github.event.pull_request.labels.*.name, 'run-e2e') }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          run=false
+          if [ "$EVENT" != pull_request ] || [ "$LABELED" = true ]; then
+            run=true
+          else
+            # Read into a variable first: `grep -q` closing a pipe early would fail
+            # `git diff` with SIGPIPE under pipefail.
+            changed=$(git diff --name-only "origin/$BASE...HEAD")
+            if grep -Eq '^(crates/evidence-plugin/(src/|tests/|Cargo\.(toml|lock)$)|web-ui/|policies/|loop/(joins|reporter)/|scripts/e2e-two-node\.sh$|derivations/|\.github/workflows/e2e\.yml$)' <<< "$changed"; then
+              run=true
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "two-node run: $run"
+
   two-node:
     name: two nodes, stock mesh-llm
-    # Nightly, by hand, or on a pull request that carries the label (added
-    # now, or already there when new commits arrive).
-    if: >-
-      github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.labels.*.name, 'run-e2e')
+    needs: scope
+    # Nightly, by hand, or on a pull request the scope job selects.
+    if: needs.scope.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
