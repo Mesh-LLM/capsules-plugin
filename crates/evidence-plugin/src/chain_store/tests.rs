@@ -174,7 +174,7 @@ fn tree(dir: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
             let path = entry.path();
             if matches!(
                 entry.file_name().to_str(),
-                Some(".capsules-writer.lock" | "capsules.lock")
+                Some(".capsules-writer.lock" | "capsules.lock" | crate::ledger_format::FILE)
             ) {
                 continue;
             }

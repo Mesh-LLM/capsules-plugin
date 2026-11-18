@@ -589,6 +589,7 @@ impl CapsuleState {
                 std::time::Duration::from_secs(2),
             )?)
         };
+        crate::ledger_format::check_and_stamp(&ledger_dir)?;
         let keys = keys::load_or_create(&data_dir.join("keys"))?;
         let node_keys = crate::chain_store::node_signing_keys(&data_dir.join("keys"));
         let (stores, (ledger, report)) = match crate::chain_store::stays_flat(&ledger_dir)? {
@@ -2433,6 +2434,30 @@ pub(crate) mod tests {
         assert!(
             reasoning_digest.is_none(),
             "a non-reasoning model must yield an absent reasoning digest, not a fabricated one"
+        );
+    }
+
+    /// A node that meets a ledger marked with a newer format stops at a start
+    /// error naming the cause and leaves the ledger as it was (#308), and a
+    /// fresh start marks its ledger.
+    #[test]
+    fn open_refuses_a_ledger_written_in_a_newer_format() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let marker = dir.path().join("ledger").join(crate::ledger_format::FILE);
+        drop(CapsuleState::open(dir.path(), "node-under-test").expect("first open"));
+        assert_eq!(
+            std::fs::read_to_string(&marker).expect("marker").trim(),
+            crate::ledger_format::CURRENT.to_string()
+        );
+        std::fs::write(&marker, "999\n").expect("mark newer");
+        let err = CapsuleState::open(dir.path(), "node-under-test")
+            .err()
+            .expect("a newer ledger is refused")
+            .to_string();
+        assert!(err.contains("written by a newer plugin"), "{err}");
+        assert_eq!(
+            std::fs::read_to_string(&marker).expect("marker").trim(),
+            "999"
         );
     }
 
