@@ -121,11 +121,12 @@ fn check(args: &NostrEvidenceRequestArgs) -> Result<ed25519_dalek::VerifyingKey,
     let parsed = evidence_request::request::parse_json(bytes.as_bytes())
         .map_err(|e| format!("request: {e}"))?;
     // The subject of a stranger-safe derivation is checked too: `history_card/1`
-    // is answered over `checkpoints` and `full_history` only, so a record or a
+    // and `/2` are answered over `checkpoints` and `full_history` only, so a record or a
     // correlation asked under it is no stranger's ask.
     let names_only_the_log = matches!(
         parsed.subject,
         evidence_request::request::Subject::Checkpoints
+            | evidence_request::request::Subject::CheckpointRange(..)
             | evidence_request::request::Subject::FullHistory
     );
     if !args.publish_subject
@@ -133,7 +134,7 @@ fn check(args: &NostrEvidenceRequestArgs) -> Result<ed25519_dalek::VerifyingKey,
     {
         return Err(
             "this request's subject would be published on the relay and a stranger is refused \
-             it: only checkpoints and history_card/1 go without publish_subject: true"
+             it: only checkpoints (or a range of them), history_card/1 and history_card/2 go without publish_subject: true"
                 .into(),
         );
     }

@@ -842,10 +842,26 @@ fn checkpoint_range(
             return fail("a ranged entry is not at its position");
         }
         let cp = stated(&hex_member(entry, "checkpoint")?, key)?;
+        if cp.cp.log_id != served.cp.log_id {
+            return fail("a ranged entry is of another stream than the anchor");
+        }
         let proof = entry.get("consistency_from_previous");
         match (listed.last(), proof) {
-            (None, Some(Value::Null)) => {}
+            (None, Some(Value::Null)) => {
+                // Position 0 is the checkpoint that starts the stream.
+                if a == 0 && (cp.cp.prev_size != 0 || !cp.cp.prev_root.is_empty()) {
+                    return fail("the entry at position 0 does not start the stream");
+                }
+            }
             (Some(prev), Some(Value::String(proof))) => {
+                // Consecutive positions are consecutive checkpoints: each
+                // extends the one before it, as in a whole chain.
+                if cp.cp.prev_size != prev.cp.mmr_size
+                    || cp.cp.prev_root != prev.cp.root
+                    || cp.cp.mmr_size <= prev.cp.mmr_size
+                {
+                    return fail("a ranged checkpoint does not extend the one before it");
+                }
                 let proof = hex::decode(proof)
                     .map_err(|_| CheckError::Answer("a consistency proof is malformed".into()))?;
                 if !consistent(
@@ -2246,6 +2262,53 @@ mod tests {
             assert_eq!(checked.anchor, stated[total - 1]);
             assert_eq!(checked.checkpoints as u64, b - a + 1);
         }
+    }
+
+    /// A ranged list whose entry is another checkpoint than the position it
+    /// is labelled with does not pass for the start of the stream, or for a
+    /// run of consecutive checkpoints.
+    #[test]
+    fn a_ranged_checkpoint_list_with_the_wrong_checkpoints_is_refused() {
+        let cuts: Vec<usize> = (0..8).collect();
+        let (_dir, ledger, key, _ids) = producer_ledger(8, &cuts);
+        let (stated, total) = anchors_of(&ledger, &key);
+        let pin = &stated[total - 1];
+        let art_of = |wire: &Value| -> Value {
+            serde_json::from_slice(
+                &base64::Engine::decode(
+                    &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+                    wire["artifact"].as_str().unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap()
+        };
+        let ask = |a: u64, b: u64| {
+            let r = json!({"subject": {"checkpoints": [a, b]}, "coverage": {"expected_pin": pin}});
+            (
+                serde_json::to_vec(&r).unwrap(),
+                ask_ledger(&ledger, &key, &r).1,
+            )
+        };
+        // Position 1's checkpoint labelled as position 0.
+        let (sent, wire) = ask(0, 0);
+        let (_, other) = ask(1, 1);
+        let mut art = art_of(&other);
+        art["history"][0]["position"] = json!(0);
+        let req = request::parse_json(&sent).unwrap();
+        let forged = resigned_by_artifact(&sent, &wire, &art);
+        assert!(check(&sent, &req, &forged, &key.verifying_key(), &|_| None).is_err());
+        // Positions 2 and 4 labelled as 2 and 3: not consecutive.
+        let (sent, wire) = ask(2, 3);
+        let (_, far) = ask(2, 4);
+        let mut art = art_of(&far);
+        let skipped = art["history"].as_array().unwrap()[2].clone();
+        art["history"].as_array_mut().unwrap().remove(1);
+        art["history"][1] = skipped;
+        art["history"][1]["position"] = json!(3);
+        let req = request::parse_json(&sent).unwrap();
+        let forged = resigned_by_artifact(&sent, &wire, &art);
+        assert!(check(&sent, &req, &forged, &key.verifying_key(), &|_| None).is_err());
     }
 
     /// A checkpoint whose line lost its COSE statement ends the chain, as

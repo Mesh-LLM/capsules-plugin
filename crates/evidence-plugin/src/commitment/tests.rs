@@ -654,21 +654,39 @@ fn a_card_that_is_not_filed_as_loop_files_it_is_refused() {
         .any(|p| p.contains("at least one card")));
 }
 
-/// A peer that still signs `/0` is read as before: one `history_card`.
+/// A peer that still signs `/0` is read as before: one `history_card`, a
+/// `history_card/1` answer.
 #[test]
 fn a_legacy_zero_commitment_still_verifies() {
-    let signed = resigned(&built(&defaults()), |d| {
-        let card = d["history_cards"][0].clone();
-        d.as_object_mut().unwrap().remove("history_cards");
-        d["profile"] = json!("evidence-commitment/0");
-        d["history_card"] = json!({
-            // `/0` staples only `history_card/1`.
-            "derivation": "history_card/1",
-            "sha256": card["sha256"],
-            "bytes": card["bytes"],
+    let legacy = |envelope: &str| {
+        let signed = restapled(&built(&defaults()), |card| {
+            card["derivation"] = json!(envelope)
         });
+        resigned(&signed, |d| {
+            let card = d["history_cards"][0].clone();
+            d.as_object_mut().unwrap().remove("history_cards");
+            d["profile"] = json!("evidence-commitment/0");
+            d["history_card"] = json!({
+                "derivation": "history_card/1",
+                "sha256": card["sha256"],
+                "bytes": card["bytes"],
+            });
+        })
+    };
+    assert_eq!(verify(&legacy("history_card/1")), Vec::<String>::new());
+    // `/0` staples only a `/1` answer: the label may not hide a `/2` one.
+    assert!(verify(&legacy("history_card/2"))
+        .iter()
+        .any(|p| p.contains("declares")));
+}
+
+/// The derivation a card entry declares is the one its answer names.
+#[test]
+fn a_staple_declaring_one_card_and_carrying_the_other_is_refused() {
+    let signed = resigned(&built(&defaults()), |d| {
+        d["history_cards"][0]["derivation"] = json!("history_card/1")
     });
-    assert_eq!(verify(&signed), Vec::<String>::new());
+    assert!(verify(&signed).iter().any(|p| p.contains("declares")));
 }
 
 /// A staple whose result names no `evidence_stream` cannot be filed under

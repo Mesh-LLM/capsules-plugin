@@ -488,7 +488,12 @@ pub fn verify(signed: &Signed) -> Vec<String> {
     }
     if doc["profile"] == LEGACY_COMMITMENT_PROFILE {
         match digest_of("history_card", &doc["history_card"]) {
-            Ok(raw) => problems.extend(staple_problems("history_card", &raw, &doc["key_id"])),
+            Ok(raw) => problems.extend(staple_problems(
+                "history_card",
+                &raw,
+                &doc["key_id"],
+                &doc["history_card"]["derivation"],
+            )),
             Err(e) => problems.push(e),
         }
     } else {
@@ -501,7 +506,12 @@ pub fn verify(signed: &Signed) -> Vec<String> {
             let name = format!("history_cards[{i}]");
             match digest_of(&name, card) {
                 Ok(raw) => {
-                    problems.extend(staple_problems(&name, &raw, &doc["key_id"]));
+                    problems.extend(staple_problems(
+                        &name,
+                        &raw,
+                        &doc["key_id"],
+                        &card["derivation"],
+                    ));
                     if staple_stream(&raw).is_none()
                         || staple_stream(&raw).as_deref() != card["stream"].as_str()
                     {
@@ -1010,7 +1020,9 @@ fn staple_stream(raw: &[u8]) -> Option<String> {
         .map(str::to_string)
 }
 
-fn staple_problems(name: &str, raw: &[u8], key_id: &Value) -> Vec<String> {
+/// The problems of one stapled card: its answer is this profile's, presented
+/// by its subject, and names the derivation its carrier declares (`declared`).
+fn staple_problems(name: &str, raw: &[u8], key_id: &Value, declared: &Value) -> Vec<String> {
     let Ok(card) = serde_json::from_slice::<Map<String, Value>>(raw) else {
         return vec![format!("{name}.bytes are not a JSON answer")];
     };
@@ -1018,14 +1030,14 @@ fn staple_problems(name: &str, raw: &[u8], key_id: &Value) -> Vec<String> {
         return vec![format!("{name} is not an {STAPLE_PROFILE} answer")];
     }
     let mut problems = Vec::new();
-    if !card
-        .get("derivation")
-        .and_then(Value::as_str)
-        .is_some_and(|d| CARD_DERIVATIONS.contains(&d))
-    {
-        problems.push(format!(
+    match card.get("derivation").and_then(Value::as_str) {
+        Some(d) if CARD_DERIVATIONS.contains(&d) && declared.as_str() == Some(d) => {}
+        Some(d) if CARD_DERIVATIONS.contains(&d) => problems.push(format!(
+            "{name} declares {declared} but its answer's derivation is {d}"
+        )),
+        _ => problems.push(format!(
             "{name} answer's derivation is not history_card/1 or history_card/2"
-        ));
+        )),
     }
     if card.get("responder") != Some(key_id) {
         problems.push(format!(
