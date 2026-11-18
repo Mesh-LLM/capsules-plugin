@@ -2061,6 +2061,36 @@ pub(crate) mod tests {
         ]
     }
 
+    /// The `history_card/2` a node with 40 checkpoints gives a stranger, as
+    /// the golden fixture the History page's verifier reads
+    /// (`tests/fixtures/history_card_2_reply.json`):
+    /// `CAPSULES_WRITE_ANSWER_FIXTURE=1` rewrites it.
+    #[test]
+    fn the_history_card_2_reply_of_a_long_log_is_the_golden_fixture() {
+        let dir = tempfile::tempdir().unwrap();
+        let cps = crate::evidence_request_parity::long_ledger_dir(dir.path(), &key(), 40);
+        let request = json!({
+            "subject": {"full_history": null},
+            "coverage": {"expected_pin": cps[39].anchor()},
+            "derivation": "history_card/2",
+        });
+        let bytes = serde_json::to_vec(&request).unwrap();
+        let Outcome::Answered { wire, .. } = ask_by_default(dir.path(), &bytes) else {
+            panic!("a stranger is answered history_card/2");
+        };
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/history_card_2_reply.json");
+        let text = serde_json::to_string_pretty(&wire).unwrap() + "\n";
+        if std::env::var_os("CAPSULES_WRITE_ANSWER_FIXTURE").is_some() {
+            std::fs::write(&path, &text).unwrap();
+        }
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            text,
+            "the golden history_card/2 reply changed; CAPSULES_WRITE_ANSWER_FIXTURE=1 rewrites it"
+        );
+    }
+
     /// A ranged `checkpoints` request past the anchor is
     /// `coverage_unsatisfiable`, and one under a history card is
     /// `no_such_subject` (ER -03 §8.1.3), whoever asks.

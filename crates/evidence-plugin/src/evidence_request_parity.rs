@@ -996,6 +996,44 @@ pub(crate) fn corpus_ledger_dir(dir: &Path, key: &SigningKey) -> Vec<CorpusCheck
     cps
 }
 
+/// A ledger of `lines` served records with a checkpoint cut after each, one
+/// minute apart, written to `dir` and signed under `key`: a log long enough
+/// for a `history_card/2` to skip checkpoints. Returns its checkpoints.
+pub(crate) fn long_ledger_dir(dir: &Path, key: &SigningKey, lines: usize) -> Vec<CorpusCheckpoint> {
+    let ledger: Vec<Value> = (0..lines)
+        .map(|i| {
+            served(
+                "node-a",
+                "model-x",
+                "confirmed",
+                "10.000",
+                json!({"nonce": format!("n-{i}")}),
+            )
+        })
+        .collect();
+    let times: Vec<String> = (0..lines)
+        .map(|i| {
+            format!(
+                "2026-09-{:02}T{:02}:{:02}:00Z",
+                1 + i / 1440,
+                i % 1440 / 60,
+                i % 60
+            )
+        })
+        .collect();
+    let cuts: Vec<(usize, &str)> = times
+        .iter()
+        .enumerate()
+        .map(|(i, t)| (i + 1, t.as_str()))
+        .collect();
+    let cps = checkpoints_cut_at(&ledger, key, &cuts);
+    std::fs::create_dir_all(dir).unwrap();
+    write_jsonl(&dir.join(crate::evidence_log::CAPSULES_FILE), &ledger);
+    let lines: Vec<Value> = cps.iter().map(CorpusCheckpoint::line).collect();
+    write_jsonl(&dir.join(crate::evidence_log::CHECKPOINTS_FILE), &lines);
+    cps
+}
+
 /// One answer as [`EXPECTED`] states it, and anything wrong with it that
 /// holds for every answer: a refusal must be signed by the node, bind the
 /// request as received and be issued now; an artifact answer must verify.

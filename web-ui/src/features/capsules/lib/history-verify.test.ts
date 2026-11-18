@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { base64urlToBytes, verifyHistoryReply } from '@/features/capsules/lib/history-verify'
+import { base64urlToBytes, cardPositions, verifyHistoryReply } from '@/features/capsules/lib/history-verify'
 
 // A real reply from a corpus node (crates/evidence-plugin/tests/fixtures).
 const fixture = JSON.parse(
@@ -9,6 +9,13 @@ const fixture = JSON.parse(
 ) as Record<string, Record<string, unknown>>
 
 const card = fixture.history_card
+
+// A real `history_card/2` reply: a corpus node with 40 checkpoints, so the card
+// samples positions and skips the checkpoints between them
+// (crates/evidence-plugin/tests/fixtures/history_card_2_reply.json).
+const card2 = JSON.parse(
+  readFileSync(path.resolve(process.cwd(), '../crates/evidence-plugin/tests/fixtures/history_card_2_reply.json'), 'utf8')
+) as Record<string, unknown>
 const artifactOf = (reply: Record<string, unknown>) =>
   JSON.parse(new TextDecoder().decode(base64urlToBytes(reply.artifact as string)!)) as Record<string, unknown>
 
@@ -175,5 +182,79 @@ describe('verifyHistoryReply', () => {
     const v = await verifyHistoryReply('not json')
     expect(v.kind).toBe('unreadable')
     expect(v.verified).toBe(false)
+  })
+
+  describe('a history_card/2', () => {
+    type Entry = { position: number; checkpoint: string; consistency_from_previous: string | null }
+    const art2 = () => artifactOf(card2) as { window: number; history: Entry[] }
+    const reply2 = async (artifact: unknown) => JSON.stringify({ ...card2, ...(await encodeArtifact(artifact)) })
+
+    it('verifies a card that skips checkpoints, and names what it checked', async () => {
+      const artifact = art2()
+      expect(artifact.history.length).toBeLessThan(40)
+      expect(artifact.history.map((e) => e.position)).toEqual(cardPositions(39, artifact.window))
+      const verdict = await verifyHistoryReply(JSON.stringify(card2))
+      expect(verdict.checks.filter((c) => c.status === 'fail')).toEqual([])
+      expect(verdict.verified).toBe(true)
+      expect(verdict.form).toBe('history_card')
+      expect(verdict.checkpoints).toHaveLength(artifact.history.length)
+      expect(verdict.checks.find((c) => c.id === 'chain')?.detail).toContain('history_card/2')
+    })
+
+    it('lists the positions the spec lists', () => {
+      expect(cardPositions(0, 16)).toEqual([0])
+      expect(cardPositions(3, 1)).toEqual([0, 1, 2, 3])
+      expect(cardPositions(100, 4)).toEqual([0, 36, 68, 84, 92, 96, 97, 98, 99, 100])
+    })
+
+    it('refuses a card with a sampled position missing', async () => {
+      const artifact = art2()
+      artifact.history.splice(1, 1)
+      const v = await verifyHistoryReply(await reply2(artifact))
+      expect(v.verified).toBe(false)
+      expect(failed(v)).toBe('chain')
+    })
+
+    it('refuses a card whose window or positions were changed', async () => {
+      const wider = art2()
+      wider.window = 20
+      expect(failed(await verifyHistoryReply(await reply2(wider)))).toBe('chain')
+      const outOfRange = art2()
+      outOfRange.window = 65
+      expect(failed(await verifyHistoryReply(await reply2(outOfRange)))).toBe('readable')
+      const moved = art2()
+      moved.history[2].position += 1
+      expect(failed(await verifyHistoryReply(await reply2(moved)))).toBe('chain')
+    })
+
+    it('refuses a proof between sampled entries that was changed', async () => {
+      const artifact = art2()
+      const entry = artifact.history[1]
+      const proof = entry.consistency_from_previous!
+      entry.consistency_from_previous = proof.slice(0, -2) + (proof.endsWith('00') ? '01' : '00')
+      const v = await verifyHistoryReply(await reply2(artifact))
+      expect(v.verified).toBe(false)
+      expect(failed(v)).toBe('consistency')
+    })
+
+    it('refuses neighbours that do not follow each other, and a first entry that is not the start', async () => {
+      // Positions 38 and 39 sit next to each other in the card: swap their checkpoints.
+      const artifact = art2()
+      const [a, b] = [artifact.history.length - 2, artifact.history.length - 1]
+      const swapped = artifact.history[a].checkpoint
+      artifact.history[a].checkpoint = artifact.history[b].checkpoint
+      artifact.history[b].checkpoint = swapped
+      const v = await verifyHistoryReply(await reply2(artifact))
+      expect(v.verified).toBe(false)
+      expect(['chain', 'consistency']).toContain(failed(v))
+      const dropped = art2()
+      dropped.history.shift()
+      expect(failed(await verifyHistoryReply(await reply2(dropped)))).toBe('chain')
+    })
+
+    it('refuses a history_card/1 card named as a history_card/2', async () => {
+      const v = await verifyHistoryReply(JSON.stringify({ ...card, derivation: 'history_card/2' }))
+      expect(v.verified).toBe(false)
+    })
   })
 })
