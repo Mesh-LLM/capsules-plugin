@@ -156,9 +156,11 @@ in `crates/evidence-plugin/src/two_node_e2e.rs` run over what each node wrote:
   fail on a build that serves a blocked model.
 
 The mesh-llm release and the model are pinned by SHA-256 in the workflow and
-cached. It runs on its own for a pull request that changes the plugin's source, tests or
-dependencies, the History page's code, `scripts/e2e-two-node.sh`, `derivations/` or the workflow
-(the `scope` job reads the changed paths); add the `run-e2e` label to run it on any other pull request.
+cached. It runs on its own, when the pull request is opened, pushed to, reopened or labelled, for a pull
+request that changes the plugin's source, tests or dependencies, anything under `web-ui/`,
+`policies/`, `loop/joins/` or `loop/reporter/`, `scripts/e2e-two-node.sh`, `derivations/` or the
+workflow (the `scope` job reads the changed paths); add the `run-e2e` label to run it on any
+other pull request.
 
 ## Test vectors
 

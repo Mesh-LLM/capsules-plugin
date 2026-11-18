@@ -19,7 +19,9 @@ on:
   schedule:
     - cron: "17 4 * * *"
   pull_request:
-    types: [labeled, synchronize, reopened]
+    # `opened` is listed because a pull request whose diff selects the run must
+    # get it when it is opened, not only after a later push or label.
+    types: [opened, labeled, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -49,7 +51,8 @@ jobs:
   # Whether the two-node run is needed: always except on a pull request, where
   # it is needed when the pull request carries the label `run-e2e`, or changes
   # what a node serves or what the History page reads (the plugin's source,
-  # tests and dependencies, the page's code, the run's script, the definition
+  # tests and dependencies, the web UI and its dependencies, the policy files
+  # and the join texts the binary embeds, the run's script, the definition
   # documents, this workflow). The History page regression of #303 reached
   # main because the job ran only on the label. Paths are read from git with
   # the base branch passed as data, never into the script text.
@@ -79,7 +82,7 @@ jobs:
             # Read into a variable first: `grep -q` closing a pipe early would fail
             # `git diff` with SIGPIPE under pipefail.
             changed=$(git diff --name-only "origin/$BASE...HEAD")
-            if grep -Eq '^(crates/evidence-plugin/(src/|tests/|Cargo\.(toml|lock)$)|web-ui/src/(features/capsules/|lib/)|scripts/e2e-two-node\.sh$|derivations/|\.github/workflows/e2e\.yml$)' <<< "$changed"; then
+            if grep -Eq '^(crates/evidence-plugin/(src/|tests/|Cargo\.(toml|lock)$)|web-ui/|policies/|loop/(joins|reporter)/|scripts/e2e-two-node\.sh$|derivations/|\.github/workflows/e2e\.yml$)' <<< "$changed"; then
               run=true
             fi
           fi
