@@ -45,7 +45,7 @@ async function saveAndOpen(body: Served) {
 describe.skipIf(!dir)('the History page from a live node’s history-page reply, opened offline', () => {
   it('verifies a history card under the node’s own key', async () => {
     const body = served('requester')
-    expect(body).toMatchObject({ form: 'history_card/1', outcome: 'answered' })
+    expect(body).toMatchObject({ form: 'history_card/2', outcome: 'answered' })
     const { text, form } = await saveAndOpen(body)
     expect(form).toBe('history_card')
     expect(text).toContain(`node key ${body.node_key_id.slice(0, 12)}`)
@@ -67,7 +67,7 @@ describe.skipIf(!dir)('the History page from a live node’s history-page reply,
 
   it('shows a node with no checkpoint as declining, and nothing it could not check', async () => {
     const body = served('fresh')
-    expect(body).toMatchObject({ form: 'history_card/1', outcome: 'refused' })
+    expect(body).toMatchObject({ form: 'history_card/2', outcome: 'refused' })
     const { text, form } = await saveAndOpen(body)
     expect(form).toBe('history_card')
     expect(text).toContain('The node declined to answer.')

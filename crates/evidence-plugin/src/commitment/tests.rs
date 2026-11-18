@@ -511,45 +511,8 @@ fn a_refusal_names_the_digest_of_the_policy_it_was_refused_under() {
 /// A commitment over a ledger with a checkpoint after every line, `long`
 /// lines of it.
 fn long_ledger_commitment(long: usize) -> Signed {
-    use crate::evidence_request_parity::{checkpoints_cut_at, served, write_jsonl};
-    let key = key();
-    let ledger: Vec<Value> = (0..long)
-        .map(|i| {
-            served(
-                "node-a",
-                "model-x",
-                "confirmed",
-                "10.000",
-                json!({"nonce": format!("n-{i}")}),
-            )
-        })
-        .collect();
-    let times: Vec<String> = (0..long)
-        .map(|i| {
-            format!(
-                "2026-09-{:02}T{:02}:{:02}:00Z",
-                1 + i / 1440,
-                i % 1440 / 60,
-                i % 60
-            )
-        })
-        .collect();
-    let cuts: Vec<(usize, &str)> = times
-        .iter()
-        .enumerate()
-        .map(|(i, t)| (i + 1, t.as_str()))
-        .collect();
-    let cps = checkpoints_cut_at(&ledger, &key, &cuts);
     let dir = tempfile::tempdir().unwrap();
-    write_jsonl(
-        &dir.path().join(crate::evidence_log::CAPSULES_FILE),
-        &ledger,
-    );
-    let lines: Vec<Value> = cps.iter().map(|c| c.line()).collect();
-    write_jsonl(
-        &dir.path().join(crate::evidence_log::CHECKPOINTS_FILE),
-        &lines,
-    );
+    crate::evidence_request_parity::long_ledger_dir(dir.path(), &key(), long);
     built_over(dir.path(), &defaults())
 }
 

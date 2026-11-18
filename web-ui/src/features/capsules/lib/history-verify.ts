@@ -1,8 +1,9 @@
 // What a saved History page checks about the node's answer when it opens.
 //
-// The answer is a node's `history_card/1` reply (evidence-interop/0): its
-// artifact lists the node's checkpoints, each with the proof that it extends
-// the one before. The page re-checks, offline and in the page itself, what
+// The answer is a node's `history_card/1` or `history_card/2` reply
+// (evidence-interop/0): its artifact lists the node's checkpoints, each with the
+// proof that it extends the one before it (a `/1` card lists every checkpoint,
+// a `/2` card the first, samples back from the anchor and the latest window). The page re-checks, offline and in the page itself, what
 // this file can check with the browser build of `@action-state-group/cll`:
 // the artifact is the bytes the reply's digest names, every checkpoint is
 // signed by the key the reply names as its responder, each consistency proof
@@ -20,9 +21,25 @@
 import { coseSign1KeyId } from '@/features/capsules/lib/cose'
 import { checkpointMetadata, checkpointRejectionField, leafCount, verifyCheckpoint, verifyConsistency } from '@cll-browser'
 
-/** The most checkpoints a node puts in one card (`MAX_ANSWER_CHECKPOINTS`,
+/** The most checkpoints a node puts in one `/1` card (`MAX_ANSWER_CHECKPOINTS`,
  *  crates/evidence-plugin/src/evidence_answer.rs): a longer list is not one. */
 const MAX_CHECKPOINTS = 1024
+
+/** The largest window a `history_card/2` states (ER -03 §8.1.2), and the most
+ *  entries one lists: the window plus one sample per power of two a safe
+ *  integer position can have. */
+const MAX_WINDOW = 64
+const MAX_CARD_2_ENTRIES = MAX_WINDOW + 54 + 1
+
+/** The positions a `history_card/2` of window `window` lists when its last
+ *  entry is at position `n`: 0, n - 2^k for every 2^k <= n, and the latest
+ *  `window` positions (ER -03 §8.1.2), ascending. */
+export function cardPositions(n: number, window: number): number[] {
+  const out = new Set<number>([0])
+  for (let step = 1; step <= n; step *= 2) out.add(n - step)
+  for (let p = Math.max(0, n - window + 1); p <= n; p++) out.add(p)
+  return [...out].sort((a, b) => a - b)
+}
 
 /** Every check id this verifier reports (`history-view-input.ts` maps each
  *  onto the shared view's closed list; a test holds the two together). */
@@ -309,14 +326,53 @@ export async function verifyHistoryReply(replyText: string): Promise<HistoryVerd
     }
     card = embedded
     counts = periodCounts(artifact.period_counts)
-  } else if (reply.derivation !== 'history_card/1') {
-    return fail('readable', 'The artifact is not a history_card/1 card.')
+  } else if (reply.derivation !== 'history_card/1' && reply.derivation !== 'history_card/2') {
+    return fail('readable', 'The artifact is not a history_card/1 or history_card/2 card.')
   }
+  // A Service History embeds a `/1` card; a direct answer is the card it names.
+  const cardDerivation = embedded ? 'history_card/1' : (reply.derivation as string)
+  const sampled = cardDerivation === 'history_card/2'
   const history = Array.isArray(card.history) ? card.history : null
-  if (!history || history.length === 0 || history.length > MAX_CHECKPOINTS) {
+  if (!history || history.length === 0 || history.length > (sampled ? MAX_CARD_2_ENTRIES : MAX_CHECKPOINTS)) {
     return fail('readable', 'The artifact is not a history card.')
   }
-  if (card.derivation !== 'history_card/1') return fail('readable', 'The artifact is not a history_card/1 card.')
+  if (card.derivation !== cardDerivation) return fail('readable', `The artifact is not a ${cardDerivation} card.`)
+  // A `/2` card states its window and the position of each entry; they are exactly
+  // the positions its last entry's position and the window determine (ER -03 §8.1.2).
+  const positions: number[] = []
+  if (sampled) {
+    const window = card.window
+    if (typeof window !== 'number' || !Number.isInteger(window) || window < 1 || window > MAX_WINDOW) {
+      return fail('readable', 'The history_card/2 states no window from 1 to 64.')
+    }
+    // The card has exactly the members ER -03 §8.1.2 gives it, over one of the two subjects that
+    // name the log; each entry has its position, checkpoint, receipts list and proof, and nothing else.
+    const sameMembers = (value: Record<string, unknown>, names: string[]) => {
+      const keys = Object.keys(value).sort()
+      return keys.length === names.length && keys.every((k, i) => k === [...names].sort()[i])
+    }
+    if (
+      !sameMembers(card, ['anchor', 'derivation', 'evidence_stream', 'history', 'subject', 'window']) ||
+      !['{"checkpoints":null}', '{"full_history":null}'].includes(jcs(card.subject))
+    ) {
+      return fail('readable', 'The history_card/2 has members other than the card\u2019s, or a subject that does not name the log.')
+    }
+    for (const item of history) {
+      const entry = object(item)
+      if (!entry || !sameMembers(entry, ['checkpoint', 'consistency_from_previous', 'position', 'receipts']) || !Array.isArray(entry.receipts)) {
+        return fail('readable', 'An entry of the history_card/2 is not a position, checkpoint, receipts list and proof.')
+      }
+      const at = entry.position
+      if (typeof at !== 'number' || !Number.isSafeInteger(at) || at < 0) {
+        return fail('chain', 'An entry of the history_card/2 names no position.')
+      }
+      positions.push(at)
+    }
+    const expected = cardPositions(positions[positions.length - 1], window)
+    if (positions.length !== expected.length || !positions.every((p, i) => p === expected[i])) {
+      return fail('chain', 'The positions of the history_card/2 are not the ones its last position and window determine.')
+    }
+  }
 
   const links: Link[] = []
   for (let i = 0; i < history.length; i++) {
@@ -357,10 +413,20 @@ export async function verifyHistoryReply(replyText: string): Promise<HistoryVerd
 
   const first = links[0]
   if (first.previousSize !== 0n || first.previousRoot !== '') return fail('chain', 'The list does not start at the beginning of the log.')
+  // The first entry has nothing before it to be consistent with: its proof is null.
+  if (object(history[0])?.consistency_from_previous !== null) return fail('consistency', 'The first checkpoint carries a proof, though nothing comes before it.')
   for (let i = 1; i < links.length; i++) {
     const prev = links[i - 1]
     const next = links[i]
-    if (next.previousSize !== prev.size || next.previousRoot !== prev.root || next.logId !== prev.logId || next.size <= prev.size) {
+    // Neighbours in a `/1` card, and entries at consecutive positions in a `/2` card, are
+    // consecutive checkpoints: each names the one before it. A gap in a `/2` card is
+    // spanned by its consistency proof alone.
+    const consecutive = !sampled || positions[i] === positions[i - 1] + 1
+    if (
+      (consecutive && (next.previousSize !== prev.size || next.previousRoot !== prev.root)) ||
+      next.logId !== prev.logId ||
+      next.size <= prev.size
+    ) {
       return fail('chain', `Checkpoint ${i + 1} does not extend the one before it.`)
     }
     const entry = object(history[i])
@@ -407,7 +473,9 @@ export async function verifyHistoryReply(replyText: string): Promise<HistoryVerd
     detail:
       links.length === 1
         ? 'The log has one checkpoint, and it starts the log.'
-        : `The list starts the log, each checkpoint extends the one before, and all ${links.length - 1} consistency proofs hold.`
+        : sampled
+          ? `The list starts the log, its positions are the ones a history_card/2 lists, and all ${links.length - 1} consistency proofs hold.`
+          : `The list starts the log, each checkpoint extends the one before, and all ${links.length - 1} consistency proofs hold.`
   })
 
   const last = links[links.length - 1]

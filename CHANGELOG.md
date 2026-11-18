@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- **The History page reads a `history_card/2` (#303).** Since #302 a node's history page serves its card as `history_card/2`, which the page's own offline verifier (`web-ui/src/features/capsules/lib/history-verify.ts`) refused as "not a history_card/1 card", so a node's History page could not read its own card; found by the by-hand run of `scripts/e2e-two-node.sh`. The verifier now checks a `/2` card: its window (1 to 64), that its positions are exactly those the last position and window determine (ER -03 §8.1.2), and that each listed checkpoint extends the one before it, by its predecessor link where the positions are consecutive and by its consistency proof across a gap. `/1` is read as before. The golden reply `crates/evidence-plugin/tests/fixtures/history_card_2_reply.json` is a node with 40 checkpoints.
+
 ### Changed
 
 - **The plugin moves to the checkpointed-local-log 0.6 stack (#300).** It now builds on agent-action-capsule 0.11.0, evidence-request 0.6.0, evidencebook 0.0.19, capsule-emit 0.0.13 and capsule-emit-artifact 0.0.4. A checkpoint this node signs carries the bare log id as the CWT `sub` (CLL -02), so every checkpoint, its anchor digest and the signatures over it differ from before; the golden answer fixtures and `vectors/no-complete-answer` are regenerated and nothing else in them changes. A witness must accept both `sub` forms before this node is deployed.
