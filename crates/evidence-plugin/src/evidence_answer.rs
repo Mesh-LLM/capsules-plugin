@@ -136,7 +136,7 @@ use cll::mmr::leaf_count;
 use ed25519_dalek::SigningKey;
 use evidence_request::digest::request_digest;
 use evidence_request::refusal;
-use evidence_request::registry::{Reason, DERIVATION_HISTORY_CARD};
+use evidence_request::registry::{Reason, DERIVATION_HISTORY_CARD, DERIVATION_HISTORY_CARD_2};
 use evidence_request::request::{self, Derivation, Request, Subject};
 use evidence_request::resolve::{self, Resolution, ResolvedAnchor};
 use evidence_request::time::parse_utc;
@@ -398,18 +398,28 @@ fn answer_inner(request_bytes: &[u8], responder: &Responder<'_>, asker: &mut Ask
 /// Whether the answer to `req` carries record bodies. An evidence bundle
 /// carries every record of its interval, as sealed, so it does.
 fn carries_records(req: &Request) -> bool {
-    (req.derivation.is_none() && !matches!(req.subject, Subject::Checkpoints))
+    (req.derivation.is_none()
+        && !matches!(
+            req.subject,
+            Subject::Checkpoints | Subject::CheckpointRange(..)
+        ))
         || crate::bundle_answer::is_derivation(req.derivation.as_ref())
 }
 
 /// Whether `req` asks for a stranger-safe answer (PRD R-8): `checkpoints`
-/// with no derivation, or `history_card/1`, which is resolved only over
+/// with no derivation (a range of them included), `history_card/1` or
+/// `history_card/2`, which is resolved only over
 /// `full_history` and `checkpoints` (`evidence_log`). Neither carries a
 /// record, so neither depends on who asks.
 pub(crate) fn stranger_safe(req: &Request) -> bool {
     match &req.derivation {
-        None => matches!(req.subject, Subject::Checkpoints),
-        Some(Derivation::Token(t)) => t == DERIVATION_HISTORY_CARD,
+        None => matches!(
+            req.subject,
+            Subject::Checkpoints | Subject::CheckpointRange(..)
+        ),
+        Some(Derivation::Token(t)) => {
+            t == DERIVATION_HISTORY_CARD || t == DERIVATION_HISTORY_CARD_2
+        }
         Some(Derivation::Digest(_)) => false,
     }
 }
@@ -698,7 +708,7 @@ fn answer_from(
                 found => found.into_iter().collect(),
             },
             Subject::Correlation(_) | Subject::Exchange(_) => keyed,
-            Subject::Checkpoints => Vec::new(),
+            Subject::Checkpoints | Subject::CheckpointRange(..) => Vec::new(),
         }
         .into_iter()
         .filter(|&i| i < covered)
@@ -708,8 +718,21 @@ fn answer_from(
         }
         records
     } else {
-        if at as u64 + 1 > MAX_ANSWER_CHECKPOINTS {
-            return Err(Reason::CapacityExceeded);
+        // A `/2` card lists O(log n + window) checkpoints, so the count of
+        // the log bounds nothing; a range is bounded by its own length.
+        match &req.subject {
+            Subject::CheckpointRange(a, b) => {
+                if *b > at as u64 {
+                    return Err(Reason::CoverageUnsatisfiable);
+                }
+                if b - a + 1 > MAX_ANSWER_CHECKPOINTS {
+                    return Err(Reason::CapacityExceeded);
+                }
+            }
+            _ if matches!(&req.derivation,
+                Some(Derivation::Token(t)) if t == DERIVATION_HISTORY_CARD_2) => {}
+            _ if at as u64 + 1 > MAX_ANSWER_CHECKPOINTS => return Err(Reason::CapacityExceeded),
+            _ => {}
         }
         Vec::new()
     };
@@ -2036,6 +2059,32 @@ pub(crate) mod tests {
         ]
     }
 
+    /// A ranged `checkpoints` request past the anchor is
+    /// `coverage_unsatisfiable`, and one under a history card is
+    /// `no_such_subject` (ER -03 §8.1.3), whoever asks.
+    #[test]
+    fn a_ranged_checkpoint_request_is_refused_for_its_own_reasons() {
+        let dir = node(&corpus_ledger());
+        let coverage = standard_history_requests()[0]["coverage"].clone();
+        let ask = |request: Value| {
+            let bytes = serde_json::to_vec(&request).unwrap();
+            refused(&ask_by_default(dir.path(), &bytes))
+        };
+        assert_eq!(
+            ask(json!({"subject": {"checkpoints": [0, 2]}, "coverage": coverage})),
+            Some(Reason::CoverageUnsatisfiable)
+        );
+        for card in ["history_card/1", "history_card/2"] {
+            assert_eq!(
+                ask(
+                    json!({"subject": {"checkpoints": [0, 1]}, "coverage": coverage, "derivation": card})
+                ),
+                Some(Reason::NoSuchSubject),
+                "{card}"
+            );
+        }
+    }
+
     /// `served_summary/1`, pinned where it used to be answered: the
     /// corpus's newest checkpoint.
     fn served_summary_request() -> Value {
@@ -2044,9 +2093,16 @@ pub(crate) mod tests {
         request
     }
 
-    /// `checkpoints` and `history_card/1` (R-8).
+    /// `checkpoints`, a range of them, `history_card/1` and `history_card/2`
+    /// (R-8; ER -03 §8.1).
     fn stranger_safe_requests() -> Vec<Value> {
-        standard_history_requests()[..2].to_vec()
+        let mut requests = standard_history_requests()[..2].to_vec();
+        let coverage = requests[0]["coverage"].clone();
+        requests.push(
+            json!({"subject": {"full_history": null}, "coverage": coverage, "derivation": "history_card/2"}),
+        );
+        requests.push(json!({"subject": {"checkpoints": [0, 1]}, "coverage": coverage}));
+        requests
     }
 
     /// What a stranger is refused by default though it carries no record:

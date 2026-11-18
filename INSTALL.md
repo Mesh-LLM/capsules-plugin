@@ -164,7 +164,7 @@ install the 0.1.5 package below instead.
   counterparty. On `share_history_segments = peers`, records now also show which node asked.
 - **Evidence answers are the interop profile's signed envelope** (`evidence-request` 0.2.0), the
   same envelope the Go, Python and evidencebook implementations sign.
-- **Checkpoints and `history_card/1` are answered to any requester;** the rest of Standard History
+- **Checkpoints (whole, or a range of positions), `history_card/1` and `history_card/2` are answered to any requester;** the rest of Standard History
   (`served_summary/1`) goes only to counterparties by default (`share_standard_history`).
 - **Exchange corroboration,** off by default (`share_exchange_corroboration`): another node can ask
   whether this node holds a half of one earlier exchange.

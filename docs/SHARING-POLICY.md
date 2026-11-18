@@ -452,7 +452,7 @@ With the defaults, the policy's `policy` member is exactly
   "share_history_segments": "counterparties",
   "share_record_at_completion": "counterparty",
   "share_standard_history": "off",
-  "stranger_safe": ["checkpoints", "history_card/1"]
+  "stranger_safe": ["checkpoints", "history_card/1", "history_card/2"]
 }
 ```
 
@@ -478,13 +478,17 @@ change with it.
   minute (`answers_within: PT1M`). Its predicate class is
   `performed:counterparty_half`.
 - **What it carries.** The node's latest signed checkpoint, whole, and the
-  `history_card/1` answer this node gives any stranger at that checkpoint
+  `history_card/2` answer this node gives any stranger at that checkpoint
   (the staple), filed as one `history_cards` entry with its stream and the
   checkpoint key so a third party can verify it offline. A node has no
-  commitment while it has no checkpoint, while its `history_card/1` is refused
-  (past 1024 checkpoints, #76), or while the commitment would be larger than a
+  commitment while it has no checkpoint, while its `history_card/2` is refused,
+  or while the commitment would be larger than a
   peer reads (2 MiB).
-- **The staple is L0, always.** It is the `history_card/1` answer: signed
+- **The staple is L0, always.** It is the `history_card/2` answer (ER -03
+  §8.1.2: the first checkpoint, samples back from the anchor at 1, 2, 4, 8
+  checkpoints, and the latest 16 in full, so its size grows with the log of
+  the checkpoint count, not with the count; `history_card/1`, which lists
+  every checkpoint, is still answered up to 1024 checkpoints and 1 MiB): signed
   checkpoints that show the node's records are continuous and unedited, how
   old its key is and, when a witness is configured, which witness holds them.
   It carries no record, counterparty, deal count or service count.

@@ -24,7 +24,7 @@
 //! two together, so the file cannot drift from the code.
 //!
 //! **What it is built from.** `checkpoint` is this node's latest signed
-//! checkpoint statement, whole. The staple is the `history_card/1` answer
+//! checkpoint statement, whole. The staple is the `history_card/2` answer
 //! this node gives any stranger at that checkpoint (`evidence-interop/0`,
 //! presented by this node). A node with no checkpoint yet has no commitment.
 //!
@@ -83,10 +83,11 @@ pub const ANSWERS_WITHIN: &str = "PT1M";
 /// definition this node serves (`service_history::definition_digest`), so it
 /// is read once at run time. A counterparty is answered each of them under
 /// every setting; who else gets one is the policy's to say.
-pub static DERIVATIONS: std::sync::LazyLock<[&str; 6]> = std::sync::LazyLock::new(|| {
+pub static DERIVATIONS: std::sync::LazyLock<[&str; 7]> = std::sync::LazyLock::new(|| {
     [
         "checkpoints",
         evidence_request::registry::DERIVATION_HISTORY_CARD,
+        evidence_request::registry::DERIVATION_HISTORY_CARD_2,
         crate::exchange_corroboration::DEFINITION_DIGEST,
         crate::service_history::definition_digest(),
         crate::service_history::definition_digest_2(),
@@ -94,8 +95,17 @@ pub static DERIVATIONS: std::sync::LazyLock<[&str; 6]> = std::sync::LazyLock::ne
     ]
 });
 
+/// The card this node staples in its commitment: the bounded `/2` (ER -03
+/// §8.1.2), whose size grows with the log of the checkpoint count, so a
+/// node past 350 checkpoints still fits `MAX_ANSWER_BYTES`. A commitment read
+/// from a peer may staple either card ([`CARD_DERIVATIONS`]).
+pub const STAPLED_DERIVATION: &str = "history_card/2";
+
+/// The cards a `commitment/1` may staple.
+const CARD_DERIVATIONS: [&str; 2] = ["history_card/1", "history_card/2"];
+
 /// Answered to anyone, signed or not (PRD R-8).
-pub const STRANGER_SAFE: [&str; 2] = ["checkpoints", "history_card/1"];
+pub const STRANGER_SAFE: [&str; 3] = ["checkpoints", "history_card/1", "history_card/2"];
 
 /// DER SubjectPublicKeyInfo prefix of an Ed25519 key (RFC 8410).
 const ED25519_SPKI_PREFIX: [u8; 12] = [
@@ -360,7 +370,7 @@ pub fn build(
     let staple_request = json!({
         "subject": {"full_history": null},
         "coverage": {"expected_pin": anchor},
-        "derivation": "history_card/1",
+        "derivation": STAPLED_DERIVATION,
     });
     let staple = match evidence_answer::answer(
         &serde_json::to_vec(&staple_request).expect("a JSON value serializes"),
@@ -371,13 +381,15 @@ pub fn build(
         }
         Outcome::Refused { reason, .. } => {
             return Err(Unbuilt::lasting(format!(
-                "this node refused its own history_card/1: {reason}"
+                "this node refused its own {STAPLED_DERIVATION}: {reason}"
             )))
         }
         Outcome::Unanswerable(why) => return Err(Unbuilt::passing(why)),
     };
     let stream = staple_stream(&staple).ok_or_else(|| {
-        Unbuilt::lasting("this node's history_card/1 names no evidence_stream".into())
+        Unbuilt::lasting(format!(
+            "this node's {STAPLED_DERIVATION} names no evidence_stream"
+        ))
     })?;
     let policy_bytes = policy.signed_bytes(key);
     let b64 = |raw: &[u8]| base64::engine::general_purpose::STANDARD.encode(raw);
@@ -401,7 +413,7 @@ pub fn build(
         "history_cards": [{
             "stream": stream,
             "community": COMMUNITY,
-            "derivation": "history_card/1",
+            "derivation": STAPLED_DERIVATION,
             "sha256": sha(&staple),
             "bytes": b64(&staple),
             "checkpoint_key": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(spki(&key.verifying_key())),
@@ -768,10 +780,10 @@ fn shape_problems(doc: &Value) -> Vec<String> {
         }
         if !doc["answers"]["derivations"]
             .as_array()
-            .is_some_and(|a| a.iter().any(|d| d == "history_card/1"))
+            .is_some_and(|a| a.iter().any(|d| CARD_DERIVATIONS.iter().any(|c| d == c)))
         {
             problems.push(
-                "answers.derivations must include history_card/1, the derivation stapled".into(),
+                "answers.derivations must include a history card, the derivation stapled".into(),
             );
         }
     }
@@ -818,8 +830,12 @@ fn card_problems(cards: &Value) -> Vec<String> {
         if text("community") != Some(COMMUNITY) && map.contains_key("community") {
             problems.push(format!("{name}.community is not a known community"));
         }
-        if map.contains_key("derivation") && text("derivation") != Some("history_card/1") {
-            problems.push(format!("{name}.derivation must be history_card/1"));
+        if map.contains_key("derivation")
+            && !text("derivation").is_some_and(|d| CARD_DERIVATIONS.contains(&d))
+        {
+            problems.push(format!(
+                "{name}.derivation must be history_card/1 or history_card/2"
+            ));
         }
         if map.contains_key("sha256") && !text("sha256").is_some_and(is_hex64) {
             problems.push(format!("{name}.sha256 is not 64 lowercase hex"));
@@ -1002,8 +1018,14 @@ fn staple_problems(name: &str, raw: &[u8], key_id: &Value) -> Vec<String> {
         return vec![format!("{name} is not an {STAPLE_PROFILE} answer")];
     }
     let mut problems = Vec::new();
-    if card.get("derivation").and_then(Value::as_str) != Some("history_card/1") {
-        problems.push(format!("{name} answer's derivation is not history_card/1"));
+    if !card
+        .get("derivation")
+        .and_then(Value::as_str)
+        .is_some_and(|d| CARD_DERIVATIONS.contains(&d))
+    {
+        problems.push(format!(
+            "{name} answer's derivation is not history_card/1 or history_card/2"
+        ));
     }
     if card.get("responder") != Some(key_id) {
         problems.push(format!(

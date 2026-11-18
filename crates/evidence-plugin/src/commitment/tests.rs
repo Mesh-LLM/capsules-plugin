@@ -136,6 +136,7 @@ fn the_answers_lists_are_pinned_and_follow_the_settings() {
         [
             "checkpoints",
             "history_card/1",
+            "history_card/2",
             crate::exchange_corroboration::DEFINITION_DIGEST,
             crate::service_history::DEFINITION_DIGEST,
             crate::service_history::DEFINITION_DIGEST_2,
@@ -251,12 +252,12 @@ fn the_checkpoint_is_the_latest_and_the_staple_is_what_a_stranger_gets() {
     assert_eq!(hex::encode(Sha256::digest(raw("checkpoint"))), latest);
     let staple: Value = serde_json::from_slice(&raw("history_card")).unwrap();
     assert_eq!(staple["profile"], STAPLE_PROFILE);
-    assert_eq!(staple["derivation"], "history_card/1");
+    assert_eq!(staple["derivation"], "history_card/2");
     assert_eq!(staple["responder"], key_id(&key()));
     assert_eq!(staple["anchor"]["digest"], latest);
 }
 
-/// The staple is L0 (`history_card/1`) on every setting (Steven, 2026-11-01:
+/// The staple is L0 (`history_card/2`) on every setting (Steven, 2026-11-01:
 /// a node staples L0 in its commitment; plugin#241). No switch widens it:
 /// with standard history and advertising both on, the stapled card is
 /// byte for byte the one the default settings give, and so carries no
@@ -283,7 +284,7 @@ fn no_setting_changes_the_staple() {
     );
     assert_eq!(
         plain.commitment["history_cards"][0]["derivation"],
-        "history_card/1"
+        "history_card/2"
     );
     for signed in [&plain, &wide] {
         // verify() enforces the exact SCHEMA member set, so a wider policy
@@ -507,16 +508,12 @@ fn a_refusal_names_the_digest_of_the_policy_it_was_refused_under() {
     assert_eq!(signed.commitment["lcap"]["policy_digest"], digest);
 }
 
-/// A node with a long ledger (loop lab-3's commitment was 1,135,361 bytes):
-/// a checkpoint after every line, so the staple's chain is long. The frame is
-/// past the 1 MiB an ordinary side-stream reply may be, is still offered, and
-/// verifies as a peer verifies it.
-#[test]
-fn a_commitment_over_a_long_ledger_is_offered_and_verifies() {
-    const LONG: usize = 300;
+/// A commitment over a ledger with a checkpoint after every line, `long`
+/// lines of it.
+fn long_ledger_commitment(long: usize) -> Signed {
     use crate::evidence_request_parity::{checkpoints_cut_at, served, write_jsonl};
     let key = key();
-    let ledger: Vec<Value> = (0..LONG)
+    let ledger: Vec<Value> = (0..long)
         .map(|i| {
             served(
                 "node-a",
@@ -527,8 +524,15 @@ fn a_commitment_over_a_long_ledger_is_offered_and_verifies() {
             )
         })
         .collect();
-    let times: Vec<String> = (0..LONG)
-        .map(|i| format!("2026-09-28T{:02}:{:02}:00Z", i / 60, i % 60))
+    let times: Vec<String> = (0..long)
+        .map(|i| {
+            format!(
+                "2026-09-{:02}T{:02}:{:02}:00Z",
+                1 + i / 1440,
+                i % 1440 / 60,
+                i % 60
+            )
+        })
         .collect();
     let cuts: Vec<(usize, &str)> = times
         .iter()
@@ -546,11 +550,31 @@ fn a_commitment_over_a_long_ledger_is_offered_and_verifies() {
         &dir.path().join(crate::evidence_log::CHECKPOINTS_FILE),
         &lines,
     );
+    built_over(dir.path(), &defaults())
+}
 
-    let signed = built_over(dir.path(), &defaults());
+/// A node with a long ledger (loop lab-3's `history_card/1` staple made its
+/// commitment 1,135,361 bytes at 375 checkpoints): the `/2` staple is a
+/// sample, so the frame stays far below the 1 MiB an ordinary side-stream
+/// reply may be, and verifies as a peer verifies it.
+#[test]
+fn a_commitment_over_a_long_ledger_is_small_and_verifies() {
+    let signed = long_ledger_commitment(400);
     let size = serde_json::to_vec(&signed.to_wire()).unwrap().len();
     let ordinary = crate::mesh_evidence_bridge::MAX_SIDE_STREAM_BYTES as usize;
-    assert!(size > ordinary, "{size} bytes does not exceed {ordinary}");
+    assert!(
+        size < ordinary / 4,
+        "{size} bytes is not far below {ordinary}"
+    );
+    assert!(fits(&signed).is_ok());
+    assert_eq!(verify(&signed), Vec::<String>::new());
+}
+
+/// Past `MAX_ANSWER_CHECKPOINTS` the `/1` card is refused whoever asks; the
+/// `/2` staple is not bounded by the count (capsules-plugin#76).
+#[test]
+fn a_commitment_past_the_checkpoint_cap_is_still_offered() {
+    let signed = long_ledger_commitment(1100);
     assert!(fits(&signed).is_ok());
     assert_eq!(verify(&signed), Vec::<String>::new());
 }
@@ -581,7 +605,7 @@ fn the_staple_is_one_card_filed_under_its_own_stream_with_the_checkpoint_key() {
         .unwrap();
     assert_eq!(card["stream"], staple_stream(&raw).unwrap());
     assert_eq!(card["community"], "mesh-llm");
-    assert_eq!(card["derivation"], "history_card/1");
+    assert_eq!(card["derivation"], "history_card/2");
     assert_eq!(card["sha256"], hex::encode(Sha256::digest(&raw)));
     let spki = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(card["checkpoint_key"].as_str().unwrap())
@@ -638,7 +662,8 @@ fn a_legacy_zero_commitment_still_verifies() {
         d.as_object_mut().unwrap().remove("history_cards");
         d["profile"] = json!("evidence-commitment/0");
         d["history_card"] = json!({
-            "derivation": card["derivation"],
+            // `/0` staples only `history_card/1`.
+            "derivation": "history_card/1",
             "sha256": card["sha256"],
             "bytes": card["bytes"],
         });

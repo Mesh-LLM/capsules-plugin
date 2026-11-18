@@ -75,7 +75,7 @@ use evidence_request::cll_material::{
     KIND_INCLUSION,
 };
 use evidence_request::envelope::{self, subject_value, AnchorFreshness, Binding, Envelope, Reply};
-use evidence_request::registry::{Reason, DERIVATION_HISTORY_CARD};
+use evidence_request::registry::{Reason, DERIVATION_HISTORY_CARD, DERIVATION_HISTORY_CARD_2};
 use evidence_request::request::{Coverage, Derivation, Freshness, Request, Subject};
 use evidence_request::resolve::ResolvedAnchor;
 use evidence_request::time::parse_utc;
@@ -102,6 +102,9 @@ fn sha256_hex(bytes: &[u8]) -> String {
 // ---------------------------------------------------------------------------
 // The responder's side.
 // ---------------------------------------------------------------------------
+
+/// The window a `history_card/2` of this node states (ER -03 §8.1.2, 1 to 64).
+pub const HISTORY_WINDOW: usize = 16;
 
 /// What an answer is built from, once the request is resolved and the
 /// sharing policy has passed it.
@@ -138,8 +141,8 @@ pub fn build(b: &Build<'_>, view: &LogView<'_>) -> Result<Value, Reason> {
     let mut reply: Value = serde_json::from_slice(&signed.encode(Binding::Json))
         .map_err(|_| Reason::CapacityExceeded)?;
     // The checkpoints whose receipts go with the answer: every one listed
-    // for a checkpoint list and a history card (embedded or not), else the
-    // serving one.
+    // for a checkpoint list and a `/1` card (embedded or not), only the
+    // listed ones for a `/2` card or a ranged list, else the serving one.
     let lists_checkpoints = service_history
         || matches!(
             (&b.request.derivation, &b.request.subject),
@@ -149,13 +152,23 @@ pub fn build(b: &Build<'_>, view: &LogView<'_>) -> Result<Value, Reason> {
             (&b.request.derivation, &b.request.subject),
             (None, Subject::Checkpoints)
         );
-    let carried: &[ChainCheckpoint] = if lists_checkpoints {
-        &index.chain[..=b.at]
+    let carried: Vec<&ChainCheckpoint> = if lists_checkpoints {
+        index.chain[..=b.at].iter().collect()
+    } else if matches!(&b.request.derivation, Some(Derivation::Token(t)) if t == DERIVATION_HISTORY_CARD_2)
+    {
+        evidence_request::history_card::positions(b.at as u64, HISTORY_WINDOW as u64)
+            .into_iter()
+            .map(|p| &index.chain[p as usize])
+            .collect()
+    } else if let (None, Subject::CheckpointRange(a, z)) =
+        (&b.request.derivation, &b.request.subject)
+    {
+        index.chain[*a as usize..=*z as usize].iter().collect()
     } else {
-        std::slice::from_ref(served)
+        vec![served]
     };
     let receipts: Vec<Value> = carried
-        .iter()
+        .into_iter()
         .flat_map(|cp| {
             let digest = cp.anchor_digest();
             cp.record
@@ -241,6 +254,7 @@ fn signed_envelope(
             // The plugin answers no standard_history derivation; None is the
             // behavior it had before the field existed (DerivationUnsupported).
             standard_card: None,
+            history_window: HISTORY_WINDOW,
         },
         b.signing_key,
         b.issued_at,
@@ -545,7 +559,9 @@ pub fn check(
     let derivation = match &env.derivation {
         None => None,
         Some(Derivation::Token(t))
-            if t == DERIVATION_HISTORY_CARD || t == crate::bundle_answer::TOKEN =>
+            if t == DERIVATION_HISTORY_CARD
+                || t == DERIVATION_HISTORY_CARD_2
+                || t == crate::bundle_answer::TOKEN =>
         {
             Some(t.as_str())
         }
@@ -606,6 +622,15 @@ pub fn check(
         (Some(t), _) if t == DERIVATION_HISTORY_CARD => {
             let art = artifact_map(&env, Some(t))?;
             let (served, listed) = card_chain(&art, key)?;
+            (served, Vec::new(), listed)
+        }
+        (Some(t), _) if t == DERIVATION_HISTORY_CARD_2 => {
+            let art = artifact_map(&env, Some(t))?;
+            let (served, listed) = card_2_chain(&env, &art, key)?;
+            (served, Vec::new(), listed)
+        }
+        (None, Subject::CheckpointRange(a, b)) => {
+            let (served, listed) = checkpoint_range(&env, (*a, *b), key)?;
             (served, Vec::new(), listed)
         }
         (Some(_), Subject::FullHistory)
@@ -763,6 +788,99 @@ fn card_chain(
         listed.push(cp);
     }
     check_chain(listed, card)
+}
+
+/// A `history_card/2` artifact (ER -03 §8.1.2): the card's own seven checks
+/// (`evidencebook::staple::check_history_card_2`, which reads every checkpoint
+/// under the first one's key), each checkpoint the responder's, and the last
+/// the anchor the card names. Returns the anchor and the listed entries.
+fn card_2_chain(
+    env: &Envelope,
+    art: &Map<String, Value>,
+    key: &VerifyingKey,
+) -> Result<(Stated, Vec<Stated>), CheckError> {
+    let history = art
+        .get("history")
+        .and_then(Value::as_array)
+        .filter(|h| !h.is_empty() && h.len() <= MAX_ITEMS)
+        .ok_or_else(|| CheckError::Answer("the history is malformed".into()))?;
+    let listed = history
+        .iter()
+        .map(|entry| stated(&hex_member(entry, "checkpoint")?, key))
+        .collect::<Result<Vec<_>, _>>()?;
+    evidencebook::staple::check_history_card_2(&env.artifact, &env.anchor.digest)
+        .map_err(|e| CheckError::Answer(e.to_string()))?;
+    let last = listed.last().expect("not empty");
+    check_names(art, last)?;
+    let served = Stated {
+        digest: last.digest.clone(),
+        cp: last.cp.clone(),
+    };
+    Ok((served, listed))
+}
+
+/// A ranged `checkpoints` answer (ER -03 §8.1.3): one entry per position from
+/// `a` to `b`, the first carrying no proof and each later one the proof from
+/// the entry before it, and `consistency_to_anchor` from the last to the
+/// anchor checkpoint the answer carries (null when the last is the anchor).
+fn checkpoint_range(
+    env: &Envelope,
+    (a, b): (u64, u64),
+    key: &VerifyingKey,
+) -> Result<(Stated, Vec<Stated>), CheckError> {
+    let art: Value = serde_json::from_slice(&env.artifact)
+        .map_err(|_| CheckError::Answer("the artifact is malformed".into()))?;
+    let history = art
+        .get("history")
+        .and_then(Value::as_array)
+        .filter(|h| h.len() as u64 == b.saturating_sub(a).saturating_add(1) && h.len() <= MAX_ITEMS)
+        .ok_or_else(|| CheckError::Answer("the ranged history is malformed".into()))?;
+    let served = anchor_checkpoint_only(env, key)?;
+    let mut listed: Vec<Stated> = Vec::with_capacity(history.len());
+    for (entry, position) in history.iter().zip(a..) {
+        if entry.get("position").and_then(Value::as_u64) != Some(position) {
+            return fail("a ranged entry is not at its position");
+        }
+        let cp = stated(&hex_member(entry, "checkpoint")?, key)?;
+        let proof = entry.get("consistency_from_previous");
+        match (listed.last(), proof) {
+            (None, Some(Value::Null)) => {}
+            (Some(prev), Some(Value::String(proof))) => {
+                let proof = hex::decode(proof)
+                    .map_err(|_| CheckError::Answer("a consistency proof is malformed".into()))?;
+                if !consistent(
+                    prev.cp.mmr_size,
+                    &prev.cp.new_peak_hashes,
+                    cp.cp.mmr_size,
+                    &cp.cp.new_peak_hashes,
+                    &proof,
+                ) {
+                    return fail("a consistency proof does not hold");
+                }
+            }
+            _ => return fail("a ranged entry's consistency proof is missing or out of place"),
+        }
+        listed.push(cp);
+    }
+    let last = listed.last().expect("the range holds an entry");
+    match art.get("consistency_to_anchor") {
+        Some(Value::Null) if last.digest == served.digest => {}
+        Some(Value::String(proof)) if last.digest != served.digest => {
+            let proof = hex::decode(proof)
+                .map_err(|_| CheckError::Answer("a consistency proof is malformed".into()))?;
+            if !consistent(
+                last.cp.mmr_size,
+                &last.cp.new_peak_hashes,
+                served.cp.mmr_size,
+                &served.cp.new_peak_hashes,
+                &proof,
+            ) {
+                return fail("the range does not extend to the anchor");
+            }
+        }
+        _ => return fail("the range's proof to the anchor is missing or out of place"),
+    }
+    Ok((served, listed))
 }
 
 /// The material of an answer that carries only its anchor checkpoint (an
@@ -1000,7 +1118,7 @@ fn check_record_set(
             bodies.iter().all(|b| record_fits(subject, b))
         }
         // Answered before a record set is read.
-        Subject::Record(_) | Subject::Checkpoints => false,
+        Subject::Record(_) | Subject::Checkpoints | Subject::CheckpointRange(..) => false,
     };
     if !fits {
         return fail("the records are not the ones the subject names");
@@ -1287,6 +1405,14 @@ mod tests {
         fn pin(&self, i: usize) -> Value {
             json!({"expected_pin": self.anchors[i]})
         }
+    }
+
+    /// `reply` re-signed by the node key with `art` as its artifact, for the
+    /// request `sent`.
+    fn resigned_by_artifact(sent: &[u8], reply: &Value, art: &Value) -> Value {
+        resigned(sent, reply, |p| {
+            p.artifact = serde_json::to_vec(art).unwrap();
+        })
     }
 
     fn check_reply(sent: &[u8], reply: &Value) -> Result<Checked, CheckError> {
@@ -2049,6 +2175,77 @@ mod tests {
         assert!(ask_ledger(&ledger, &key, &full).0.unwrap().records.len() >= 5);
         let card = json!({"subject": {"full_history": null}, "coverage": {"expected_pin": stated[1]}, "derivation": "history_card/1"});
         assert_eq!(ask_ledger(&ledger, &key, &card).0.unwrap().checkpoints, 2);
+    }
+
+    /// `history_card/2` over a log of 40 checkpoints lists exactly the
+    /// positions P(n, window) (ER -03 §8.1.2), verifies as a requester
+    /// checks it, over `full_history` and `checkpoints` alike, and a card
+    /// missing a sampled position fails.
+    #[test]
+    fn a_history_card_2_lists_the_sampled_positions_and_verifies() {
+        let cuts: Vec<usize> = (0..40).collect();
+        let (_dir, ledger, key, _ids) = producer_ledger(40, &cuts);
+        let (stated, total) = anchors_of(&ledger, &key);
+        assert_eq!(total, 40);
+        let last = total - 1;
+        let want = evidence_request::history_card::positions(last as u64, HISTORY_WINDOW as u64);
+        assert!(want.len() < total, "a sample, not the whole chain");
+        for subject in [json!({"full_history": null}), json!({"checkpoints": null})] {
+            let card = json!({"subject": subject, "coverage": {"expected_pin": stated[last]}, "derivation": "history_card/2"});
+            let (checked, wire) = ask_ledger(&ledger, &key, &card);
+            let checked = checked.unwrap();
+            assert_eq!(checked.anchor, stated[last]);
+            assert_eq!(checked.checkpoints, want.len());
+            let art: Value = serde_json::from_slice(
+                &base64::Engine::decode(
+                    &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+                    wire["artifact"].as_str().unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(art["window"], json!(HISTORY_WINDOW));
+            let listed: Vec<u64> = art["history"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|e| e["position"].as_u64().unwrap())
+                .collect();
+            assert_eq!(listed, want);
+        }
+        // The same card without one sampled entry is refused by the check.
+        let card = json!({"subject": {"full_history": null}, "coverage": {"expected_pin": stated[last]}, "derivation": "history_card/2"});
+        let bytes = serde_json::to_vec(&card).unwrap();
+        let req = request::parse_json(&bytes).unwrap();
+        let (_, wire) = ask_ledger(&ledger, &key, &card);
+        let mut art: Value = serde_json::from_slice(
+            &base64::Engine::decode(
+                &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+                wire["artifact"].as_str().unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        art["history"].as_array_mut().unwrap().remove(1);
+        let broken = resigned_by_artifact(&bytes, &wire, &art);
+        assert!(check(&bytes, &req, &broken, &key.verifying_key(), &|_| None).is_err());
+    }
+
+    /// A ranged `checkpoints` answer (ER -03 §8.1.3) is one entry per
+    /// position, each proof from the entry before it, and the proof from the
+    /// last to the anchor; it verifies, at the anchor's own position too.
+    #[test]
+    fn a_ranged_checkpoint_list_verifies() {
+        let cuts: Vec<usize> = (0..12).collect();
+        let (_dir, ledger, key, _ids) = producer_ledger(12, &cuts);
+        let (stated, total) = anchors_of(&ledger, &key);
+        for (a, b) in [(3u64, 7u64), (5, 5), (4, (total - 1) as u64)] {
+            let ask = json!({"subject": {"checkpoints": [a, b]}, "coverage": {"expected_pin": stated[total - 1]}});
+            let (checked, _) = ask_ledger(&ledger, &key, &ask);
+            let checked = checked.unwrap();
+            assert_eq!(checked.anchor, stated[total - 1]);
+            assert_eq!(checked.checkpoints as u64, b - a + 1);
+        }
     }
 
     /// A checkpoint whose line lost its COSE statement ends the chain, as
