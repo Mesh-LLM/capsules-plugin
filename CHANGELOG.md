@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- **With `CAPSULES_ADMISSION_PROFILE` set, a sealed decision's profile digest covers the console admission lists and default (#314).** The plugin folds them into the file's `asg/inference` `counterparty_list` before the engine digests it, so the digest a decision cites covers every rule it applied; the digest is still capsule-engine's `Profile` digest, so nothing a verifier reads changes. A file that sets its own `counterparty_list` while the console lists refuse peers is refused at start (every peer NO, the reason logged) because the pack takes one list. A file with no console lists, or lists that refuse no one, cites the same digest as before. This answers the caveat in the 0.1.20 notes.
+
 ## 0.1.20
 
 ### Fixed

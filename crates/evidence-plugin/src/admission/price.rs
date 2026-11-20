@@ -20,7 +20,7 @@
 //!
 //! The operator's values are a `policy-profile/v0` file ([`PROFILE_SETTING`]):
 //! `rate_cap.max_input_msat_per_million`, `rate_cap.max_output_msat_per_million`,
-//! and the pack's `counterparty_list`. The sealed decision cites the pack, its
+//! and the pack's `counterparty_list`, with the console lists and default folded in. The sealed decision cites the pack, its
 //! definition digest and the profile's digest. Every dedupe check reads an
 //! empty history: a purchase is keyed on its exchange id, and the host pays
 //! each attempt at most once, so nothing here could repeat one.
@@ -167,8 +167,9 @@ pub struct PriceRule {
 
 impl PriceRule {
     /// The rule the operator's settings give. With [`PROFILE_SETTING`] set,
-    /// the named file is the whole profile: the lists are still enforced by
-    /// the base pack but are not added to it. Otherwise the plugin builds a
+    /// the named file is the profile, with the console lists and default
+    /// folded into it ([`Self::from_file`]), so the digest a decision cites
+    /// covers every rule it applied. Otherwise the plugin builds a
     /// `policy-profile/v0` from the allow/deny lists and default in `policy`,
     /// holding peer fingerprints under `salt`, never clear ids. A file that
     /// does not read or decode is an error, never "unset": the caller fails
@@ -178,7 +179,7 @@ impl PriceRule {
             Ok(path) if !path.trim().is_empty() => {
                 let raw = std::fs::read(path.trim())
                     .map_err(|e| anyhow::anyhow!("{PROFILE_SETTING}: {e}"))?;
-                Self::from_profile(Some(&raw))
+                Self::from_file(&raw, policy, salt)
             }
             Ok(_) | Err(std::env::VarError::NotPresent) => Self::from_operator(policy, salt),
             Err(e) => Err(anyhow::anyhow!("{PROFILE_SETTING}: {e}")),
@@ -200,6 +201,51 @@ impl PriceRule {
         let mut rule = Self::build(Some(&raw), false)?;
         rule.built = true;
         Ok(rule)
+    }
+
+    /// The rule over the operator's profile file with the console lists and
+    /// default folded in as the pack's `counterparty_list` (the same list
+    /// [`Self::from_operator`] builds, fingerprints only). The effective
+    /// profile is what the engine digests, so no new digest is defined. The
+    /// pack has one list: a file that sets its own `counterparty_list` while
+    /// the console lists refuse someone is an error (the caller fails
+    /// closed), since merging two lists would be a rule neither names.
+    pub fn from_file(
+        raw: &[u8],
+        policy: Option<&super::Policy>,
+        salt: &[u8; 32],
+    ) -> anyhow::Result<Self> {
+        let Some(list) = policy.and_then(|p| p.list(salt)) else {
+            return Self::from_profile(Some(raw));
+        };
+        let Ok(mut profile) = serde_json::from_slice::<Value>(raw) else {
+            return Self::from_profile(Some(raw)); // decode reports it
+        };
+        let Some(packs) = profile.get_mut("packs").and_then(Value::as_array_mut) else {
+            return Self::from_profile(Some(raw));
+        };
+        let entry = match packs.iter().position(|p| p["pack"] == PACK) {
+            Some(i) => &mut packs[i],
+            None => {
+                packs.push(json!({"pack": PACK, "parameters": {}}));
+                packs.last_mut().expect("just pushed")
+            }
+        };
+        let Some(parameters) = entry.get_mut("parameters").and_then(Value::as_object_mut) else {
+            return Self::from_profile(Some(raw));
+        };
+        if parameters
+            .get("counterparty_list")
+            .is_some_and(|l| !l.is_null())
+        {
+            anyhow::bail!(
+                "{PROFILE_SETTING}: the file sets a counterparty_list for {PACK} and the \
+                 console's admission lists refuse peers too; the pack takes one list, so \
+                 remove one of them"
+            );
+        }
+        parameters.insert("counterparty_list".into(), list);
+        Self::from_profile(Some(&serde_json::to_vec(&profile)?))
     }
 
     /// The rule over `profile` (`policy-profile/v0` bytes), or over the

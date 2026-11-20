@@ -1580,6 +1580,98 @@ mod tests {
         assert!(read.refuses());
     }
 
+    // A profile file plus the console lists (#314): the effective profile
+    // holds both, and the decision cites its digest.
+
+    fn with_file(policy: Policy, file: &str) -> (Admission, Arc<CapsuleState>, tempfile::TempDir) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let capsules = Arc::new(CapsuleState::open(dir.path(), "node-under-test").expect("open"));
+        let salt = salt(capsules.signing_key());
+        let rule = price::PriceRule::from_file(file.as_bytes(), Some(&policy), &salt);
+        let admission = Admission::new(Ok(policy), rule, capsules.clone());
+        admission.set_host_prices(true);
+        (admission, capsules, dir)
+    }
+
+    #[test]
+    fn a_profile_file_and_the_console_lists_cite_one_digest_covering_both() {
+        let (admission, capsules, _dir) = with_file(policy(Some("no")), CAPS);
+        let rule = admission.price.as_ref().unwrap();
+        let described = rule.describe();
+        let list = &described["profile"]["packs"][0]["parameters"]["counterparty_list"];
+        assert_eq!(list["mode"], "allow");
+        assert_eq!(
+            list["entries"][0]["value"],
+            price::fingerprint(ALLOWED, &salt(capsules.signing_key()))
+        );
+        // The file's own caps stay.
+        assert_eq!(
+            described["profile"]["packs"][0]["parameters"]["rate_cap"]
+                ["max_input_msat_per_million"],
+            2_000_000
+        );
+        // The digest differs from the file alone's.
+        let alone = price::PriceRule::from_profile(Some(CAPS.as_bytes())).unwrap();
+        assert_ne!(
+            described["profile_digest"],
+            alone.describe()["profile_digest"]
+        );
+        admission.answer(&priced(&remote(ALLOWED), rates(1, 1)));
+        let block = sealed_block(&capsules);
+        let reads = block["reads"].as_array().unwrap();
+        let price_read = reads.iter().find(|r| r["role"] == "price").unwrap();
+        assert_eq!(
+            price_read["profile"]["commitment"],
+            json!(price::fingerprint(
+                described["profile_digest"].as_str().unwrap(),
+                &salt(capsules.signing_key())
+            ))
+        );
+        let text = serde_json::to_string(&block).unwrap();
+        for id in [ALLOWED, DENIED, STRANGER] {
+            assert!(!text.contains(id), "the sealed record names a peer");
+        }
+    }
+
+    #[test]
+    fn the_folded_list_refuses_the_peer_the_lists_refuse() {
+        let (admission, _capsules, _dir) = with_file(policy(Some("no")), CAPS);
+        let answer = admission.answer(&priced(&remote(STRANGER), rates(1, 1)));
+        assert_eq!(answer.decision, OpenAiAdmissionDecision::Deny);
+    }
+
+    #[test]
+    fn a_profile_file_with_its_own_list_and_console_lists_is_refused() {
+        let own = format!(
+            r#"{{"format":"policy-profile/v0","packs":[{{"pack":"asg/inference","parameters":{{"counterparty_list":{{"mode":"deny","entries":[{{"kind":"target","value":"{ALLOWED}"}}]}}}}}}]}}"#
+        );
+        let dir = tempfile::tempdir().expect("tempdir");
+        let capsules = Arc::new(CapsuleState::open(dir.path(), "node-under-test").expect("open"));
+        let salt = salt(capsules.signing_key());
+        let error = price::PriceRule::from_file(own.as_bytes(), Some(&policy(None)), &salt)
+            .err()
+            .expect("two lists are refused")
+            .to_string();
+        assert!(error.contains("counterparty_list"), "{error}");
+        // With console lists that refuse no one, the file's own list stands.
+        let none = Policy::parse(None, None, None).unwrap();
+        assert!(price::PriceRule::from_file(own.as_bytes(), Some(&none), &salt).is_ok());
+    }
+
+    #[test]
+    fn a_profile_file_alone_is_unchanged_by_empty_console_lists() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let capsules = Arc::new(CapsuleState::open(dir.path(), "node-under-test").expect("open"));
+        let salt = salt(capsules.signing_key());
+        let none = Policy::parse(None, None, None).unwrap();
+        let folded = price::PriceRule::from_file(CAPS.as_bytes(), Some(&none), &salt).unwrap();
+        let alone = price::PriceRule::from_profile(Some(CAPS.as_bytes())).unwrap();
+        assert_eq!(
+            folded.describe()["profile_digest"],
+            alone.describe()["profile_digest"]
+        );
+    }
+
     #[test]
     fn lists_alone_never_fail_a_peer_closed_on_an_older_host() {
         let (admission, capsules, _dir) = built(policy(None));
