@@ -532,8 +532,9 @@ profile file:
 
   It may also set the pack's `counterparty_list`. With a file set, the plugin folds the console's
   peers-to-admit list and default into the file's profile, as the pack's `counterparty_list`
-  (fingerprints, never node ids), and a sealed decision cites the digest of that combined profile.
-  If your file sets its own `counterparty_list` while the console lists refuse peers, the plugin
+  (fingerprints, never node ids), and a sealed decision cites that combined profile's digest, by a salted commitment as for any file.
+  If your file sets its own `counterparty_list` while the console default is no (or the deprecated
+  `CAPSULES_ADMISSION_DENY` names peers), the plugin
   cannot merge two lists: the profile is unreadable (every peer gets NO, and the log says why)
   until you remove one of them. A rate over a cap, a rate the peer did not
   state, or a peer that list refuses gets NO, naming the rule. A free route (no price) is GO.
