@@ -31,6 +31,13 @@ use serde_json::{json, Value};
 /// The setting naming the operator's `policy-profile/v0` file.
 pub const PROFILE_SETTING: &str = "CAPSULES_ADMISSION_PROFILE";
 
+/// The `fp_alg` of the peer fingerprints in a profile the plugin builds: the
+/// algorithm (SHA-256 over salt then node id) and the key scope (a salt
+/// derived from this install's signing key, so only this operator can say
+/// which peer a fingerprint names). No clear node id enters the profile, its
+/// digest or a sealed record.
+pub const FP_ALG: &str = "sha256-install-salt-v1";
+
 /// The host capability that says `backend_selected` carries the selected
 /// peer's price (mesh-llm `host_capabilities`).
 pub const PRICING_CAPABILITY: &str = "openai_exchange.backend_pricing.v1";
@@ -65,6 +72,17 @@ pub fn loaded_description() -> Value {
     let mut described = LOADED.get().cloned().unwrap_or_else(
         || json!({"state": "unreadable_or_not_loaded", "profile_setting": PROFILE_SETTING}),
     );
+    let deprecated: Vec<&str> = [
+        super::ALLOW_SETTING,
+        super::DENY_SETTING,
+        super::DEFAULT_SETTING,
+    ]
+    .into_iter()
+    .filter(|name| crate::settings::set_in_env(name))
+    .collect();
+    if !deprecated.is_empty() {
+        described["deprecated_env_set"] = json!(deprecated);
+    }
     let host_prices = HOST_PRICES.load(std::sync::atomic::Ordering::Relaxed);
     described["host_sends_prices"] = json!(host_prices);
     if !host_prices {
@@ -141,30 +159,58 @@ pub struct PriceRule {
     operator_profile: bool,
     /// The profile's values as read, for `doctor`.
     values: Value,
+    /// Whether the plugin built the profile from the console settings: it then
+    /// holds fingerprints, never a clear node id, so its digest is safe to
+    /// cite as it is.
+    built: bool,
 }
 
 impl PriceRule {
-    /// The rule [`PROFILE_SETTING`] gives: the named file, or no profile when
-    /// it is unset. A file that does not read or decode is an error, never
-    /// "unset": the caller fails closed.
-    pub fn from_settings() -> anyhow::Result<Self> {
+    /// The rule the operator's settings give. With [`PROFILE_SETTING`] set,
+    /// the named file is the whole profile (and the price maximums may not
+    /// also be set: one place per value). Otherwise the plugin builds a
+    /// `policy-profile/v0` from the allow/deny lists and default in `policy`
+    /// and the price maximums, holding peer fingerprints under `salt`, never
+    /// clear ids. A file or a value that does not read or decode is an error,
+    /// never "unset": the caller fails closed.
+    pub fn from_settings(policy: Option<&super::Policy>, salt: &[u8; 32]) -> anyhow::Result<Self> {
         match crate::settings::var(PROFILE_SETTING) {
             Ok(path) if !path.trim().is_empty() => {
                 let raw = std::fs::read(path.trim())
                     .map_err(|e| anyhow::anyhow!("{PROFILE_SETTING}: {e}"))?;
                 Self::from_profile(Some(&raw))
             }
-            Ok(_) | Err(std::env::VarError::NotPresent) => Self::from_profile(None),
+            Ok(_) | Err(std::env::VarError::NotPresent) => Self::from_operator(policy, salt),
             Err(e) => Err(anyhow::anyhow!("{PROFILE_SETTING}: {e}")),
         }
+    }
+
+    /// The rule over the profile built from `policy`'s lists and default.
+    /// Lists alone are decided by the base pack, so the profile is not the
+    /// operator's own in the price rule's sense (an unpriced attempt is not
+    /// failed closed on an older host); the shipped caps stay.
+    pub fn from_operator(policy: Option<&super::Policy>, salt: &[u8; 32]) -> anyhow::Result<Self> {
+        let Some(list) = policy.and_then(|p| p.list(salt)) else {
+            return Self::from_profile(None);
+        };
+        let raw = serde_json::to_vec(&json!({
+            "format": "policy-profile/v0",
+            "packs": [{"pack": PACK, "parameters": {"counterparty_list": list}}],
+        }))?;
+        let mut rule = Self::build(Some(&raw), false)?;
+        rule.built = true;
+        Ok(rule)
     }
 
     /// The rule over `profile` (`policy-profile/v0` bytes), or over the
     /// shipped default when there is none.
     pub fn from_profile(profile: Option<&[u8]>) -> anyhow::Result<Self> {
+        Self::build(profile, profile.is_some())
+    }
+
+    fn build(profile: Option<&[u8]>, operator_profile: bool) -> anyhow::Result<Self> {
         let base =
             Engine::inference().map_err(|e| anyhow::anyhow!("asg/inference: {}", e.message()))?;
-        let profile_given = profile.is_some();
         let raw = match (profile, DEFAULT_RATE_CAPS) {
             (Some(raw), Some(caps)) => Some(with_default_caps(raw, caps)?),
             (Some(raw), None) => Some(raw.to_vec()),
@@ -177,6 +223,7 @@ impl PriceRule {
                 profile_digest: None,
                 operator_profile: false,
                 values: Value::Null,
+                built: false,
             });
         };
         let profile = Profile::decode(&raw)
@@ -188,8 +235,9 @@ impl PriceRule {
         Ok(Self {
             engine,
             profile_digest: Some(profile.digest().to_string()),
-            operator_profile: profile_given,
+            operator_profile,
             values,
+            built: false,
         })
     }
 
@@ -204,10 +252,24 @@ impl PriceRule {
             "role": "price",
             "pack": self.engine.pack_id(),
             "definition_digest": {"alg": "SHA-256", "digest": self.engine.definition_digest()},
-            "profile": self.profile_digest.as_ref().map(|d| json!({
-                "alg": "SHA-256",
-                "commitment": crate::producer::capsule::peer_commitment(d, salt),
-            })),
+            "profile": self.profile_cite(salt),
+        })
+    }
+
+    /// The profile as a decision cites it: for a profile the plugin built,
+    /// its digest as it is (it holds fingerprints under [`FP_ALG`], no clear
+    /// id); for the operator's file, a salted commitment to the digest (the
+    /// file may list clear ids). `None` when no profile is in force.
+    pub fn profile_cite(&self, salt: &[u8; 32]) -> Option<Value> {
+        self.profile_digest.as_ref().map(|d| {
+            if self.built {
+                json!({"alg": "SHA-256", "digest": d, "fp_alg": FP_ALG})
+            } else {
+                json!({
+                    "alg": "SHA-256",
+                    "commitment": crate::producer::capsule::peer_commitment(d, salt),
+                })
+            }
         })
     }
 
@@ -221,6 +283,8 @@ impl PriceRule {
             "profile": self.values,
             "default_rate_caps": DEFAULT_RATE_CAPS.map(|(i, o)| json!({"max_input_msat_per_million": i, "max_output_msat_per_million": o})),
             "operator_profile": self.operator_profile,
+            "profile_source": if self.built { "console settings" } else { "profile file or shipped default" },
+            "fp_alg": self.built.then_some(FP_ALG),
         })
     }
 
@@ -230,6 +294,7 @@ impl PriceRule {
         &self,
         event: &Value,
         peer: &str,
+        fingerprint: &str,
         host_prices: bool,
         now: chrono::DateTime<chrono::Utc>,
     ) -> Read {
@@ -273,6 +338,10 @@ impl PriceRule {
             "timestamp": now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
             "target": peer,
             "equivalence_key": event["exchange_id"],
+            // What a profile's fingerprint entries match: read by the list,
+            // never sealed.
+            "counterparty_ids": {"payee": fingerprint},
+            "counterparty_fp_alg": FP_ALG,
         });
         // A rate that does not read is left out, and rate_cap refuses it.
         if let Some(input) = input {
@@ -319,6 +388,11 @@ impl PriceRule {
             }
         }
     }
+}
+
+/// The peer's fingerprint as a profile's entries hold it ([`FP_ALG`]).
+pub fn fingerprint(peer: &str, salt: &[u8; 32]) -> String {
+    crate::producer::capsule::peer_commitment(peer, salt)
 }
 
 fn result_str(result: ConstraintResult) -> &'static str {

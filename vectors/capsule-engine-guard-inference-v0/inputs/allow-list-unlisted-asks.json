@@ -1,0 +1,39 @@
+{
+ "pack": "inference",
+ "profile": {
+  "format": "policy-profile/v0",
+  "packs": [
+   {
+    "pack": "asg/inference",
+    "parameters": {
+     "counterparty_list": {
+      "mode": "allow",
+      "entries": [
+       {
+        "kind": "target",
+        "value": "node-x"
+       }
+      ],
+      "disposition": "ask"
+     }
+    }
+   }
+  ]
+ },
+ "steps": [
+  {
+   "operator": "node-a",
+   "developer": "mesh-node@v1",
+   "action_type": "decide",
+   "taxonomy_version": "6",
+   "verb": "inference.purchase",
+   "action_class": "money.purchase",
+   "action_id": "inference/conformance-i19",
+   "timestamp": "2026-10-29T12:19:00Z",
+   "target": "node-b",
+   "input_msat_per_million": 1000000,
+   "output_msat_per_million": 4000000,
+   "equivalence_key": "exchange-i19"
+  }
+ ]
+}

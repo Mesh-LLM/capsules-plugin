@@ -497,13 +497,27 @@ To leave, turn the switch off.
 When this node routes a request to a mesh peer, it can first decide GO or NO for that peer from
 your lists, and seal the decision in its book:
 
-- `CAPSULES_ADMISSION_ALLOW`: peers to admit, as comma-separated 64-hex mesh node ids.
-- `CAPSULES_ADMISSION_DENY`: peers to refuse, in the same form. A peer on both lists is refused.
-- `CAPSULES_ADMISSION_DEFAULT`: `go` (the default) or `no`, for a peer on neither list.
+Set them in the console, under Configuration > Plugins > "Which peers you route to":
+
+- **Peers to admit** (`admission_allow`): mesh node ids (64 hex characters), comma-separated.
+- **Peers to refuse** (`admission_deny`): the same form. A peer on both lists is refused.
+- **Peers on neither list** (`admission_default`): `go` (the default) or `no`.
+
+The plugin builds a `policy-profile/v0` from these, and capsule-engine's
+evaluator decides it. The profile holds each peer as a salted fingerprint
+(`sha256-install-salt-v1`), never as a node id, and each decision cites the profile's digest.
+`doctor` shows the profile, its digest and its values.
+
+The environment variables `CAPSULES_ADMISSION_ALLOW`, `CAPSULES_ADMISSION_DENY` and
+`CAPSULES_ADMISSION_DEFAULT` (the same values) are **deprecated**: they are still read, and win over
+the console, but each logs a warning at start naming its console setting. A later release refuses to
+start while one is set, so move them to the console and unset them. A peer you block in mesh-llm's
+own peer blocks is configured there, not here.
 
 A peer your lists admit then meets the price rule, decided by capsule-engine's `asg/inference`
 terms pack (the same evaluator and vectors Muse uses). It compares the input and output rates the
-peer advertised for the model, in msat per million tokens, with your caps:
+peer advertised for the model, in msat per million tokens, with your caps. Set them in a
+profile file:
 
 - `CAPSULES_ADMISSION_PROFILE`: the path of a `policy-profile/v0` JSON file. For example:
 

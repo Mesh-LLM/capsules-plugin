@@ -334,6 +334,71 @@
           "category_order": 3,
           "setting_order": 12
         }
+      },
+      {
+        "key": "admission_allow",
+        "value_schema": {
+          "kind": "string",
+          "allow_additional_properties": false
+        },
+        "required": false,
+        "apply_mode": "static_on_load",
+        "restart_scope": "none",
+        "visibility": "user",
+        "description": "Peers to admit, as mesh node ids (64 hex characters), separated by commas. It matters when the default below is no. A peer on both lists is refused.",
+        "presentation": {
+          "label": "Peers to admit",
+          "category_id": "admission",
+          "category_label": "Which peers you route to",
+          "category_summary": "Before this node sends a request to a mesh peer it decides go or no from these. Each decision is sealed in your book. Takes effect when mesh-llm is restarted.",
+          "category_order": 4,
+          "setting_order": 13
+        }
+      },
+      {
+        "key": "admission_deny",
+        "value_schema": {
+          "kind": "string",
+          "allow_additional_properties": false
+        },
+        "required": false,
+        "apply_mode": "static_on_load",
+        "restart_scope": "none",
+        "visibility": "user",
+        "description": "Peers to refuse, as mesh node ids (64 hex characters), separated by commas. The sealed record names a peer only by a salted fingerprint, never by its id.",
+        "presentation": {
+          "label": "Peers to refuse",
+          "category_id": "admission",
+          "category_label": "Which peers you route to",
+          "category_summary": "Before this node sends a request to a mesh peer it decides go or no from these. Each decision is sealed in your book. Takes effect when mesh-llm is restarted.",
+          "category_order": 4,
+          "setting_order": 14
+        }
+      },
+      {
+        "key": "admission_default",
+        "value_schema": {
+          "kind": "enum",
+          "enum_values": [
+            "go",
+            "no"
+          ],
+          "allow_additional_properties": false
+        },
+        "required": false,
+        "default_json": "\"go\"",
+        "apply_mode": "static_on_load",
+        "restart_scope": "none",
+        "visibility": "user",
+        "description": "What to do with a peer on neither list: go (the default) or no.",
+        "presentation": {
+          "label": "Peers on neither list",
+          "category_id": "admission",
+          "category_label": "Which peers you route to",
+          "category_summary": "Before this node sends a request to a mesh peer it decides go or no from these. Each decision is sealed in your book. Takes effect when mesh-llm is restarted.",
+          "category_order": 4,
+          "setting_order": 15
+        }
       }
     ]
   },

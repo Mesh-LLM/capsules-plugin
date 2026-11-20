@@ -1,0 +1,31 @@
+{
+ "pack": "inference",
+ "profile": {
+  "format": "policy-profile/v0",
+  "packs": [
+   {
+    "pack": "asg/inference",
+    "parameters": {
+     "rate_cap": {
+      "max_input_msat_per_million": 2000000,
+      "max_output_msat_per_million": 8000000
+     }
+    }
+   }
+  ]
+ },
+ "steps": [
+  {
+   "operator": "node-a",
+   "developer": "mesh-node@v1",
+   "action_type": "decide",
+   "taxonomy_version": "6",
+   "verb": "inference.purchase",
+   "action_class": "money.purchase",
+   "action_id": "inference/conformance-i8",
+   "timestamp": "2026-10-29T12:08:00Z",
+   "target": "node-b",
+   "equivalence_key": "exchange-i8"
+  }
+ ]
+}

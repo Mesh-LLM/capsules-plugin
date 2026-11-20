@@ -2129,9 +2129,15 @@ async fn main() -> anyhow::Result<()> {
     let capsules_for_hook = capsules.clone();
     // The hold, read now so the hook never reads a setting.
     let _ = agreement_bridge::hook_wait();
+    admission::warn_deprecated_env();
+    let admission_policy = admission::Policy::from_settings();
+    let admission_price = admission::price::PriceRule::from_settings(
+        admission_policy.as_ref().ok(),
+        &admission::salt(capsules.signing_key()),
+    );
     let peer_admission = Arc::new(admission::Admission::new(
-        admission::Policy::from_settings(),
-        admission::price::PriceRule::from_settings(),
+        admission_policy,
+        admission_price,
         capsules.clone(),
     ));
     let admission_for_rows = peer_admission.clone();
