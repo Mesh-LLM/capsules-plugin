@@ -508,7 +508,8 @@ not here.
 
 The plugin builds a `policy-profile/v0` from these, and capsule-engine's evaluator decides it. The
 profile holds each peer as a salted fingerprint (`sha256-install-salt-v1`), never as a node id, and
-each decision cites the profile's digest. `doctor` shows the profile, its digest and its values.
+each decision cites the profile's digest (for a profile in a file, by a salted commitment to its
+digest, as below). `doctor` shows the profile, its digest and its values.
 
 The environment variables `CAPSULES_ADMISSION_ALLOW` and `CAPSULES_ADMISSION_DEFAULT` (the same
 values) are **deprecated**: they are still read, and win over the console, but each logs a warning at
@@ -529,7 +530,8 @@ profile file:
     "rate_cap":{"max_input_msat_per_million":2000000,"max_output_msat_per_million":8000000}}}]}
   ```
 
-  It may also set the pack's `counterparty_list`. A rate over a cap, a rate the peer did not
+  It may also set the pack's `counterparty_list`. With a file set, the file is the whole profile:
+  the peers-to-admit list is still enforced but is not added to it. A rate over a cap, a rate the peer did not
   state, or a peer that list refuses gets NO, naming the rule. A free route (no price) is GO.
   With no file set, the shipped caps apply: 500,000 and 1,500,000 msat per million, far above
   any real price, so they only stop an outlier. A file that does not read gives every peer NO

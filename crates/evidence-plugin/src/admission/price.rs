@@ -167,12 +167,12 @@ pub struct PriceRule {
 
 impl PriceRule {
     /// The rule the operator's settings give. With [`PROFILE_SETTING`] set,
-    /// the named file is the whole profile (and the price maximums may not
-    /// also be set: one place per value). Otherwise the plugin builds a
-    /// `policy-profile/v0` from the allow/deny lists and default in `policy`
-    /// and the price maximums, holding peer fingerprints under `salt`, never
-    /// clear ids. A file or a value that does not read or decode is an error,
-    /// never "unset": the caller fails closed.
+    /// the named file is the whole profile: the lists are still enforced by
+    /// the base pack but are not added to it. Otherwise the plugin builds a
+    /// `policy-profile/v0` from the allow/deny lists and default in `policy`,
+    /// holding peer fingerprints under `salt`, never clear ids. A file that
+    /// does not read or decode is an error, never "unset": the caller fails
+    /// closed.
     pub fn from_settings(policy: Option<&super::Policy>, salt: &[u8; 32]) -> anyhow::Result<Self> {
         match crate::settings::var(PROFILE_SETTING) {
             Ok(path) if !path.trim().is_empty() => {

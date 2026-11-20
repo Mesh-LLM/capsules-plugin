@@ -56,7 +56,7 @@ pub const REFEREE_BAR_DAYS_KEY: &str = "referee_bar_days";
 /// (`CAPSULES_SPLIT_MARGIN_THRESHOLD`; `crate::referee::verdict`). Default 4.41.
 pub const SPLIT_MARGIN_THRESHOLD_KEY: &str = "split_margin_threshold";
 
-/// Admission (#107): the operator's lists, default and price maximums. Each key
+/// Admission (#107): the operator's admit list and default. Each key
 /// is the env-style name's suffix lower-cased (`CAPSULES_ADMISSION_ALLOW` is
 /// `admission_allow`); the plugin builds a `policy-profile/v0` from them.
 pub const ADMISSION_ALLOW_KEY: &str = "admission_allow";
