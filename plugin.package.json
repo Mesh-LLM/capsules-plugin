@@ -334,6 +334,51 @@
           "category_order": 3,
           "setting_order": 12
         }
+      },
+      {
+        "key": "admission_allow",
+        "value_schema": {
+          "kind": "string",
+          "allow_additional_properties": false
+        },
+        "required": false,
+        "apply_mode": "static_on_load",
+        "restart_scope": "none",
+        "visibility": "user",
+        "description": "Peers to admit, as mesh node ids (64 hex characters), separated by commas. Used only when 'Peers on neither list' is no.",
+        "presentation": {
+          "label": "Peers to admit",
+          "category_id": "admission",
+          "category_label": "Which peers you route to",
+          "category_summary": "Before this node sends a request to a mesh peer it decides go or no from these. Each decision is sealed in this node's capsule record. A sealed decision names a peer only by a salted fingerprint, never by its node id. To refuse a peer, block it in mesh-llm's peer blocks. Takes effect when mesh-llm is restarted.",
+          "category_order": 4,
+          "setting_order": 13
+        }
+      },
+      {
+        "key": "admission_default",
+        "value_schema": {
+          "kind": "enum",
+          "enum_values": [
+            "go",
+            "no"
+          ],
+          "allow_additional_properties": false
+        },
+        "required": false,
+        "default_json": "\"go\"",
+        "apply_mode": "static_on_load",
+        "restart_scope": "none",
+        "visibility": "user",
+        "description": "What to do with a peer on neither list: go (the default) or no.",
+        "presentation": {
+          "label": "Peers on neither list",
+          "category_id": "admission",
+          "category_label": "Which peers you route to",
+          "category_summary": "Before this node sends a request to a mesh peer it decides go or no from these. Each decision is sealed in this node's capsule record. A sealed decision names a peer only by a salted fingerprint, never by its node id. To refuse a peer, block it in mesh-llm's peer blocks. Takes effect when mesh-llm is restarted.",
+          "category_order": 4,
+          "setting_order": 14
+        }
       }
     ]
   },

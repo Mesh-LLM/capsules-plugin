@@ -64,10 +64,40 @@ use crate::producer::capsule::peer_commitment;
 
 pub mod base;
 pub mod price;
+#[cfg(test)]
+mod vectors;
 
 pub const ALLOW_SETTING: &str = "CAPSULES_ADMISSION_ALLOW";
 pub const DENY_SETTING: &str = "CAPSULES_ADMISSION_DENY";
 pub const DEFAULT_SETTING: &str = "CAPSULES_ADMISSION_DEFAULT";
+
+/// The console key each setting is saved under (Configuration > Plugins).
+pub fn console_key_of(setting: &str) -> String {
+    crate::settings::console_key(setting).expect("an admission setting carries the prefix")
+}
+
+/// Log, once at start, each deprecated `CAPSULES_ADMISSION_*` environment
+/// variable that is set, naming the console setting that replaces it (#107).
+/// The variables are still read this release, and still win over the console;
+/// a later release refuses to start while one is set.
+pub fn warn_deprecated_env() {
+    for name in [ALLOW_SETTING, DEFAULT_SETTING] {
+        if crate::settings::set_in_env(name) {
+            let key = console_key_of(name);
+            tracing::warn!(
+                setting = name,
+                replacement = %key,
+                "{name} is deprecated and will be removed: set `{key}` in the console (Configuration > Plugins) instead, and unset the variable"
+            );
+        }
+    }
+    if crate::settings::set_in_env(DENY_SETTING) {
+        tracing::warn!(
+            setting = DENY_SETTING,
+            "{DENY_SETTING} is deprecated and will be removed: block the peer in mesh-llm's peer blocks instead (a denied peer is configured in one place), and unset the variable"
+        );
+    }
+}
 
 /// The lifecycle service the host invokes for each decision.
 pub const HANDLER: &str = "admission";
@@ -187,6 +217,31 @@ impl Policy {
         } else {
             (self.default, Source::Default)
         }
+    }
+
+    /// The lists and default as a `counterparty_list` parameter of the
+    /// operator's profile, holding only fingerprints ([`price::FP_ALG`]):
+    /// under a default of NO a peer is admitted only if on the allow list and
+    /// not the deny list (an allow list of the difference); under GO only the
+    /// deny list refuses. `None` when the lists refuse no one. Never ASK: the
+    /// disposition is `deny` (ASK is #64).
+    pub fn list(&self, salt: &[u8; 32]) -> Option<Value> {
+        let (mode, ids): (&str, BTreeSet<&String>) = match self.default {
+            Verdict::No => ("allow", self.allow.difference(&self.deny).collect()),
+            Verdict::Go if self.deny.is_empty() => return None,
+            Verdict::Go => ("deny", self.deny.iter().collect()),
+        };
+        let mut entries: Vec<String> = ids.iter().map(|id| price::fingerprint(id, salt)).collect();
+        entries.sort();
+        Some(json!({
+            "mode": mode,
+            "disposition": "deny",
+            "entries": entries.iter().map(|value| json!({
+                "kind": "payee",
+                "value": value,
+                "fp_alg": price::FP_ALG,
+            })).collect::<Vec<_>>(),
+        }))
     }
 
     /// The lists as the base pack's operator rows read them about `peer`.
@@ -487,7 +542,8 @@ impl Admission {
                     Some(rule) => {
                         let host_prices =
                             self.host_prices.load(std::sync::atomic::Ordering::Relaxed);
-                        let read = rule.check(event, peer, host_prices, now);
+                        let fingerprint = price::fingerprint(peer, &self.salt);
+                        let read = rule.check(event, peer, &fingerprint, host_prices, now);
                         if read.refuses() {
                             (verdict, source) = (Verdict::No, Source::PriceRule);
                         }
@@ -557,6 +613,8 @@ impl Admission {
             "kind": "operator_policy",
             "policy": POLICY,
             "digest": self.policy_digest.as_ref().map(|digest| json!({"alg": "SHA-256", "digest": digest})),
+            // The policy-profile/v0 in force (#107): cited by its digest.
+            "profile": self.price.as_ref().and_then(|rule| rule.profile_cite(&self.salt)),
         })];
         if let Some(rows) = rows {
             reads.push(match &rows.card {
@@ -1421,5 +1479,121 @@ mod tests {
         let block = sealed_block(&capsules);
         assert_eq!(block["price"]["state"], "not_checked");
         assert_eq!(block["price"]["reason"], "no_price_without_model");
+    }
+
+    // The operator's profile built from the console settings (#107).
+
+    fn built(policy: Policy) -> (Admission, Arc<CapsuleState>, tempfile::TempDir) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let capsules = Arc::new(CapsuleState::open(dir.path(), "node-under-test").expect("open"));
+        let salt = salt(capsules.signing_key());
+        let rule = price::PriceRule::from_operator(Some(&policy), &salt);
+        let admission = Admission::new(Ok(policy), rule, capsules.clone());
+        admission.set_host_prices(true);
+        (admission, capsules, dir)
+    }
+
+    #[test]
+    fn the_built_profile_and_its_digest_hold_no_clear_peer_id() {
+        let (admission, capsules, _dir) = built(policy(Some("no")));
+        let described = admission.price.as_ref().unwrap().describe();
+        let text = serde_json::to_string(&described).unwrap();
+        for id in [ALLOWED, DENIED, STRANGER] {
+            assert!(!text.contains(id), "doctor's profile names a peer: {text}");
+        }
+        let entries = &described["profile"]["packs"][0]["parameters"]["counterparty_list"];
+        assert_eq!(entries["mode"], "allow");
+        assert_eq!(entries["entries"][0]["fp_alg"], price::FP_ALG);
+        assert_eq!(
+            entries["entries"][0]["value"],
+            price::fingerprint(ALLOWED, &salt(capsules.signing_key()))
+        );
+        assert_eq!(described["profile_source"], "console settings");
+        admission.answer(&priced(&remote(ALLOWED), rates(1, 1)));
+        let block = sealed_block(&capsules);
+        let text = serde_json::to_string(&block).unwrap();
+        for id in [ALLOWED, DENIED, STRANGER] {
+            assert!(!text.contains(id), "the sealed record names a peer");
+        }
+        // The record cites the profile digest as it is: the profile holds
+        // fingerprints only.
+        assert_eq!(
+            block["reads"][0]["profile"]["digest"],
+            described["profile_digest"]
+        );
+        assert_eq!(block["reads"][0]["profile"]["fp_alg"], price::FP_ALG);
+    }
+
+    #[test]
+    fn the_built_profile_decides_the_lists_as_the_settings_do() {
+        // Default GO: only the deny list refuses.
+        let (admission, _capsules, _dir) = built(policy(None));
+        let rule = admission.price.as_ref().unwrap();
+        let read = |peer: &str| {
+            let salt = admission.salt;
+            rule.check(
+                &priced(&remote(peer), None),
+                peer,
+                &price::fingerprint(peer, &salt),
+                true,
+                chrono::Utc::now(),
+            )
+            .refuses()
+        };
+        assert!(read(DENIED));
+        assert!(!read(ALLOWED) && !read(STRANGER));
+        // Default NO: only the allow list admits, and deny still wins.
+        let both = Policy::parse(
+            Some(&format!("{ALLOWED},{DENIED}")),
+            Some(DENIED),
+            Some("no"),
+        )
+        .unwrap();
+        let (admission, _capsules, _dir) = built(both);
+        let rule = admission.price.as_ref().unwrap();
+        let refuses = |peer: &str| {
+            rule.check(
+                &priced(&remote(peer), None),
+                peer,
+                &price::fingerprint(peer, &admission.salt),
+                true,
+                chrono::Utc::now(),
+            )
+            .refuses()
+        };
+        assert!(!refuses(ALLOWED));
+        assert!(refuses(DENIED) && refuses(STRANGER));
+    }
+
+    #[test]
+    fn a_default_of_no_with_no_allow_list_builds_and_refuses_everyone() {
+        let none = Policy::parse(None, None, Some("no")).unwrap();
+        let (admission, _capsules, _dir) = built(none);
+        let rule = admission.price.as_ref().expect("the profile builds");
+        let read = rule.check(
+            &priced(&remote(STRANGER), None),
+            STRANGER,
+            &price::fingerprint(STRANGER, &admission.salt),
+            true,
+            chrono::Utc::now(),
+        );
+        assert!(read.refuses());
+    }
+
+    #[test]
+    fn lists_alone_never_fail_a_peer_closed_on_an_older_host() {
+        let (admission, capsules, _dir) = built(policy(None));
+        admission.set_host_prices(false);
+        let answer = admission.answer(&priced(&remote(STRANGER), None));
+        assert_eq!(answer.decision, OpenAiAdmissionDecision::Allow);
+        assert_eq!(sealed_block(&capsules)["price"]["state"], "not_checked");
+    }
+
+    #[test]
+    fn the_peers_the_lists_refuse_are_refused_by_the_lists_first() {
+        let (admission, capsules, _dir) = built(policy(None));
+        let answer = admission.answer(&priced(&remote(DENIED), rates(1, 1)));
+        assert_eq!(answer.reason.as_deref(), Some("admission NO (deny_list)"));
+        assert_eq!(sealed_block(&capsules)["source"], "deny_list");
     }
 }

@@ -56,6 +56,12 @@ pub const REFEREE_BAR_DAYS_KEY: &str = "referee_bar_days";
 /// (`CAPSULES_SPLIT_MARGIN_THRESHOLD`; `crate::referee::verdict`). Default 4.41.
 pub const SPLIT_MARGIN_THRESHOLD_KEY: &str = "split_margin_threshold";
 
+/// Admission (#107): the operator's admit list and default. Each key
+/// is the env-style name's suffix lower-cased (`CAPSULES_ADMISSION_ALLOW` is
+/// `admission_allow`); the plugin builds a `policy-profile/v0` from them.
+pub const ADMISSION_ALLOW_KEY: &str = "admission_allow";
+pub const ADMISSION_DEFAULT_KEY: &str = "admission_default";
+
 /// This process's own runtime env var for `share_record_at_completion` --
 /// see the module doc's "declarative only" note: no live host->plugin
 /// config channel exists yet, so an operator sets this directly on the
@@ -256,6 +262,13 @@ const RECORDS_CATEGORY_SUMMARY: &str = "Who else holds a copy of what you sealed
 /// The join switch's label in the console.
 pub const JOIN_NETWORK_LABEL: &str = "Join the evidence network";
 
+const ADMISSION_CATEGORY_ID: &str = "admission";
+const ADMISSION_CATEGORY_LABEL: &str = "Which peers you route to";
+const ADMISSION_CATEGORY_SUMMARY: &str = "Before this node sends a request to a mesh peer it \
+    decides go or no from these. Each decision is sealed in this node's capsule record. A sealed \
+    decision names a peer only by a salted fingerprint, never by its node id. To refuse a peer, \
+    block it in mesh-llm's peer blocks. Takes effect when mesh-llm is restarted.";
+
 const NETWORK_CATEGORY_ID: &str = "network";
 const NETWORK_CATEGORY_LABEL: &str = "Evidence network";
 const NETWORK_CATEGORY_SUMMARY: &str =
@@ -450,6 +463,34 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 .category(NETWORK_CATEGORY_ID, NETWORK_CATEGORY_LABEL, NETWORK_CATEGORY_SUMMARY, 3)
                 .order(12),
         )
+        .setting(
+            config_setting(ADMISSION_ALLOW_KEY, config_string())
+                .description(
+                    "Peers to admit, as mesh node ids (64 hex characters), separated by commas. \
+                     Used only when \'Peers on neither list\' is no.",
+                )
+                .label("Peers to admit")
+                .category(
+                    ADMISSION_CATEGORY_ID,
+                    ADMISSION_CATEGORY_LABEL,
+                    ADMISSION_CATEGORY_SUMMARY,
+                    4,
+                )
+                .order(13),
+        )
+        .setting(
+            config_setting(ADMISSION_DEFAULT_KEY, config_enum(["go", "no"]))
+                .default_value(&"go")
+                .description("What to do with a peer on neither list: go (the default) or no.")
+                .label("Peers on neither list")
+                .category(
+                    ADMISSION_CATEGORY_ID,
+                    ADMISSION_CATEGORY_LABEL,
+                    ADMISSION_CATEGORY_SUMMARY,
+                    4,
+                )
+                .order(14),
+        )
         .into()
 }
 
@@ -485,7 +526,9 @@ mod tests {
                 ADJUDICATIONS_KEY,
                 RECORD_AT_COMPLETION_KEY,
                 WITNESS_KEY,
-                crate::network_join::JOIN_NETWORK_KEY
+                crate::network_join::JOIN_NETWORK_KEY,
+                ADMISSION_ALLOW_KEY,
+                ADMISSION_DEFAULT_KEY,
             ]
         );
     }
@@ -567,6 +610,16 @@ mod tests {
                     "Evidence network",
                     JOIN_NETWORK_LABEL,
                     crate::network_join::JOIN_NETWORK_KEY
+                ),
+                row(
+                    "Which peers you route to",
+                    "Peers to admit",
+                    ADMISSION_ALLOW_KEY
+                ),
+                row(
+                    "Which peers you route to",
+                    "Peers on neither list",
+                    ADMISSION_DEFAULT_KEY
                 ),
             ]
         );
@@ -690,6 +743,8 @@ mod tests {
                 Some("\"off\""),
                 v(&["off", "on"]),
             ),
+            (ADMISSION_ALLOW_KEY, None, v(&[])),
+            (ADMISSION_DEFAULT_KEY, Some("\"go\""), v(&["go", "no"])),
         ];
         let expected: Vec<_> = expected
             .into_iter()
@@ -749,7 +804,7 @@ mod tests {
             );
             checked += 1;
         }
-        assert_eq!(checked, 8, "the eight choice settings were checked");
+        assert_eq!(checked, 9, "the nine choice settings were checked");
     }
 
     #[test]
@@ -813,6 +868,8 @@ mod tests {
             (SPLIT_MARGIN_THRESHOLD_KEY, "SPLIT_MARGIN_THRESHOLD"),
             (STOP_ROUTING_AFTER_KEY, "STOP_ROUTING_AFTER_CONTRADICTIONS"),
             (STOP_ROUTING_WINDOW_KEY, "STOP_ROUTING_WINDOW_DAYS"),
+            (ADMISSION_ALLOW_KEY, "ADMISSION_ALLOW"),
+            (ADMISSION_DEFAULT_KEY, "ADMISSION_DEFAULT"),
         ];
         for (key, suffix) in expected_env_suffix {
             assert_eq!(

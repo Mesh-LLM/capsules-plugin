@@ -497,13 +497,31 @@ To leave, turn the switch off.
 When this node routes a request to a mesh peer, it can first decide GO or NO for that peer from
 your lists, and seal the decision in its book:
 
-- `CAPSULES_ADMISSION_ALLOW`: peers to admit, as comma-separated 64-hex mesh node ids.
-- `CAPSULES_ADMISSION_DENY`: peers to refuse, in the same form. A peer on both lists is refused.
-- `CAPSULES_ADMISSION_DEFAULT`: `go` (the default) or `no`, for a peer on neither list.
+Set them in the console, under Configuration > Plugins > "Which peers you route to":
+
+- **Peers to admit** (`admission_allow`): mesh node ids (64 hex characters), comma-separated. Used
+  only when the setting below is `no`.
+- **Peers on neither list** (`admission_default`): `go` (the default) or `no`.
+
+To refuse a peer, block it in mesh-llm's own peer blocks: a denied peer is configured in one place,
+not here.
+
+The plugin builds a `policy-profile/v0` from these, and capsule-engine's evaluator decides it. The
+profile holds each peer as a salted fingerprint (`sha256-install-salt-v1`), never as a node id, and
+each decision cites the profile's digest (for a profile in a file, by a salted commitment to its
+digest, as below). `doctor` shows the profile, its digest and its values.
+
+The environment variables `CAPSULES_ADMISSION_ALLOW` and `CAPSULES_ADMISSION_DEFAULT` (the same
+values) are **deprecated**: they are still read, and win over the console, but each logs a warning at
+start naming its console setting. `CAPSULES_ADMISSION_DENY` (peers to refuse; a peer on both lists is
+refused) is deprecated too and has no console setting: it is still read this release, with a warning
+that points to mesh-llm's peer blocks. A later release refuses to start while any of the three is
+set, so move them off and unset them.
 
 A peer your lists admit then meets the price rule, decided by capsule-engine's `asg/inference`
 terms pack (the same evaluator and vectors Muse uses). It compares the input and output rates the
-peer advertised for the model, in msat per million tokens, with your caps:
+peer advertised for the model, in msat per million tokens, with your caps. Set them in a
+profile file:
 
 - `CAPSULES_ADMISSION_PROFILE`: the path of a `policy-profile/v0` JSON file. For example:
 
@@ -512,7 +530,8 @@ peer advertised for the model, in msat per million tokens, with your caps:
     "rate_cap":{"max_input_msat_per_million":2000000,"max_output_msat_per_million":8000000}}}]}
   ```
 
-  It may also set the pack's `counterparty_list`. A rate over a cap, a rate the peer did not
+  It may also set the pack's `counterparty_list`. With a file set, the file is the whole profile:
+  the peers-to-admit list is still enforced but is not added to it. A rate over a cap, a rate the peer did not
   state, or a peer that list refuses gets NO, naming the rule. A free route (no price) is GO.
   With no file set, the shipped caps apply: 500,000 and 1,500,000 msat per million, far above
   any real price, so they only stop an outlier. A file that does not read gives every peer NO
@@ -540,7 +559,7 @@ NO. They record:
   peer at all;
 - **corroboration**: this node holds the peer's pushed half of at least one exchange.
 
-A row that fails stays a record; to refuse such a peer, add it to your deny list. The thresholds
+A row that fails stays a record; to refuse such a peer, block it in mesh-llm's peer blocks. The thresholds
 are placeholders, fixed in this version.
 
 The lists and these rows are decided by capsule-engine's admission evaluator under the base pack

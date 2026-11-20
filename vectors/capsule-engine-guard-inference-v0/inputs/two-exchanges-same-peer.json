@@ -1,0 +1,33 @@
+{
+ "pack": "inference",
+ "steps": [
+  {
+   "operator": "node-a",
+   "developer": "mesh-node@v1",
+   "action_type": "decide",
+   "taxonomy_version": "6",
+   "verb": "inference.purchase",
+   "action_class": "money.purchase",
+   "action_id": "inference/conformance-i15",
+   "timestamp": "2026-10-29T12:15:00Z",
+   "target": "node-b",
+   "input_msat_per_million": 1000000,
+   "output_msat_per_million": 4000000,
+   "equivalence_key": "exchange-i15"
+  },
+  {
+   "operator": "node-a",
+   "developer": "mesh-node@v1",
+   "action_type": "decide",
+   "taxonomy_version": "6",
+   "verb": "inference.purchase",
+   "action_class": "money.purchase",
+   "action_id": "inference/conformance-i16",
+   "timestamp": "2026-10-29T12:16:00Z",
+   "target": "node-b",
+   "input_msat_per_million": 1000000,
+   "output_msat_per_million": 4000000,
+   "equivalence_key": "exchange-i16"
+  }
+ ]
+}

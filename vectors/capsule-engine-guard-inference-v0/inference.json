@@ -1,0 +1,1430 @@
+{
+ "source": "conformance-vectors/guard/v0/inputs/inference",
+ "cases": [
+  {
+   "case": "allow-list-listed",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/allow-list-listed.json",
+   "input_sha256": "bf9a74931a1f15a6585afee71b1075d231c31f6731138c26abce33a778a35546",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "allow",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "c76f255171e85975f044980d521cd2a785c27d7c209377cdd7f79f756014c698"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "pass",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "b4e57e1e638f10536136f36d3ad34ea631d2d30fbca145698c62d52abdafad34"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "pass",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "9249f0e33e267604bd367e0e35be40feaefb019faa27bba5d847594ed7c02c30"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "f1252945ce478d3d2d0ebab1b2cd78479b4f396895902b6affa051d24433ecd6"
+     }
+    ]
+   }
+  },
+  {
+   "case": "allow-list-unlisted-asks",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/allow-list-unlisted-asks.json",
+   "input_sha256": "facf5ed5357cbc4788237de6e4e50bcf178589c5243ddc39c1c01d83ec58e791",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "escalate",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "e16ca85ce0e3a73e2f3d48de4371d12aa5100af597a5196106514e237a921833"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "pass",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "b4e57e1e638f10536136f36d3ad34ea631d2d30fbca145698c62d52abdafad34"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "fail",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "585ccbc599bd55b26d26642876a19d4d3890397cb4b6173d9e5564c851afa195"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "512b6970f5d00859212611bb5fdd3e56be0e633dca61d060deb61c8366a78c2e"
+     }
+    ]
+   }
+  },
+  {
+   "case": "allow-list-unlisted",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/allow-list-unlisted.json",
+   "input_sha256": "0a819553aae3c2ad4c99db80dc32fb1aed88636c7094030f2eabe148484c1d06",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "deny",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "d5722409e73f76ebb7775dc7bd8ffba033a09ebd42fb03fc67bb51be7c59d2f5"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "pass",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "b4e57e1e638f10536136f36d3ad34ea631d2d30fbca145698c62d52abdafad34"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "fail",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "585ccbc599bd55b26d26642876a19d4d3890397cb4b6173d9e5564c851afa195"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "ae8ddfe3ecac97609e5195eb1344044e8dabec4b9c549d9be1a51e9df3a0db10"
+     }
+    ]
+   }
+  },
+  {
+   "case": "at-both-caps",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/at-both-caps.json",
+   "input_sha256": "ea61e2cd8989ede828c21cb404669e8c0f59f480157387301604bc997e55cf34",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "allow",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "5c97d98ef21d17b48de999948867d74fd022346b6b72a210cedeb9fc5d8e1fe7"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "pass",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "28106fba88832060bb4274d47efe92b1082787fc3f2a81076c355c1b0aa734c1"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "pass",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "cacca023bca54cb4d3e10cb3cd8f38dcc37001ce5ba09b9cfd6ac4c8a1040246"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "e80d494ae84afb21158a180028d3d370aa43b30ba5e31491ae8a6e2bb0a80f7d"
+     }
+    ]
+   }
+  },
+  {
+   "case": "deny-list-listed",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/deny-list-listed.json",
+   "input_sha256": "85a7aa752716a25c1526ea791091044b70a292c4222753a35b0bd44262aa40a5",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "deny",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "1715e47badf543bc070cbf8c866762ad0454e1047646660d0a7f8e7a4477017e"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "pass",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "b4e57e1e638f10536136f36d3ad34ea631d2d30fbca145698c62d52abdafad34"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "fail",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "28c1f408568b4afd415f8a3b05af7510448ab18a5ee7a171a236595081bd6088"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "1fda5002f37e26bf0f6cfae888bd6d7902d5d462181cbcb01940e4e63e7c914b"
+     }
+    ]
+   }
+  },
+  {
+   "case": "deny-list-payee-fingerprint-kind-missing",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/deny-list-payee-fingerprint-kind-missing.json",
+   "input_sha256": "b1554a9201907b4b25073b2ba9c89da056bc8dcb309dd522b8c3b92529ccaee4",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "allow",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "67b5031f096e8cb224a5b7d0d5c1c6222a2603a2769cc1adbbf4271719cb0d6c"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "pass",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "b4e57e1e638f10536136f36d3ad34ea631d2d30fbca145698c62d52abdafad34"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "n/a",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "819480ea071dd87d22224c12f88687747f0ebb1eec3e950869f5a3caac47f86d",
+        "reason": "the action carries no usable counterparty.ids.payee; the counterparty list could not be checked"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "5c6510872c84b8aa329ae7e90060906f73996bb16a4467e42fb5bf8614c8cdeb"
+     }
+    ]
+   }
+  },
+  {
+   "case": "deny-list-payee-fingerprint-listed",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/deny-list-payee-fingerprint-listed.json",
+   "input_sha256": "a0a6efabf42c673633c2f83bce685db4f010465a23b76a9f7d6c5d7ad45f020d",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "deny",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "d92fddff96c4cb0dfc24cf3dd8064d39f422457000f80a6eccb1bd56d266e13c"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "pass",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "b4e57e1e638f10536136f36d3ad34ea631d2d30fbca145698c62d52abdafad34"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "fail",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "1c2b528b0a31c34b5acba5e17ae446e95bdefd330da5249ec13eaf9e04a6acc6"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "e940dabdea64a298ab2c23a228434679173ef5a37016345e9298c73d027e82a3"
+     }
+    ]
+   }
+  },
+  {
+   "case": "deny-list-payee-fingerprint-none-sealed",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/deny-list-payee-fingerprint-none-sealed.json",
+   "input_sha256": "2f12d6b5e9f1cde4dcdfa895d696e896e8b8ffa3650d5e9109a548cafb083363",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "allow",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "237d7d03c923b7e704261e4844861c54cf9b8ea1858a717447b551f34a00a955"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "pass",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "b4e57e1e638f10536136f36d3ad34ea631d2d30fbca145698c62d52abdafad34"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "n/a",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "2229cad5c5ccb9819f0fe07cb32c80705f7fdd38e1e5b0838db4312bd92a8952",
+        "reason": "the action carries no usable counterparty; the counterparty list could not be checked"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "d5bf81f34ac1deb5199f1cab58d45cde3ceb2921291e800222c8363febee282e"
+     }
+    ]
+   }
+  },
+  {
+   "case": "deny-list-payee-fingerprint-other-alg",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/deny-list-payee-fingerprint-other-alg.json",
+   "input_sha256": "ef4bf2a77d1a3cffc5faa27636cca7e3c91ba677ac18c356f44cedd8a10e9535",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "allow",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "fee53e347f2ba486e93ba7a070907b25f5c7c405fadd1d0a630b141d786a9ede"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "pass",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "b4e57e1e638f10536136f36d3ad34ea631d2d30fbca145698c62d52abdafad34"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "n/a",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "16f8e6bfc1914fd029d93c1863fa5682f8a66a012bf3062cc8325c27b35bf0be",
+        "reason": "the action carries no usable counterparty.fp_alg; the counterparty list could not be checked"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "cedd7c94a8856beea9fc1c2ac72c47845c03e1f86487f84988be4aa19864febe"
+     }
+    ]
+   }
+  },
+  {
+   "case": "deny-list-payee-fingerprint-unlisted",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/deny-list-payee-fingerprint-unlisted.json",
+   "input_sha256": "e35112b9c1dc5389b965f32b530ffce0a0abb14719ca52e56fe80ca5d7adaf53",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "allow",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "6d8aec83441535b93b8e42006a5c8a6cbf8ff502afb070cc8b2261fa90f9c15c"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "pass",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "b4e57e1e638f10536136f36d3ad34ea631d2d30fbca145698c62d52abdafad34"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "pass",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "fba49b352ca77a7fc52a1a25b1c8c6b37895d05d750dbe8abe34eb47fa26d9fa"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "a9c3f2e84b635b3e973f00be3e26b8c588196ccf646d22ebc07099ed06785c9e"
+     }
+    ]
+   }
+  },
+  {
+   "case": "deny-list-unlisted",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/deny-list-unlisted.json",
+   "input_sha256": "7abf812d63d215cfcd1fa00b8c324b68065dee63894d9e57edb3b318fc8c55e1",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "allow",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "8aa71c7fa67d59af100e986cd256bae91ab754fb557a277a8b65dbe9864f0883"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "pass",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "b4e57e1e638f10536136f36d3ad34ea631d2d30fbca145698c62d52abdafad34"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "pass",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "220cee216d9acf7445ccbc05a29ccb8867d61c7c64887cd0d1bc6dc1b1171b60"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "31f71eb7ce197499b29e8f553f0a33ae42b68ca3fefa133f68f670f66a7749f1"
+     }
+    ]
+   }
+  },
+  {
+   "case": "exchange-id-and-digest-both",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/exchange-id-and-digest-both.json",
+   "input_sha256": "cd5a2f0ad22bac59f15cb9492e98ad5c0e7bf0e56784772b254627374ab46dfb",
+   "expected": {
+    "error": "ValueError"
+   }
+  },
+  {
+   "case": "free-peer",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/free-peer.json",
+   "input_sha256": "62e713dfbc6aebda6057156a0514170fe3a9b510ded82bed9a332f5c065b0182",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "allow",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "5ac7e1c1f48df19f886ed4bef27ce49b4b8a444644dec12b704a0c283a34f6a4"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "pass",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "3275055cb94cf8c379471f485677e79740fd26611982ba2fab8f159dbd1e6fe0"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "pass",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "cacca023bca54cb4d3e10cb3cd8f38dcc37001ce5ba09b9cfd6ac4c8a1040246"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "177fe20b0d54f6b12a6369268be456743b59319d50589f15023c481f2851f66d"
+     }
+    ]
+   }
+  },
+  {
+   "case": "missing-exchange-id",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/missing-exchange-id.json",
+   "input_sha256": "e824498c2b03527a0e389c7ee63bcf34f373b1972263274091148d927eb1d9a3",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "deny",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "2dcbf602ef37ab9bcfb007b599c12fa3454169957fee6ead3692b9b65bede0cd"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "pass",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "b4e57e1e638f10536136f36d3ad34ea631d2d30fbca145698c62d52abdafad34"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "pass",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "cacca023bca54cb4d3e10cb3cd8f38dcc37001ce5ba09b9cfd6ac4c8a1040246"
+       },
+       {
+        "id": "required_fields",
+        "result": "n/a",
+        "method": "action_semantics_v0",
+        "evidence_digest": "7aa3a5f09a21daaab29b78132bc3cf011093d1c0bc8171083b2a48c1a3f3c40e",
+        "reason": "the action carries no equivalence_key, which action type inference.purchase requires; it is refused"
+       }
+      ],
+      "capsule_id": "1196c4f8acaf5dbd870f82de722273c1abc92fa11982e7823fefbc7835a3f3a4"
+     }
+    ]
+   }
+  },
+  {
+   "case": "missing-output-rate",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/missing-output-rate.json",
+   "input_sha256": "386fa65d4f911eaf3c126f61f173bb7fe092d93603048d6f2073f483b091d6ab",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "deny",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "b268d227db7d620d7fd0310c54479601a6225fd6ea5f341800ec5c72cc708d8b"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "n/a",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "a5d762a2bc42310e6560cac203e5b1c8199b4e34236ac529c0ef73c084df7c3a",
+        "reason": "the action carries no output_msat_per_million; the price cannot be read, so it is refused"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "pass",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "cacca023bca54cb4d3e10cb3cd8f38dcc37001ce5ba09b9cfd6ac4c8a1040246"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "abb8161b9efa2a42262b36e327a1bb703eec0402ac6a7d277e3e0ac3ecf7dcbd"
+     }
+    ]
+   }
+  },
+  {
+   "case": "missing-price-no-profile",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/missing-price-no-profile.json",
+   "input_sha256": "c053abc843660ec3f669809e47b1fbb181572b72555f3e73ef9638e2d67e2ced",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "deny",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "2cf421ba7062d9e751006213496327406d9f9d13e1fae526f91cb4e8bf1787d1"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "n/a",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "73593cde2c135c3e65295cefa2e403a43fb7cd82936ab25e0746a6f4a8cbd780",
+        "reason": "the action carries no input_msat_per_million; the price cannot be read, so it is refused"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "pass",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "cacca023bca54cb4d3e10cb3cd8f38dcc37001ce5ba09b9cfd6ac4c8a1040246"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "4be7fe2ac8bb1f7c3bd4e9586b1d1f566d92fe8ed897d886c499e92723adfd3a"
+     }
+    ]
+   }
+  },
+  {
+   "case": "missing-price",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/missing-price.json",
+   "input_sha256": "e55bd16ee6c4d6298c397883dc554c6d2279e7df6ad97ba33c79d2b81391852b",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "deny",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "a9a971966d3f70ea850ffbfce88e84d6f90c79c2621f966cb3d99bd58a2bb0d4"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "n/a",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "73593cde2c135c3e65295cefa2e403a43fb7cd82936ab25e0746a6f4a8cbd780",
+        "reason": "the action carries no input_msat_per_million; the price cannot be read, so it is refused"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "pass",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "cacca023bca54cb4d3e10cb3cd8f38dcc37001ce5ba09b9cfd6ac4c8a1040246"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "173a1f8b18595351778544eb0cb802fc0e5cb02cb43417286192c59ff315d680"
+     }
+    ]
+   }
+  },
+  {
+   "case": "over-both-caps",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/over-both-caps.json",
+   "input_sha256": "7ed79bd1cdccf89be877f4cfbd226cea04f0f1718a4474213d74c53b1d83aea7",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "deny",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "2c5c756a5610a6d3112d2f54d21967fc39dbd869105976233e2d8c97f476cbca"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "fail",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "0ce826306c0f70a0485bf1ae99886b6639b8af20b6c830360d788ba2f8b1d657"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "pass",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "cacca023bca54cb4d3e10cb3cd8f38dcc37001ce5ba09b9cfd6ac4c8a1040246"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "56265c648e82b2a71d8b98f6a94223c3436ffdc9928e35a271c61e68549a67c2"
+     }
+    ]
+   }
+  },
+  {
+   "case": "over-the-input-cap",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/over-the-input-cap.json",
+   "input_sha256": "a0470933627874ce99f436032da6b3ba42b773641c7c0ce2839fb9428839ce23",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "deny",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "ffa214b929b816540b053099bce52f2b8578b608e3078ea380e1bb3230ce6558"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "fail",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "2b87b37fc5bea9cfa40020a5e14be7cdc6a4ea9805c954b57e6206d3369b1922"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "pass",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "cacca023bca54cb4d3e10cb3cd8f38dcc37001ce5ba09b9cfd6ac4c8a1040246"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "cccee0062bbec331a8b903a292c06caaaa53063fc9c6a6c01be960b51cc83b03"
+     }
+    ]
+   }
+  },
+  {
+   "case": "over-the-output-cap",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/over-the-output-cap.json",
+   "input_sha256": "efac1d27f5703e9353501975966c2986799990e2eca66bea55d93c929d9c5a7d",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "deny",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "03fc728aa7e92a87cd1da01c9ef794b88b89a0674ceced7e30a99bfa36e76bb5"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "fail",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "f8153a224c1f95ace0f5fe3747f43b252287775873ed679807e85c182024d39d"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "pass",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "cacca023bca54cb4d3e10cb3cd8f38dcc37001ce5ba09b9cfd6ac4c8a1040246"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "5ea7d0905a072660ef8e6f228297ecdd226e4e238ed8a9d628d97a62b54e3ce9"
+     }
+    ]
+   }
+  },
+  {
+   "case": "priced-no-profile",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/priced-no-profile.json",
+   "input_sha256": "7d3e8a651d7ae96ea7bcf079f58e58c2816e1b2b31e714babdd2cba4e121c31e",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "allow",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "7238a691308afc3cc4e5a2ba18a6417e40af8e9c16b5ff14e1bcc0693e34449e"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "pass",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "b3a67f775fee88f2358246025eb76ddabf91efaba0ce1128f59e84a5726f06bd"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "pass",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "cacca023bca54cb4d3e10cb3cd8f38dcc37001ce5ba09b9cfd6ac4c8a1040246"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "8ba83f78d2ce6bb5aa4928b149c1c51259eac2bd279e75d2fb01997ee9fcfc69"
+     }
+    ]
+   }
+  },
+  {
+   "case": "same-exchange-twice",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/same-exchange-twice.json",
+   "input_sha256": "6b3d753f4cc1d523353ecdb077700f7c43fea7f0b95e32c31a79e520b9d51dde",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "allow",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "c48930b57a39e5530752e5b490e1bdb8851df882639175ed8b741d461f00e285"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "pass",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "b4e57e1e638f10536136f36d3ad34ea631d2d30fbca145698c62d52abdafad34"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "pass",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "cacca023bca54cb4d3e10cb3cd8f38dcc37001ce5ba09b9cfd6ac4c8a1040246"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "4a72383e6c5e46b11c5c8106b3369551e27578634ce8919d732392a6c156e478"
+     },
+     {
+      "outcome": "deny",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "fail",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "d0f40df3029bf8b8c5b2eb475bbe5a59f6b01508ca24ee7f70281b1a2dac9b40"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "pass",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "b4e57e1e638f10536136f36d3ad34ea631d2d30fbca145698c62d52abdafad34"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "pass",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "cacca023bca54cb4d3e10cb3cd8f38dcc37001ce5ba09b9cfd6ac4c8a1040246"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "b52cebb9b9d9f4f4236b76cb869539a028c18e490b25dd31933b1ba064902f6c"
+     }
+    ]
+   }
+  },
+  {
+   "case": "sealed-exchange-id-digest",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/sealed-exchange-id-digest.json",
+   "input_sha256": "e97dd6d77e70b6a1a2a471aa9b577217dceaad9b8f79a8ab7d232af08be5c7f7",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "allow",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "a34616368dbe04838c97e7a77253f4c0d7ae39897beb2901c19c9bf6e066e375"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "pass",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "b4e57e1e638f10536136f36d3ad34ea631d2d30fbca145698c62d52abdafad34"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "pass",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "cacca023bca54cb4d3e10cb3cd8f38dcc37001ce5ba09b9cfd6ac4c8a1040246"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "a51554ce5b9c5c3f50821e22626974634437321d616073f975840ee5b93f7f0a"
+     }
+    ]
+   }
+  },
+  {
+   "case": "two-exchanges-same-peer",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/two-exchanges-same-peer.json",
+   "input_sha256": "2aaadae78c79506b07d42d550a7ec9671f1295d8fc89aa66aaf4d39879b9aca6",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "allow",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "49feafc9ef35767de9ab195c770725207cc0f22eb98d062d2a342736548980da"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "pass",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "b4e57e1e638f10536136f36d3ad34ea631d2d30fbca145698c62d52abdafad34"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "pass",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "cacca023bca54cb4d3e10cb3cd8f38dcc37001ce5ba09b9cfd6ac4c8a1040246"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "e229a29d53a0b41c2aa22f0f05002af34dba7f3a5d242da14d0ac9942c436c49"
+     },
+     {
+      "outcome": "allow",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "0c73f03b37e38b26b13aad0f79adf142d7a97adeebefb26d75754d20a1c08bcf"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "pass",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "b4e57e1e638f10536136f36d3ad34ea631d2d30fbca145698c62d52abdafad34"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "pass",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "cacca023bca54cb4d3e10cb3cd8f38dcc37001ce5ba09b9cfd6ac4c8a1040246"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "080704d3307932e2f8dbab6656054489344b9c40a74802f3181879fae70f4e79"
+     }
+    ]
+   }
+  },
+  {
+   "case": "under-both-caps",
+   "kind": "action-ledger",
+   "pack": "inference-0.1.0",
+   "input": "conformance-vectors/guard/v0/inputs/inference/under-both-caps.json",
+   "input_sha256": "1c4b5c3853b93bdf065ca395840abb207db248c4e5ba7fff8e37a1bf3c1885d7",
+   "expected": {
+    "steps": [
+     {
+      "outcome": "allow",
+      "constraints": [
+       {
+        "id": "dedupe",
+        "result": "pass",
+        "method": "exact_match_index_v0",
+        "evidence_digest": "89a3b60c7fef1f2c0f474bdd575619eeebb4eace860c97d1d6defff30bc0ba6b"
+       },
+       {
+        "id": "caps",
+        "result": "n/a",
+        "method": "",
+        "evidence_digest": "7a049ba37b2851287decae218ff18caac4da237c247a5188da1bd39320a2827c",
+        "reason": "no caps definition is configured"
+       },
+       {
+        "id": "verify_before_dispatch",
+        "result": "n/a",
+        "method": "agent_action_capsule.verify",
+        "evidence_digest": "332ea7520b7c67c07d2cfa041b2a46cc04772908d9ac03eecb28f01f668e3e3d",
+        "reason": "action cites no mandate capsule"
+       },
+       {
+        "id": "rate_cap",
+        "result": "pass",
+        "method": "rate_threshold_v0",
+        "evidence_digest": "720264db25c82558d4d3e266bc755aba98eb1af0103be50ab13c9550184e9754"
+       },
+       {
+        "id": "counterparty_list",
+        "result": "pass",
+        "method": "exact_reference_match_v0",
+        "evidence_digest": "cacca023bca54cb4d3e10cb3cd8f38dcc37001ce5ba09b9cfd6ac4c8a1040246"
+       },
+       {
+        "id": "required_fields",
+        "result": "pass",
+        "method": "action_semantics_v0",
+        "evidence_digest": "f48d4b5d6e66b7567b908dacd896317e3e6b4de382807d4dcf5d68e32cbe2bba"
+       }
+      ],
+      "capsule_id": "e4dced331605504d4bc07e7c389f8aeeb0defd627e83b560d7a73ac0026317c4"
+     }
+    ]
+   }
+  }
+ ]
+}
