@@ -1590,6 +1590,20 @@ mod tests {
     }
 
     #[test]
+    fn the_lists_still_decide_on_a_host_that_sends_no_price() {
+        // Default NO: a peer on neither list is NO on a host that sends no
+        // price, and the listed peer is GO (the price rule is not checked).
+        let (admission, capsules, _dir) = built(policy(Some("no")));
+        admission.set_host_prices(false);
+        let stranger = admission.answer(&priced(&remote(STRANGER), None));
+        assert_eq!(stranger.decision, OpenAiAdmissionDecision::Deny);
+        assert_ne!(sealed_block(&capsules)["source"], "price_rule");
+        let allowed = admission.answer(&priced(&remote(ALLOWED), None));
+        assert_eq!(allowed.decision, OpenAiAdmissionDecision::Allow);
+        assert_eq!(sealed_block(&capsules)["price"]["state"], "not_checked");
+    }
+
+    #[test]
     fn the_peers_the_lists_refuse_are_refused_by_the_lists_first() {
         let (admission, capsules, _dir) = built(policy(None));
         let answer = admission.answer(&priced(&remote(DENIED), rates(1, 1)));
