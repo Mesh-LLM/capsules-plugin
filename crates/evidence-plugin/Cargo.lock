@@ -714,7 +714,7 @@ dependencies = [
 
 [[package]]
 name = "evidence-plugin"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "agent-action-capsule 0.12.0",
  "anyhow",
