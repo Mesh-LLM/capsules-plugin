@@ -221,23 +221,12 @@ impl PriceRule {
         let Ok(mut profile) = serde_json::from_slice::<Value>(raw) else {
             return Self::from_profile(Some(raw)); // decode reports it
         };
-        let Some(packs) = profile.get_mut("packs").and_then(Value::as_array_mut) else {
-            return Self::from_profile(Some(raw));
+        let Some(parameters) = pack_parameters(&mut profile) else {
+            return Self::from_profile(Some(raw)); // decode reports it
         };
-        let entry = match packs.iter().position(|p| p["pack"] == PACK) {
-            Some(i) => &mut packs[i],
-            None => {
-                packs.push(json!({"pack": PACK, "parameters": {}}));
-                packs.last_mut().expect("just pushed")
-            }
-        };
-        let Some(parameters) = entry.get_mut("parameters").and_then(Value::as_object_mut) else {
-            return Self::from_profile(Some(raw));
-        };
-        if parameters
-            .get("counterparty_list")
-            .is_some_and(|l| !l.is_null())
-        {
+        // A null list counts too: the engine refuses it, so whether the file
+        // is valid must not depend on the console lists.
+        if parameters.contains_key("counterparty_list") {
             anyhow::bail!(
                 "{PROFILE_SETTING}: the file sets a counterparty_list for {PACK} and the \
                  console's admission lists refuse peers too; the pack takes one list, so \
@@ -445,6 +434,21 @@ fn result_str(result: ConstraintResult) -> &'static str {
     result.as_str()
 }
 
+/// The `asg/inference` pack's `parameters` in a decoded profile, added empty
+/// when the profile names no entry for the pack; `None` when it is not a
+/// profile shape (decode reports that).
+fn pack_parameters(profile: &mut Value) -> Option<&mut serde_json::Map<String, Value>> {
+    let packs = profile.get_mut("packs")?.as_array_mut()?;
+    let i = match packs.iter().position(|p| p["pack"] == PACK) {
+        Some(i) => i,
+        None => {
+            packs.push(json!({"pack": PACK, "parameters": {}}));
+            packs.len() - 1
+        }
+    };
+    packs[i].get_mut("parameters")?.as_object_mut()
+}
+
 /// `raw` with the shipped caps filled in where it sets none for the pack: a
 /// profile that sets only the counterparty list keeps the outlier guard, and
 /// the digest covers the caps actually in force. A cap the operator set
@@ -452,18 +456,8 @@ fn result_str(result: ConstraintResult) -> &'static str {
 fn with_default_caps(raw: &[u8], (input, output): (u64, u64)) -> anyhow::Result<Vec<u8>> {
     let mut profile: Value =
         serde_json::from_slice(raw).map_err(|e| anyhow::anyhow!("{PROFILE_SETTING}: {e}"))?;
-    let Some(packs) = profile.get_mut("packs").and_then(Value::as_array_mut) else {
+    let Some(parameters) = pack_parameters(&mut profile) else {
         return Ok(raw.to_vec()); // not a profile: decode reports it
-    };
-    let entry = match packs.iter().position(|p| p["pack"] == PACK) {
-        Some(i) => &mut packs[i],
-        None => {
-            packs.push(json!({"pack": PACK, "parameters": {}}));
-            packs.last_mut().expect("just pushed")
-        }
-    };
-    let Some(parameters) = entry.get_mut("parameters").and_then(Value::as_object_mut) else {
-        return Ok(raw.to_vec());
     };
     let caps = parameters.entry("rate_cap").or_insert_with(|| json!({}));
     // `"rate_cap": null` is "no values" to the profile decoder: it sets no

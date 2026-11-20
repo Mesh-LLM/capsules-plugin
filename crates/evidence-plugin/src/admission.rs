@@ -1653,6 +1653,11 @@ mod tests {
             .expect("two lists are refused")
             .to_string();
         assert!(error.contains("counterparty_list"), "{error}");
+        // A null list is refused alike, with or without console lists.
+        let null = r#"{"format":"policy-profile/v0","packs":[{"pack":"asg/inference","parameters":{"counterparty_list":null}}]}"#;
+        assert!(price::PriceRule::from_file(null.as_bytes(), Some(&policy(None)), &salt).is_err());
+        let none = Policy::parse(None, None, None).unwrap();
+        assert!(price::PriceRule::from_file(null.as_bytes(), Some(&none), &salt).is_err());
         // With console lists that refuse no one, the file's own list stands.
         let none = Policy::parse(None, None, None).unwrap();
         assert!(price::PriceRule::from_file(own.as_bytes(), Some(&none), &salt).is_ok());
