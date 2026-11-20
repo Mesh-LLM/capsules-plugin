@@ -81,15 +81,21 @@ pub fn console_key_of(setting: &str) -> String {
 /// The variables are still read this release, and still win over the console;
 /// a later release refuses to start while one is set.
 pub fn warn_deprecated_env() {
-    for name in [ALLOW_SETTING, DENY_SETTING, DEFAULT_SETTING] {
+    for name in [ALLOW_SETTING, DEFAULT_SETTING] {
         if crate::settings::set_in_env(name) {
+            let key = console_key_of(name);
             tracing::warn!(
                 setting = name,
-                replacement = %console_key_of(name),
-                "{name} is deprecated and will be removed: set `{}` in the console (Configuration > Plugins) instead, and unset the variable",
-                console_key_of(name)
+                replacement = %key,
+                "{name} is deprecated and will be removed: set `{key}` in the console (Configuration > Plugins) instead, and unset the variable"
             );
         }
+    }
+    if crate::settings::set_in_env(DENY_SETTING) {
+        tracing::warn!(
+            setting = DENY_SETTING,
+            "{DENY_SETTING} is deprecated and will be removed: block the peer in mesh-llm's peer blocks instead (a denied peer is configured in one place), and unset the variable"
+        );
     }
 }
 

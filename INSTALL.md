@@ -499,20 +499,23 @@ your lists, and seal the decision in its book:
 
 Set them in the console, under Configuration > Plugins > "Which peers you route to":
 
-- **Peers to admit** (`admission_allow`): mesh node ids (64 hex characters), comma-separated.
-- **Peers to refuse** (`admission_deny`): the same form. A peer on both lists is refused.
+- **Peers to admit** (`admission_allow`): mesh node ids (64 hex characters), comma-separated. Used
+  only when the setting below is `no`.
 - **Peers on neither list** (`admission_default`): `go` (the default) or `no`.
 
-The plugin builds a `policy-profile/v0` from these, and capsule-engine's
-evaluator decides it. The profile holds each peer as a salted fingerprint
-(`sha256-install-salt-v1`), never as a node id, and each decision cites the profile's digest.
-`doctor` shows the profile, its digest and its values.
+To refuse a peer, block it in mesh-llm's own peer blocks: a denied peer is configured in one place,
+not here.
 
-The environment variables `CAPSULES_ADMISSION_ALLOW`, `CAPSULES_ADMISSION_DENY` and
-`CAPSULES_ADMISSION_DEFAULT` (the same values) are **deprecated**: they are still read, and win over
-the console, but each logs a warning at start naming its console setting. A later release refuses to
-start while one is set, so move them to the console and unset them. A peer you block in mesh-llm's
-own peer blocks is configured there, not here.
+The plugin builds a `policy-profile/v0` from these, and capsule-engine's evaluator decides it. The
+profile holds each peer as a salted fingerprint (`sha256-install-salt-v1`), never as a node id, and
+each decision cites the profile's digest. `doctor` shows the profile, its digest and its values.
+
+The environment variables `CAPSULES_ADMISSION_ALLOW` and `CAPSULES_ADMISSION_DEFAULT` (the same
+values) are **deprecated**: they are still read, and win over the console, but each logs a warning at
+start naming its console setting. `CAPSULES_ADMISSION_DENY` (peers to refuse; a peer on both lists is
+refused) is deprecated too and has no console setting: it is still read this release, with a warning
+that points to mesh-llm's peer blocks. A later release refuses to start while any of the three is
+set, so move them off and unset them.
 
 A peer your lists admit then meets the price rule, decided by capsule-engine's `asg/inference`
 terms pack (the same evaluator and vectors Muse uses). It compares the input and output rates the
@@ -554,7 +557,7 @@ NO. They record:
   peer at all;
 - **corroboration**: this node holds the peer's pushed half of at least one exchange.
 
-A row that fails stays a record; to refuse such a peer, add it to your deny list. The thresholds
+A row that fails stays a record; to refuse such a peer, block it in mesh-llm's peer blocks. The thresholds
 are placeholders, fixed in this version.
 
 The lists and these rows are decided by capsule-engine's admission evaluator under the base pack

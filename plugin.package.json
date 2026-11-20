@@ -345,34 +345,14 @@
         "apply_mode": "static_on_load",
         "restart_scope": "none",
         "visibility": "user",
-        "description": "Peers to admit, as mesh node ids (64 hex characters), separated by commas. It matters when the default below is no. A peer on both lists is refused.",
+        "description": "Peers to admit, as mesh node ids (64 hex characters), separated by commas. Used only when 'Peers on neither list' is no.",
         "presentation": {
           "label": "Peers to admit",
           "category_id": "admission",
           "category_label": "Which peers you route to",
-          "category_summary": "Before this node sends a request to a mesh peer it decides go or no from these. Each decision is sealed in your book. Takes effect when mesh-llm is restarted.",
+          "category_summary": "Before this node sends a request to a mesh peer it decides go or no from these. Each decision is sealed in this node's capsule record. A sealed decision names a peer only by a salted fingerprint, never by its node id. To refuse a peer, block it in mesh-llm's peer blocks. Takes effect when mesh-llm is restarted.",
           "category_order": 4,
           "setting_order": 13
-        }
-      },
-      {
-        "key": "admission_deny",
-        "value_schema": {
-          "kind": "string",
-          "allow_additional_properties": false
-        },
-        "required": false,
-        "apply_mode": "static_on_load",
-        "restart_scope": "none",
-        "visibility": "user",
-        "description": "Peers to refuse, as mesh node ids (64 hex characters), separated by commas. The sealed record names a peer only by a salted fingerprint, never by its id.",
-        "presentation": {
-          "label": "Peers to refuse",
-          "category_id": "admission",
-          "category_label": "Which peers you route to",
-          "category_summary": "Before this node sends a request to a mesh peer it decides go or no from these. Each decision is sealed in your book. Takes effect when mesh-llm is restarted.",
-          "category_order": 4,
-          "setting_order": 14
         }
       },
       {
@@ -395,9 +375,9 @@
           "label": "Peers on neither list",
           "category_id": "admission",
           "category_label": "Which peers you route to",
-          "category_summary": "Before this node sends a request to a mesh peer it decides go or no from these. Each decision is sealed in your book. Takes effect when mesh-llm is restarted.",
+          "category_summary": "Before this node sends a request to a mesh peer it decides go or no from these. Each decision is sealed in this node's capsule record. A sealed decision names a peer only by a salted fingerprint, never by its node id. To refuse a peer, block it in mesh-llm's peer blocks. Takes effect when mesh-llm is restarted.",
           "category_order": 4,
-          "setting_order": 15
+          "setting_order": 14
         }
       }
     ]

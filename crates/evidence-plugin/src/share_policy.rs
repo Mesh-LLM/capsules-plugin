@@ -60,7 +60,6 @@ pub const SPLIT_MARGIN_THRESHOLD_KEY: &str = "split_margin_threshold";
 /// is the env-style name's suffix lower-cased (`CAPSULES_ADMISSION_ALLOW` is
 /// `admission_allow`); the plugin builds a `policy-profile/v0` from them.
 pub const ADMISSION_ALLOW_KEY: &str = "admission_allow";
-pub const ADMISSION_DENY_KEY: &str = "admission_deny";
 pub const ADMISSION_DEFAULT_KEY: &str = "admission_default";
 
 /// This process's own runtime env var for `share_record_at_completion` --
@@ -266,8 +265,9 @@ pub const JOIN_NETWORK_LABEL: &str = "Join the evidence network";
 const ADMISSION_CATEGORY_ID: &str = "admission";
 const ADMISSION_CATEGORY_LABEL: &str = "Which peers you route to";
 const ADMISSION_CATEGORY_SUMMARY: &str = "Before this node sends a request to a mesh peer it \
-    decides go or no from these. Each decision is sealed in your book. Takes effect when \
-    mesh-llm is restarted.";
+    decides go or no from these. Each decision is sealed in this node's capsule record. A sealed \
+    decision names a peer only by a salted fingerprint, never by its node id. To refuse a peer, \
+    block it in mesh-llm's peer blocks. Takes effect when mesh-llm is restarted.";
 
 const NETWORK_CATEGORY_ID: &str = "network";
 const NETWORK_CATEGORY_LABEL: &str = "Evidence network";
@@ -467,7 +467,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
             config_setting(ADMISSION_ALLOW_KEY, config_string())
                 .description(
                     "Peers to admit, as mesh node ids (64 hex characters), separated by commas. \
-                     It matters when the default below is no. A peer on both lists is refused.",
+                     Used only when \'Peers on neither list\' is no.",
                 )
                 .label("Peers to admit")
                 .category(
@@ -477,21 +477,6 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                     4,
                 )
                 .order(13),
-        )
-        .setting(
-            config_setting(ADMISSION_DENY_KEY, config_string())
-                .description(
-                    "Peers to refuse, as mesh node ids (64 hex characters), separated by commas. \
-                     The sealed record names a peer only by a salted fingerprint, never by its id.",
-                )
-                .label("Peers to refuse")
-                .category(
-                    ADMISSION_CATEGORY_ID,
-                    ADMISSION_CATEGORY_LABEL,
-                    ADMISSION_CATEGORY_SUMMARY,
-                    4,
-                )
-                .order(14),
         )
         .setting(
             config_setting(ADMISSION_DEFAULT_KEY, config_enum(["go", "no"]))
@@ -504,7 +489,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                     ADMISSION_CATEGORY_SUMMARY,
                     4,
                 )
-                .order(15),
+                .order(14),
         )
         .into()
 }
@@ -543,7 +528,6 @@ mod tests {
                 WITNESS_KEY,
                 crate::network_join::JOIN_NETWORK_KEY,
                 ADMISSION_ALLOW_KEY,
-                ADMISSION_DENY_KEY,
                 ADMISSION_DEFAULT_KEY,
             ]
         );
@@ -631,11 +615,6 @@ mod tests {
                     "Which peers you route to",
                     "Peers to admit",
                     ADMISSION_ALLOW_KEY
-                ),
-                row(
-                    "Which peers you route to",
-                    "Peers to refuse",
-                    ADMISSION_DENY_KEY
                 ),
                 row(
                     "Which peers you route to",
@@ -765,7 +744,6 @@ mod tests {
                 v(&["off", "on"]),
             ),
             (ADMISSION_ALLOW_KEY, None, v(&[])),
-            (ADMISSION_DENY_KEY, None, v(&[])),
             (ADMISSION_DEFAULT_KEY, Some("\"go\""), v(&["go", "no"])),
         ];
         let expected: Vec<_> = expected
@@ -891,7 +869,6 @@ mod tests {
             (STOP_ROUTING_AFTER_KEY, "STOP_ROUTING_AFTER_CONTRADICTIONS"),
             (STOP_ROUTING_WINDOW_KEY, "STOP_ROUTING_WINDOW_DAYS"),
             (ADMISSION_ALLOW_KEY, "ADMISSION_ALLOW"),
-            (ADMISSION_DENY_KEY, "ADMISSION_DENY"),
             (ADMISSION_DEFAULT_KEY, "ADMISSION_DEFAULT"),
         ];
         for (key, suffix) in expected_env_suffix {
