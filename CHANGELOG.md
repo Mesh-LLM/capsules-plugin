@@ -4,7 +4,7 @@
 
 ### Changed
 
-- **With `CAPSULES_ADMISSION_PROFILE` set, a sealed decision's profile digest covers the console admission lists and default (#314).** The plugin folds them into the file's `asg/inference` `counterparty_list` before the engine digests it, so the digest a decision covers every rule it applied. The digest is still capsule-engine's `Profile` digest, and a decision still cites it, as before, by a salted commitment to that digest, so nothing a verifier reads changes. A file that sets its own `counterparty_list` while the console default is no (or the deprecated `CAPSULES_ADMISSION_DENY` names peers) is treated as unreadable: every peer is NO and the log says why, because the pack takes one list. A file whose console default is go with no deny list cites the same digest as before. This answers the caveat in the 0.1.20 notes.
+- **With `CAPSULES_ADMISSION_PROFILE` set, a sealed decision's profile digest covers the console admission lists and default (#314).** The plugin folds them into the file's `asg/inference` `counterparty_list` before the engine digests it, so the digest a decision cites covers every rule it applied. The digest is still capsule-engine's `Profile` digest, and a decision still cites it, as before, by a salted commitment to that digest, so nothing a verifier reads changes. A file that sets its own `counterparty_list` while the console default is no (or the deprecated `CAPSULES_ADMISSION_DENY` names peers) is treated as unreadable: every peer is NO and the log says why, because the pack takes one list. A file whose console default is go with no deny list cites the same digest as before. This answers the caveat in the 0.1.20 notes.
 
 ## 0.1.20
 
