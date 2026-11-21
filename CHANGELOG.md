@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.21
+
 ### Added
 
 - **`nostr_evidence_request` checks a responder whose checkpoints are signed by a different key than its answers (loop#443).** A Goose node signs its answers under its evidence key and its checkpoints under a checkpoint key, so the one-key verifier refused its answers (`artifact_verification_failed`, loop step 13 mesh to goose). The tool takes an optional `commitment` (the `commitment/1` wire, `{"commitment", "policy"}`); it must verify and be `responder_key`'s, and the `checkpoint_key` its stapled cards name (evidence-commitment-carriers-v0 `history_cards[].checkpoint_key`) is the key the checkpoints are checked under. A checkpoint key is never taken from the input alone. A pass under a separate key says so: the verification carries `checkpoint_key_id` and `checkpoints_signed_by`, so it is not read as the responder's own log until the admission pack judges that key. With no `commitment` nothing changes. `exchange_corroboration/1` is still checked under the evidence key alone.

@@ -296,7 +296,7 @@ PowerShell with a `.zip`, shown after step 3.
 and set `VERSION` to the release (without the leading `v`):
 
 ```bash
-VERSION=0.1.20
+VERSION=0.1.21
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64)  TARGET=aarch64-apple-darwin ;;
   Linux-x86_64)  TARGET=x86_64-unknown-linux-gnu ;;
