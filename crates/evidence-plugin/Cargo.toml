@@ -172,7 +172,7 @@ rusqlite = { version = "0.40", features = ["bundled"] }
 # check of Checkpointed Local Log material (`cll`) and witness receipts
 # (`receipt`). The artifact is built by evidencebook (below).
 # Pinned exactly: a new release may change what verifies.
-evidence-request = { version = "=0.7.0", features = ["cll", "receipt", "acceptance"] }
+evidence-request = { version = "=0.8.0", features = ["cll", "receipt", "acceptance"] }
 # The "asked of you" log (`evidence_answer::log_received`) is evidencebook's
 # `received` (evidencebook#35), and a ledger line is read into its
 # `served_summary` facts (`evidence_log::leaf_facts`), whose model Service
@@ -186,7 +186,7 @@ evidence-request = { version = "=0.7.0", features = ["cll", "receipt", "acceptan
 # The node's shelf (`shelf`, evidencebook#254 §7): the chain is one host log
 # on it. 0.0.12 is the first release with it, on checkpointed-local-log 0.4.0.
 # Pinned exactly: the shelf's file is a cross-language contract.
-evidencebook = { version = "=0.0.21", features = ["deal", "shelf"] }
+evidencebook = { version = "=0.0.24", features = ["deal", "shelf"] }
 # Admission's price rule (#105) is decided by capsule-engine's guard with its
 # asg/inference terms pack (capsule-engine#265, `rust/capsule-engine`), the
 # evaluator Muse's Go guard shares vectors with, so the plugin runs no second
@@ -270,11 +270,3 @@ opt-level = 3
 # carries it; then this goes and the requirement above moves to that release.
 [patch.crates-io]
 mesh-llm-plugin = { git = "https://github.com/Mesh-LLM/mesh-llm", rev = "a39211e78f3dd73cf9a94b08417c0da17e5fa5d9" }
-# Evidence Request -03 gives a range of checkpoints its own subject name,
-# `checkpoint_range` (agent-action-capsule#645, #644). The reading of it is in
-# the `evidence-request` source at that commit, which is still 0.7.0 and
-# unreleased; crates.io's 0.7.0 reads the range as `checkpoints`. A patch, not a
-# direct git dependency, so evidencebook's `evidence-request = "0.7.0"` is the
-# same crate and its `Request`, `Subject` and `Reason` are the types this
-# plugin passes it. Goes when AAC releases it; then the pin above moves.
-evidence-request = { git = "https://github.com/action-state-group/agent-action-capsule", rev = "b5ccf0e7d681808d2001b732240db8622bc80c97" }
