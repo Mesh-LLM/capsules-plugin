@@ -944,3 +944,23 @@ fn a_run_is_recorded_beside_the_ledger() {
     let line: Value = serde_json::from_str(text.lines().next().unwrap()).unwrap();
     assert_eq!(line["ran_at"], json!(NOW));
 }
+
+/// A corroboration answer is checked under the evidence key alone, so a
+/// checkpoint key handed to `verify_response_with` is not named on it.
+#[test]
+fn a_corroboration_pass_does_not_name_a_checkpoint_key_it_never_used() {
+    let dir = node_with(&[served_half()], &node_key());
+    let sent = unsigned(&digest_of(NONCE));
+    let wire = wire_of(ask(dir.path(), &sent, true));
+    let (ek, ck) = (node_key().verifying_key(), other_node_key().verifying_key());
+    let got = crate::evidence_answer::verify_response_with(
+        &sent,
+        &wire,
+        &ek,
+        Some(&ck),
+        &Default::default(),
+    );
+    assert_eq!(got["state"], "artifact", "{got}");
+    assert!(got.get("checkpoint_key_id").is_none(), "{got}");
+    assert!(got.get("checkpoints_signed_by").is_none(), "{got}");
+}

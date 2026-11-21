@@ -319,14 +319,34 @@ fn a_checkpoint_key_is_taken_only_from_a_verified_commitment_of_the_responder() 
             json!(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(spki(&other)));
     });
     assert_eq!(checkpoint_key_of(&split, &responder).unwrap(), Some(other));
-    // Another node's commitment, a commitment that does not verify, and one
-    // whose cards disagree name no key.
+    // Another node's commitment, and a commitment that does not verify, name
+    // no key.
     assert!(checkpoint_key_of(&split, &"00".repeat(32)).is_err());
     let mut tampered = split.clone();
     tampered.commitment["human_gated"] = json!(true);
     assert!(checkpoint_key_of(&tampered, &responder)
         .unwrap_err()
         .contains("does not verify"));
+    // Cards that disagree (two keys, or only some naming one) are ambiguous.
+    let b64 =
+        |k: &VerifyingKey| json!(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(spki(k)));
+    let third = SigningKey::from_bytes(&[8u8; 32]).verifying_key();
+    let card = |k: Option<&VerifyingKey>| match k {
+        Some(k) => json!({"checkpoint_key": b64(k)}),
+        None => json!({}),
+    };
+    assert_eq!(
+        checkpoint_key_of_cards(&[card(Some(&other)), card(Some(&other))]).unwrap(),
+        Some(other)
+    );
+    assert!(
+        checkpoint_key_of_cards(&[card(Some(&other)), card(Some(&third))])
+            .unwrap_err()
+            .contains("different checkpoint keys")
+    );
+    assert!(checkpoint_key_of_cards(&[card(Some(&other)), card(None)])
+        .unwrap_err()
+        .contains("only some"));
     // No card names one: checkpoints are signed by the evidence key.
     let none = resigned(&signed, |c| {
         c["history_cards"][0]

@@ -77,7 +77,8 @@ pub struct NostrEvidenceRequestArgs {
     /// The request map (draft-mih-agent-evidence-request), sealed and sent as
     /// given plus a `deadline` and a `nonce` when it carries none.
     pub request: Value,
-    /// Check the reply under `responder_key` and return the check beside it.
+    /// Check the reply under `responder_key` (its checkpoints under the
+    /// `commitment`'s checkpoint key when one is given) and return the check beside it.
     /// On unless the caller turns it off.
     #[serde(default = "verify_by_default")]
     pub verify: bool,

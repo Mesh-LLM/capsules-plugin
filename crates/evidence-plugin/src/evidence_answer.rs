@@ -1190,8 +1190,13 @@ pub fn verify_response_with(
     witness_keys: &std::collections::BTreeMap<String, String>,
 ) -> Value {
     let mut out = verify_response_inner(sent, response, key, checkpoint_key, witness_keys);
+    // An exchange corroboration is checked under `key` alone, so it is not
+    // annotated with a checkpoint key it never used.
+    let corroboration = request::parse_json(sent)
+        .map(|req| crate::exchange_corroboration::is_derivation(req.derivation.as_ref()))
+        .unwrap_or(false);
     if let Some(ck) = checkpoint_key.filter(|ck| ck.as_bytes() != key.as_bytes()) {
-        if out["state"] == "artifact" {
+        if out["state"] == "artifact" && !corroboration {
             out["checkpoint_key_id"] = json!(hex::encode(ck.as_bytes()));
             out["checkpoints_signed_by"] =
                 json!("a checkpoint key other than the responder's evidence key");
