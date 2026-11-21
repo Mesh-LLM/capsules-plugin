@@ -359,6 +359,26 @@ fn witnesses_are_read_from_the_checkpoint_lines_whose_receipts_check() {
     );
 }
 
+/// Past the cap the stranger view names what the policy names, not `/1`.
+#[test]
+fn the_stranger_view_names_only_what_the_policy_names() {
+    let dir = corpus();
+    let long = Policy {
+        history_card_1: false,
+        ..Policy::from_settings(|_| None)
+    };
+    let served = serve(dir.path(), &long, Some(NODE));
+    let found = with(dir.path(), &long, |r| {
+        findings(r, &long, &served, &Witnesses::default(), None, false).unwrap()
+    });
+    let detail = state(&found, STRANGER_VIEW).detail.clone();
+    assert!(
+        detail.starts_with("checkpoints and history_card/2 to anyone"),
+        "{detail}"
+    );
+    assert!(!detail.contains("history_card/1"), "{detail}");
+}
+
 #[test]
 fn sharing_is_off_only_when_every_switch_is_off() {
     let dir = corpus();

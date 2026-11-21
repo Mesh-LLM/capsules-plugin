@@ -204,6 +204,44 @@ fn history_card_1_is_named_until_its_full_answer_would_not_fit() {
     assert_eq!(verify(&signed), Vec::<String>::new());
 }
 
+/// The wiring: `with_responder` over a real node's state hands out the
+/// policy that drops `history_card/1` once the log is past the cap, and the
+/// measurement follows the log (a short log keeps it; a cached "does not
+/// fit" stays).
+#[test]
+fn the_responder_policy_follows_the_log() {
+    let dir = tempfile::tempdir().unwrap();
+    let capsules = crate::capsule_emit::CapsuleState::open(dir.path(), "node-under-test").unwrap();
+    let named = |capsules: &crate::capsule_emit::CapsuleState| {
+        with_responder(capsules, NOW, None, |_, policy| {
+            (
+                policy.history_card_1,
+                policy.body()["stranger_safe"].clone(),
+            )
+        })
+    };
+    crate::evidence_request_parity::long_ledger_dir(
+        capsules.ledger_dir(),
+        capsules.signing_key(),
+        50,
+    );
+    let (named_1, safe) = named(&capsules);
+    assert!(named_1);
+    assert_eq!(
+        safe,
+        json!(["checkpoints", "history_card/1", "history_card/2"])
+    );
+    crate::evidence_request_parity::long_ledger_dir(
+        capsules.ledger_dir(),
+        capsules.signing_key(),
+        500,
+    );
+    let (named_1, safe) = named(&capsules);
+    assert!(!named_1);
+    assert_eq!(safe, json!(["checkpoints", "history_card/2"]));
+    assert!(!named(&capsules).0, "a log that does not fit stays so");
+}
+
 #[test]
 fn a_built_commitment_has_exactly_the_members_and_verifies() {
     let signed = built(&defaults());

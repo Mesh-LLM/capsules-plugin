@@ -42,7 +42,7 @@
 
 use base64::Engine as _;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
-use evidence_request::registry::SubjectForm;
+use evidence_request::registry::{SubjectForm, DERIVATION_HISTORY_CARD};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
@@ -102,8 +102,6 @@ pub static DERIVATIONS: std::sync::LazyLock<[&str; 7]> = std::sync::LazyLock::ne
 pub const STAPLED_DERIVATION: &str = "history_card/2";
 
 /// The cards a `commitment/1` may staple.
-use evidence_request::registry::DERIVATION_HISTORY_CARD;
-
 const CARD_DERIVATIONS: [&str; 2] = ["history_card/1", "history_card/2"];
 
 /// Answered to anyone, signed or not (PRD R-8).
@@ -336,31 +334,41 @@ pub fn with_responder_for<T>(
 /// Whether a stranger's full `history_card/1` over this node's log still fits
 /// `MAX_ANSWER_BYTES`: the answer is built as the responder builds it and
 /// refused only when it is too large. A log with no checkpoint, or one the
-/// ledger could not read, keeps `/1` named. Cached per ledger and chain
-/// length, since a log only grows and a checkpoint is cut at most every few
-/// minutes.
+/// ledger could not read, keeps `/1` named. Measured again only when the
+/// chain or its witness receipts change, and never again once it does not
+/// fit, since a log only grows.
 pub fn history_card_1_fits(ledger_dir: &std::path::Path, key: &SigningKey, now: &str) -> bool {
     use crate::evidence_answer::Outcome;
     use evidence_request::registry::Reason;
-    static CACHE: std::sync::Mutex<
-        Option<std::collections::HashMap<std::path::PathBuf, (usize, bool)>>,
-    > = std::sync::Mutex::new(None);
+    // (checkpoints, witness receipts) the answer was measured at, and
+    // whether it fit. Receipts ride in the answer, so one arriving for an
+    // existing checkpoint can push it over without a new checkpoint. The lock
+    // is held while measuring, so concurrent callers measure once.
+    type Measured = std::collections::HashMap<std::path::PathBuf, ((usize, usize), bool)>;
+    static CACHE: std::sync::Mutex<Option<Measured>> = std::sync::Mutex::new(None);
     let key_id = key_id(key);
-    let Ok(len) = crate::evidence_log::with_index(ledger_dir, &key_id, |i| i.chain.len()) else {
+    let Ok(stamp) = crate::evidence_log::with_index(ledger_dir, &key_id, |i| {
+        (
+            i.chain.len(),
+            i.chain
+                .iter()
+                .map(|c| c.record.witnesses.len())
+                .sum::<usize>(),
+        )
+    }) else {
         return true;
     };
-    let lock = || {
-        CACHE
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    };
-    if let Some((cached, fits)) = lock()
+    let len = stamp.0;
+    let mut cache = CACHE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some((cached, fits)) = cache
         .get_or_insert_with(Default::default)
         .get(ledger_dir)
         .copied()
     {
         // Once past the cap, always past it (the log only grows).
-        if !fits || cached == len {
+        if !fits || cached == stamp {
             return fits;
         }
     }
@@ -399,9 +407,9 @@ pub fn history_card_1_fits(ledger_dir: &std::path::Path, key: &SigningKey, now: 
             }
         )
     };
-    lock()
+    cache
         .get_or_insert_with(Default::default)
-        .insert(ledger_dir.to_path_buf(), (len, fits));
+        .insert(ledger_dir.to_path_buf(), (stamp, fits));
     fits
 }
 
