@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- **`nostr_evidence_request` checks a responder whose checkpoints are signed by a different key than its answers (loop#443).** A Goose node signs its answers under its evidence key and its checkpoints under a checkpoint key, so the one-key verifier refused its answers (`artifact_verification_failed`, loop step 13 mesh to goose). The tool takes an optional `commitment` (the `commitment/1` wire, `{"commitment", "policy"}`); it must verify and be `responder_key`'s, and the `checkpoint_key` its stapled cards name (evidence-commitment-carriers-v0 `history_cards[].checkpoint_key`) is the key the checkpoints are checked under. A checkpoint key is never taken from the input alone. A pass under a separate key says so: the verification carries `checkpoint_key_id` and `checkpoints_signed_by`, so it is not read as the responder's own log until the admission pack judges that key. With no `commitment` nothing changes. `exchange_corroboration/1` is still checked under the evidence key alone.
+
 ### Fixed
 
 - **A node past the answer-size cap stops naming `history_card/1` in its policy and commitment, so it no longer advertises an answer it refuses (Mesh-LLM/capsules-plugin#70).** The trigger is deterministic: once a stranger's full `history_card/1` over the node's own log would exceed `MAX_ANSWER_BYTES` (1 MiB; about 350 checkpoints, 375 on loop lab-3), the policy's `stranger_safe` list and the commitment's `answers.derivations` drop `history_card/1` and keep `history_card/2`. A log only grows, so this happens once and the policy digest moves once, at the crossing; below it nothing changes. A `/1` ask is still refused as before. **Readers that only ask or accept `history_card/1`, such as loop's `check_commitment.py` and the Evidence page's ask of older nodes, get no card from such a node past the crossing; they need `history_card/2`.** Unranged `checkpoints` is still named (ranged and unranged share one name, so splitting them is a spec change) and is refused for size past about 380 checkpoints; `{"checkpoints": [a, b]}` and `history_card/2` serve a long log.

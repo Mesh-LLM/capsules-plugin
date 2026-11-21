@@ -301,6 +301,42 @@ fn a_busy_request_reads_no_ledger_for_the_policy() {
     assert!(!busy_names_1(&capsules), "then it names what was measured");
 }
 
+/// A checkpoint key is taken only from a commitment that verifies and is the
+/// responder's; with none named, there is none to take.
+#[test]
+fn a_checkpoint_key_is_taken_only_from_a_verified_commitment_of_the_responder() {
+    let signed = built(&defaults());
+    let responder = key_id(&key());
+    // This node's cards name its own key.
+    assert_eq!(
+        checkpoint_key_of(&signed, &responder).unwrap(),
+        Some(key().verifying_key())
+    );
+    // A card that names another key is the key the checkpoints are checked under.
+    let other = SigningKey::from_bytes(&[7u8; 32]).verifying_key();
+    let split = resigned(&signed, |c| {
+        c["history_cards"][0]["checkpoint_key"] =
+            json!(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(spki(&other)));
+    });
+    assert_eq!(checkpoint_key_of(&split, &responder).unwrap(), Some(other));
+    // Another node's commitment, a commitment that does not verify, and one
+    // whose cards disagree name no key.
+    assert!(checkpoint_key_of(&split, &"00".repeat(32)).is_err());
+    let mut tampered = split.clone();
+    tampered.commitment["human_gated"] = json!(true);
+    assert!(checkpoint_key_of(&tampered, &responder)
+        .unwrap_err()
+        .contains("does not verify"));
+    // No card names one: checkpoints are signed by the evidence key.
+    let none = resigned(&signed, |c| {
+        c["history_cards"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("checkpoint_key");
+    });
+    assert_eq!(checkpoint_key_of(&none, &responder).unwrap(), None);
+}
+
 #[test]
 fn a_built_commitment_has_exactly_the_members_and_verifies() {
     let signed = built(&defaults());
