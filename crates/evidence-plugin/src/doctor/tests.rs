@@ -365,6 +365,7 @@ fn the_stranger_view_names_only_what_the_policy_names() {
     let dir = corpus();
     let long = Policy {
         history_card_1: false,
+        checkpoints: false,
         ..Policy::from_settings(|_| None)
     };
     let served = serve(dir.path(), &long, Some(NODE));
@@ -373,10 +374,11 @@ fn the_stranger_view_names_only_what_the_policy_names() {
     });
     let detail = state(&found, STRANGER_VIEW).detail.clone();
     assert!(
-        detail.starts_with("checkpoints and history_card/2 to anyone"),
+        detail.starts_with("history_card/2 and checkpoint_range to anyone"),
         "{detail}"
     );
     assert!(!detail.contains("history_card/1"), "{detail}");
+    assert!(!detail.contains("checkpoints"), "{detail}");
 }
 
 #[test]
@@ -384,6 +386,7 @@ fn sharing_is_off_only_when_every_switch_is_off() {
     let dir = corpus();
     let off = Policy {
         history_card_1: true,
+        checkpoints: true,
         record_at_completion: false,
         history_segments: "off",
         share_standard_history: false,

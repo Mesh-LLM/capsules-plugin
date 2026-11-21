@@ -1,13 +1,29 @@
-# Evidence request conformance vectors (draft-mih-agent-evidence-request-00)
+# Evidence request conformance vectors (draft-mih-agent-evidence-request-00 to -03)
 
 Conformance vectors for the evidence request interaction defined in
-`spec/draft-mih-agent-evidence-request-00.md`: the request map, the six subject
-forms, coverage, the request digest, the signed refusal, the three outcomes and
-the pending state, caller invariance, and retention commitments.
+`spec/draft-mih-agent-evidence-request-00.md`,
+`spec/draft-mih-agent-evidence-request-01.md`,
+`spec/draft-mih-agent-evidence-request-02.md` and
+`spec/draft-mih-agent-evidence-request-03.md`: the request map, the six subject
+forms, which record members carry a correlation identifier or cite an exchange
+half, coverage, the request digest, the signed refusal, the three outcomes and
+the pending state, caller invariance, retention commitments, the `categories`
+request field, A2A and MCP carriage, unavailable-window statements, the
+two refusal reasons -02 adds, and -03's `history_card/2` and
+`checkpoint_range` subject.
 
-**Derived from the -00 text, not from any implementation.** Every expected
+Each corpus names the revision it is written from in its `draft` member.
+`carries.json`, `categories.json` and `carriage.json` follow text that first
+appears in -01, and name -01; `unavailable-window.json` and `refusal-02.json`
+follow text that first appears in -02, and name -02; `history-card-2.json` and
+`checkpoints-range.json` follow text that first appears in -03, and name -03; every other corpus
+names -00, and every -00, -01 and -02 case also holds under -03. Section numbers below are those of the revision the
+corpus names.
+
+**Derived from the draft text, not from any implementation.** Every expected
 result is written by hand in the generator from the section it cites. The
-generator only encodes inputs, hashes them and signs the refusal cases; it runs
+generator only encodes inputs, hashes them and signs the refusal and statement
+cases; it runs
 no responder or verifier. Every case is marked `"provenance": "spec-derived"`.
 Where -00 leaves a choice open, the case carries an `ambiguity` note with the
 section and the reading used (the most literal one); the list is below, for -01.
@@ -19,12 +35,19 @@ section and the reading used (the most literal one); the list is below, for -01.
 | `registry.json` | The exact strings -00 fixes: request fields and their presence, the six subject forms, the two coverage members, the eight refusal reasons, the `history_card/1` derivation, the three outcomes, the pending state, the `evidence-request/1` subprotocol identifier. |
 | `request.json` | Request map validation. Each case gives the request as JSON (RFC 8785 text, `request_json`) and, where it is a CBOR value, as a deterministic CBOR frame (`request_cbor_hex`), with the SHA-256 of each. Expect `well_formed: true`, or `false` with the exact refusal reason. |
 | `resolution.json` | Exact-match resolution against one declared responder state (`responder`, with per-case `responder_overrides`). Expect `artifact` or a refusal with the most specific reason (§4.2). |
+| `categories.json` | The OPTIONAL `categories` request field (-01 §3.9). `kind` `request` cases are request maps as in `request.json`; expect `well_formed: true`, or `false` with `request_malformed`. `kind` `invariance` cases are observations as in `invariance.json`, with `categories` in each request: categories is an input of the artifact when honored (-01 §5). |
+| `carriage.json` | A2A and MCP carriage (-01 §10.1-§10.3) and the envelope's request digest (-01 §4.1). `kind` `digest`: decode `carried_text` as the `carriage` writes bytes (A2A: base64 with padding; MCP: base64url without padding); `candidate_digest` is the request digest only if it is SHA-256 over the decoded octets. `kind` `binding`: an envelope answers the request only if `envelope_request_digest` is SHA-256 of `retained_request_hex`. `kind` `media_type`: exact-string comparison. `kind` `classify`: what the requester received, classified by the reply alone. |
+| `carries.json` | Which members of a record carry a correlation identifier or cite an exchange half (§3.1.1): a positive and a negative case per subject form, plus a `counterparty_half` entry naming another half. Each case gives `record_format`, the `record` reduced to the members the designation reads, and the `subject`. Expect `carries` (correlation) or `cites` (exchange), true or false. |
 | `digest.json` | The request digest is over the bytes as received (§4.2 item 1): JSON and CBOR, deterministic and not, and a refusal carrying the digest of a re-canonicalized form. |
 | `refusal.json` | Signed refusals: one per registered reason, a CBOR response frame, tampering, and objects that are signed but not conforming. Carries the signature profile and both fixed keys (seed and public key). |
 | `refusal-imported.json` | An existing cross-implementation refusal vector, byte for byte (SHA-256 `885d7981…a66e`). It conforms to -00: a request digest, a registered reason, an issuance time, and a signature over all three. |
 | `outcomes.json` | The three outcomes and pending, as facts in and one state out, with the states each case must never be recorded as (§4.5). |
 | `invariance.json` | Caller invariance (§5): observations of the same subject under the same anchor must carry byte-identical artifacts. |
 | `retention.json` | Retention commitments (§9): every reason inside and after `until`, absence with and without a commitment, and which subject forms a commitment may name. |
+| `unavailable-window.json` | Unavailable-window statements (-02 §4.7). `kind` `statement`: whether a reader recognizes the statement (well formed, signed by `responder_key`, registered) and its registration time, the earliest of its `receipts` marked `accepted` (from a transparency service the reader accepts as independent of the responder). `kind` `display`: an absence (`sent_at` to `closed_at`) and statements; expect the ids of the statements that cover it, `shown_as`, and per covering statement its `reason_class`, `stated_period`, registration time and `stated_afterwards`. `must_not_show_as` lists what the reader must never show. Statements are signed with the primary key of `refusal.json` under the profile in the file. |
+| `refusal-02.json` | The two refusal reasons -02 adds (§4.2, §13): `capacity_exceeded` and `request_unauthenticated`. `refusal_reasons` is the -02 registry; `registry.json` stays the -00 one, under which both are unregistered. A case with `refusal` checks the signature (profile of `refusal.json`) and registration against `refusal_reasons`; one with `facts.commitment` is the retention classification (§9); `facts.cause` is the reason load shedding uses (§11, §3.4); `facts.refusal_reason` alone is the illustrative status mapping (§4.6). |
+| `history-card-2.json` | `history_card/2` (-03 §8.1.2) in Checkpointed Local Log form. `positions`: P(n, W) for each `n` and `window`. `cases`: a `card`, the `anchor` the response resolved (SHA-256 of the anchor checkpoint's octets) and the corpus's `log_keys`; expect `valid`, or the first `finding` in `findings` order. `notes` fixes each check, the receipt form (for these vectors only) and the unit of `log_size` (MMR nodes). The stream is 1,100 checkpoints, so the valid card spans more than 1,024. |
+| `checkpoints-range.json` | The `checkpoint_range` subject (-03 §3.1, §8.1.3), the content-free `checkpoints` subject beside it, and `history_card/2` resolution. `request_cases` are request maps as in `request.json`; `cases` resolve against `responder`, whose `anchors` are its checkpoints in issue order, at the `checkpoint_positions` given. `derivations` is the -03 derivation registry. |
 | `manifest.json` | SHA-256 and case count of every generated file, and the ambiguity list. |
 | `SHA256SUMS` | SHA-256 of every file in this directory except itself. |
 | `DIFFS.md` | Known differences between one existing Python responder and -00. |
@@ -58,18 +81,41 @@ section and the reading used (the most literal one); the list is below, for -01.
    `request_json_digest` / `request_cbor_digest`.
 3. `resolution.json`: load `responder` (plus any `responder_overrides`) as the
    responder's holdings, and check the answer's form and reason.
-4. `refusal.json`: verify each `refusal` object (or the `file`) offline.
+4. `carries.json`: read `record` under the designation §3.1.1 gives its
+   `record_format`, and check whether it carries the `correlation` identifier,
+   or cites the `exchange` half. The answer must equal `expect`. A requester
+   that does not implement the format treats the record as unchecked, never as
+   not carrying (§3.1.1).
+5. `refusal.json`: verify each `refusal` object (or the `file`) offline.
    `expect.signature` is the signature check alone, `expect.reason_registered`
    the registry check alone, and `expect.conformant` both plus the presence and
    form of every member §4.2 requires. Keep the two checks separate: a valid
    signature over an unregistered token is still the responder's signed act.
-5. `outcomes.json`: map `facts` to a state; it must equal `expect.state` and
+6. `outcomes.json`: map `facts` to a state; it must equal `expect.state` and
    must not be any of `expect.must_not_record_as`.
-6. `invariance.json`: for observations with the same `resolved_anchor`, the
+7. `invariance.json`: for observations with the same `resolved_anchor`, the
    `artifact_hex` values must be identical. Differing verification material is
    allowed. Different anchors are `not_comparable`.
-7. `retention.json`: classify each `facts` pair, and check each `commitment` for
+8. `retention.json`: classify each `facts` pair, and check each `commitment` for
    well-formedness.
+9. `categories.json`: feed `request` cases as in step 2, and check
+   `invariance` cases as in step 7.
+10. `carriage.json`: check each case by its `kind` (table above). A
+   `classify` result must equal `expect.classified_as` and must not be any of
+   `expect.must_not_classify_as`.
+11. `unavailable-window.json`: for a `statement` case, recognize the
+   statement against `responder_key` and its `receipts` marked `accepted`; for a
+   `display` case, find the covering statements, show the absence, and check
+   each label. The result must equal `expect` and must not be any of
+   `expect.must_not_show_as`.
+12. `refusal-02.json`: verify each `refusal` case as in step 5, but against
+   the corpus's own `refusal_reasons`; classify each `facts.commitment` case
+   as in step 8; the other cases state what the -02 text requires.
+13. `history-card-2.json`: compute P(n, W) for each `positions` row, and
+   check each card against its `anchor` and `log_keys`. The result must be
+   `expect.valid`, and on failure exactly `expect.finding`.
+14. `checkpoints-range.json`: feed `request_cases` as in step 2 and resolve
+   `cases` as in step 3 against the corpus's `responder`.
 
 Regenerate from the repository root with
 `python3 python/scripts/generate_evidence_request_vectors.py`. The output is a
@@ -142,6 +188,61 @@ generator hashes them into `SHA256SUMS` but never rewrites them.
 | `res-derivation-history-card` | 3.3, 8.1 | artifact |  |
 | `res-uniform-policy-declined` | 4.2, 12 | refuse `policy_declined` |  |
 
+### `carries.json` (5 cases)
+
+| Case | § | Expect | Ambiguity |
+|---|---|---|---|
+| `carries-correlation-subject-ref` | 3.1.1 | carries |  |
+| `carries-correlation-undesignated-member` | 3.1.1 | does not carry |  |
+| `cites-exchange-counterparty-half` | 3.1.1 | cites |  |
+| `cites-exchange-responds-to` | 3.1.1 | does not cite |  |
+| `cites-exchange-counterparty-half-other-digest` | 3.1.1 | does not cite |  |
+
+### `categories.json` (14 cases)
+
+| Case | § | Expect | Ambiguity |
+|---|---|---|---|
+| `cat-two-names` | 3.9 | well formed |  |
+| `cat-one-name` | 3.9 | well formed |  |
+| `cat-names-any-order` | 3.9 | well formed | B2 |
+| `neg-cat-not-a-map` | 3.9 | refuse `request_malformed` | B1 |
+| `neg-cat-missing-set` | 3.9 | refuse `request_malformed` | B1 |
+| `neg-cat-missing-names` | 3.9 | refuse `request_malformed` | B1 |
+| `neg-cat-names-empty` | 3.9 | refuse `request_malformed` | B1 |
+| `neg-cat-names-duplicate` | 3.9 | refuse `request_malformed` | B1 |
+| `neg-cat-names-not-array` | 3.9 | refuse `request_malformed` | B1 |
+| `neg-cat-set-not-text` | 3.9 | refuse `request_malformed` | B1 |
+| `neg-cat-name-not-text` | 3.9 | refuse `request_malformed` | B1 |
+| `cat-inv-same-categories` | 5, 3.9 | holds |  |
+| `cat-inv-different-categories-not-comparable` | 5, 3.9 | not_comparable |  |
+| `neg-cat-inv-same-categories-divergent` | 5, 3.9 | violated |  |
+
+### `carriage.json` (21 cases)
+
+| Case | § | Expect | Ambiguity |
+|---|---|---|---|
+| `carry-a2a-raw-part` | 10.1, 10.2 | is the request digest |  |
+| `carry-mcp-request-argument` | 10.1, 10.3 | is the request digest |  |
+| `neg-carry-digest-over-text` | 10.1 | is not the request digest |  |
+| `neg-carry-digest-over-reencoding` | 10.1 | is not the request digest |  |
+| `bind-envelope-answers-own-request` | 4.1 | answers |  |
+| `neg-bind-envelope-other-request` | 4.1 | does not answer |  |
+| `media-cbor` | 10.1 | accepted |  |
+| `media-json` | 10.1 | accepted |  |
+| `neg-media-parameter` | 10.1 | not accepted |  |
+| `neg-media-case` | 10.1 | not accepted |  |
+| `classify-a2a-completed-with-reply` | 10.2 | reply |  |
+| `neg-classify-a2a-reply-two-parts` | 10.2 | no_reply |  |
+| `neg-classify-a2a-reply-other-media-type` | 10.2, 10.1 | no_reply |  |
+| `neg-classify-a2a-reply-text-part` | 10.2 | no_reply |  |
+| `neg-classify-a2a-rejected-no-reply` | 10.2, 10.1 | no_reply |  |
+| `classify-a2a-working-no-reply` | 10.2, 4.3 | pending |  |
+| `classify-a2a-unspecified-no-reply` | 10.2, 4.3 | pending |  |
+| `classify-mcp-error-flag-with-reply` | 10.3, 10.1 | reply |  |
+| `neg-classify-mcp-reply-other-media-type` | 10.3 | no_reply |  |
+| `neg-classify-mcp-reply-not-base64url` | 10.3 | no_reply |  |
+| `neg-classify-mcp-error-text-no-reply` | 10.3, 10.1 | no_reply |  |
+
 ### `digest.json` (7 cases)
 
 | Case | § | Expect | Ambiguity |
@@ -154,7 +255,7 @@ generator hashes them into `SHA256SUMS` but never rewrites them.
 | `neg-refusal-digest-recanonicalized` | 4.2 | does not identify | A2 |
 | `pos-refusal-digest-as-received` | 4.2 | identifies | A2 |
 
-### `refusal.json` (21 cases)
+### `refusal.json` (22 cases)
 
 | Case | § | Expect | Ambiguity |
 |---|---|---|---|
@@ -168,6 +269,7 @@ generator hashes them into `SHA256SUMS` but never rewrites them.
 | `pos-reason-retention_expired` | 4.2, 13 | conformant (sig valid) | A7 |
 | `pos-imported-interop-vector` | 4.2, 13 | conformant (sig valid) | A7 |
 | `pos-cbor-frame` | 4.2, 10 | conformant (sig valid) | A7 |
+| `pos-detail-outside-signature` | 4.2, 10 | conformant (sig valid); optional `detail` (profile P-6) outside the signed members, in JSON and CBOR | A7 |
 | `neg-tamper-reason` | 4.2 | not conformant (sig invalid) | A7 |
 | `neg-tamper-issued_at` | 4.2 | not conformant (sig invalid) | A7 |
 | `neg-tamper-request_digest` | 4.2 | not conformant (sig invalid) | A7 |
@@ -238,6 +340,138 @@ generator hashes them into `SHA256SUMS` but never rewrites them.
 | `ret-commitment-subject-full_history` | 9, 3.1 | malformed | A1, A11 |
 | `ret-commitment-subject-checkpoints` | 9, 3.1 | malformed | A1, A11 |
 | `ret-commitment-missing-until` | 9 | malformed | A1 |
+
+### `unavailable-window.json` (35 cases)
+
+| Case | Kind | § | Expect |
+|---|---|---|---|
+| `uw-class-flood` | statement | 4.7 | recognized, registered 10:06 |
+| `uw-class-maintenance` | statement | 4.7 | recognized, registered 10:06 |
+| `uw-class-outage` | statement | 4.7 | recognized, registered 10:06 |
+| `uw-class-other_declared` | statement | 4.7 | recognized, registered 10:06 |
+| `uw-neg-class-unlisted` | statement | 4.7 | not recognized (malformed) |
+| `uw-neg-class-free-text` | statement | 4.7 | not recognized (malformed) |
+| `uw-neg-class-wrong-case` | statement | 4.7 | not recognized (malformed) |
+| `uw-neg-class-missing` | statement | 4.7 | not recognized (malformed) |
+| `uw-extra-member-not-the-reason` | statement | 4.7 | recognized, registered 10:06 |
+| `uw-neg-start-missing` | statement | 4.7 | not recognized (malformed) |
+| `uw-neg-end-missing` | statement | 4.7 | not recognized (malformed) |
+| `uw-neg-time-unparseable` | statement | 4.7 | not recognized (malformed) |
+| `uw-neg-end-before-start` | statement | 4.7 | not recognized (malformed) |
+| `uw-end-equals-start` | statement | 4.7 | recognized, registered 10:06 |
+| `uw-neg-bad-signature` | statement | 4.7 | not recognized (not_signed_by_responder) |
+| `uw-neg-other-key` | statement | 4.7 | not recognized (not_signed_by_responder) |
+| `uw-neg-unregistered` | statement | 4.7 | not recognized (not_registered) |
+| `uw-neg-receipt-not-accepted` | statement | 4.7 | not recognized (not_registered) |
+| `uw-registration-earliest-receipt` | statement | 4.7 | recognized, registered 10:06 |
+| `uw-show-stated-before-close` | display | 4.7, 4.4, 4.5, 4.6 | holder states unavailability: flood |
+| `uw-show-stated-afterwards` | display | 4.7, 4.4, 4.5, 4.6 | holder states unavailability: outage, stated afterwards |
+| `uw-backdated-receipt-not-accepted` | display | 4.7, 4.4, 4.6 | holder states unavailability: outage, stated afterwards |
+| `uw-registered-at-close` | display | 4.7, 4.4, 4.6 | holder states unavailability: flood |
+| `uw-registered-after-close-by-a-second` | display | 4.7, 4.4, 4.6 | holder states unavailability: flood, stated afterwards |
+| `uw-long-period-shown` | display | 4.7, 4.4, 4.6 | holder states unavailability: flood |
+| `uw-partial-overlap` | display | 4.7, 4.4, 4.6 | holder states unavailability: maintenance |
+| `uw-touching-boundary` | display | 4.7, 4.4, 4.6 | holder states unavailability: outage |
+| `uw-no-overlap` | display | 4.7, 4.4 | not covered; shown as recorded_absence |
+| `uw-other-key-does-not-cover` | display | 4.7, 4.4 | not covered; shown as recorded_absence |
+| `uw-unregistered-does-not-cover` | display | 4.7, 4.4 | not covered; shown as recorded_absence |
+| `uw-malformed-does-not-cover` | display | 4.7, 4.4 | not covered; shown as recorded_absence |
+| `uw-two-statements-cover` | display | 4.7, 4.4, 4.6 | holder states unavailability: flood; maintenance, stated afterwards |
+| `uw-commitment-unchanged` | display | 4.7, 4.4, 9, 4.6 | holder states unavailability: flood |
+| `uw-refusal-not-affected` | display | 4.7, 4.5 | not covered; shown as refusal |
+| `uw-pending-not-absence` | display | 4.7, 4.3, 4.5 | not covered; shown as pending |
+
+### `refusal-02.json` (11 cases)
+
+| Case | § | Expect |
+|---|---|---|
+| `r02-reason-capacity_exceeded` | 4.2, 13 | signature valid, registered, conformant |
+| `r02-reason-request_unauthenticated` | 4.2, 13 | signature valid, registered, conformant |
+| `r02-neg-unregistered-rate_limited` | 4.2, 13 | signature valid, not registered, not conformant |
+| `r02-ret-inside-capacity_exceeded` | 9 | no breach |
+| `r02-ret-after-capacity_exceeded` | 9 | no breach |
+| `r02-ret-inside-request_unauthenticated` | 9 | no breach |
+| `r02-ret-after-request_unauthenticated` | 9 | no breach |
+| `r02-load-shedding-is-capacity_exceeded` | 11, 4.2 | `capacity_exceeded`, never `policy_declined` or `not_authorized` |
+| `r02-deadline-missed-under-load` | 3.4, 11 | `capacity_exceeded`, never `deadline_unmet` |
+| `r02-map-capacity_exceeded` | 4.6 | status unknown; not withheld by policy, not evidence of non-satisfaction |
+| `r02-map-request_unauthenticated` | 4.6 | status unknown; not withheld by policy, not evidence of non-satisfaction |
+### `history-card-2.json` (37 cases)
+
+| Case | Expect |
+|---|---|
+| `valid-1100-checkpoints` | valid |
+| `valid-single-checkpoint` | valid |
+| `valid-window-covers-stream` | valid |
+| `valid-window-cap` | valid |
+| `valid-no-receipts` | valid |
+| `valid-profile-members` | valid |
+| `malformed-card-not-a-map` | `card_malformed` |
+| `malformed-entry-missing-receipts` | `card_malformed` |
+| `malformed-position-text` | `card_malformed` |
+| `window-zero` | `window_out_of_range` |
+| `window-over-cap` | `window_out_of_range` |
+| `history-empty` | `positions_not_increasing_from_zero` |
+| `first-checkpoint-missing` | `positions_not_increasing_from_zero` |
+| `positions-repeat` | `positions_not_increasing_from_zero` |
+| `sample-position-missing` | `position_missing` |
+| `window-position-missing` | `position_missing` |
+| `extra-position` | `position_unexpected` |
+| `window-mismatch` | `position_unexpected` |
+| `checkpoint-unaccepted-key` | `checkpoint_invalid` |
+| `checkpoint-bad-signature` | `checkpoint_invalid` |
+| `checkpoint-not-cose` | `checkpoint_invalid` |
+| `checkpoint-shrinks` | `checkpoint_shrinks` |
+| `proof-broken` | `proof_invalid` |
+| `proof-tampered` | `proof_invalid` |
+| `proof-absent` | `proof_invalid` |
+| `first-entry-has-proof` | `proof_invalid` |
+| `receipt-other-checkpoint` | `receipt_invalid` |
+| `receipt-bad-signature` | `receipt_invalid` |
+| `hex-with-spaces` | `card_malformed` |
+| `hex-uppercase` | `card_malformed` |
+| `first-checkpoint-has-predecessor` | `first_checkpoint_has_predecessor` |
+| `issued-at-lowercase` | valid |
+| `issued-at-offset` | valid |
+| `issued-at-not-a-date` | `checkpoint_invalid` |
+| `checkpoint-claim-float` | `checkpoint_invalid` |
+| `checkpoint-tag-long-form` | valid |
+| `anchor-mismatch` | `anchor_mismatch` |
+
+`positions` holds 42 rows: n in 0, 1, 2, 3, 7, 8, 9, 63, 64, 65, 1023, 1024, 1099 and 1000000, each with window 1, 8 and 64.
+
+### `checkpoints-range.json` (9 cases, 11 request cases)
+
+| Case | Expect |
+|---|---|
+| `pos-checkpoint-range` | well formed |
+| `pos-checkpoint-range-one` | well formed |
+| `pos-checkpoints-unranged` | well formed |
+| `neg-checkpoint-range-reversed` | `request_malformed` |
+| `neg-checkpoint-range-negative` | `request_malformed` |
+| `neg-checkpoint-range-text` | `request_malformed` |
+| `neg-checkpoint-range-one-bound` | `request_malformed` |
+| `neg-checkpoint-range-three-bounds` | `request_malformed` |
+| `neg-checkpoints-content-text` | `request_malformed` |
+| `neg-checkpoints-content-range` | `request_malformed` |
+| `neg-checkpoint-range-null` | `request_malformed` |
+| `res-checkpoint-range-served` | artifact |
+| `res-checkpoint-range-past-anchor` | refusal `coverage_unsatisfiable` |
+| `res-checkpoint-range-at-anchor` | artifact |
+| `res-checkpoint-range-beyond-stream` | refusal `coverage_unsatisfiable` |
+| `res-history-card-2` | artifact |
+| `res-history-card-2-full-history` | artifact |
+| `res-history-card-2-record` | refusal `no_such_subject` |
+| `res-history-card-2-checkpoint-range` | refusal `no_such_subject` |
+| `res-history-card-1-checkpoint-range` | refusal `no_such_subject` |
+
+## Readings in the -01 corpora
+
+`categories.json` carries these in its `notes` member.
+
+- **B1** §3.9: the request cases apply to a responder that implements categories. A responder that does not implement it ignores the field, malformed or not, and answers as if it were absent.
+- **B2** §3.9 leaves open whether the order of names carries meaning. No case compares two requests whose names differ only in order.
+- **B3** §3.9 does not say whether a member other than set and names is malformed. No case has one.
 
 ## Ambiguities in -00 (for -01)
 

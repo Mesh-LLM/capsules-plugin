@@ -87,8 +87,11 @@ pub const ANSWERS_WITHIN: &str = "PT1M";
 /// one's definition document, its name on the wire. Service History's is the
 /// definition this node serves (`service_history::definition_digest`), so it
 /// is read once at run time. A counterparty is answered each of them under
-/// every setting; who else gets one is the policy's to say.
-pub static DERIVATIONS: std::sync::LazyLock<[&str; 7]> = std::sync::LazyLock::new(|| {
+/// every setting; who else gets one is the policy's to say. `checkpoints`
+/// and `checkpoint_range` are the subjects, named like the derivations; the
+/// unranged `checkpoints` leaves the list once its full answer no longer fits
+/// ([`Policy::checkpoints`]).
+pub static DERIVATIONS: std::sync::LazyLock<[&str; 8]> = std::sync::LazyLock::new(|| {
     [
         "checkpoints",
         evidence_request::registry::DERIVATION_HISTORY_CARD,
@@ -97,8 +100,17 @@ pub static DERIVATIONS: std::sync::LazyLock<[&str; 7]> = std::sync::LazyLock::ne
         crate::service_history::definition_digest(),
         crate::service_history::definition_digest_2(),
         crate::verdict_held::DEFINITION_DIGEST,
+        CHECKPOINT_RANGE,
     ]
 });
+
+/// The subject form that asks for checkpoints at positions a through b (ER
+/// -03 §3.1, §8.1.3): its own name, so it is answered whatever the size of
+/// the whole list.
+pub const CHECKPOINT_RANGE: &str = "checkpoint_range";
+
+/// The subject that asks for every checkpoint, content-free as in -02.
+pub const CHECKPOINTS: &str = "checkpoints";
 
 /// The card this node staples in its commitment: the bounded `/2` (ER -03
 /// §8.1.2), whose size grows with the log of the checkpoint count, so a
@@ -110,7 +122,12 @@ pub const STAPLED_DERIVATION: &str = "history_card/2";
 const CARD_DERIVATIONS: [&str; 2] = ["history_card/1", "history_card/2"];
 
 /// Answered to anyone, signed or not (PRD R-8).
-pub const STRANGER_SAFE: [&str; 3] = ["checkpoints", "history_card/1", "history_card/2"];
+pub const STRANGER_SAFE: [&str; 4] = [
+    CHECKPOINTS,
+    "history_card/1",
+    "history_card/2",
+    CHECKPOINT_RANGE,
+];
 
 /// DER SubjectPublicKeyInfo prefix of an Ed25519 key (RFC 8410).
 const ED25519_SPKI_PREFIX: [u8; 12] = [
@@ -122,9 +139,17 @@ const ED25519_SPKI_PREFIX: [u8; 12] = [
 pub struct Policy {
     /// Whether this node still answers `history_card/1`: true until the full
     /// `/1` answer over its log would exceed `MAX_ANSWER_BYTES`
-    /// ([`history_card_1_fits`]). A log only grows, so it turns false once,
+    /// ([`answers_fit`]). A log only grows, so it turns false once,
     /// and the policy digest moves once with it. Not a setting.
     pub history_card_1: bool,
+    /// Whether this node still answers the unranged `checkpoints`: true until
+    /// that answer over its log would exceed `MAX_ANSWER_BYTES` (or hold more
+    /// than `MAX_ANSWER_CHECKPOINTS`), measured with `/1` by [`answers_fit`].
+    /// ER -03 §8.1.3: a responder whose full list outgrows an answer SHOULD
+    /// NOT list `checkpoints`; `checkpoint_range` and the cards stay. Turns
+    /// false once, like `history_card_1`, and moves the policy digest with
+    /// it. Not a setting.
+    pub checkpoints: bool,
     pub record_at_completion: bool,
     pub history_segments: &'static str,
     pub share_standard_history: bool,
@@ -144,6 +169,7 @@ impl Policy {
         let raw = |env: &str| var(env);
         Self {
             history_card_1: true,
+            checkpoints: true,
             record_at_completion: !share_policy::record_at_completion_is_off_for(
                 raw(share_policy::ENV_RECORD_AT_COMPLETION).as_deref(),
             ),
@@ -196,18 +222,30 @@ impl Policy {
             share_policy::STANDARD_HISTORY_KEY: on_off(self.share_standard_history),
             "stranger_safe": STRANGER_SAFE
                 .iter()
-                .filter(|d| self.history_card_1 || **d != DERIVATION_HISTORY_CARD)
+                .filter(|d| self.names(d))
                 .collect::<Vec<_>>(),
         })
     }
 
+    /// Whether this policy names `derivation` (or subject, for the two
+    /// names that are both): not `history_card/1` and not the unranged
+    /// `checkpoints` once their full answers no longer fit.
+    fn names(&self, derivation: &str) -> bool {
+        match derivation {
+            DERIVATION_HISTORY_CARD => self.history_card_1,
+            CHECKPOINTS => self.checkpoints,
+            _ => true,
+        }
+    }
+
     /// The derivations this node answers ([`DERIVATIONS`]), without
-    /// `history_card/1` once its full answer no longer fits.
+    /// `history_card/1` and `checkpoints` once their full answers no longer
+    /// fit.
     pub fn derivations(&self) -> Vec<&'static str> {
         DERIVATIONS
             .iter()
             .copied()
-            .filter(|d| self.history_card_1 || *d != DERIVATION_HISTORY_CARD)
+            .filter(|d| self.names(d))
             .collect()
     }
 
@@ -215,7 +253,14 @@ impl Policy {
     /// `full_history` only through a derivation: its record bodies are
     /// refused under every setting.
     pub fn subjects(&self) -> Vec<&'static str> {
-        let mut forms = vec![SubjectForm::Checkpoints, SubjectForm::FullHistory];
+        let mut forms = vec![
+            SubjectForm::Checkpoints,
+            SubjectForm::CheckpointRange,
+            SubjectForm::FullHistory,
+        ];
+        if !self.checkpoints {
+            forms.remove(0);
+        }
         if self.history_segments != "off" {
             forms.extend([
                 SubjectForm::Record,
@@ -308,11 +353,13 @@ pub fn with_responder_for<T>(
     let mut policy = Policy::current();
     // A request declined for being busy is answered before the ledger is
     // read, so it takes the last measurement instead of making one.
-    policy.history_card_1 = if busy {
-        history_card_1_last_measured(capsules.ledger_dir())
+    let fit = if busy {
+        last_measured(capsules.ledger_dir())
     } else {
-        history_card_1_fits(capsules.ledger_dir(), capsules.signing_key(), now)
+        answers_fit(capsules.ledger_dir(), capsules.signing_key(), now)
     };
+    policy.history_card_1 = fit.history_card_1;
+    policy.checkpoints = fit.checkpoints;
     let digest = policy.digest(capsules.signing_key());
     let announced = if strangers_only {
         Default::default()
@@ -344,36 +391,54 @@ pub fn with_responder_for<T>(
     f(&responder, &policy)
 }
 
-/// What [`history_card_1_fits`] last measured per ledger: the (checkpoints,
-/// witness receipts) stamp it was measured at, and whether `/1` fit.
-type Measured = std::collections::HashMap<std::path::PathBuf, ((usize, usize), bool)>;
+/// Which full answers over this node's log still fit `MAX_ANSWER_BYTES`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Fit {
+    /// A stranger's full `history_card/1`.
+    pub history_card_1: bool,
+    /// A stranger's unranged `checkpoints`.
+    pub checkpoints: bool,
+}
+
+impl Fit {
+    const ALL: Fit = Fit {
+        history_card_1: true,
+        checkpoints: true,
+    };
+}
+
+/// What [`answers_fit`] last measured per ledger: the (checkpoints, witness
+/// receipts) stamp it was measured at, and what fit.
+type Measured = std::collections::HashMap<std::path::PathBuf, ((usize, usize), Fit)>;
 static CACHE: std::sync::Mutex<Option<Measured>> = std::sync::Mutex::new(None);
 
 /// The last measurement for `ledger_dir`, without reading the ledger: what a
 /// request declined for being busy names in its refusal's policy digest. It
-/// names `/1` until a measurement says otherwise.
-fn history_card_1_last_measured(ledger_dir: &std::path::Path) -> bool {
+/// names everything until a measurement says otherwise.
+fn last_measured(ledger_dir: &std::path::Path) -> Fit {
     CACHE
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .as_ref()
         .and_then(|m| m.get(ledger_dir))
-        .is_none_or(|(_, fits)| *fits)
+        .map_or(Fit::ALL, |(_, fit)| *fit)
 }
 
-/// Whether a stranger's full `history_card/1` over this node's log still fits
-/// `MAX_ANSWER_BYTES`: the answer is built as the responder builds it and
-/// refused only when it is too large. A log with no checkpoint, or one the
-/// ledger could not read, keeps `/1` named. Measured again only when the
-/// chain or its witness receipts change, and never again once it does not
-/// fit, since a log only grows.
-pub fn history_card_1_fits(ledger_dir: &std::path::Path, key: &SigningKey, now: &str) -> bool {
+/// Whether a stranger's full `history_card/1` and full `checkpoints` over
+/// this node's log still fit `MAX_ANSWER_BYTES` (and the count caps): each
+/// answer is built as the responder builds it and counts as not fitting only
+/// when refused for size. The two are measured apart because the card adds to
+/// the checkpoints, so each crosses at its own size. A log with no
+/// checkpoint, or one the ledger could not read, keeps both named. Measured
+/// again only when the chain or its witness receipts change, and a form that
+/// does not fit is never measured again, since a log only grows.
+pub fn answers_fit(ledger_dir: &std::path::Path, key: &SigningKey, now: &str) -> Fit {
     use crate::evidence_answer::Outcome;
     use evidence_request::registry::Reason;
-    // (checkpoints, witness receipts) the answer was measured at, and
-    // whether it fit. Receipts ride in the answer, so one arriving for an
-    // existing checkpoint can push it over without a new checkpoint. The lock
-    // is held while measuring, so concurrent callers measure once.
+    // (checkpoints, witness receipts) the answers were measured at. Receipts
+    // ride in an answer, so one arriving for an existing checkpoint can push
+    // it over without a new checkpoint. The lock is held while measuring, so
+    // concurrent callers measure once.
     let key_id = key_id(key);
     let Ok(stamp) = crate::evidence_log::with_index(ledger_dir, &key_id, |i| {
         (
@@ -384,61 +449,77 @@ pub fn history_card_1_fits(ledger_dir: &std::path::Path, key: &SigningKey, now: 
                 .sum::<usize>(),
         )
     }) else {
-        return true;
+        return Fit::ALL;
     };
     let len = stamp.0;
     let mut cache = CACHE
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if let Some((cached, fits)) = cache
+    let before = cache
         .get_or_insert_with(Default::default)
         .get(ledger_dir)
-        .copied()
-    {
+        .copied();
+    if let Some((cached, fit)) = before {
         // Once past the cap, always past it (the log only grows).
-        if !fits || cached == stamp {
-            return fits;
+        if cached == stamp || (!fit.history_card_1 && !fit.checkpoints) {
+            return fit;
         }
     }
-    let fits = if len == 0 {
-        true
-    } else {
-        let request = serde_json::to_vec(&json!({
-            "coverage": {"min_freshness": 1},
-            "profile": evidence_request::envelope::PROFILE,
-            "subject": {"full_history": null},
-            "derivation": DERIVATION_HISTORY_CARD,
-        }))
-        .expect("a JSON value serializes");
-        let announced = Default::default();
-        let responder = Responder {
-            ledger_dir,
-            signing_key: key,
-            now,
-            history_segments: "off",
-            share_standard_history: false,
-            share_exchange_corroboration: false,
-            keys: crate::requester_auth::Keys {
-                announced: &announced,
-                configured: None,
-                own_key: None,
-            },
-            replay: crate::requester_auth::replay_cache(),
-            node_id: None,
-            policy_digest: None,
-        };
-        !matches!(
-            crate::evidence_answer::answer(&request, &responder),
-            Outcome::Refused {
-                reason: Reason::CapacityExceeded | Reason::PolicyDeclined,
-                ..
-            }
-        )
+    let known = before.map_or(Fit::ALL, |(_, fit)| fit);
+    let announced = Default::default();
+    let responder = Responder {
+        ledger_dir,
+        signing_key: key,
+        now,
+        history_segments: "off",
+        share_standard_history: false,
+        share_exchange_corroboration: false,
+        keys: crate::requester_auth::Keys {
+            announced: &announced,
+            configured: None,
+            own_key: None,
+        },
+        replay: crate::requester_auth::replay_cache(),
+        node_id: None,
+        policy_digest: None,
+    };
+    let fits = |known: bool, request: Value| {
+        known
+            && (len == 0
+                || !matches!(
+                    crate::evidence_answer::answer(
+                        &serde_json::to_vec(&request).expect("a JSON value serializes"),
+                        &responder,
+                    ),
+                    Outcome::Refused {
+                        reason: Reason::CapacityExceeded | Reason::PolicyDeclined,
+                        ..
+                    }
+                ))
+    };
+    let fit = Fit {
+        history_card_1: fits(
+            known.history_card_1,
+            json!({
+                "coverage": {"min_freshness": 1},
+                "profile": evidence_request::envelope::PROFILE,
+                "subject": {"full_history": null},
+                "derivation": DERIVATION_HISTORY_CARD,
+            }),
+        ),
+        checkpoints: fits(
+            known.checkpoints,
+            json!({
+                "coverage": {"min_freshness": 1},
+                "profile": evidence_request::envelope::PROFILE,
+                "subject": {CHECKPOINTS: null},
+            }),
+        ),
     };
     cache
         .get_or_insert_with(Default::default)
-        .insert(ledger_dir.to_path_buf(), (stamp, fits));
-    fits
+        .insert(ledger_dir.to_path_buf(), (stamp, fit));
+    fit
 }
 
 /// Why no commitment was built, and whether building it again from the same

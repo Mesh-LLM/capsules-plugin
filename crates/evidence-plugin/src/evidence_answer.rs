@@ -2157,13 +2157,13 @@ pub(crate) mod tests {
             refused(&ask_by_default(dir.path(), &bytes))
         };
         assert_eq!(
-            ask(json!({"subject": {"checkpoints": [0, 2]}, "coverage": coverage})),
+            ask(json!({"subject": {"checkpoint_range": [0, 2]}, "coverage": coverage})),
             Some(Reason::CoverageUnsatisfiable)
         );
         for card in ["history_card/1", "history_card/2"] {
             assert_eq!(
                 ask(
-                    json!({"subject": {"checkpoints": [0, 1]}, "coverage": coverage, "derivation": card})
+                    json!({"subject": {"checkpoint_range": [0, 1]}, "coverage": coverage, "derivation": card})
                 ),
                 Some(Reason::NoSuchSubject),
                 "{card}"
@@ -2187,7 +2187,7 @@ pub(crate) mod tests {
         requests.push(
             json!({"subject": {"full_history": null}, "coverage": coverage, "derivation": "history_card/2"}),
         );
-        requests.push(json!({"subject": {"checkpoints": [0, 1]}, "coverage": coverage}));
+        requests.push(json!({"subject": {"checkpoint_range": [0, 1]}, "coverage": coverage}));
         requests
     }
 

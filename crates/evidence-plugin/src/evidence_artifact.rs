@@ -2332,7 +2332,7 @@ mod tests {
         let (_dir, ledger, key, _ids) = producer_ledger(12, &cuts);
         let (stated, total) = anchors_of(&ledger, &key);
         for (a, b) in [(3u64, 7u64), (5, 5), (4, (total - 1) as u64)] {
-            let ask = json!({"subject": {"checkpoints": [a, b]}, "coverage": {"expected_pin": stated[total - 1]}});
+            let ask = json!({"subject": {"checkpoint_range": [a, b]}, "coverage": {"expected_pin": stated[total - 1]}});
             let (checked, _) = ask_ledger(&ledger, &key, &ask);
             let checked = checked.unwrap();
             assert_eq!(checked.anchor, stated[total - 1]);
@@ -2360,7 +2360,8 @@ mod tests {
             .unwrap()
         };
         let ask = |a: u64, b: u64| {
-            let r = json!({"subject": {"checkpoints": [a, b]}, "coverage": {"expected_pin": pin}});
+            let r =
+                json!({"subject": {"checkpoint_range": [a, b]}, "coverage": {"expected_pin": pin}});
             (
                 serde_json::to_vec(&r).unwrap(),
                 ask_ledger(&ledger, &key, &r).1,
@@ -2422,10 +2423,12 @@ mod tests {
         seven["consistency_from_previous"] = Value::Null;
         far["position"] = json!(8);
         // The proof from 23 to the anchor is a real one, from the range [23, 23].
-        let (_, tail) =
-            ask(json!({"subject": {"checkpoints": [23, 23]}, "coverage": {"expected_pin": pin}}));
-        let (sent, wire) =
-            ask(json!({"subject": {"checkpoints": [7, 8]}, "coverage": {"expected_pin": pin}}));
+        let (_, tail) = ask(
+            json!({"subject": {"checkpoint_range": [23, 23]}, "coverage": {"expected_pin": pin}}),
+        );
+        let (sent, wire) = ask(
+            json!({"subject": {"checkpoint_range": [7, 8]}, "coverage": {"expected_pin": pin}}),
+        );
         let art = json!({
             "history": [seven, far],
             "consistency_to_anchor": art_of(&tail)["consistency_to_anchor"],

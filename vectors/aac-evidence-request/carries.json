@@ -1,0 +1,126 @@
+{
+  "draft": "draft-mih-agent-evidence-request-01",
+  "provenance": "spec-derived",
+  "corpus": "carries",
+  "description": "Which record members carry a correlation identifier or cite an exchange half, per record format. Each record is reduced to the members the designation reads.",
+  "count": 5,
+  "cases": [
+    {
+      "id": "carries-correlation-subject-ref",
+      "section": [
+        "§3.1.1 What a Record Carries"
+      ],
+      "description": "the identifier is the whole value of the header's subject_ref: the record carries it.",
+      "record_format": "evidence-layer",
+      "record": {
+        "seq": 7,
+        "record_id": "2ab350895f867d54a5cfdc1dd1aa214cbc723c659663460e7511dff16a5ccc85",
+        "record_type": "observation",
+        "epistemic_type": "observed_event",
+        "links": [],
+        "subject_ref": "c-7d1e9a40"
+      },
+      "subject": {
+        "correlation": "c-7d1e9a40"
+      },
+      "expect": {
+        "carries": true
+      }
+    },
+    {
+      "id": "carries-correlation-undesignated-member",
+      "section": [
+        "§3.1.1 What a Record Carries"
+      ],
+      "description": "the identifier is the whole value of principal_ref, which the format defines as a party reference and not a correlation field, while subject_ref holds another identifier: the record does not carry it.",
+      "record_format": "evidence-layer",
+      "record": {
+        "seq": 7,
+        "record_id": "2ab350895f867d54a5cfdc1dd1aa214cbc723c659663460e7511dff16a5ccc85",
+        "record_type": "observation",
+        "epistemic_type": "observed_event",
+        "links": [],
+        "subject_ref": "c-0b44f2e1",
+        "principal_ref": "c-7d1e9a40"
+      },
+      "subject": {
+        "correlation": "c-7d1e9a40"
+      },
+      "expect": {
+        "carries": false
+      }
+    },
+    {
+      "id": "cites-exchange-counterparty-half",
+      "section": [
+        "§3.1.1 What a Record Carries"
+      ],
+      "description": "a references entry with citation_purpose counterparty_half whose digest is the half's: the record cites the half.",
+      "record_format": "capsule",
+      "record": {
+        "references": [
+          {
+            "type": "agent-action-capsule",
+            "digest_alg": "SHA-256",
+            "digest": "e2c78557e239cd93cf344c2e435158367deac1d3b525deb6e09c23d1a8139227",
+            "citation_purpose": "counterparty_half"
+          }
+        ]
+      },
+      "subject": {
+        "exchange": "e2c78557e239cd93cf344c2e435158367deac1d3b525deb6e09c23d1a8139227"
+      },
+      "expect": {
+        "cites": true
+      }
+    },
+    {
+      "id": "cites-exchange-responds-to",
+      "section": [
+        "§3.1.1 What a Record Carries"
+      ],
+      "description": "a references entry whose digest is the half's, with citation_purpose responds_to: the record does not cite the half.",
+      "record_format": "capsule",
+      "record": {
+        "references": [
+          {
+            "type": "agent-action-capsule",
+            "digest_alg": "SHA-256",
+            "digest": "e2c78557e239cd93cf344c2e435158367deac1d3b525deb6e09c23d1a8139227",
+            "citation_purpose": "responds_to"
+          }
+        ]
+      },
+      "subject": {
+        "exchange": "e2c78557e239cd93cf344c2e435158367deac1d3b525deb6e09c23d1a8139227"
+      },
+      "expect": {
+        "cites": false
+      }
+    },
+    {
+      "id": "cites-exchange-counterparty-half-other-digest",
+      "section": [
+        "§3.1.1 What a Record Carries"
+      ],
+      "description": "a references entry with citation_purpose counterparty_half whose digest is another half's: the record does not cite this half.",
+      "record_format": "capsule",
+      "record": {
+        "references": [
+          {
+            "type": "agent-action-capsule",
+            "digest_alg": "SHA-256",
+            "digest": "e94df0581aa27f4c04403ed2ea2040c7f7cf6d32f97e8ec846ea8f92c25db7ef",
+            "citation_purpose": "counterparty_half"
+          }
+        ]
+      },
+      "subject": {
+        "exchange": "e2c78557e239cd93cf344c2e435158367deac1d3b525deb6e09c23d1a8139227"
+      },
+      "expect": {
+        "cites": false
+      }
+    }
+  ]
+}

@@ -141,12 +141,14 @@ fn the_answers_lists_are_pinned_and_follow_the_settings() {
             crate::service_history::DEFINITION_DIGEST,
             crate::service_history::DEFINITION_DIGEST_2,
             crate::verdict_held::DEFINITION_DIGEST,
+            "checkpoint_range",
         ]
     );
     assert_eq!(
         defaults().subjects(),
         [
             "checkpoints",
+            "checkpoint_range",
             "full_history",
             "record",
             "exchange",
@@ -156,11 +158,14 @@ fn the_answers_lists_are_pinned_and_follow_the_settings() {
     let off = Policy::from_settings(|e| {
         (e == share_policy::ENV_HISTORY_SEGMENTS).then(|| "off".to_string())
     });
-    assert_eq!(off.subjects(), ["checkpoints", "full_history"]);
+    assert_eq!(
+        off.subjects(),
+        ["checkpoints", "checkpoint_range", "full_history"]
+    );
     let signed = built(&off);
     assert_eq!(
         signed.commitment["answers"]["subjects"],
-        json!(["checkpoints", "full_history"])
+        json!(["checkpoints", "checkpoint_range", "full_history"])
     );
     assert_eq!(
         signed.commitment["answers"]["derivations"],
@@ -171,9 +176,14 @@ fn the_answers_lists_are_pinned_and_follow_the_settings() {
 /// The ledger sizes either side of the answer cap (loop lab-1 at 315
 /// checkpoints still served `history_card/1`, lab-3 at 375 was refused).
 fn fits_over(long: usize) -> bool {
+    fit_over(long).history_card_1
+}
+
+/// What fits over a ledger of `long` checkpoints.
+fn fit_over(long: usize) -> Fit {
     let dir = tempfile::tempdir().unwrap();
     crate::evidence_request_parity::long_ledger_dir(dir.path(), &key(), long);
-    history_card_1_fits(dir.path(), &key(), NOW)
+    answers_fit(dir.path(), &key(), NOW)
 }
 
 /// A node stops naming `history_card/1` exactly when its full answer would
@@ -190,7 +200,7 @@ fn history_card_1_is_named_until_its_full_answer_would_not_fit() {
     assert_ne!(long.digest(&key()), defaults().digest(&key()));
     assert_eq!(
         long.body()["stranger_safe"],
-        json!(["checkpoints", "history_card/2"])
+        json!(["checkpoints", "history_card/2", "checkpoint_range"])
     );
     assert!(!long.derivations().contains(&"history_card/1"));
     assert!(long.derivations().contains(&"history_card/2"));
@@ -229,7 +239,12 @@ fn the_responder_policy_follows_the_log() {
     assert!(named_1);
     assert_eq!(
         safe,
-        json!(["checkpoints", "history_card/1", "history_card/2"])
+        json!([
+            "checkpoints",
+            "history_card/1",
+            "history_card/2",
+            "checkpoint_range"
+        ])
     );
     crate::evidence_request_parity::long_ledger_dir(
         capsules.ledger_dir(),
@@ -238,7 +253,7 @@ fn the_responder_policy_follows_the_log() {
     );
     let (named_1, safe) = named(&capsules);
     assert!(!named_1);
-    assert_eq!(safe, json!(["checkpoints", "history_card/2"]));
+    assert_eq!(safe, json!(["history_card/2", "checkpoint_range"]));
     assert!(!named(&capsules).0, "a log that does not fit stays so");
     crate::evidence_request_parity::long_ledger_dir(
         capsules.ledger_dir(),
@@ -261,14 +276,14 @@ fn a_measurement_at_another_receipt_count_is_measured_again() {
         capsules.signing_key(),
         500,
     );
-    let stale = ((500, 1), true);
+    let stale = ((500, 1), Fit::ALL);
     CACHE
         .lock()
         .unwrap()
         .get_or_insert_with(Default::default)
         .insert(capsules.ledger_dir().to_path_buf(), stale);
     assert!(
-        !history_card_1_fits(capsules.ledger_dir(), capsules.signing_key(), NOW),
+        !answers_fit(capsules.ledger_dir(), capsules.signing_key(), NOW).history_card_1,
         "a count-only cache would have kept the stale fit"
     );
 }
@@ -976,4 +991,113 @@ fn a_legacy_zero_commitment_with_a_route_is_refused() {
         d["ask"]["nostr"] = route().to_json();
     });
     assert!(verify(&signed).iter().any(|p| p.contains("ask.nostr")));
+}
+
+/// The two full answers cross the cap at their own sizes (here, about 300 to
+/// 340 for `history_card/1` and 360 to 370 for `checkpoints`, which carries
+/// less), so a node drops each name when its own answer stops fitting and
+/// `checkpoint_range` and `history_card/2` are named throughout (ER -03
+/// §8.1.3; capsules-plugin#317).
+#[test]
+fn checkpoints_is_named_until_its_own_full_answer_would_not_fit() {
+    let short = fit_over(50);
+    assert_eq!((short.history_card_1, short.checkpoints), (true, true));
+    let middle = fit_over(350);
+    assert_eq!((middle.history_card_1, middle.checkpoints), (false, true));
+    let long = fit_over(400);
+    assert_eq!((long.history_card_1, long.checkpoints), (false, false));
+
+    let policy = |fit: Fit| Policy {
+        history_card_1: fit.history_card_1,
+        checkpoints: fit.checkpoints,
+        ..defaults()
+    };
+    let digests = [short, middle, long].map(|f| policy(f).digest(&key()));
+    assert_eq!(
+        digests
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        3
+    );
+    let after = policy(long);
+    assert_eq!(
+        after.body()["stranger_safe"],
+        json!(["history_card/2", "checkpoint_range"])
+    );
+    assert!(!after.derivations().contains(&"checkpoints"));
+    assert!(after.derivations().contains(&"checkpoint_range"));
+    assert!(after.derivations().contains(&"history_card/2"));
+    assert!(!after.subjects().contains(&"checkpoints"));
+    assert!(after.subjects().contains(&"checkpoint_range"));
+    // The subjects, stranger_safe and derivations lists agree: none names
+    // what the others dropped.
+    let dir = tempfile::tempdir().unwrap();
+    crate::evidence_request_parity::long_ledger_dir(dir.path(), &key(), 400);
+    let signed = built_over(dir.path(), &after);
+    for list in [
+        &signed.commitment["answers"]["subjects"],
+        &signed.commitment["answers"]["derivations"],
+    ] {
+        assert!(!list.as_array().unwrap().contains(&json!("checkpoints")));
+    }
+    assert_eq!(verify(&signed), Vec::<String>::new());
+}
+
+/// What a node past the cap still serves: the range and `/2`, to a stranger,
+/// each verified as a requester verifies it.
+#[test]
+fn past_the_cap_the_range_and_the_second_card_are_still_answered() {
+    let dir = tempfile::tempdir().unwrap();
+    crate::evidence_request_parity::long_ledger_dir(dir.path(), &key(), 400);
+    let announced = Default::default();
+    let responder = Responder {
+        ledger_dir: dir.path(),
+        signing_key: &key(),
+        now: NOW,
+        history_segments: "off",
+        share_standard_history: false,
+        share_exchange_corroboration: false,
+        keys: crate::requester_auth::Keys {
+            announced: &announced,
+            configured: None,
+            own_key: None,
+        },
+        replay: crate::requester_auth::replay_cache(),
+        node_id: None,
+        policy_digest: None,
+    };
+    let ask = |subject: Value, derivation: Option<&str>| {
+        let mut request = json!({
+            "coverage": {"min_freshness": 1},
+            "profile": evidence_request::envelope::PROFILE,
+            "subject": subject,
+        });
+        if let Some(d) = derivation {
+            request["derivation"] = json!(d);
+        }
+        crate::evidence_answer::answer(&serde_json::to_vec(&request).unwrap(), &responder)
+    };
+    use crate::evidence_answer::Outcome;
+    assert!(matches!(
+        ask(json!({"checkpoint_range": [0, 2]}), None),
+        Outcome::Answered { .. }
+    ));
+    assert!(matches!(
+        ask(json!({"full_history": null}), Some("history_card/2")),
+        Outcome::Answered { .. }
+    ));
+    // The refusal that makes the listing true: the full answer does not fit.
+    assert!(matches!(
+        ask(json!({"checkpoints": null}), None),
+        Outcome::Refused { .. }
+    ));
+    // The old reading of a range is a malformed request now.
+    assert!(matches!(
+        ask(json!({"checkpoints": [0, 2]}), None),
+        Outcome::Refused {
+            reason: evidence_request::registry::Reason::RequestMalformed,
+            ..
+        }
+    ));
 }

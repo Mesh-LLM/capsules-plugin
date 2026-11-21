@@ -1,0 +1,221 @@
+{
+  "draft": "draft-mih-agent-evidence-request-02",
+  "provenance": "spec-derived",
+  "corpus": "refusal-02",
+  "description": "The two refusal reasons -02 adds: signed refusals, the retention breach table and the status mapping.",
+  "notes": "-02 adds capacity_exceeded (a limit of the responder's own: load, a size limit, a full replay cache, a transient fault) and request_unauthenticated (a requester authentication a deployment profile defines does not verify). registry.json and refusal.json stay as -00 fixes them; under -00 and -01 both tokens are unregistered. Signatures use the profile in refusal.json.",
+  "refusal_reasons": [
+    "not_authorized",
+    "no_such_subject",
+    "coverage_unsatisfiable",
+    "derivation_unsupported",
+    "policy_declined",
+    "deadline_unmet",
+    "request_malformed",
+    "retention_expired",
+    "capacity_exceeded",
+    "request_unauthenticated"
+  ],
+  "signature_profile": {
+    "note": "-00 section 4.2 item 4 leaves the signature format to the deployment. These vectors use one profile, the one the existing cross-implementation refusal vector already uses: Ed25519 (RFC 8032) over the RFC 8785 serialization of the JSON object with exactly the members issued_at, reason and request_digest; key_id is the raw 32-byte public key and sig the 64-byte signature, both lowercase hex.",
+    "algorithm": "Ed25519",
+    "signed_members": [
+      "issued_at",
+      "reason",
+      "request_digest"
+    ],
+    "signing_body": "RFC 8785 (JCS) of the signed members",
+    "key_id": "raw Ed25519 public key, lowercase hex",
+    "sig": "Ed25519 signature, lowercase hex"
+  },
+  "count": 11,
+  "cases": [
+    {
+      "id": "r02-reason-capacity_exceeded",
+      "section": [
+        "§4.2 The Signed Refusal",
+        "§13 IANA Considerations"
+      ],
+      "description": "A signed refusal of request pos-subject-record (JSON binding) with reason capacity_exceeded, registered by -02.",
+      "refusal": {
+        "issued_at": "2026-09-28T00:00:00Z",
+        "reason": "capacity_exceeded",
+        "request_digest": "78e68275f27c83d0f3054beaf858baa14763b2d1fed830e02b05f875f7e0493d",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "87767e9d6f105fcc872f792814a8e9e3f04c2b641e85ebfbe0d464c9b4fc18315123f740b474a5cbf1f8793b34418d25cfe261d6d3f4a9f5b322276cb700970a"
+      },
+      "request_case": "pos-subject-record",
+      "signing_body": "{\"issued_at\":\"2026-09-28T00:00:00Z\",\"reason\":\"capacity_exceeded\",\"request_digest\":\"78e68275f27c83d0f3054beaf858baa14763b2d1fed830e02b05f875f7e0493d\"}",
+      "expect": {
+        "signature": "valid",
+        "reason_registered": true,
+        "conformant": true
+      }
+    },
+    {
+      "id": "r02-reason-request_unauthenticated",
+      "section": [
+        "§4.2 The Signed Refusal",
+        "§13 IANA Considerations"
+      ],
+      "description": "A signed refusal of request pos-subject-record (JSON binding) with reason request_unauthenticated, registered by -02.",
+      "refusal": {
+        "issued_at": "2026-09-28T00:00:00Z",
+        "reason": "request_unauthenticated",
+        "request_digest": "78e68275f27c83d0f3054beaf858baa14763b2d1fed830e02b05f875f7e0493d",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "f44b7e93f9582886646c510175bd4bfd3f8ce0ae411de248b7c9b00d8ef3d6ce870a6b2aaee62b057d1785758e50699a7ccdc3f7f7bc09853928ab6f933b570f"
+      },
+      "request_case": "pos-subject-record",
+      "signing_body": "{\"issued_at\":\"2026-09-28T00:00:00Z\",\"reason\":\"request_unauthenticated\",\"request_digest\":\"78e68275f27c83d0f3054beaf858baa14763b2d1fed830e02b05f875f7e0493d\"}",
+      "expect": {
+        "signature": "valid",
+        "reason_registered": true,
+        "conformant": true
+      }
+    },
+    {
+      "id": "r02-neg-unregistered-rate_limited",
+      "section": [
+        "§4.2 The Signed Refusal",
+        "§13 IANA Considerations"
+      ],
+      "description": "Correctly signed, but rate_limited is not registered: a limit of the responder's own is capacity_exceeded.",
+      "refusal": {
+        "issued_at": "2026-09-28T00:00:00Z",
+        "reason": "rate_limited",
+        "request_digest": "78e68275f27c83d0f3054beaf858baa14763b2d1fed830e02b05f875f7e0493d",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "ad5713d6bfc1321158d4630f42fb01d3dccf14037d4354f5cf7df05ec717f03ae6601ed1e0914d329960e83a96ba76e159f1ed1996551d864b2d89b42eaaef09"
+      },
+      "request_case": "pos-subject-record",
+      "expect": {
+        "signature": "valid",
+        "reason_registered": false,
+        "conformant": false
+      }
+    },
+    {
+      "id": "r02-ret-inside-capacity_exceeded",
+      "section": [
+        "§9 Retention Commitments"
+      ],
+      "description": "A refusal with reason capacity_exceeded inside until: never a breach (flooding a responder cannot manufacture broken commitments).",
+      "facts": {
+        "commitment": "in_force",
+        "refusal_reason": "capacity_exceeded"
+      },
+      "expect": {
+        "classification": "no_breach"
+      }
+    },
+    {
+      "id": "r02-ret-after-capacity_exceeded",
+      "section": [
+        "§9 Retention Commitments"
+      ],
+      "description": "A refusal with reason capacity_exceeded after until: never a breach (flooding a responder cannot manufacture broken commitments).",
+      "facts": {
+        "commitment": "lapsed",
+        "refusal_reason": "capacity_exceeded"
+      },
+      "expect": {
+        "classification": "no_breach"
+      }
+    },
+    {
+      "id": "r02-ret-inside-request_unauthenticated",
+      "section": [
+        "§9 Retention Commitments"
+      ],
+      "description": "A refusal with reason request_unauthenticated inside until: never a breach (a property of the request).",
+      "facts": {
+        "commitment": "in_force",
+        "refusal_reason": "request_unauthenticated"
+      },
+      "expect": {
+        "classification": "no_breach"
+      }
+    },
+    {
+      "id": "r02-ret-after-request_unauthenticated",
+      "section": [
+        "§9 Retention Commitments"
+      ],
+      "description": "A refusal with reason request_unauthenticated after until: never a breach (a property of the request).",
+      "facts": {
+        "commitment": "lapsed",
+        "refusal_reason": "request_unauthenticated"
+      },
+      "expect": {
+        "classification": "no_breach"
+      }
+    },
+    {
+      "id": "r02-load-shedding-is-capacity_exceeded",
+      "section": [
+        "§11 Security Considerations",
+        "§4.2 The Signed Refusal"
+      ],
+      "description": "A responder declines for its own load. It refuses capacity_exceeded; policy_declined and not_authorized are statements about policy and are not used for load shedding.",
+      "facts": {
+        "cause": "responder_load"
+      },
+      "expect": {
+        "reason": "capacity_exceeded",
+        "not_reason": [
+          "policy_declined",
+          "not_authorized"
+        ]
+      }
+    },
+    {
+      "id": "r02-deadline-missed-under-load",
+      "section": [
+        "§3.4 Deadline",
+        "§11 Security Considerations"
+      ],
+      "description": "A responder cannot answer by the deadline only because of its own load. It refuses capacity_exceeded, not deadline_unmet, which states that the deadline itself cannot be met.",
+      "facts": {
+        "cause": "responder_load",
+        "deadline": "would_be_missed"
+      },
+      "expect": {
+        "reason": "capacity_exceeded",
+        "not_reason": [
+          "deadline_unmet"
+        ]
+      }
+    },
+    {
+      "id": "r02-map-capacity_exceeded",
+      "section": [
+        "§4.6 Mapping to a Requirement-Satisfaction Status"
+      ],
+      "description": "The illustrative status mapping of a refusal with reason capacity_exceeded: the requirement's status stays unknown; never withheld by policy, never evidence of non-satisfaction.",
+      "facts": {
+        "refusal_reason": "capacity_exceeded"
+      },
+      "expect": {
+        "status_unknown": true,
+        "withheld_by_policy": false,
+        "evidence_of_non_satisfaction": false
+      }
+    },
+    {
+      "id": "r02-map-request_unauthenticated",
+      "section": [
+        "§4.6 Mapping to a Requirement-Satisfaction Status"
+      ],
+      "description": "The illustrative status mapping of a refusal with reason request_unauthenticated: the requirement's status stays unknown; never withheld by policy, never evidence of non-satisfaction.",
+      "facts": {
+        "refusal_reason": "request_unauthenticated"
+      },
+      "expect": {
+        "status_unknown": true,
+        "withheld_by_policy": false,
+        "evidence_of_non_satisfaction": false
+      }
+    }
+  ]
+}
