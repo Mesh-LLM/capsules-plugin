@@ -1171,6 +1171,47 @@ pub fn verify_response(
     key: &ed25519_dalek::VerifyingKey,
     witness_keys: &std::collections::BTreeMap<String, String>,
 ) -> Value {
+    verify_response_with(sent, response, key, None, witness_keys)
+}
+
+/// [`verify_response`], for a responder whose checkpoints are signed by a
+/// key other than the one that signs its answers (`checkpoint_key`, taken
+/// from a commitment that verified: `commitment::checkpoint_key_of`). A pass
+/// then says so: `checkpoint_key_id` names the key that signed the
+/// checkpoints, which is not the responder's evidence key, so the result is
+/// not a statement about "the responder's log" until the relying party's
+/// admission pack judges that key. `exchange_corroboration/1` is checked
+/// under `key` alone.
+pub fn verify_response_with(
+    sent: &[u8],
+    response: &Value,
+    key: &ed25519_dalek::VerifyingKey,
+    checkpoint_key: Option<&ed25519_dalek::VerifyingKey>,
+    witness_keys: &std::collections::BTreeMap<String, String>,
+) -> Value {
+    let mut out = verify_response_inner(sent, response, key, checkpoint_key, witness_keys);
+    // An exchange corroboration is checked under `key` alone, so it is not
+    // annotated with a checkpoint key it never used.
+    let corroboration = request::parse_json(sent)
+        .map(|req| crate::exchange_corroboration::is_derivation(req.derivation.as_ref()))
+        .unwrap_or(false);
+    if let Some(ck) = checkpoint_key.filter(|ck| ck.as_bytes() != key.as_bytes()) {
+        if out["state"] == "artifact" && !corroboration {
+            out["checkpoint_key_id"] = json!(hex::encode(ck.as_bytes()));
+            out["checkpoints_signed_by"] =
+                json!("a checkpoint key other than the responder's evidence key");
+        }
+    }
+    out
+}
+
+fn verify_response_inner(
+    sent: &[u8],
+    response: &Value,
+    key: &ed25519_dalek::VerifyingKey,
+    checkpoint_key: Option<&ed25519_dalek::VerifyingKey>,
+    witness_keys: &std::collections::BTreeMap<String, String>,
+) -> Value {
     let not_evidence = |why: String| json!({"state": "not_evidence", "why": why});
     let digest = request_digest(sent);
     if response.get("reason").is_some() {
@@ -1186,9 +1227,14 @@ pub fn verify_response(
         return not_evidence("the request sent is not a -00 request".into());
     };
     if crate::verdict_held::is_derivation(req.derivation.as_ref()) {
-        return match crate::evidence_artifact::check(sent, &req, response, key, &|ts_url: &str| {
-            configured_witness_key(witness_keys, ts_url)
-        }) {
+        return match crate::evidence_artifact::check_with(
+            sent,
+            &req,
+            response,
+            key,
+            checkpoint_key,
+            &|ts_url: &str| configured_witness_key(witness_keys, ts_url),
+        ) {
             Ok(checked) => {
                 json!({"state": "artifact", "anchor": checked.anchor, "held": checked.held.len()})
             }
@@ -1212,7 +1258,7 @@ pub fn verify_response(
         }
         configured_witness_key(witness_keys, ts_url)
     };
-    match evidence_artifact::check(sent, &req, response, key, &witness_key) {
+    match evidence_artifact::check_with(sent, &req, response, key, checkpoint_key, &witness_key) {
         Ok(v) => {
             let mut out = json!({
                 "state": "artifact",
@@ -1256,7 +1302,15 @@ pub fn verify_response(
         // with no keys, so the key is what refused it.
         Err(e @ (CheckError::ReceiptBinding | CheckError::ReceiptMalformed))
             if !witness_keys.is_empty()
-                && evidence_artifact::check(sent, &req, response, key, &|_| None).is_ok() =>
+                && evidence_artifact::check_with(
+                    sent,
+                    &req,
+                    response,
+                    key,
+                    checkpoint_key,
+                    &|_| None,
+                )
+                .is_ok() =>
         {
             json!({"state": "not_evidence", "why": e.to_string(), "reason": "witness_receipt_unverified"})
         }

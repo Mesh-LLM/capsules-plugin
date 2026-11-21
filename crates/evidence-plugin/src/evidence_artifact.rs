@@ -538,6 +538,21 @@ pub fn check(
     key: &VerifyingKey,
     witness_key: &dyn Fn(&str) -> Option<VerifyingKey>,
 ) -> Result<Checked, CheckError> {
+    check_with(sent, request, response, key, None, witness_key)
+}
+
+/// [`check`], with the checkpoints signed by `checkpoint_key` when the
+/// responder's checkpoint key is not its evidence key (a commitment's
+/// `history_cards[].checkpoint_key`); `None` is `key` for both. The envelope
+/// is always the responder's `key`.
+pub fn check_with(
+    sent: &[u8],
+    request: &Request,
+    response: &Value,
+    key: &VerifyingKey,
+    checkpoint_key: Option<&VerifyingKey>,
+    witness_key: &dyn Fn(&str) -> Option<VerifyingKey>,
+) -> Result<Checked, CheckError> {
     let octets = serde_json::to_vec(response).map_err(|e| CheckError::Answer(e.to_string()))?;
     let env = match envelope::parse_reply(&octets, Binding::Json) {
         Ok(Reply::Envelope(env)) => env,
@@ -556,6 +571,8 @@ pub fn check(
     };
     env.verify_for_profile(&asked, key, sent)
         .map_err(|e| CheckError::Answer(e.to_string()))?;
+    // From here on `key` is the one that signs the checkpoints.
+    let key = checkpoint_key.unwrap_or(key);
     if env.subject != request.subject || env.derivation != request.derivation {
         return fail("the answer is not for the requested subject or derivation");
     }
@@ -1933,6 +1950,54 @@ mod tests {
             &Subject::Correlation("n-1".into()),
             b"not json"
         ));
+    }
+
+    /// A responder whose answers are signed by one key and its checkpoints by
+    /// another (a Goose node): its answer checks only when the verifier is
+    /// told the checkpoint key, and the result names that key.
+    #[test]
+    fn a_checkpoint_key_other_than_the_evidence_key_is_checked_when_given() {
+        let node = node();
+        let (sent, reply) =
+            node.ask(&json!({"subject": {"checkpoints": null}, "coverage": node.pin(1)}));
+        let evidence = SigningKey::from_bytes(&[7u8; 32]);
+        let split = resigned_by(&evidence, &sent, &reply, |_| {});
+        let req = request::parse_json(&sent).unwrap();
+        let (ek, ck) = (evidence.verifying_key(), key().verifying_key());
+        assert!(
+            check(&sent, &req, &split, &ek, &|_| None).is_err(),
+            "the evidence key did not sign the checkpoints"
+        );
+        assert!(check_with(&sent, &req, &split, &ek, Some(&ek), &|_| None).is_err());
+        assert_eq!(
+            check_with(&sent, &req, &split, &ek, Some(&ck), &|_| None)
+                .unwrap()
+                .checkpoints,
+            2
+        );
+        // The envelope is still the responder's: another key's checkpoints do
+        // not stand in for a wrong evidence key.
+        let stranger = SigningKey::from_bytes(&[9u8; 32]).verifying_key();
+        assert!(check_with(&sent, &req, &split, &stranger, Some(&ck), &|_| None).is_err());
+
+        let none = std::collections::BTreeMap::new();
+        let plain = crate::evidence_answer::verify_response(&sent, &split, &ek, &none);
+        assert_eq!(plain["state"], "not_evidence");
+        let given =
+            crate::evidence_answer::verify_response_with(&sent, &split, &ek, Some(&ck), &none);
+        assert_eq!(given["state"], "artifact", "{given}");
+        assert_eq!(given["checkpoint_key_id"], hex::encode(ck.as_bytes()));
+        assert!(given["checkpoints_signed_by"]
+            .as_str()
+            .unwrap()
+            .contains("other than the responder's evidence key"));
+        // The same key for both is the ordinary answer and says nothing more.
+        let (sent2, reply2) =
+            node.ask(&json!({"subject": {"checkpoints": null}, "coverage": node.pin(1)}));
+        let same =
+            crate::evidence_answer::verify_response_with(&sent2, &reply2, &ck, Some(&ck), &none);
+        assert_eq!(same["state"], "artifact");
+        assert!(same.get("checkpoint_key_id").is_none());
     }
 
     /// A checkpoint list and a history card must start the stream and chain

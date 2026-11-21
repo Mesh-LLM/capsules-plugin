@@ -65,10 +65,20 @@ pub struct NostrEvidenceRequestArgs {
     /// The key its answers are signed under (its commitment's `key_id`,
     /// Ed25519, 64 lowercase hex).
     pub responder_key: String,
+    /// The asked node's commitment as `commitment/1` carries it
+    /// (`{"commitment", "policy"}`), for a responder whose checkpoints are
+    /// signed by a key other than `responder_key`. It must verify and be
+    /// `responder_key`'s; its stapled cards' `checkpoint_key` is then the
+    /// key the checkpoints are checked under, and a pass says that key signed
+    /// them. Not a bare key: a checkpoint key with no commitment behind it is
+    /// never taken.
+    #[serde(default)]
+    pub commitment: Option<Value>,
     /// The request map (draft-mih-agent-evidence-request), sealed and sent as
     /// given plus a `deadline` and a `nonce` when it carries none.
     pub request: Value,
-    /// Check the reply under `responder_key` and return the check beside it.
+    /// Check the reply under `responder_key` (its checkpoints under the
+    /// `commitment`'s checkpoint key when one is given) and return the check beside it.
     /// On unless the caller turns it off.
     #[serde(default = "verify_by_default")]
     pub verify: bool,
@@ -308,6 +318,12 @@ pub(crate) async fn ask(
     capsules: std::sync::Arc<crate::capsule_emit::CapsuleState>,
 ) -> PluginResult<Value> {
     let responder = check(&args).map_err(PluginError::invalid_params)?;
+    let checkpoint_key = match &args.commitment {
+        None => None,
+        Some(wire) => crate::commitment::Signed::from_wire(wire)
+            .and_then(|signed| crate::commitment::checkpoint_key_of(&signed, &args.responder_key))
+            .map_err(|e| PluginError::invalid_params(format!("commitment: {e}")))?,
+    };
     let now = chrono::Utc::now();
     let request = prepared(&args.request, now, DEFAULT_WINDOW);
     let sent = evidence_request::jcs::to_string(&request)
@@ -343,7 +359,13 @@ pub(crate) async fn ask(
     let verify = {
         let key = responder;
         move |sent: &[u8], answer: &Value| {
-            crate::evidence_answer::verify_response(sent, answer, &key, &witness_keys)
+            crate::evidence_answer::verify_response_with(
+                sent,
+                answer,
+                &key,
+                checkpoint_key.as_ref(),
+                &witness_keys,
+            )
         }
     };
     let exchange = {

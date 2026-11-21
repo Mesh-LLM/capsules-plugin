@@ -33,6 +33,7 @@ fn args(relay: &str, responder_key: &str, request: Value) -> NostrEvidenceReques
         mailbox_key: mailbox_hex(),
         relays: vec![relay.to_string()],
         responder_key: responder_key.to_string(),
+        commitment: None,
         request,
         verify: true,
         publish_subject: false,
@@ -347,5 +348,44 @@ fn a_request_that_is_not_for_a_stranger_or_names_its_asker_is_not_sent_unless_pu
             with(ask.clone(), true).unwrap_err().contains(name),
             "never, even published: {ask}"
         );
+    }
+}
+
+/// A checkpoint key is never taken from the tool's input alone: a commitment
+/// that does not verify or is not the responder's refuses the ask before
+/// anything is recorded or sent.
+#[tokio::test]
+async fn a_commitment_that_does_not_verify_refuses_the_ask() {
+    let dir = tempfile::tempdir().unwrap();
+    let capsules = std::sync::Arc::new(
+        crate::capsule_emit::CapsuleState::open(dir.path(), "node-under-test").unwrap(),
+    );
+    let real = hex::encode(
+        ed25519_dalek::SigningKey::from_bytes(&[3; 32])
+            .verifying_key()
+            .to_bytes(),
+    );
+    let mut a = args(
+        "wss://relay.example",
+        &real,
+        json!({"subject": {"checkpoints": null}, "coverage": {"min_freshness": 1}}),
+    );
+    for commitment in [json!({}), json!({"commitment": {}, "policy": "AA=="})] {
+        a.commitment = Some(commitment);
+        let err = ask(
+            NostrEvidenceRequestArgs {
+                commitment: a.commitment.clone(),
+                mailbox_key: a.mailbox_key.clone(),
+                relays: a.relays.clone(),
+                responder_key: a.responder_key.clone(),
+                request: a.request.clone(),
+                verify: true,
+                publish_subject: false,
+            },
+            capsules.clone(),
+        )
+        .await
+        .unwrap_err();
+        assert!(format!("{err:?}").contains("commitment"), "{err:?}");
     }
 }

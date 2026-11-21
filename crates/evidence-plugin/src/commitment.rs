@@ -736,6 +736,66 @@ pub(crate) fn signature_verifies(doc: &Value, key: &VerifyingKey) -> bool {
         .is_ok()
 }
 
+/// The checkpoint key a commitment states for its stapled cards
+/// (`history_cards[].checkpoint_key`, evidence-commitment-carriers-v0 §3) when
+/// `signed` verifies and is `responder_key`'s: `Ok(None)` when no card names
+/// one (checkpoints are signed by the evidence key), an error when the
+/// commitment does not verify, is another key's, or its cards disagree (they
+/// name different checkpoint keys, or only some name one: one key is applied
+/// to the whole answer, so a mixed set is ambiguous). Never read from anything that has not verified.
+pub fn checkpoint_key_of(
+    signed: &Signed,
+    responder_key: &str,
+) -> Result<Option<VerifyingKey>, String> {
+    let problems = verify(signed);
+    if !problems.is_empty() {
+        return Err(format!(
+            "the commitment does not verify: {}",
+            problems.join("; ")
+        ));
+    }
+    if signed.commitment["key_id"] != responder_key {
+        return Err("the commitment is not the responder_key's".into());
+    }
+    let cards = signed.commitment["history_cards"]
+        .as_array()
+        .map_or(&[][..], |a| a.as_slice());
+    checkpoint_key_of_cards(cards)
+}
+
+/// The one checkpoint key a set of cards names: none when no card names one,
+/// an error when only some do or they name different keys.
+fn checkpoint_key_of_cards(cards: &[Value]) -> Result<Option<VerifyingKey>, String> {
+    let named = cards
+        .iter()
+        .filter(|card| card["checkpoint_key"].is_string())
+        .count();
+    if named != 0 && named != cards.len() {
+        return Err("only some of the commitment's cards name a checkpoint key".into());
+    }
+    let mut keys = cards
+        .iter()
+        .filter_map(|card| card["checkpoint_key"].as_str())
+        .map(|b64| {
+            let der = base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(b64)
+                .map_err(|_| "checkpoint_key is not base64url".to_string())?;
+            let raw: [u8; 32] = der
+                .strip_prefix(&ED25519_SPKI_PREFIX[..])
+                .and_then(|k| k.try_into().ok())
+                .ok_or("checkpoint_key is not an Ed25519 SubjectPublicKeyInfo")?;
+            VerifyingKey::from_bytes(&raw)
+                .map_err(|_| "checkpoint_key is not a valid key".to_string())
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    keys.dedup_by_key(|k| k.to_bytes());
+    match keys.as_slice() {
+        [] => Ok(None),
+        [one] => Ok(Some(*one)),
+        _ => Err("the commitment's cards name different checkpoint keys".into()),
+    }
+}
+
 /// The key `doc`'s `spki` carries, when it is the key `key_id` names.
 pub(crate) fn key_of(doc: &Value) -> Result<VerifyingKey, String> {
     let der = base64::engine::general_purpose::STANDARD
