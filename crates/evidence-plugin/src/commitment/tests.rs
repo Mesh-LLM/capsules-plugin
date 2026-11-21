@@ -240,6 +240,65 @@ fn the_responder_policy_follows_the_log() {
     assert!(!named_1);
     assert_eq!(safe, json!(["checkpoints", "history_card/2"]));
     assert!(!named(&capsules).0, "a log that does not fit stays so");
+    crate::evidence_request_parity::long_ledger_dir(
+        capsules.ledger_dir(),
+        capsules.signing_key(),
+        501,
+    );
+    assert!(!named(&capsules).0, "and stays so as the log grows");
+}
+
+/// A measurement is stamped with the witness receipts as well as the
+/// checkpoint count, since receipts ride in the answer: one more receipt on
+/// the same checkpoints measures again. (A receipt is simulated by a cache
+/// entry whose stamp differs from the log's only in its receipt count.)
+#[test]
+fn a_measurement_at_another_receipt_count_is_measured_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let capsules = crate::capsule_emit::CapsuleState::open(dir.path(), "node-under-test").unwrap();
+    crate::evidence_request_parity::long_ledger_dir(
+        capsules.ledger_dir(),
+        capsules.signing_key(),
+        500,
+    );
+    let stale = ((500, 1), true);
+    CACHE
+        .lock()
+        .unwrap()
+        .get_or_insert_with(Default::default)
+        .insert(capsules.ledger_dir().to_path_buf(), stale);
+    assert!(
+        !history_card_1_fits(capsules.ledger_dir(), capsules.signing_key(), NOW),
+        "a count-only cache would have kept the stale fit"
+    );
+}
+
+/// A request declined for being busy is answered before the ledger is read:
+/// naming the policy for it reads no index, and names what was last measured.
+#[test]
+fn a_busy_request_reads_no_ledger_for_the_policy() {
+    let dir = tempfile::tempdir().unwrap();
+    let capsules = crate::capsule_emit::CapsuleState::open(dir.path(), "node-under-test").unwrap();
+    crate::evidence_request_parity::long_ledger_dir(
+        capsules.ledger_dir(),
+        capsules.signing_key(),
+        500,
+    );
+    let busy_names_1 = |capsules: &crate::capsule_emit::CapsuleState| {
+        let before = crate::evidence_log::index_reads();
+        let named = with_responder_for(capsules, NOW, None, false, true, |_, policy| {
+            policy.history_card_1
+        });
+        assert_eq!(
+            crate::evidence_log::index_reads(),
+            before,
+            "a busy request read the ledger"
+        );
+        named
+    };
+    assert!(busy_names_1(&capsules), "nothing measured yet names /1");
+    assert!(!with_responder(&capsules, NOW, None, |_, p| p.history_card_1));
+    assert!(!busy_names_1(&capsules), "then it names what was measured");
 }
 
 #[test]

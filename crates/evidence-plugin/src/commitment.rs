@@ -284,10 +284,11 @@ pub fn with_responder<T>(
     own_node: Option<&str>,
     f: impl FnOnce(&Responder<'_>, &Policy) -> T,
 ) -> T {
-    with_responder_for(capsules, now, own_node, false, f)
+    with_responder_for(capsules, now, own_node, false, false, f)
 }
 
-/// [`with_responder`], and with `strangers_only` a responder that binds no
+/// [`with_responder`], with `busy` for a request that is declined unread
+/// (no ledger read for the policy), and with `strangers_only` a responder that binds no
 /// key to any node: a signed request then proves no principal and reads as an
 /// unsigned one, answered only what a stranger gets. For a carrier that
 /// publishes its answers to whoever reads them (nostr-mailbox-v0 §8).
@@ -296,10 +297,17 @@ pub fn with_responder_for<T>(
     now: &str,
     own_node: Option<&str>,
     strangers_only: bool,
+    busy: bool,
     f: impl FnOnce(&Responder<'_>, &Policy) -> T,
 ) -> T {
     let mut policy = Policy::current();
-    policy.history_card_1 = history_card_1_fits(capsules.ledger_dir(), capsules.signing_key(), now);
+    // A request declined for being busy is answered before the ledger is
+    // read, so it takes the last measurement instead of making one.
+    policy.history_card_1 = if busy {
+        history_card_1_last_measured(capsules.ledger_dir())
+    } else {
+        history_card_1_fits(capsules.ledger_dir(), capsules.signing_key(), now)
+    };
     let digest = policy.digest(capsules.signing_key());
     let announced = if strangers_only {
         Default::default()
@@ -331,6 +339,23 @@ pub fn with_responder_for<T>(
     f(&responder, &policy)
 }
 
+/// What [`history_card_1_fits`] last measured per ledger: the (checkpoints,
+/// witness receipts) stamp it was measured at, and whether `/1` fit.
+type Measured = std::collections::HashMap<std::path::PathBuf, ((usize, usize), bool)>;
+static CACHE: std::sync::Mutex<Option<Measured>> = std::sync::Mutex::new(None);
+
+/// The last measurement for `ledger_dir`, without reading the ledger: what a
+/// request declined for being busy names in its refusal's policy digest. It
+/// names `/1` until a measurement says otherwise.
+fn history_card_1_last_measured(ledger_dir: &std::path::Path) -> bool {
+    CACHE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .as_ref()
+        .and_then(|m| m.get(ledger_dir))
+        .is_none_or(|(_, fits)| *fits)
+}
+
 /// Whether a stranger's full `history_card/1` over this node's log still fits
 /// `MAX_ANSWER_BYTES`: the answer is built as the responder builds it and
 /// refused only when it is too large. A log with no checkpoint, or one the
@@ -344,8 +369,6 @@ pub fn history_card_1_fits(ledger_dir: &std::path::Path, key: &SigningKey, now: 
     // whether it fit. Receipts ride in the answer, so one arriving for an
     // existing checkpoint can push it over without a new checkpoint. The lock
     // is held while measuring, so concurrent callers measure once.
-    type Measured = std::collections::HashMap<std::path::PathBuf, ((usize, usize), bool)>;
-    static CACHE: std::sync::Mutex<Option<Measured>> = std::sync::Mutex::new(None);
     let key_id = key_id(key);
     let Ok(stamp) = crate::evidence_log::with_index(ledger_dir, &key_id, |i| {
         (
