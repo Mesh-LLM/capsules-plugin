@@ -1560,14 +1560,16 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "mesh-llm-config"
-version = "0.78.0"
-source = "git+https://github.com/Mesh-LLM/mesh-llm?rev=a39211e78f3dd73cf9a94b08417c0da17e5fa5d9#a39211e78f3dd73cf9a94b08417c0da17e5fa5d9"
+version = "0.80.0"
+source = "git+https://github.com/Mesh-LLM/mesh-llm?rev=2b9e64aecdcebaa4242d0718e257bbd59cbf2575#2b9e64aecdcebaa4242d0718e257bbd59cbf2575"
 dependencies = [
  "anyhow",
  "dirs",
+ "libc",
  "mesh-llm-types",
  "semver",
  "serde",
+ "serde_json",
  "skippy-native-runtime",
  "skippy-protocol",
  "toml 1.1.6+spec-1.1.0",
@@ -1578,8 +1580,8 @@ dependencies = [
 
 [[package]]
 name = "mesh-llm-plugin"
-version = "0.78.0"
-source = "git+https://github.com/Mesh-LLM/mesh-llm?rev=a39211e78f3dd73cf9a94b08417c0da17e5fa5d9#a39211e78f3dd73cf9a94b08417c0da17e5fa5d9"
+version = "0.80.0"
+source = "git+https://github.com/Mesh-LLM/mesh-llm?rev=2b9e64aecdcebaa4242d0718e257bbd59cbf2575#2b9e64aecdcebaa4242d0718e257bbd59cbf2575"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1596,8 +1598,8 @@ dependencies = [
 
 [[package]]
 name = "mesh-llm-types"
-version = "0.78.0"
-source = "git+https://github.com/Mesh-LLM/mesh-llm?rev=a39211e78f3dd73cf9a94b08417c0da17e5fa5d9#a39211e78f3dd73cf9a94b08417c0da17e5fa5d9"
+version = "0.80.0"
+source = "git+https://github.com/Mesh-LLM/mesh-llm?rev=2b9e64aecdcebaa4242d0718e257bbd59cbf2575#2b9e64aecdcebaa4242d0718e257bbd59cbf2575"
 dependencies = [
  "hex",
  "serde",
@@ -2561,8 +2563,8 @@ checksum = "3a219298ac11a56ea9a6d2120044824d6f01aeb034955e7af7bc16858527deea"
 
 [[package]]
 name = "skippy-model-artifact"
-version = "0.78.0"
-source = "git+https://github.com/Mesh-LLM/mesh-llm?rev=a39211e78f3dd73cf9a94b08417c0da17e5fa5d9#a39211e78f3dd73cf9a94b08417c0da17e5fa5d9"
+version = "0.80.0"
+source = "git+https://github.com/Mesh-LLM/mesh-llm?rev=2b9e64aecdcebaa4242d0718e257bbd59cbf2575#2b9e64aecdcebaa4242d0718e257bbd59cbf2575"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2573,16 +2575,16 @@ dependencies = [
 
 [[package]]
 name = "skippy-model-ref"
-version = "0.78.0"
-source = "git+https://github.com/Mesh-LLM/mesh-llm?rev=a39211e78f3dd73cf9a94b08417c0da17e5fa5d9#a39211e78f3dd73cf9a94b08417c0da17e5fa5d9"
+version = "0.80.0"
+source = "git+https://github.com/Mesh-LLM/mesh-llm?rev=2b9e64aecdcebaa4242d0718e257bbd59cbf2575#2b9e64aecdcebaa4242d0718e257bbd59cbf2575"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "skippy-native-runtime"
-version = "0.78.0"
-source = "git+https://github.com/Mesh-LLM/mesh-llm?rev=a39211e78f3dd73cf9a94b08417c0da17e5fa5d9#a39211e78f3dd73cf9a94b08417c0da17e5fa5d9"
+version = "0.80.0"
+source = "git+https://github.com/Mesh-LLM/mesh-llm?rev=2b9e64aecdcebaa4242d0718e257bbd59cbf2575#2b9e64aecdcebaa4242d0718e257bbd59cbf2575"
 dependencies = [
  "anyhow",
  "hex",
@@ -2593,8 +2595,8 @@ dependencies = [
 
 [[package]]
 name = "skippy-protocol"
-version = "0.78.0"
-source = "git+https://github.com/Mesh-LLM/mesh-llm?rev=a39211e78f3dd73cf9a94b08417c0da17e5fa5d9#a39211e78f3dd73cf9a94b08417c0da17e5fa5d9"
+version = "0.80.0"
+source = "git+https://github.com/Mesh-LLM/mesh-llm?rev=2b9e64aecdcebaa4242d0718e257bbd59cbf2575#2b9e64aecdcebaa4242d0718e257bbd59cbf2575"
 dependencies = [
  "prost",
  "prost-build",
@@ -2605,8 +2607,8 @@ dependencies = [
 
 [[package]]
 name = "skippy-tokenizer"
-version = "0.78.0"
-source = "git+https://github.com/Mesh-LLM/mesh-llm?rev=a39211e78f3dd73cf9a94b08417c0da17e5fa5d9#a39211e78f3dd73cf9a94b08417c0da17e5fa5d9"
+version = "0.80.0"
+source = "git+https://github.com/Mesh-LLM/mesh-llm?rev=2b9e64aecdcebaa4242d0718e257bbd59cbf2575#2b9e64aecdcebaa4242d0718e257bbd59cbf2575"
 dependencies = [
  "serde",
 ]
