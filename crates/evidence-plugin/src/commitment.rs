@@ -144,7 +144,7 @@ pub struct Policy {
     pub history_card_1: bool,
     /// Whether this node still answers the unranged `checkpoints`: true until
     /// that answer over its log would exceed `MAX_ANSWER_BYTES` (or hold more
-    /// than `MAX_ANSWER_CHECKPOINTS`), measured with `/1` by [`answers_fit`].
+    /// than `MAX_ANSWER_CHECKPOINTS`), measured beside `/1` by [`answers_fit`].
     /// ER -03 §8.1.3: a responder whose full list outgrows an answer SHOULD
     /// NOT list `checkpoints`; `checkpoint_range` and the cards stay. Turns
     /// false once, like `history_card_1`, and moves the policy digest with
