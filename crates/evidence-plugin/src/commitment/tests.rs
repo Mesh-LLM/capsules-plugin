@@ -168,6 +168,139 @@ fn the_answers_lists_are_pinned_and_follow_the_settings() {
     );
 }
 
+/// The ledger sizes either side of the answer cap (loop lab-1 at 315
+/// checkpoints still served `history_card/1`, lab-3 at 375 was refused).
+fn fits_over(long: usize) -> bool {
+    let dir = tempfile::tempdir().unwrap();
+    crate::evidence_request_parity::long_ledger_dir(dir.path(), &key(), long);
+    history_card_1_fits(dir.path(), &key(), NOW)
+}
+
+/// A node stops naming `history_card/1` exactly when its full answer would
+/// be refused for size, so its policy never promises what it refuses
+/// (capsules-plugin#70); `/2` stays named, and the digest moves with it.
+#[test]
+fn history_card_1_is_named_until_its_full_answer_would_not_fit() {
+    assert!(fits_over(50));
+    assert!(!fits_over(500));
+    let long = Policy {
+        history_card_1: false,
+        ..defaults()
+    };
+    assert_ne!(long.digest(&key()), defaults().digest(&key()));
+    assert_eq!(
+        long.body()["stranger_safe"],
+        json!(["checkpoints", "history_card/2"])
+    );
+    assert!(!long.derivations().contains(&"history_card/1"));
+    assert!(long.derivations().contains(&"history_card/2"));
+    let dir = tempfile::tempdir().unwrap();
+    crate::evidence_request_parity::long_ledger_dir(dir.path(), &key(), 500);
+    let signed = built_over(dir.path(), &long);
+    assert_eq!(
+        signed.commitment["answers"]["derivations"],
+        json!(long.derivations())
+    );
+    assert_eq!(verify(&signed), Vec::<String>::new());
+}
+
+/// The wiring: `with_responder` over a real node's state hands out the
+/// policy that drops `history_card/1` once the log is past the cap, and the
+/// measurement follows the log (a short log keeps it; a cached "does not
+/// fit" stays).
+#[test]
+fn the_responder_policy_follows_the_log() {
+    let dir = tempfile::tempdir().unwrap();
+    let capsules = crate::capsule_emit::CapsuleState::open(dir.path(), "node-under-test").unwrap();
+    let named = |capsules: &crate::capsule_emit::CapsuleState| {
+        with_responder(capsules, NOW, None, |_, policy| {
+            (
+                policy.history_card_1,
+                policy.body()["stranger_safe"].clone(),
+            )
+        })
+    };
+    crate::evidence_request_parity::long_ledger_dir(
+        capsules.ledger_dir(),
+        capsules.signing_key(),
+        50,
+    );
+    let (named_1, safe) = named(&capsules);
+    assert!(named_1);
+    assert_eq!(
+        safe,
+        json!(["checkpoints", "history_card/1", "history_card/2"])
+    );
+    crate::evidence_request_parity::long_ledger_dir(
+        capsules.ledger_dir(),
+        capsules.signing_key(),
+        500,
+    );
+    let (named_1, safe) = named(&capsules);
+    assert!(!named_1);
+    assert_eq!(safe, json!(["checkpoints", "history_card/2"]));
+    assert!(!named(&capsules).0, "a log that does not fit stays so");
+    crate::evidence_request_parity::long_ledger_dir(
+        capsules.ledger_dir(),
+        capsules.signing_key(),
+        501,
+    );
+    assert!(!named(&capsules).0, "and stays so as the log grows");
+}
+
+/// A measurement is stamped with the witness receipts as well as the
+/// checkpoint count, since receipts ride in the answer: one more receipt on
+/// the same checkpoints measures again. (A receipt is simulated by a cache
+/// entry whose stamp differs from the log's only in its receipt count.)
+#[test]
+fn a_measurement_at_another_receipt_count_is_measured_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let capsules = crate::capsule_emit::CapsuleState::open(dir.path(), "node-under-test").unwrap();
+    crate::evidence_request_parity::long_ledger_dir(
+        capsules.ledger_dir(),
+        capsules.signing_key(),
+        500,
+    );
+    let stale = ((500, 1), true);
+    CACHE
+        .lock()
+        .unwrap()
+        .get_or_insert_with(Default::default)
+        .insert(capsules.ledger_dir().to_path_buf(), stale);
+    assert!(
+        !history_card_1_fits(capsules.ledger_dir(), capsules.signing_key(), NOW),
+        "a count-only cache would have kept the stale fit"
+    );
+}
+
+/// A request declined for being busy is answered before the ledger is read:
+/// naming the policy for it reads no index, and names what was last measured.
+#[test]
+fn a_busy_request_reads_no_ledger_for_the_policy() {
+    let dir = tempfile::tempdir().unwrap();
+    let capsules = crate::capsule_emit::CapsuleState::open(dir.path(), "node-under-test").unwrap();
+    crate::evidence_request_parity::long_ledger_dir(
+        capsules.ledger_dir(),
+        capsules.signing_key(),
+        500,
+    );
+    let busy_names_1 = |capsules: &crate::capsule_emit::CapsuleState| {
+        let before = crate::evidence_log::index_reads();
+        let named = with_responder_for(capsules, NOW, None, false, true, |_, policy| {
+            policy.history_card_1
+        });
+        assert_eq!(
+            crate::evidence_log::index_reads(),
+            before,
+            "a busy request read the ledger"
+        );
+        named
+    };
+    assert!(busy_names_1(&capsules), "nothing measured yet names /1");
+    assert!(!with_responder(&capsules, NOW, None, |_, p| p.history_card_1));
+    assert!(!busy_names_1(&capsules), "then it names what was measured");
+}
+
 #[test]
 fn a_built_commitment_has_exactly_the_members_and_verifies() {
     let signed = built(&defaults());

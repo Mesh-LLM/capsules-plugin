@@ -352,6 +352,17 @@ pub fn findings(
         ),
     ));
     let body = policy.body();
+    // What the policy names, which drops `history_card/1` once its full
+    // answer no longer fits (the node still implements it).
+    let stranger_safe = body["stranger_safe"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(" and ")
+        })
+        .unwrap_or_default();
     let switches = [
         crate::share_policy::RECORD_AT_COMPLETION_KEY,
         crate::share_policy::HISTORY_SEGMENTS_KEY,
@@ -381,14 +392,14 @@ pub fn findings(
         if latest.is_none() {
             format!(
                 "refusals only: {} are public, but there is no checkpoint to answer with",
-                STRANGER_SAFE.join(" and ")
+                stranger_safe
             )
         } else {
             format!(
                 "{} to anyone (commitments only, no record); share_standard_history={} and \
                  share_exchange_corroboration={} say what else a requester that is not a \
                  counterparty receives",
-                STRANGER_SAFE.join(" and "),
+                stranger_safe,
                 body[crate::share_policy::STANDARD_HISTORY_KEY]
                     .as_str()
                     .unwrap_or_default(),

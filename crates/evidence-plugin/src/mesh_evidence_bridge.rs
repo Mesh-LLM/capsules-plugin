@@ -418,6 +418,7 @@ pub(crate) async fn answer_in_process(
             &now,
             own_node.as_deref(),
             strangers_only,
+            permit.is_err(),
             |responder, _| {
                 crate::evidence_answer::answer_and_log(
                     &request_bytes,

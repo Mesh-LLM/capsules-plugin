@@ -456,6 +456,12 @@ With the defaults, the policy's `policy` member is exactly
 }
 ```
 
+`stranger_safe` and the commitment's `answers.derivations` name
+`history_card/1` only while a stranger's full `/1` answer over the node's own
+log fits `MAX_ANSWER_BYTES` (1 MiB, about 350 checkpoints). Past that size the
+node drops `history_card/1` from both and keeps `history_card/2`; a log only
+grows, so this happens once and the digest moves once (Mesh-LLM/capsules-plugin#70).
+
 Each switch appears as the plugin reads it, so an unknown value appears as
 `off`. A test requires the default settings to give this file, so the file
 and the code cannot differ. Change a switch and the policy, and its digest,
