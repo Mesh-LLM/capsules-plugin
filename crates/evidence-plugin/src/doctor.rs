@@ -348,7 +348,7 @@ pub fn findings(
             "full_history record bodies are refused to everyone; full_history is answered only \
              through a derivation; every derivation other than {} is refused \
              derivation_unsupported",
-            commitment::DERIVATIONS[1..].join(", ")
+            policy.derivations()[1..].join(", ")
         ),
     ));
     let body = policy.body();

@@ -363,6 +363,7 @@ fn witnesses_are_read_from_the_checkpoint_lines_whose_receipts_check() {
 fn sharing_is_off_only_when_every_switch_is_off() {
     let dir = corpus();
     let off = Policy {
+        history_card_1: true,
         record_at_completion: false,
         history_segments: "off",
         share_standard_history: false,

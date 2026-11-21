@@ -102,6 +102,8 @@ pub static DERIVATIONS: std::sync::LazyLock<[&str; 7]> = std::sync::LazyLock::ne
 pub const STAPLED_DERIVATION: &str = "history_card/2";
 
 /// The cards a `commitment/1` may staple.
+use evidence_request::registry::DERIVATION_HISTORY_CARD;
+
 const CARD_DERIVATIONS: [&str; 2] = ["history_card/1", "history_card/2"];
 
 /// Answered to anyone, signed or not (PRD R-8).
@@ -115,6 +117,11 @@ const ED25519_SPKI_PREFIX: [u8; 12] = [
 /// The disclosure switches, as the answer gate reads them.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Policy {
+    /// Whether this node still answers `history_card/1`: true until the full
+    /// `/1` answer over its log would exceed `MAX_ANSWER_BYTES`
+    /// ([`history_card_1_fits`]). A log only grows, so it turns false once,
+    /// and the policy digest moves once with it. Not a setting.
+    pub history_card_1: bool,
     pub record_at_completion: bool,
     pub history_segments: &'static str,
     pub share_standard_history: bool,
@@ -133,6 +140,7 @@ impl Policy {
     pub fn from_settings(var: impl Fn(&str) -> Option<String>) -> Self {
         let raw = |env: &str| var(env);
         Self {
+            history_card_1: true,
             record_at_completion: !share_policy::record_at_completion_is_off_for(
                 raw(share_policy::ENV_RECORD_AT_COMPLETION).as_deref(),
             ),
@@ -183,8 +191,21 @@ impl Policy {
             share_policy::HISTORY_SEGMENTS_KEY: self.history_segments,
             share_policy::RECORD_AT_COMPLETION_KEY: self.record_at_completion_value(),
             share_policy::STANDARD_HISTORY_KEY: on_off(self.share_standard_history),
-            "stranger_safe": STRANGER_SAFE,
+            "stranger_safe": STRANGER_SAFE
+                .iter()
+                .filter(|d| self.history_card_1 || **d != DERIVATION_HISTORY_CARD)
+                .collect::<Vec<_>>(),
         })
+    }
+
+    /// The derivations this node answers ([`DERIVATIONS`]), without
+    /// `history_card/1` once its full answer no longer fits.
+    pub fn derivations(&self) -> Vec<&'static str> {
+        DERIVATIONS
+            .iter()
+            .copied()
+            .filter(|d| self.history_card_1 || *d != DERIVATION_HISTORY_CARD)
+            .collect()
     }
 
     /// The subject forms this node answers (`Subject::form().token()`).
@@ -279,7 +300,8 @@ pub fn with_responder_for<T>(
     strangers_only: bool,
     f: impl FnOnce(&Responder<'_>, &Policy) -> T,
 ) -> T {
-    let policy = Policy::current();
+    let mut policy = Policy::current();
+    policy.history_card_1 = history_card_1_fits(capsules.ledger_dir(), capsules.signing_key(), now);
     let digest = policy.digest(capsules.signing_key());
     let announced = if strangers_only {
         Default::default()
@@ -309,6 +331,78 @@ pub fn with_responder_for<T>(
         policy_digest: Some(&digest),
     };
     f(&responder, &policy)
+}
+
+/// Whether a stranger's full `history_card/1` over this node's log still fits
+/// `MAX_ANSWER_BYTES`: the answer is built as the responder builds it and
+/// refused only when it is too large. A log with no checkpoint, or one the
+/// ledger could not read, keeps `/1` named. Cached per ledger and chain
+/// length, since a log only grows and a checkpoint is cut at most every few
+/// minutes.
+pub fn history_card_1_fits(ledger_dir: &std::path::Path, key: &SigningKey, now: &str) -> bool {
+    use crate::evidence_answer::Outcome;
+    use evidence_request::registry::Reason;
+    static CACHE: std::sync::Mutex<
+        Option<std::collections::HashMap<std::path::PathBuf, (usize, bool)>>,
+    > = std::sync::Mutex::new(None);
+    let key_id = key_id(key);
+    let Ok(len) = crate::evidence_log::with_index(ledger_dir, &key_id, |i| i.chain.len()) else {
+        return true;
+    };
+    let lock = || {
+        CACHE
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    };
+    if let Some((cached, fits)) = lock()
+        .get_or_insert_with(Default::default)
+        .get(ledger_dir)
+        .copied()
+    {
+        // Once past the cap, always past it (the log only grows).
+        if !fits || cached == len {
+            return fits;
+        }
+    }
+    let fits = if len == 0 {
+        true
+    } else {
+        let request = serde_json::to_vec(&json!({
+            "coverage": {"min_freshness": 1},
+            "profile": evidence_request::envelope::PROFILE,
+            "subject": {"full_history": null},
+            "derivation": DERIVATION_HISTORY_CARD,
+        }))
+        .expect("a JSON value serializes");
+        let announced = Default::default();
+        let responder = Responder {
+            ledger_dir,
+            signing_key: key,
+            now,
+            history_segments: "off",
+            share_standard_history: false,
+            share_exchange_corroboration: false,
+            keys: crate::requester_auth::Keys {
+                announced: &announced,
+                configured: None,
+                own_key: None,
+            },
+            replay: crate::requester_auth::replay_cache(),
+            node_id: None,
+            policy_digest: None,
+        };
+        !matches!(
+            crate::evidence_answer::answer(&request, &responder),
+            Outcome::Refused {
+                reason: Reason::CapacityExceeded | Reason::PolicyDeclined,
+                ..
+            }
+        )
+    };
+    lock()
+        .get_or_insert_with(Default::default)
+        .insert(ledger_dir.to_path_buf(), (len, fits));
+    fits
 }
 
 /// Why no commitment was built, and whether building it again from the same
@@ -401,7 +495,7 @@ pub fn build(
         "spki": b64(&spki(&key.verifying_key())),
         "issued_at": responder.now,
         "ask": {"endpoint": format!("mesh:{node_id}"), "bindings": [ASK_BINDING]},
-        "answers": {"subjects": policy.subjects(), "derivations": *DERIVATIONS},
+        "answers": {"subjects": policy.subjects(), "derivations": policy.derivations()},
         "lcap": {
             "policy_digest": sha(&policy_bytes),
             "policy_uri": format!("policies/{node_id}.json"),

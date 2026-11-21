@@ -168,6 +168,42 @@ fn the_answers_lists_are_pinned_and_follow_the_settings() {
     );
 }
 
+/// The ledger sizes either side of the answer cap (loop lab-1 at 315
+/// checkpoints still served `history_card/1`, lab-3 at 375 was refused).
+fn fits_over(long: usize) -> bool {
+    let dir = tempfile::tempdir().unwrap();
+    crate::evidence_request_parity::long_ledger_dir(dir.path(), &key(), long);
+    history_card_1_fits(dir.path(), &key(), NOW)
+}
+
+/// A node stops naming `history_card/1` exactly when its full answer would
+/// be refused for size, so its policy never promises what it refuses
+/// (capsules-plugin#70); `/2` stays named, and the digest moves with it.
+#[test]
+fn history_card_1_is_named_until_its_full_answer_would_not_fit() {
+    assert!(fits_over(50));
+    assert!(!fits_over(500));
+    let long = Policy {
+        history_card_1: false,
+        ..defaults()
+    };
+    assert_ne!(long.digest(&key()), defaults().digest(&key()));
+    assert_eq!(
+        long.body()["stranger_safe"],
+        json!(["checkpoints", "history_card/2"])
+    );
+    assert!(!long.derivations().contains(&"history_card/1"));
+    assert!(long.derivations().contains(&"history_card/2"));
+    let dir = tempfile::tempdir().unwrap();
+    crate::evidence_request_parity::long_ledger_dir(dir.path(), &key(), 500);
+    let signed = built_over(dir.path(), &long);
+    assert_eq!(
+        signed.commitment["answers"]["derivations"],
+        json!(long.derivations())
+    );
+    assert_eq!(verify(&signed), Vec::<String>::new());
+}
+
 #[test]
 fn a_built_commitment_has_exactly_the_members_and_verifies() {
     let signed = built(&defaults());
