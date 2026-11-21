@@ -224,7 +224,12 @@ fn an_answer_at_a_checkpoint_cut_after_doctor_read_the_book_still_matches() {
             "the corpus has two checkpoints or more"
         );
         for (check, request) in probe_requests() {
-            let f = probe_one(check, &request, r, &before, served.as_ref().ok());
+            let asked = if check == PROBE_CHECKPOINTS {
+                "checkpoints"
+            } else {
+                "history_card/2"
+            };
+            let f = probe_one(check, asked, &request, r, &before, served.as_ref().ok());
             assert_eq!(f.state, STATE_MATCH, "{check}: {}", f.detail);
         }
     });
@@ -269,7 +274,7 @@ fn an_answer_under_another_policy_than_advertised_is_a_mismatch() {
     with(dir.path(), &wider, |r| {
         let book = read_book(r).unwrap();
         for (check, request) in probe_requests() {
-            let f = probe_one(check, &request, r, &book, Some(&advertised));
+            let f = probe_one(check, "the probe", &request, r, &book, Some(&advertised));
             assert_eq!(f.state, STATE_MISMATCH, "{check}");
             assert!(f.detail.contains("not the"), "{}", f.detail);
         }
@@ -294,7 +299,7 @@ fn an_answer_under_another_key_than_advertised_is_a_mismatch() {
     with(dir.path(), &defaults(), |r| {
         let book = read_book(r).unwrap();
         let (check, request) = &probe_requests()[0];
-        let f = probe_one(check, request, r, &book, Some(&forged));
+        let f = probe_one(check, "checkpoints", request, r, &book, Some(&forged));
         assert_eq!(f.state, STATE_MISMATCH);
         assert!(f.detail.contains("does not verify"), "{}", f.detail);
     });
@@ -379,6 +384,48 @@ fn the_stranger_view_names_only_what_the_policy_names() {
     );
     assert!(!detail.contains("history_card/1"), "{detail}");
     assert!(!detail.contains("checkpoints"), "{detail}");
+}
+
+/// Step 12's probe on a node past the cap (capsules-plugin#317): the policy
+/// no longer names `checkpoints`, so the probe asks the range the policy does
+/// name and matches, instead of reporting the node's own size refusal of the
+/// whole list as a mismatch with its policy.
+#[test]
+fn the_probe_of_a_node_past_the_cap_asks_what_its_policy_names() {
+    let dir = tempfile::tempdir().unwrap();
+    crate::evidence_request_parity::long_ledger_dir(dir.path(), &key(), 400);
+    let fit = commitment::answers_fit(dir.path(), &key(), NOW);
+    assert!(!fit.history_card_1 && !fit.checkpoints, "{fit:?}");
+    let long = Policy {
+        history_card_1: fit.history_card_1,
+        checkpoints: fit.checkpoints,
+        ..Policy::from_settings(|_| None)
+    };
+    let served = serve(dir.path(), &long, Some(NODE));
+    let found = with(dir.path(), &long, |r| {
+        findings(r, &long, &served, &Witnesses::default(), None, true).unwrap()
+    });
+    for check in [PROBE_CHECKPOINTS, PROBE_HISTORY_CARD] {
+        let f = state(&found, check);
+        assert_eq!(f.state, STATE_MATCH, "{check}: {}", f.detail);
+    }
+    assert!(
+        state(&found, PROBE_CHECKPOINTS)
+            .detail
+            .contains("asking checkpoint_range"),
+        "{}",
+        state(&found, PROBE_CHECKPOINTS).detail
+    );
+    // The same node probed as if it still named `checkpoints` is the
+    // mismatch this fix removes: its own responder refuses the whole list.
+    let stale = Policy {
+        checkpoints: true,
+        ..long.clone()
+    };
+    let found = with(dir.path(), &long, |r| {
+        findings(r, &stale, &served, &Witnesses::default(), None, true).unwrap()
+    });
+    assert_eq!(state(&found, PROBE_CHECKPOINTS).state, STATE_MISMATCH);
 }
 
 #[test]

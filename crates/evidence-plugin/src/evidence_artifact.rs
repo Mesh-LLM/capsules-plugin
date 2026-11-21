@@ -843,7 +843,7 @@ fn card_2_chain(
     Ok((served, listed))
 }
 
-/// A ranged `checkpoints` answer (ER -03 §8.1.3): one entry per position from
+/// A `checkpoint_range` answer (ER -03 §8.1.3): one entry per position from
 /// `a` to `b`, the first carrying no proof and each later one the proof from
 /// the entry before it, and `consistency_to_anchor` from the last to the
 /// anchor checkpoint the answer carries (null when the last is the anchor).
@@ -2323,7 +2323,7 @@ mod tests {
         );
     }
 
-    /// A ranged `checkpoints` answer (ER -03 §8.1.3) is one entry per
+    /// A `checkpoint_range` answer (ER -03 §8.1.3) is one entry per
     /// position, each proof from the entry before it, and the proof from the
     /// last to the anchor; it verifies, at the anchor's own position too.
     #[test]

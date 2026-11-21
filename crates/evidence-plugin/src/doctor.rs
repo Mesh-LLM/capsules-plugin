@@ -142,6 +142,17 @@ pub fn probe_requests() -> [(&'static str, Vec<u8>); 2] {
     ]
 }
 
+/// A stranger's ask for the first checkpoint: the `checkpoint_range` form
+/// that stays answered past the size where the whole list no longer fits.
+fn checkpoint_range_probe() -> Vec<u8> {
+    serde_json::to_vec(&json!({
+        "coverage": {"min_freshness": 1},
+        "profile": evidence_request::envelope::PROFILE,
+        "subject": {commitment::CHECKPOINT_RANGE: [0, 0]},
+    }))
+    .expect("a JSON value serializes")
+}
+
 /// What the ledger holds, read once.
 struct Book {
     records: usize,
@@ -436,7 +447,19 @@ pub fn findings(
     if probe {
         let advertised = served.as_ref().ok();
         for (check, request) in probe_requests() {
-            out.push(probe_one(check, &request, responder, &book, advertised));
+            // A node past the size where its full `checkpoints` answer fits
+            // no longer names it, so the probe asks what the policy does name
+            // for checkpoints, the bounded range (ER -03 §8.1.3).
+            let (asked, request) = if check == PROBE_CHECKPOINTS && !policy.checkpoints {
+                ("checkpoint_range", checkpoint_range_probe())
+            } else if check == PROBE_CHECKPOINTS {
+                ("checkpoints", request)
+            } else {
+                ("history_card/2", request)
+            };
+            out.push(probe_one(
+                check, asked, &request, responder, &book, advertised,
+            ));
         }
     }
     Ok(out)
@@ -484,16 +507,12 @@ fn witness(latest_size: Option<u64>, witnesses: &Witnesses, checkpoints: usize) 
 /// artifact anchored at a checkpoint of this book. It records nothing.
 fn probe_one(
     check: &'static str,
+    asked: &str,
     request: &[u8],
     responder: &Responder<'_>,
     book: &Book,
     advertised: Option<&Signed>,
 ) -> Finding {
-    let asked = if check == PROBE_CHECKPOINTS {
-        "checkpoints"
-    } else {
-        "history_card/2"
-    };
     let mismatch = |detail: String| Finding::new(check, STATE_MISMATCH, detail);
     if book.anchors.is_empty() {
         // With no checkpoint, a refusal is what the stranger view
@@ -982,7 +1001,8 @@ pub fn quickstart(plugin_id: &str) -> String {
          2. **Check.** `doctor` lists what is self-attested, unwitnessed, unchecked, unbound or\n\
          not shared, one finding per line, never a score. With `probe`, it also asks the\n\
          node's own responder `{cp}`, then `{hc}` (the two questions loop's daily\n\
-reporter sends), as a stranger, in process (no\n\
+reporter sends; a node past the size where the whole list fits is asked\n\
+         `checkpoint_range` instead, since it no longer names `checkpoints`), as a stranger, in process (no\n\
          network), and checks that each answer verifies under the key the commitment\n\
          advertises (the node's own key when it serves no commitment yet) and that the node\n\
          answers under the policy the commitment signs:\n\

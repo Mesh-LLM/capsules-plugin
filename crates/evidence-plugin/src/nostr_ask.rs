@@ -144,7 +144,7 @@ fn check(args: &NostrEvidenceRequestArgs) -> Result<ed25519_dalek::VerifyingKey,
     {
         return Err(
             "this request's subject would be published on the relay and a stranger is refused \
-             it: only checkpoints (or a range of them), history_card/1 and history_card/2 go without publish_subject: true"
+             it: only checkpoints, checkpoint_range, history_card/1 and history_card/2 go without publish_subject: true"
                 .into(),
         );
     }

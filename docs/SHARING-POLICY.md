@@ -483,9 +483,10 @@ change with it.
   from the switches it is answering under; nobody writes it down.
 - **What else the commitment says.** The ask goes to `mesh:<node_id>` over
   this plugin's evidence-request channel. The node answers `checkpoints`,
-  `history_card/1`, `history_card/2`, `exchange_corroboration/1` and `service_history/1` (the
-  last two by their definition digest), each to a counterparty under every setting; the
-  policy says who else gets them. It answers the subjects `checkpoints` (until
+  `checkpoint_range`, `history_card/1`, `history_card/2`, `exchange_corroboration/1` and
+  `service_history/1` (the last two by their definition digest), each to a counterparty under
+  every setting; the policy says who else gets them. `checkpoints` and `history_card/1` leave
+  `answers.derivations` at their own crossings, as above. It answers the subjects `checkpoints` (until
   its full answer outgrows one answer, above), `checkpoint_range` and
   `full_history` (`full_history` only through a derivation), plus `record`,
   `exchange` and `correlation` unless `share_history_segments` is `off`.
