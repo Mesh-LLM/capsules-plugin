@@ -2,7 +2,7 @@
 //!
 //! - **The protocol**, against agent-action-capsule's conformance vectors
 //!   for draft-mih-agent-evidence-request-00 (`vectors/aac-evidence-request/`,
-//!   copied verbatim at the `crates/evidence-request-v0.2.0` tag): every
+//!   copied verbatim from agent-action-capsule at commit b5ccf0e7): every
 //!   request in `request.json` and `digest.json` through this node's
 //!   responder (`evidence_answer::answer_and_log`), which refuses it with the
 //!   vector's reason and binds the vector's digest; every refusal in
@@ -1334,6 +1334,86 @@ fn the_responder_refuses_each_aac_request_as_the_vectors_say() {
         }
     }
     assert!(differ.is_empty(), "{}", differ.join("\n"));
+}
+
+/// `checkpoints-range.json`'s request cases (ER -03 §3.1): `checkpoint_range`
+/// is well formed with two ordered non-negative integers; `checkpoints` is
+/// content-free again, so the old `{"checkpoints": [a, b]}` and a bare
+/// `checkpoint_range` are `request_malformed`. Its resolution cases are
+/// decided by the `evidence-request` crate, tested where it is developed.
+#[test]
+fn the_responder_reads_a_checkpoint_range_as_the_vectors_say() {
+    let data = tempfile::tempdir().unwrap();
+    corpus_ledger_dir(data.path(), &SigningKey::from_bytes(&NODE_KEY_SEED));
+    let vectors = aac("checkpoints-range.json");
+    let cases = vectors["request_cases"].as_array().unwrap();
+    assert_eq!(cases.len(), 11);
+    let mut differ = Vec::new();
+    for case in cases {
+        let id = case["id"].as_str().unwrap();
+        let bytes = case["request_json"].as_str().unwrap().as_bytes();
+        let refused = match answer_openly(data.path(), bytes) {
+            Outcome::Refused { reason, .. } => Some(reason.token()),
+            _ => None,
+        };
+        let expect = &case["expect"];
+        let ok = if expect["well_formed"] == json!(true) {
+            evidence_request::request::parse_json(bytes).is_ok()
+                && refused != Some("request_malformed")
+        } else {
+            refused == expect["reason"].as_str()
+        };
+        if !ok {
+            differ.push(format!("{id}: expected {expect}, got {refused:?}"));
+        }
+    }
+    assert!(differ.is_empty(), "{}", differ.join("\n"));
+}
+
+/// A vendored file this run neither reads nor names here is a file a re-vendor
+/// added without a decision: each is read by a test above or named as one the
+/// `evidence-request` crate decides (the vectors' own resolution, outcome,
+/// invariance, retention, carriage and card files).
+#[test]
+fn every_vendored_evidence_request_vector_file_is_accounted_for() {
+    const READ_HERE: [&str; 4] = [
+        "request.json",
+        "digest.json",
+        "refusal.json",
+        "checkpoints-range.json",
+    ];
+    const READ_BY_THE_CRATE: [&str; 12] = [
+        "registry.json",
+        "resolution.json",
+        "outcomes.json",
+        "invariance.json",
+        "retention.json",
+        "refusal-imported.json",
+        "refusal-02.json",
+        "carriage.json",
+        "carries.json",
+        "categories.json",
+        "history-card-2.json",
+        "unavailable-window.json",
+    ];
+    const OTHER: [&str; 5] = [
+        "manifest.json",
+        "SHA256SUMS",
+        "README.md",
+        "DIFFS.md",
+        "LICENSE",
+    ];
+    let mut unknown = Vec::new();
+    for entry in std::fs::read_dir(aac_dir()).unwrap() {
+        let name = entry.unwrap().file_name().into_string().unwrap();
+        if ![&READ_HERE[..], &READ_BY_THE_CRATE[..], &OTHER[..]]
+            .iter()
+            .any(|list| list.contains(&name.as_str()))
+        {
+            unknown.push(name);
+        }
+    }
+    assert!(unknown.is_empty(), "not accounted for: {unknown:?}");
 }
 
 /// `digest.json`: the digest a refusal binds is over the bytes as received,

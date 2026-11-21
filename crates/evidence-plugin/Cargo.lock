@@ -780,8 +780,7 @@ dependencies = [
 [[package]]
 name = "evidence-request"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "efb48cc95fada13e1b10d17adcc5e0b0f717fd3f589d62b43ca16b8fa9bc09f9"
+source = "git+https://github.com/action-state-group/agent-action-capsule?rev=b5ccf0e7d681808d2001b732240db8622bc80c97#b5ccf0e7d681808d2001b732240db8622bc80c97"
 dependencies = [
  "base64 0.22.1",
  "checkpointed-local-log",

@@ -354,7 +354,7 @@ mailbox could be read.
 
 A request this node sends over a mailbox is published on the relay for
 everyone to read, so the `nostr_evidence_request` tool sends only what a
-stranger may ask (`checkpoints` or a range of them, `history_card/1`, `history_card/2`) unless its caller says, with
+stranger may ask (`checkpoints`, `checkpoint_range`, `history_card/1`, `history_card/2`) unless its caller says, with
 `publish_subject: true`, that the subject is public, and never a request that
 carries a requester's identity.
 
@@ -452,15 +452,25 @@ With the defaults, the policy's `policy` member is exactly
   "share_history_segments": "counterparties",
   "share_record_at_completion": "counterparty",
   "share_standard_history": "off",
-  "stranger_safe": ["checkpoints", "history_card/1", "history_card/2"]
+  "stranger_safe": ["checkpoints", "history_card/1", "history_card/2", "checkpoint_range"]
 }
 ```
 
 `stranger_safe` and the commitment's `answers.derivations` name
 `history_card/1` only while a stranger's full `/1` answer over the node's own
-log fits `MAX_ANSWER_BYTES` (1 MiB, about 350 checkpoints). Past that size the
+log fits `MAX_ANSWER_BYTES` (1 MiB; between 300 and 340 checkpoints in the plugin's test corpus). Past that size the
 node drops `history_card/1` from both and keeps `history_card/2`; a log only
 grows, so this happens once and the digest moves once (Mesh-LLM/capsules-plugin#70).
+The same holds for the unranged `checkpoints` (ER -03 §8.1.3): its full answer is
+a little smaller than the card's, so it crosses later (between 360 and 370
+checkpoints in the plugin's test corpus). Past that size the
+node drops `checkpoints` from `stranger_safe`, `answers.derivations` and
+`answers.subjects`, and keeps `checkpoint_range` and the cards; a range of
+checkpoints, named as its own subject form, is answered whatever the size of the
+whole list. The digest moves once at each of the two crossings, and once at the
+upgrade that adds `checkpoint_range` to the default list. The measurement is
+kept in memory, so a request declined for being busy right after a restart may
+name the earlier digest until the node measures again.
 
 Each switch appears as the plugin reads it, so an unknown value appears as
 `off`. A test requires the default settings to give this file, so the file
@@ -475,9 +485,13 @@ change with it.
   from the switches it is answering under; nobody writes it down.
 - **What else the commitment says.** The ask goes to `mesh:<node_id>` over
   this plugin's evidence-request channel. The node answers `checkpoints`,
-  `history_card/1`, `history_card/2`, `exchange_corroboration/1` and `service_history/1` (the
-  last two by their definition digest), each to a counterparty under every setting; the
-  policy says who else gets them. It answers the subjects `checkpoints` and
+  `checkpoint_range`, `history_card/1`, `history_card/2`, `exchange_corroboration/1` and
+  `service_history/1` (the last two by their definition digest), each to a counterparty under
+  every setting while their full answers fit; the policy says who else gets them.
+  `checkpoints` and `history_card/1` leave `answers.derivations` (and, for `checkpoints`,
+  `answers.subjects`) at their own crossings, as above, and past it the size refusal applies to
+  everyone. It answers the subjects `checkpoints` (until
+  its full answer outgrows one answer, above), `checkpoint_range` and
   `full_history` (`full_history` only through a derivation), plus `record`,
   `exchange` and `correlation` unless `share_history_segments` is `off`.
   It answers without a person in the loop (`human_gated: false`), within a

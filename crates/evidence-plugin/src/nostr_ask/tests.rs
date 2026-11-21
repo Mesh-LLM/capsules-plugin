@@ -304,7 +304,7 @@ fn a_request_that_is_not_for_a_stranger_or_names_its_asker_is_not_sent_unless_pu
     assert!(with(checkpoints.clone(), false).is_ok());
     assert!(with(card, false).is_ok());
     // A range of checkpoints and the `/2` card are stranger-safe too.
-    let range = json!({"subject": {"checkpoints": [0, 3]}, "coverage": {"min_freshness": 1}});
+    let range = json!({"subject": {"checkpoint_range": [0, 3]}, "coverage": {"min_freshness": 1}});
     let card2 = json!({"subject": {"full_history": null}, "derivation": "history_card/2", "coverage": {"min_freshness": 1}});
     assert!(with(range, false).is_ok());
     assert!(with(card2, false).is_ok());

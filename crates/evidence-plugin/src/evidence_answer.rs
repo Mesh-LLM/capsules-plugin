@@ -44,7 +44,7 @@
 //!    carries no record, which the gate has nothing to decide for, has its
 //!    checkpoints counted against [`MAX_ANSWER_CHECKPOINTS`] as it is
 //!    resolved, before step 8. A `history_card/2` is not counted (it lists
-//!    O(log n + window) checkpoints); a ranged `checkpoints` is counted by
+//!    O(log n + window) checkpoints); a `checkpoint_range` is counted by
 //!    its own length, and past the anchor is `coverage_unsatisfiable`;
 //! 10. building and signing; an answer larger than [`MAX_ANSWER_BYTES`] on
 //!     the wire, or a fault building it → `capacity_exceeded`.
@@ -409,7 +409,7 @@ fn carries_records(req: &Request) -> bool {
 }
 
 /// Whether `req` asks for a stranger-safe answer (PRD R-8): `checkpoints`
-/// with no derivation (a range of them included), `history_card/1` or
+/// or `checkpoint_range` with no derivation, `history_card/1` or
 /// `history_card/2`, which is resolved only over
 /// `full_history` and `checkpoints` (`evidence_log`). Neither carries a
 /// record, so neither depends on who asks.
@@ -2145,7 +2145,7 @@ pub(crate) mod tests {
         );
     }
 
-    /// A ranged `checkpoints` request past the anchor is
+    /// A `checkpoint_range` request past the anchor is
     /// `coverage_unsatisfiable`, and one under a history card is
     /// `no_such_subject` (ER -03 §8.1.3), whoever asks.
     #[test]
@@ -2157,13 +2157,13 @@ pub(crate) mod tests {
             refused(&ask_by_default(dir.path(), &bytes))
         };
         assert_eq!(
-            ask(json!({"subject": {"checkpoints": [0, 2]}, "coverage": coverage})),
+            ask(json!({"subject": {"checkpoint_range": [0, 2]}, "coverage": coverage})),
             Some(Reason::CoverageUnsatisfiable)
         );
         for card in ["history_card/1", "history_card/2"] {
             assert_eq!(
                 ask(
-                    json!({"subject": {"checkpoints": [0, 1]}, "coverage": coverage, "derivation": card})
+                    json!({"subject": {"checkpoint_range": [0, 1]}, "coverage": coverage, "derivation": card})
                 ),
                 Some(Reason::NoSuchSubject),
                 "{card}"
@@ -2179,7 +2179,7 @@ pub(crate) mod tests {
         request
     }
 
-    /// `checkpoints`, a range of them, `history_card/1` and `history_card/2`
+    /// `checkpoints`, `checkpoint_range`, `history_card/1` and `history_card/2`
     /// (R-8; ER -03 §8.1).
     fn stranger_safe_requests() -> Vec<Value> {
         let mut requests = standard_history_requests()[..2].to_vec();
@@ -2187,7 +2187,7 @@ pub(crate) mod tests {
         requests.push(
             json!({"subject": {"full_history": null}, "coverage": coverage, "derivation": "history_card/2"}),
         );
-        requests.push(json!({"subject": {"checkpoints": [0, 1]}, "coverage": coverage}));
+        requests.push(json!({"subject": {"checkpoint_range": [0, 1]}, "coverage": coverage}));
         requests
     }
 

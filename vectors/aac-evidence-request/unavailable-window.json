@@ -1,0 +1,1404 @@
+{
+  "draft": "draft-mih-agent-evidence-request-02",
+  "provenance": "spec-derived",
+  "corpus": "unavailable-window",
+  "description": "Unavailable-window statements: which a reader recognizes, which cover an absence, and how the reader shows a covered absence.",
+  "notes": "Times are RFC 3339 UTC strings and compare chronologically. A statement's receipts are those on checkpoints covering it that attest a time; accepted is true when the receipt comes from a transparency service the reader accepts as independent of the responder. Only accepted receipts register a statement and give its registration time. An absence's waiting window runs from sent_at, when the requester sent the request, to closed_at, both included. A statement case expects whether a reader recognizes it (well formed, signed by the key named, registered) and its registration time. A display case expects which statements cover the absence, how the reader shows it, and per covering statement the reason class and whether it is labelled stated afterwards.",
+  "reason_classes": [
+    "flood",
+    "maintenance",
+    "outage",
+    "other_declared"
+  ],
+  "shown_as": "no answer; holder states unavailability",
+  "signature_profile": {
+    "note": "-02 section 4.7 item 3 leaves the signature format to the deployment. These vectors use the refusal.json profile: Ed25519 over the RFC 8785 serialization of the JSON object with exactly the members of the statement present among end, reason_class and start, signed with the primary key of refusal.json.",
+    "algorithm": "Ed25519",
+    "signed_members": [
+      "end",
+      "reason_class",
+      "start"
+    ],
+    "signing_body": "RFC 8785 (JCS) of the signed members",
+    "key_id": "raw Ed25519 public key, lowercase hex",
+    "sig": "Ed25519 signature, lowercase hex"
+  },
+  "count": 35,
+  "cases": [
+    {
+      "id": "uw-class-flood",
+      "kind": "statement",
+      "section": [
+        "§4.7 Unavailable-Window Statements"
+      ],
+      "description": "A registered statement with reason_class flood.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "statement": {
+        "start": "2026-10-29T10:00:00Z",
+        "end": "2026-10-29T10:40:00Z",
+        "reason_class": "flood",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "661d5d83ccfd4d7a51516118944ad3e76a8eb12900072a5802e1df5c2479302fc22ea4f1c3d653da4e8207d36c69cfb9aa92302fcd136fb3fb6f0c5819749d06"
+      },
+      "receipts": [
+        {
+          "time": "2026-10-29T10:06:00Z",
+          "accepted": true
+        }
+      ],
+      "expect": {
+        "recognized": true,
+        "registration_time": "2026-10-29T10:06:00Z",
+        "shown_reason": "flood"
+      }
+    },
+    {
+      "id": "uw-class-maintenance",
+      "kind": "statement",
+      "section": [
+        "§4.7 Unavailable-Window Statements"
+      ],
+      "description": "A registered statement with reason_class maintenance.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "statement": {
+        "start": "2026-10-29T10:00:00Z",
+        "end": "2026-10-29T10:40:00Z",
+        "reason_class": "maintenance",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "ba404a6134467919dbdfd64d63c46d531a137c3d275e309b5dd05783b4f54378214ebbed3c2ec091513c5414be11a976820ae23a40d01adeb7687deb0aa9a80d"
+      },
+      "receipts": [
+        {
+          "time": "2026-10-29T10:06:00Z",
+          "accepted": true
+        }
+      ],
+      "expect": {
+        "recognized": true,
+        "registration_time": "2026-10-29T10:06:00Z",
+        "shown_reason": "maintenance"
+      }
+    },
+    {
+      "id": "uw-class-outage",
+      "kind": "statement",
+      "section": [
+        "§4.7 Unavailable-Window Statements"
+      ],
+      "description": "A registered statement with reason_class outage.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "statement": {
+        "start": "2026-10-29T10:00:00Z",
+        "end": "2026-10-29T10:40:00Z",
+        "reason_class": "outage",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "3db96c8979dddb26295ee839ca9000206c8fa560672d702cfe2d35de9edfb2773e5a22c2a85bbeb2a95ec4921c4c96de2a9d522dd4a954bcb8ec3c6a06723d05"
+      },
+      "receipts": [
+        {
+          "time": "2026-10-29T10:06:00Z",
+          "accepted": true
+        }
+      ],
+      "expect": {
+        "recognized": true,
+        "registration_time": "2026-10-29T10:06:00Z",
+        "shown_reason": "outage"
+      }
+    },
+    {
+      "id": "uw-class-other_declared",
+      "kind": "statement",
+      "section": [
+        "§4.7 Unavailable-Window Statements"
+      ],
+      "description": "A registered statement with reason_class other_declared.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "statement": {
+        "start": "2026-10-29T10:00:00Z",
+        "end": "2026-10-29T10:40:00Z",
+        "reason_class": "other_declared",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "c7ad3f778bbea46725f47d3e44cf3c19ea327f090bf109594574e499a07402eee2c4cd8ed1cd0bc9595e2fc32bda95f474756eddb4321af3158fafed8f9e2903"
+      },
+      "receipts": [
+        {
+          "time": "2026-10-29T10:06:00Z",
+          "accepted": true
+        }
+      ],
+      "expect": {
+        "recognized": true,
+        "registration_time": "2026-10-29T10:06:00Z",
+        "shown_reason": "other_declared"
+      }
+    },
+    {
+      "id": "uw-neg-class-unlisted",
+      "kind": "statement",
+      "section": [
+        "§4.7 Unavailable-Window Statements"
+      ],
+      "description": "A reason_class outside the closed list: malformed.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "statement": {
+        "start": "2026-10-29T10:00:00Z",
+        "end": "2026-10-29T10:40:00Z",
+        "reason_class": "ddos",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "c2a6d43cacf1359aecea8d7b144eb8e37834a6ae956b1ada653fdb3fdcec8abf8394cb6230084cddff7101ec1c465ae87231e4eb3750c2dbd8c791d37bf1590a"
+      },
+      "receipts": [
+        {
+          "time": "2026-10-29T10:06:00Z",
+          "accepted": true
+        }
+      ],
+      "expect": {
+        "recognized": false,
+        "why": "malformed"
+      }
+    },
+    {
+      "id": "uw-neg-class-free-text",
+      "kind": "statement",
+      "section": [
+        "§4.7 Unavailable-Window Statements"
+      ],
+      "description": "A reason_class that is free text: malformed.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "statement": {
+        "start": "2026-10-29T10:00:00Z",
+        "end": "2026-10-29T10:40:00Z",
+        "reason_class": "flooded by a botnet",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "7baf99eb9d582606ca22c532ea47fcdd94bf586b9feb45e562ad2c7053f5813be4b1eed0d1d95d5a4bd681bae130982261cb17db54ef7d40b81262649c3dc401"
+      },
+      "receipts": [
+        {
+          "time": "2026-10-29T10:06:00Z",
+          "accepted": true
+        }
+      ],
+      "expect": {
+        "recognized": false,
+        "why": "malformed"
+      }
+    },
+    {
+      "id": "uw-neg-class-wrong-case",
+      "kind": "statement",
+      "section": [
+        "§4.7 Unavailable-Window Statements"
+      ],
+      "description": "A reason_class differing from a listed token only in case: malformed (exact token comparison).",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "statement": {
+        "start": "2026-10-29T10:00:00Z",
+        "end": "2026-10-29T10:40:00Z",
+        "reason_class": "Flood",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "0f732d1d72b101c584422402d58ecaae6248b5da453b12be9e2a18f8f230d1cd6ad2ae8e3d5a30f3170c4712327f6ef7e95f48e1a304075b198dd485fe86e504"
+      },
+      "receipts": [
+        {
+          "time": "2026-10-29T10:06:00Z",
+          "accepted": true
+        }
+      ],
+      "expect": {
+        "recognized": false,
+        "why": "malformed"
+      }
+    },
+    {
+      "id": "uw-neg-class-missing",
+      "kind": "statement",
+      "section": [
+        "§4.7 Unavailable-Window Statements"
+      ],
+      "description": "A statement with no reason_class: malformed.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "statement": {
+        "start": "2026-10-29T10:00:00Z",
+        "end": "2026-10-29T10:40:00Z",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "95c6f2262277790ef2e85d80aa168a4fa0ab1e1df2e1753eb20690e7c2d21ef6d43487d955acd676308562a7a8308315bdab799c07e610640957b2fd9396bc01"
+      },
+      "receipts": [
+        {
+          "time": "2026-10-29T10:06:00Z",
+          "accepted": true
+        }
+      ],
+      "expect": {
+        "recognized": false,
+        "why": "malformed"
+      }
+    },
+    {
+      "id": "uw-extra-member-not-the-reason",
+      "kind": "statement",
+      "section": [
+        "§4.7 Unavailable-Window Statements"
+      ],
+      "description": "An extra prose member beside a listed class: the statement is recognized, and the reader shows only the class as the reason.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "statement": {
+        "start": "2026-10-29T10:00:00Z",
+        "end": "2026-10-29T10:40:00Z",
+        "reason_class": "flood",
+        "detail": "a botnet hit us",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "661d5d83ccfd4d7a51516118944ad3e76a8eb12900072a5802e1df5c2479302fc22ea4f1c3d653da4e8207d36c69cfb9aa92302fcd136fb3fb6f0c5819749d06"
+      },
+      "receipts": [
+        {
+          "time": "2026-10-29T10:06:00Z",
+          "accepted": true
+        }
+      ],
+      "expect": {
+        "recognized": true,
+        "registration_time": "2026-10-29T10:06:00Z",
+        "shown_reason": "flood"
+      }
+    },
+    {
+      "id": "uw-neg-start-missing",
+      "kind": "statement",
+      "section": [
+        "§4.7 Unavailable-Window Statements"
+      ],
+      "description": "A statement with no start: malformed.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "statement": {
+        "end": "2026-10-29T10:40:00Z",
+        "reason_class": "flood",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "48a1e47222421489490b9b0cb34504a3f43a9b3bdd4b04b5a12cc60af08593c12f10219880d7fa0d0efc533645160ae412c3e0ee8173c572fed72c7210c2e70f"
+      },
+      "receipts": [
+        {
+          "time": "2026-10-29T10:06:00Z",
+          "accepted": true
+        }
+      ],
+      "expect": {
+        "recognized": false,
+        "why": "malformed"
+      }
+    },
+    {
+      "id": "uw-neg-end-missing",
+      "kind": "statement",
+      "section": [
+        "§4.7 Unavailable-Window Statements"
+      ],
+      "description": "A statement with no end is malformed, not open-ended.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "statement": {
+        "start": "2026-10-29T10:00:00Z",
+        "reason_class": "flood",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "c712d1723d9ad6c3c7a3fdba7b387109d01d2085e17eaa4f6cf008e777f53c972bf6f5f1987ac6841b684a3f6f06784ff7b912f66e136bf004c5d3e0dca8a507"
+      },
+      "receipts": [
+        {
+          "time": "2026-10-29T10:06:00Z",
+          "accepted": true
+        }
+      ],
+      "expect": {
+        "recognized": false,
+        "why": "malformed"
+      }
+    },
+    {
+      "id": "uw-neg-time-unparseable",
+      "kind": "statement",
+      "section": [
+        "§4.7 Unavailable-Window Statements"
+      ],
+      "description": "An end that is not a time in the deployment's representation: malformed.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "statement": {
+        "start": "2026-10-29T10:00:00Z",
+        "end": "later today",
+        "reason_class": "flood",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "b97be172927adea93082c50279b1360dd94a694ee9d8c1869f66b95f85fb387060d34f5e64970bc6093be6e1d4d57184d8cdc9236779da62902a052572185d0c"
+      },
+      "receipts": [
+        {
+          "time": "2026-10-29T10:06:00Z",
+          "accepted": true
+        }
+      ],
+      "expect": {
+        "recognized": false,
+        "why": "malformed"
+      }
+    },
+    {
+      "id": "uw-neg-end-before-start",
+      "kind": "statement",
+      "section": [
+        "§4.7 Unavailable-Window Statements"
+      ],
+      "description": "end earlier than start: malformed.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "statement": {
+        "start": "2026-10-29T10:40:00Z",
+        "end": "2026-10-29T10:00:00Z",
+        "reason_class": "flood",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "390b737ff24cf81ecc035a323a38ef65c734d437af9ca1675509808df9e50533a382ef8ddb3139c48ad3ec7bab13d73f2a8e83f198fb4b8e2bd485f2c7e4b70e"
+      },
+      "receipts": [
+        {
+          "time": "2026-10-29T10:06:00Z",
+          "accepted": true
+        }
+      ],
+      "expect": {
+        "recognized": false,
+        "why": "malformed"
+      }
+    },
+    {
+      "id": "uw-end-equals-start",
+      "kind": "statement",
+      "section": [
+        "§4.7 Unavailable-Window Statements"
+      ],
+      "description": "end equal to start: well formed (end MUST NOT be earlier).",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "statement": {
+        "start": "2026-10-29T10:00:00Z",
+        "end": "2026-10-29T10:00:00Z",
+        "reason_class": "flood",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "c450582c1d6971d155545a5ecc45d359dc79568ab53917180437102984581658bde144b8f83164746997614cffa69ec78edad15aa308508cc951a3e5f68d460f"
+      },
+      "receipts": [
+        {
+          "time": "2026-10-29T10:06:00Z",
+          "accepted": true
+        }
+      ],
+      "expect": {
+        "recognized": true,
+        "registration_time": "2026-10-29T10:06:00Z",
+        "shown_reason": "flood"
+      }
+    },
+    {
+      "id": "uw-neg-bad-signature",
+      "kind": "statement",
+      "section": [
+        "§4.7 Unavailable-Window Statements"
+      ],
+      "description": "A statement whose signature does not verify is not the responder's statement.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "statement": {
+        "start": "2026-10-29T10:00:00Z",
+        "end": "2026-10-29T10:40:00Z",
+        "reason_class": "flood",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "061d5d83ccfd4d7a51516118944ad3e76a8eb12900072a5802e1df5c2479302fc22ea4f1c3d653da4e8207d36c69cfb9aa92302fcd136fb3fb6f0c5819749d06"
+      },
+      "receipts": [
+        {
+          "time": "2026-10-29T10:06:00Z",
+          "accepted": true
+        }
+      ],
+      "expect": {
+        "recognized": false,
+        "why": "not_signed_by_responder"
+      }
+    },
+    {
+      "id": "uw-neg-other-key",
+      "kind": "statement",
+      "section": [
+        "§4.7 Unavailable-Window Statements"
+      ],
+      "description": "A statement validly signed by a key other than the responder's.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "statement": {
+        "start": "2026-10-29T10:00:00Z",
+        "end": "2026-10-29T10:40:00Z",
+        "reason_class": "flood",
+        "key_id": "c4435ad997cd46b4d7f840ababafcecbf51f7eec05e7c1094247c7b931f93c9e",
+        "sig": "f77be710f787d62caeee9021277d1ee6025afe2ef0169372d9fc6a6147b7a88e104fb2f5dbd0bb033814aad1078eb6207ffa6d644ecbd8151d777fd194323104"
+      },
+      "receipts": [
+        {
+          "time": "2026-10-29T10:06:00Z",
+          "accepted": true
+        }
+      ],
+      "expect": {
+        "recognized": false,
+        "why": "not_signed_by_responder"
+      }
+    },
+    {
+      "id": "uw-neg-unregistered",
+      "kind": "statement",
+      "section": [
+        "§4.7 Unavailable-Window Statements"
+      ],
+      "description": "A statement no receipt covers is not registered.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "statement": {
+        "start": "2026-10-29T10:00:00Z",
+        "end": "2026-10-29T10:40:00Z",
+        "reason_class": "flood",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "661d5d83ccfd4d7a51516118944ad3e76a8eb12900072a5802e1df5c2479302fc22ea4f1c3d653da4e8207d36c69cfb9aa92302fcd136fb3fb6f0c5819749d06"
+      },
+      "receipts": [],
+      "expect": {
+        "recognized": false,
+        "why": "not_registered"
+      }
+    },
+    {
+      "id": "uw-neg-receipt-not-accepted",
+      "kind": "statement",
+      "section": [
+        "§4.7 Unavailable-Window Statements"
+      ],
+      "description": "The only receipt comes from a transparency service the responder operates: not accepted, so the statement is not registered.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "statement": {
+        "start": "2026-10-29T10:00:00Z",
+        "end": "2026-10-29T10:40:00Z",
+        "reason_class": "flood",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "661d5d83ccfd4d7a51516118944ad3e76a8eb12900072a5802e1df5c2479302fc22ea4f1c3d653da4e8207d36c69cfb9aa92302fcd136fb3fb6f0c5819749d06"
+      },
+      "receipts": [
+        {
+          "time": "2026-10-29T10:06:00Z",
+          "accepted": false
+        }
+      ],
+      "expect": {
+        "recognized": false,
+        "why": "not_registered"
+      }
+    },
+    {
+      "id": "uw-registration-earliest-receipt",
+      "kind": "statement",
+      "section": [
+        "§4.7 Unavailable-Window Statements"
+      ],
+      "description": "Two receipts: the registration time is the earliest.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "statement": {
+        "start": "2026-10-29T10:00:00Z",
+        "end": "2026-10-29T10:40:00Z",
+        "reason_class": "flood",
+        "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+        "sig": "661d5d83ccfd4d7a51516118944ad3e76a8eb12900072a5802e1df5c2479302fc22ea4f1c3d653da4e8207d36c69cfb9aa92302fcd136fb3fb6f0c5819749d06"
+      },
+      "receipts": [
+        {
+          "time": "2026-10-29T10:30:00Z",
+          "accepted": true
+        },
+        {
+          "time": "2026-10-29T10:06:00Z",
+          "accepted": true
+        }
+      ],
+      "expect": {
+        "recognized": true,
+        "registration_time": "2026-10-29T10:06:00Z",
+        "shown_reason": "flood"
+      }
+    },
+    {
+      "id": "uw-show-stated-before-close",
+      "kind": "display",
+      "section": [
+        "§4.7 Unavailable-Window Statements",
+        "§4.4 Recorded Absence",
+        "§4.5 The Three-State Discipline",
+        "§4.6 Mapping to a Requirement-Satisfaction Status"
+      ],
+      "description": "The worked example's requester A: a flood statement registered at 10:06 covers an absence whose window closed at 10:20.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "absence": {
+        "sent_at": "2026-10-29T10:10:00Z",
+        "closed_at": "2026-10-29T10:20:00Z",
+        "received": "nothing"
+      },
+      "statements": [
+        {
+          "id": "s1",
+          "statement": {
+            "start": "2026-10-29T10:00:00Z",
+            "end": "2026-10-29T10:40:00Z",
+            "reason_class": "flood",
+            "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+            "sig": "661d5d83ccfd4d7a51516118944ad3e76a8eb12900072a5802e1df5c2479302fc22ea4f1c3d653da4e8207d36c69cfb9aa92302fcd136fb3fb6f0c5819749d06"
+          },
+          "receipts": [
+            {
+              "time": "2026-10-29T10:06:00Z",
+              "accepted": true
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "state": "recorded_absence",
+        "covered_by": [
+          "s1"
+        ],
+        "shown_as": "no answer; holder states unavailability",
+        "labels": {
+          "s1": {
+            "reason_class": "flood",
+            "registration_time": "2026-10-29T10:06:00Z",
+            "stated_afterwards": false,
+            "stated_period": [
+              "2026-10-29T10:00:00Z",
+              "2026-10-29T10:40:00Z"
+            ]
+          }
+        },
+        "must_not_show_as": [
+          "refusal",
+          "proof_of_attack",
+          "absence_without_statement"
+        ]
+      }
+    },
+    {
+      "id": "uw-show-stated-afterwards",
+      "kind": "display",
+      "section": [
+        "§4.7 Unavailable-Window Statements",
+        "§4.4 Recorded Absence",
+        "§4.5 The Three-State Discipline",
+        "§4.6 Mapping to a Requirement-Satisfaction Status"
+      ],
+      "description": "The worked example's requester B: an outage statement registered at 11:31 covers an absence whose window closed at 09:55, so it is stated afterwards.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "absence": {
+        "sent_at": "2026-10-29T09:40:00Z",
+        "closed_at": "2026-10-29T09:55:00Z",
+        "received": "nothing"
+      },
+      "statements": [
+        {
+          "id": "s1",
+          "statement": {
+            "start": "2026-10-29T10:00:00Z",
+            "end": "2026-10-29T10:40:00Z",
+            "reason_class": "flood",
+            "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+            "sig": "661d5d83ccfd4d7a51516118944ad3e76a8eb12900072a5802e1df5c2479302fc22ea4f1c3d653da4e8207d36c69cfb9aa92302fcd136fb3fb6f0c5819749d06"
+          },
+          "receipts": [
+            {
+              "time": "2026-10-29T10:06:00Z",
+              "accepted": true
+            }
+          ]
+        },
+        {
+          "id": "s2",
+          "statement": {
+            "start": "2026-10-29T09:30:00Z",
+            "end": "2026-10-29T09:58:00Z",
+            "reason_class": "outage",
+            "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+            "sig": "3df5547d1ed051c0cb11aab4c13fb93f952e92ccfdb86149594158210abe54f3f405eff9feada7e0feb4ffa736766e8e737fa536cdedd5481f5c2836742f7f06"
+          },
+          "receipts": [
+            {
+              "time": "2026-10-29T11:31:00Z",
+              "accepted": true
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "state": "recorded_absence",
+        "covered_by": [
+          "s2"
+        ],
+        "shown_as": "no answer; holder states unavailability",
+        "labels": {
+          "s2": {
+            "reason_class": "outage",
+            "registration_time": "2026-10-29T11:31:00Z",
+            "stated_afterwards": true,
+            "stated_period": [
+              "2026-10-29T09:30:00Z",
+              "2026-10-29T09:58:00Z"
+            ]
+          }
+        },
+        "must_not_show_as": [
+          "refusal",
+          "proof_of_attack",
+          "absence_without_statement"
+        ]
+      }
+    },
+    {
+      "id": "uw-backdated-receipt-not-accepted",
+      "kind": "display",
+      "section": [
+        "§4.7 Unavailable-Window Statements",
+        "§4.4 Recorded Absence",
+        "§4.6 Mapping to a Requirement-Satisfaction Status"
+      ],
+      "description": "Requester B again, but the outage statement also carries a receipt dated 09:50 from a service the responder runs. Only the accepted 11:31 receipt counts, so the statement is still stated afterwards.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "absence": {
+        "sent_at": "2026-10-29T09:40:00Z",
+        "closed_at": "2026-10-29T09:55:00Z",
+        "received": "nothing"
+      },
+      "statements": [
+        {
+          "id": "s2",
+          "statement": {
+            "start": "2026-10-29T09:30:00Z",
+            "end": "2026-10-29T09:58:00Z",
+            "reason_class": "outage",
+            "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+            "sig": "3df5547d1ed051c0cb11aab4c13fb93f952e92ccfdb86149594158210abe54f3f405eff9feada7e0feb4ffa736766e8e737fa536cdedd5481f5c2836742f7f06"
+          },
+          "receipts": [
+            {
+              "time": "2026-10-29T09:50:00Z",
+              "accepted": false
+            },
+            {
+              "time": "2026-10-29T11:31:00Z",
+              "accepted": true
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "state": "recorded_absence",
+        "covered_by": [
+          "s2"
+        ],
+        "shown_as": "no answer; holder states unavailability",
+        "labels": {
+          "s2": {
+            "reason_class": "outage",
+            "registration_time": "2026-10-29T11:31:00Z",
+            "stated_afterwards": true,
+            "stated_period": [
+              "2026-10-29T09:30:00Z",
+              "2026-10-29T09:58:00Z"
+            ]
+          }
+        },
+        "must_not_show_as": [
+          "refusal",
+          "proof_of_attack",
+          "absence_without_statement"
+        ]
+      }
+    },
+    {
+      "id": "uw-registered-at-close",
+      "kind": "display",
+      "section": [
+        "§4.7 Unavailable-Window Statements",
+        "§4.4 Recorded Absence",
+        "§4.6 Mapping to a Requirement-Satisfaction Status"
+      ],
+      "description": "Registration time equal to the window's close is not later than it: not stated afterwards.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "absence": {
+        "sent_at": "2026-10-29T10:10:00Z",
+        "closed_at": "2026-10-29T10:20:00Z",
+        "received": "nothing"
+      },
+      "statements": [
+        {
+          "id": "s1",
+          "statement": {
+            "start": "2026-10-29T10:00:00Z",
+            "end": "2026-10-29T10:40:00Z",
+            "reason_class": "flood",
+            "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+            "sig": "661d5d83ccfd4d7a51516118944ad3e76a8eb12900072a5802e1df5c2479302fc22ea4f1c3d653da4e8207d36c69cfb9aa92302fcd136fb3fb6f0c5819749d06"
+          },
+          "receipts": [
+            {
+              "time": "2026-10-29T10:20:00Z",
+              "accepted": true
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "state": "recorded_absence",
+        "covered_by": [
+          "s1"
+        ],
+        "shown_as": "no answer; holder states unavailability",
+        "labels": {
+          "s1": {
+            "reason_class": "flood",
+            "registration_time": "2026-10-29T10:20:00Z",
+            "stated_afterwards": false,
+            "stated_period": [
+              "2026-10-29T10:00:00Z",
+              "2026-10-29T10:40:00Z"
+            ]
+          }
+        },
+        "must_not_show_as": [
+          "refusal",
+          "proof_of_attack",
+          "absence_without_statement"
+        ]
+      }
+    },
+    {
+      "id": "uw-registered-after-close-by-a-second",
+      "kind": "display",
+      "section": [
+        "§4.7 Unavailable-Window Statements",
+        "§4.4 Recorded Absence",
+        "§4.6 Mapping to a Requirement-Satisfaction Status"
+      ],
+      "description": "Registration one second after the close: stated afterwards.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "absence": {
+        "sent_at": "2026-10-29T10:10:00Z",
+        "closed_at": "2026-10-29T10:20:00Z",
+        "received": "nothing"
+      },
+      "statements": [
+        {
+          "id": "s1",
+          "statement": {
+            "start": "2026-10-29T10:00:00Z",
+            "end": "2026-10-29T10:40:00Z",
+            "reason_class": "flood",
+            "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+            "sig": "661d5d83ccfd4d7a51516118944ad3e76a8eb12900072a5802e1df5c2479302fc22ea4f1c3d653da4e8207d36c69cfb9aa92302fcd136fb3fb6f0c5819749d06"
+          },
+          "receipts": [
+            {
+              "time": "2026-10-29T10:20:01Z",
+              "accepted": true
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "state": "recorded_absence",
+        "covered_by": [
+          "s1"
+        ],
+        "shown_as": "no answer; holder states unavailability",
+        "labels": {
+          "s1": {
+            "reason_class": "flood",
+            "registration_time": "2026-10-29T10:20:01Z",
+            "stated_afterwards": true,
+            "stated_period": [
+              "2026-10-29T10:00:00Z",
+              "2026-10-29T10:40:00Z"
+            ]
+          }
+        },
+        "must_not_show_as": [
+          "refusal",
+          "proof_of_attack",
+          "absence_without_statement"
+        ]
+      }
+    },
+    {
+      "id": "uw-long-period-shown",
+      "kind": "display",
+      "section": [
+        "§4.7 Unavailable-Window Statements",
+        "§4.4 Recorded Absence",
+        "§4.6 Mapping to a Requirement-Satisfaction Status"
+      ],
+      "description": "A flood statement stating a year-long period: the reader shows that period, so it does not read like a 40-minute window.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "absence": {
+        "sent_at": "2026-10-29T10:10:00Z",
+        "closed_at": "2026-10-29T10:20:00Z",
+        "received": "nothing"
+      },
+      "statements": [
+        {
+          "id": "s1",
+          "statement": {
+            "start": "2026-01-01T00:00:00Z",
+            "end": "2026-12-31T23:59:59Z",
+            "reason_class": "flood",
+            "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+            "sig": "b936d1b224d9e5accf7feb81dd6efd77785272ef2bac4fe939ece66474ad4fc8c27c77fece1ee2db60fddd9eb525ce1dbe43b40d160c81fe8080c938a8403b01"
+          },
+          "receipts": [
+            {
+              "time": "2026-10-29T10:06:00Z",
+              "accepted": true
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "state": "recorded_absence",
+        "covered_by": [
+          "s1"
+        ],
+        "shown_as": "no answer; holder states unavailability",
+        "labels": {
+          "s1": {
+            "reason_class": "flood",
+            "registration_time": "2026-10-29T10:06:00Z",
+            "stated_afterwards": false,
+            "stated_period": [
+              "2026-01-01T00:00:00Z",
+              "2026-12-31T23:59:59Z"
+            ]
+          }
+        },
+        "must_not_show_as": [
+          "refusal",
+          "proof_of_attack",
+          "absence_without_statement"
+        ]
+      }
+    },
+    {
+      "id": "uw-partial-overlap",
+      "kind": "display",
+      "section": [
+        "§4.7 Unavailable-Window Statements",
+        "§4.4 Recorded Absence",
+        "§4.6 Mapping to a Requirement-Satisfaction Status"
+      ],
+      "description": "A statement that ends inside the waiting window still covers it.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "absence": {
+        "sent_at": "2026-10-29T10:10:00Z",
+        "closed_at": "2026-10-29T10:20:00Z",
+        "received": "nothing"
+      },
+      "statements": [
+        {
+          "id": "s1",
+          "statement": {
+            "start": "2026-10-29T09:00:00Z",
+            "end": "2026-10-29T10:12:00Z",
+            "reason_class": "maintenance",
+            "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+            "sig": "0c5b088da57d21c0a2e24104bf51bf375de40eb4c4790116700d619a66a2d34e91361f702f4c72c556a8c7aaf91585d01e60cb5d5f27a08ac38f0cf8b52eef03"
+          },
+          "receipts": [
+            {
+              "time": "2026-10-29T08:55:00Z",
+              "accepted": true
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "state": "recorded_absence",
+        "covered_by": [
+          "s1"
+        ],
+        "shown_as": "no answer; holder states unavailability",
+        "labels": {
+          "s1": {
+            "reason_class": "maintenance",
+            "registration_time": "2026-10-29T08:55:00Z",
+            "stated_afterwards": false,
+            "stated_period": [
+              "2026-10-29T09:00:00Z",
+              "2026-10-29T10:12:00Z"
+            ]
+          }
+        },
+        "must_not_show_as": [
+          "refusal",
+          "proof_of_attack",
+          "absence_without_statement"
+        ]
+      }
+    },
+    {
+      "id": "uw-touching-boundary",
+      "kind": "display",
+      "section": [
+        "§4.7 Unavailable-Window Statements",
+        "§4.4 Recorded Absence",
+        "§4.6 Mapping to a Requirement-Satisfaction Status"
+      ],
+      "description": "A statement whose end equals the time the request was sent shares one instant with the window: it covers.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "absence": {
+        "sent_at": "2026-10-29T10:10:00Z",
+        "closed_at": "2026-10-29T10:20:00Z",
+        "received": "nothing"
+      },
+      "statements": [
+        {
+          "id": "s1",
+          "statement": {
+            "start": "2026-10-29T09:00:00Z",
+            "end": "2026-10-29T10:10:00Z",
+            "reason_class": "outage",
+            "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+            "sig": "31e575d228ec2c70039817e2cf80e5eba43117523d610e2a0fc937c513b6a5462dbbbf4f6f1c114df3061e12140bc55d62bca1c364409c5b5060373158463501"
+          },
+          "receipts": [
+            {
+              "time": "2026-10-29T10:11:00Z",
+              "accepted": true
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "state": "recorded_absence",
+        "covered_by": [
+          "s1"
+        ],
+        "shown_as": "no answer; holder states unavailability",
+        "labels": {
+          "s1": {
+            "reason_class": "outage",
+            "registration_time": "2026-10-29T10:11:00Z",
+            "stated_afterwards": false,
+            "stated_period": [
+              "2026-10-29T09:00:00Z",
+              "2026-10-29T10:10:00Z"
+            ]
+          }
+        },
+        "must_not_show_as": [
+          "refusal",
+          "proof_of_attack",
+          "absence_without_statement"
+        ]
+      }
+    },
+    {
+      "id": "uw-no-overlap",
+      "kind": "display",
+      "section": [
+        "§4.7 Unavailable-Window Statements",
+        "§4.4 Recorded Absence"
+      ],
+      "description": "A statement that ends before the request was sent does not cover the absence: the reader shows the absence as it is.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "absence": {
+        "sent_at": "2026-10-29T10:10:00Z",
+        "closed_at": "2026-10-29T10:20:00Z",
+        "received": "nothing"
+      },
+      "statements": [
+        {
+          "id": "s1",
+          "statement": {
+            "start": "2026-10-29T09:00:00Z",
+            "end": "2026-10-29T10:09:59Z",
+            "reason_class": "outage",
+            "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+            "sig": "1f52e80e4ce739a3d4b17299565489bc513c1d31ae1ee2e51f1afc05dd48bddebbf5d024338828c956a04f25bc32563eab10dbb494b6413c31e493ce278a5306"
+          },
+          "receipts": [
+            {
+              "time": "2026-10-29T10:11:00Z",
+              "accepted": true
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "state": "recorded_absence",
+        "covered_by": [],
+        "shown_as": "recorded_absence",
+        "labels": {},
+        "must_not_show_as": [
+          "refusal",
+          "proof_of_attack"
+        ]
+      }
+    },
+    {
+      "id": "uw-other-key-does-not-cover",
+      "kind": "display",
+      "section": [
+        "§4.7 Unavailable-Window Statements",
+        "§4.4 Recorded Absence"
+      ],
+      "description": "A statement signed by another key does not cover an absence from this responder.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "absence": {
+        "sent_at": "2026-10-29T10:10:00Z",
+        "closed_at": "2026-10-29T10:20:00Z",
+        "received": "nothing"
+      },
+      "statements": [
+        {
+          "id": "s1",
+          "statement": {
+            "start": "2026-10-29T10:00:00Z",
+            "end": "2026-10-29T10:40:00Z",
+            "reason_class": "flood",
+            "key_id": "c4435ad997cd46b4d7f840ababafcecbf51f7eec05e7c1094247c7b931f93c9e",
+            "sig": "f77be710f787d62caeee9021277d1ee6025afe2ef0169372d9fc6a6147b7a88e104fb2f5dbd0bb033814aad1078eb6207ffa6d644ecbd8151d777fd194323104"
+          },
+          "receipts": [
+            {
+              "time": "2026-10-29T10:06:00Z",
+              "accepted": true
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "state": "recorded_absence",
+        "covered_by": [],
+        "shown_as": "recorded_absence",
+        "labels": {},
+        "must_not_show_as": [
+          "refusal",
+          "proof_of_attack"
+        ]
+      }
+    },
+    {
+      "id": "uw-unregistered-does-not-cover",
+      "kind": "display",
+      "section": [
+        "§4.7 Unavailable-Window Statements",
+        "§4.4 Recorded Absence"
+      ],
+      "description": "An unregistered statement does not cover.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "absence": {
+        "sent_at": "2026-10-29T10:10:00Z",
+        "closed_at": "2026-10-29T10:20:00Z",
+        "received": "nothing"
+      },
+      "statements": [
+        {
+          "id": "s1",
+          "statement": {
+            "start": "2026-10-29T10:00:00Z",
+            "end": "2026-10-29T10:40:00Z",
+            "reason_class": "flood",
+            "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+            "sig": "661d5d83ccfd4d7a51516118944ad3e76a8eb12900072a5802e1df5c2479302fc22ea4f1c3d653da4e8207d36c69cfb9aa92302fcd136fb3fb6f0c5819749d06"
+          },
+          "receipts": []
+        }
+      ],
+      "expect": {
+        "state": "recorded_absence",
+        "covered_by": [],
+        "shown_as": "recorded_absence",
+        "labels": {},
+        "must_not_show_as": [
+          "refusal",
+          "proof_of_attack"
+        ]
+      }
+    },
+    {
+      "id": "uw-malformed-does-not-cover",
+      "kind": "display",
+      "section": [
+        "§4.7 Unavailable-Window Statements",
+        "§4.4 Recorded Absence"
+      ],
+      "description": "A statement with an unlisted class does not cover.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "absence": {
+        "sent_at": "2026-10-29T10:10:00Z",
+        "closed_at": "2026-10-29T10:20:00Z",
+        "received": "nothing"
+      },
+      "statements": [
+        {
+          "id": "s1",
+          "statement": {
+            "start": "2026-10-29T10:00:00Z",
+            "end": "2026-10-29T10:40:00Z",
+            "reason_class": "ddos",
+            "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+            "sig": "c2a6d43cacf1359aecea8d7b144eb8e37834a6ae956b1ada653fdb3fdcec8abf8394cb6230084cddff7101ec1c465ae87231e4eb3750c2dbd8c791d37bf1590a"
+          },
+          "receipts": [
+            {
+              "time": "2026-10-29T10:06:00Z",
+              "accepted": true
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "state": "recorded_absence",
+        "covered_by": [],
+        "shown_as": "recorded_absence",
+        "labels": {},
+        "must_not_show_as": [
+          "refusal",
+          "proof_of_attack"
+        ]
+      }
+    },
+    {
+      "id": "uw-two-statements-cover",
+      "kind": "display",
+      "section": [
+        "§4.7 Unavailable-Window Statements",
+        "§4.4 Recorded Absence",
+        "§4.6 Mapping to a Requirement-Satisfaction Status"
+      ],
+      "description": "Two statements cover one absence: the reader labels each.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "absence": {
+        "sent_at": "2026-10-29T10:10:00Z",
+        "closed_at": "2026-10-29T10:20:00Z",
+        "received": "nothing"
+      },
+      "statements": [
+        {
+          "id": "s1",
+          "statement": {
+            "start": "2026-10-29T10:00:00Z",
+            "end": "2026-10-29T10:40:00Z",
+            "reason_class": "flood",
+            "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+            "sig": "661d5d83ccfd4d7a51516118944ad3e76a8eb12900072a5802e1df5c2479302fc22ea4f1c3d653da4e8207d36c69cfb9aa92302fcd136fb3fb6f0c5819749d06"
+          },
+          "receipts": [
+            {
+              "time": "2026-10-29T10:06:00Z",
+              "accepted": true
+            }
+          ]
+        },
+        {
+          "id": "s2",
+          "statement": {
+            "start": "2026-10-29T10:15:00Z",
+            "end": "2026-10-29T11:00:00Z",
+            "reason_class": "maintenance",
+            "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+            "sig": "307537e773ec7a21b588ec83aac92f2407ad3bafce2a9e69627ed11312f5a179d9e8313883d9022dfc36c4dd293deb1805370b092b8c311193c7c89a7783ed08"
+          },
+          "receipts": [
+            {
+              "time": "2026-10-29T12:00:00Z",
+              "accepted": true
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "state": "recorded_absence",
+        "covered_by": [
+          "s1",
+          "s2"
+        ],
+        "shown_as": "no answer; holder states unavailability",
+        "labels": {
+          "s1": {
+            "reason_class": "flood",
+            "registration_time": "2026-10-29T10:06:00Z",
+            "stated_afterwards": false,
+            "stated_period": [
+              "2026-10-29T10:00:00Z",
+              "2026-10-29T10:40:00Z"
+            ]
+          },
+          "s2": {
+            "reason_class": "maintenance",
+            "registration_time": "2026-10-29T12:00:00Z",
+            "stated_afterwards": true,
+            "stated_period": [
+              "2026-10-29T10:15:00Z",
+              "2026-10-29T11:00:00Z"
+            ]
+          }
+        },
+        "must_not_show_as": [
+          "refusal",
+          "proof_of_attack",
+          "absence_without_statement"
+        ]
+      }
+    },
+    {
+      "id": "uw-commitment-unchanged",
+      "kind": "display",
+      "section": [
+        "§4.7 Unavailable-Window Statements",
+        "§4.4 Recorded Absence",
+        "§9 Retention Commitments",
+        "§4.6 Mapping to a Requirement-Satisfaction Status"
+      ],
+      "description": "An absence citing a retention commitment and covered by a statement still cites the commitment and is still attributable to the responder.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "absence": {
+        "sent_at": "2026-10-29T10:10:00Z",
+        "closed_at": "2026-10-29T10:20:00Z",
+        "received": "nothing",
+        "retention_commitment": "in_force"
+      },
+      "statements": [
+        {
+          "id": "s1",
+          "statement": {
+            "start": "2026-10-29T10:00:00Z",
+            "end": "2026-10-29T10:40:00Z",
+            "reason_class": "flood",
+            "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+            "sig": "661d5d83ccfd4d7a51516118944ad3e76a8eb12900072a5802e1df5c2479302fc22ea4f1c3d653da4e8207d36c69cfb9aa92302fcd136fb3fb6f0c5819749d06"
+          },
+          "receipts": [
+            {
+              "time": "2026-10-29T10:06:00Z",
+              "accepted": true
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "state": "recorded_absence",
+        "covered_by": [
+          "s1"
+        ],
+        "shown_as": "no answer; holder states unavailability",
+        "labels": {
+          "s1": {
+            "reason_class": "flood",
+            "registration_time": "2026-10-29T10:06:00Z",
+            "stated_afterwards": false,
+            "stated_period": [
+              "2026-10-29T10:00:00Z",
+              "2026-10-29T10:40:00Z"
+            ]
+          }
+        },
+        "must_not_show_as": [
+          "refusal",
+          "proof_of_attack",
+          "absence_without_statement"
+        ],
+        "retention_classification": "attributable_absence"
+      }
+    },
+    {
+      "id": "uw-refusal-not-affected",
+      "kind": "display",
+      "section": [
+        "§4.7 Unavailable-Window Statements",
+        "§4.5 The Three-State Discipline"
+      ],
+      "description": "A request that received a signed refusal has no absence: a statement over the same period changes nothing.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "absence": {
+        "sent_at": "2026-10-29T10:10:00Z",
+        "closed_at": "2026-10-29T10:20:00Z",
+        "received": "refusal",
+        "refusal_reason": "policy_declined"
+      },
+      "statements": [
+        {
+          "id": "s1",
+          "statement": {
+            "start": "2026-10-29T10:00:00Z",
+            "end": "2026-10-29T10:40:00Z",
+            "reason_class": "flood",
+            "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+            "sig": "661d5d83ccfd4d7a51516118944ad3e76a8eb12900072a5802e1df5c2479302fc22ea4f1c3d653da4e8207d36c69cfb9aa92302fcd136fb3fb6f0c5819749d06"
+          },
+          "receipts": [
+            {
+              "time": "2026-10-29T10:06:00Z",
+              "accepted": true
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "state": "refusal",
+        "covered_by": [],
+        "shown_as": "refusal",
+        "labels": {},
+        "must_not_show_as": [
+          "recorded_absence",
+          "no answer; holder states unavailability"
+        ]
+      }
+    },
+    {
+      "id": "uw-pending-not-absence",
+      "kind": "display",
+      "section": [
+        "§4.7 Unavailable-Window Statements",
+        "§4.3 Pending",
+        "§4.5 The Three-State Discipline"
+      ],
+      "description": "A request still inside its window is pending; a statement does not make it an absence.",
+      "responder_key": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+      "absence": {
+        "sent_at": "2026-10-29T10:10:00Z",
+        "closed_at": null,
+        "received": "nothing"
+      },
+      "statements": [
+        {
+          "id": "s1",
+          "statement": {
+            "start": "2026-10-29T10:00:00Z",
+            "end": "2026-10-29T10:40:00Z",
+            "reason_class": "flood",
+            "key_id": "e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117",
+            "sig": "661d5d83ccfd4d7a51516118944ad3e76a8eb12900072a5802e1df5c2479302fc22ea4f1c3d653da4e8207d36c69cfb9aa92302fcd136fb3fb6f0c5819749d06"
+          },
+          "receipts": [
+            {
+              "time": "2026-10-29T10:06:00Z",
+              "accepted": true
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "state": "pending",
+        "covered_by": [],
+        "shown_as": "pending",
+        "labels": {},
+        "must_not_show_as": [
+          "recorded_absence",
+          "refusal",
+          "no answer; holder states unavailability"
+        ]
+      }
+    }
+  ]
+}

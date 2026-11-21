@@ -162,7 +162,7 @@ pub fn policy_check(pinned: Option<&Value>, request: &Value, reason: &str) -> Va
             // `checkpoints` alike (`evidence_log`'s derivation forms).
             let asked = match request.get("derivation").and_then(Value::as_str) {
                 Some(derivation) if matches!(form, "full_history" | "checkpoints") => derivation,
-                None if form == "checkpoints" => "checkpoints",
+                None if matches!(form, "checkpoints" | "checkpoint_range") => form,
                 _ => return false,
             };
             safe.iter().any(|s| s == asked)

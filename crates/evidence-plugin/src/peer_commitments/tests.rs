@@ -9,6 +9,10 @@ fn held() -> (tempfile::TempDir, Value) {
     (dir, pinned)
 }
 
+fn pinned_of(dir: &std::path::Path) -> Value {
+    pinned(dir, NODE).expect("a held commitment")
+}
+
 fn history_card() -> Value {
     json!({"subject": {"full_history": null}, "coverage": {"min_freshness": 1}, "derivation": "history_card/1"})
 }
@@ -63,6 +67,37 @@ fn withholding_what_the_policy_gives_any_asker_is_a_mismatch() {
             assert_eq!(check["policy_digest"], pinned["policy_digest"]);
         }
     }
+}
+
+/// A range of checkpoints is its own subject form (ER -03 §8.1.3): a node
+/// that lists it answers it to any asker, a refusal withholding it is a
+/// mismatch, and a node past the size where it stopped listing `checkpoints`
+/// is still held to the range, while a refusal of the unranged form is the
+/// commitment's own word.
+#[test]
+fn a_range_of_checkpoints_is_held_to_the_listing_of_its_own_form() {
+    let range = json!({"subject": {"checkpoint_range": [0, 1]}, "coverage": {"min_freshness": 1}});
+    let all = json!({"subject": {"checkpoints": null}, "coverage": {"min_freshness": 1}});
+    let (_dir, pinned) = held();
+    let check = policy_check(Some(&pinned), &range, "derivation_unsupported");
+    assert_eq!(check["status"], "MISMATCH", "{check}");
+    let past_cap = crate::commitment::Policy {
+        history_card_1: false,
+        checkpoints: false,
+        ..defaults()
+    };
+    let dir = tempfile::tempdir().unwrap();
+    hold(dir.path(), NODE, &built(&past_cap).to_wire()).unwrap();
+    let pinned = pinned_of(dir.path());
+    assert_eq!(
+        policy_check(Some(&pinned), &range, "derivation_unsupported")["status"],
+        "MISMATCH"
+    );
+    assert_eq!(
+        policy_check(Some(&pinned), &all, "no_such_subject")["status"],
+        "MATCH",
+        "the commitment does not answer this subject form"
+    );
 }
 
 #[test]

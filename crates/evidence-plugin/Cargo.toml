@@ -270,3 +270,11 @@ opt-level = 3
 # carries it; then this goes and the requirement above moves to that release.
 [patch.crates-io]
 mesh-llm-plugin = { git = "https://github.com/Mesh-LLM/mesh-llm", rev = "a39211e78f3dd73cf9a94b08417c0da17e5fa5d9" }
+# Evidence Request -03 gives a range of checkpoints its own subject name,
+# `checkpoint_range` (agent-action-capsule#645, #644). The reading of it is in
+# the `evidence-request` source at that commit, which is still 0.7.0 and
+# unreleased; crates.io's 0.7.0 reads the range as `checkpoints`. A patch, not a
+# direct git dependency, so evidencebook's `evidence-request = "0.7.0"` is the
+# same crate and its `Request`, `Subject` and `Reason` are the types this
+# plugin passes it. Goes when AAC releases it; then the pin above moves.
+evidence-request = { git = "https://github.com/action-state-group/agent-action-capsule", rev = "b5ccf0e7d681808d2001b732240db8622bc80c97" }

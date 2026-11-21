@@ -1,0 +1,360 @@
+{
+  "draft": "draft-mih-agent-evidence-request-01",
+  "provenance": "spec-derived",
+  "corpus": "categories",
+  "description": "The OPTIONAL categories request field, for a responder that implements it (one that does not ignores the field, §3.9): well formed or request_malformed, and categories as an input of the artifact for caller invariance.",
+  "notes": {
+    "B1": "§3.9: the request cases apply to a responder that implements categories. A responder that does not implement it ignores the field, malformed or not, and answers as if it were absent.",
+    "B2": "§3.9 leaves open whether the order of names carries meaning. No case compares two requests whose names differ only in order.",
+    "B3": "§3.9 does not say whether a member other than set and names is malformed. No case has one."
+  },
+  "count": 14,
+  "cases": [
+    {
+      "id": "cat-two-names",
+      "section": [
+        "§3.9 Categories"
+      ],
+      "description": "A set identifier and two distinct names: well formed.",
+      "request_json": "{\"categories\":{\"names\":[\"alpha\",\"beta\"],\"set\":\"x-example-set\"},\"coverage\":{\"expected_pin\":\"6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202\"},\"subject\":{\"record\":\"2ab350895f867d54a5cfdc1dd1aa214cbc723c659663460e7511dff16a5ccc85\"}}",
+      "request_json_digest": "5554618c29d7f918f7a2101f6dff470f21be3d78b304b9c0427f9463b07489d1",
+      "request_cbor_hex": "a3677375626a656374a1667265636f726478403261623335303839356638363764353461356366646331646431616132313463626337323363363539363633343630653735313164666631366135636363383568636f766572616765a16c65787065637465645f70696e7840363434313337303935356432623430383838343739333936326136363464616563366262323565303664373661326635336438613830663636613637353230326a63617465676f72696573a2637365746d782d6578616d706c652d736574656e616d65738265616c7068616462657461",
+      "request_cbor_digest": "94df987f024be9cab31d1962f52285514d27da73aa15c23da916044c596acf3c",
+      "expect": {
+        "well_formed": true
+      },
+      "kind": "request"
+    },
+    {
+      "id": "cat-one-name",
+      "section": [
+        "§3.9 Categories"
+      ],
+      "description": "One name is enough: names is non-empty.",
+      "request_json": "{\"categories\":{\"names\":[\"alpha\"],\"set\":\"x-example-set\"},\"coverage\":{\"expected_pin\":\"6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202\"},\"subject\":{\"record\":\"2ab350895f867d54a5cfdc1dd1aa214cbc723c659663460e7511dff16a5ccc85\"}}",
+      "request_json_digest": "700a59aafc673374ac533122a191875e786bd3e4d7bd9914e6b7fb8e8b1a8e26",
+      "request_cbor_hex": "a3677375626a656374a1667265636f726478403261623335303839356638363764353461356366646331646431616132313463626337323363363539363633343630653735313164666631366135636363383568636f766572616765a16c65787065637465645f70696e7840363434313337303935356432623430383838343739333936326136363464616563366262323565303664373661326635336438613830663636613637353230326a63617465676f72696573a2637365746d782d6578616d706c652d736574656e616d65738165616c706861",
+      "request_cbor_digest": "5502a09a34a2ce71e5005e7c879555b31d28f011ab0eebc67d1870a0a18000d4",
+      "expect": {
+        "well_formed": true
+      },
+      "kind": "request"
+    },
+    {
+      "id": "cat-names-any-order",
+      "section": [
+        "§3.9 Categories"
+      ],
+      "description": "Names in descending order: well formed. §3.9 leaves open whether the order carries meaning, and does not make it a well-formedness rule.",
+      "request_json": "{\"categories\":{\"names\":[\"beta\",\"alpha\"],\"set\":\"x-example-set\"},\"coverage\":{\"expected_pin\":\"6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202\"},\"subject\":{\"record\":\"2ab350895f867d54a5cfdc1dd1aa214cbc723c659663460e7511dff16a5ccc85\"}}",
+      "request_json_digest": "716b87b0e27de20640d8d605aa9cddad2507cb1e553ac5f365413d5e554d5566",
+      "request_cbor_hex": "a3677375626a656374a1667265636f726478403261623335303839356638363764353461356366646331646431616132313463626337323363363539363633343630653735313164666631366135636363383568636f766572616765a16c65787065637465645f70696e7840363434313337303935356432623430383838343739333936326136363464616563366262323565303664373661326635336438613830663636613637353230326a63617465676f72696573a2637365746d782d6578616d706c652d736574656e616d657382646265746165616c706861",
+      "request_cbor_digest": "d7a601550ffa67ccdc17554d3113f604adc6c5391084039e548a558bc6cd59f9",
+      "expect": {
+        "well_formed": true
+      },
+      "kind": "request"
+    },
+    {
+      "id": "neg-cat-not-a-map",
+      "section": [
+        "§3.9 Categories"
+      ],
+      "description": "categories is a text string, not a map.",
+      "request_json": "{\"categories\":\"alpha\",\"coverage\":{\"expected_pin\":\"6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202\"},\"subject\":{\"record\":\"2ab350895f867d54a5cfdc1dd1aa214cbc723c659663460e7511dff16a5ccc85\"}}",
+      "request_json_digest": "1436d3bbc2d1add1b1573dae841435ec7c55520257b3cfe0b9fa23b2e3e5fbfe",
+      "request_cbor_hex": "a3677375626a656374a1667265636f726478403261623335303839356638363764353461356366646331646431616132313463626337323363363539363633343630653735313164666631366135636363383568636f766572616765a16c65787065637465645f70696e7840363434313337303935356432623430383838343739333936326136363464616563366262323565303664373661326635336438613830663636613637353230326a63617465676f7269657365616c706861",
+      "request_cbor_digest": "5cdd148db099809a56a0f388dac680fa07984589710238892544c1304002f605",
+      "expect": {
+        "well_formed": false,
+        "reason": "request_malformed"
+      },
+      "kind": "request"
+    },
+    {
+      "id": "neg-cat-missing-set",
+      "section": [
+        "§3.9 Categories"
+      ],
+      "description": "categories lacks set.",
+      "request_json": "{\"categories\":{\"names\":[\"alpha\"]},\"coverage\":{\"expected_pin\":\"6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202\"},\"subject\":{\"record\":\"2ab350895f867d54a5cfdc1dd1aa214cbc723c659663460e7511dff16a5ccc85\"}}",
+      "request_json_digest": "769cf8987d9d094cbee5be619f5a8bb14f0fa65b273ee887df890aefc7fa8725",
+      "request_cbor_hex": "a3677375626a656374a1667265636f726478403261623335303839356638363764353461356366646331646431616132313463626337323363363539363633343630653735313164666631366135636363383568636f766572616765a16c65787065637465645f70696e7840363434313337303935356432623430383838343739333936326136363464616563366262323565303664373661326635336438613830663636613637353230326a63617465676f72696573a1656e616d65738165616c706861",
+      "request_cbor_digest": "100ae746e5f090c75602a7b891a6b4bc4da41a7e7b20e7833d1e4dacd12617d4",
+      "expect": {
+        "well_formed": false,
+        "reason": "request_malformed"
+      },
+      "kind": "request"
+    },
+    {
+      "id": "neg-cat-missing-names",
+      "section": [
+        "§3.9 Categories"
+      ],
+      "description": "categories lacks names.",
+      "request_json": "{\"categories\":{\"set\":\"x-example-set\"},\"coverage\":{\"expected_pin\":\"6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202\"},\"subject\":{\"record\":\"2ab350895f867d54a5cfdc1dd1aa214cbc723c659663460e7511dff16a5ccc85\"}}",
+      "request_json_digest": "3c440abbb14e21b78d415a5f0c2851f06b3f0e1a71ecf3dd5dfddb6f0d2f0fe2",
+      "request_cbor_hex": "a3677375626a656374a1667265636f726478403261623335303839356638363764353461356366646331646431616132313463626337323363363539363633343630653735313164666631366135636363383568636f766572616765a16c65787065637465645f70696e7840363434313337303935356432623430383838343739333936326136363464616563366262323565303664373661326635336438613830663636613637353230326a63617465676f72696573a1637365746d782d6578616d706c652d736574",
+      "request_cbor_digest": "e33b76a12970cbb9a89dfb0e58e7f72db6058b5df39e013f57935ff45c07e184",
+      "expect": {
+        "well_formed": false,
+        "reason": "request_malformed"
+      },
+      "kind": "request"
+    },
+    {
+      "id": "neg-cat-names-empty",
+      "section": [
+        "§3.9 Categories"
+      ],
+      "description": "names is an empty array.",
+      "request_json": "{\"categories\":{\"names\":[],\"set\":\"x-example-set\"},\"coverage\":{\"expected_pin\":\"6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202\"},\"subject\":{\"record\":\"2ab350895f867d54a5cfdc1dd1aa214cbc723c659663460e7511dff16a5ccc85\"}}",
+      "request_json_digest": "f4ec33668f94abf0950f02972ee4b9cce056e969c41515de701a55c6b4ea1205",
+      "request_cbor_hex": "a3677375626a656374a1667265636f726478403261623335303839356638363764353461356366646331646431616132313463626337323363363539363633343630653735313164666631366135636363383568636f766572616765a16c65787065637465645f70696e7840363434313337303935356432623430383838343739333936326136363464616563366262323565303664373661326635336438613830663636613637353230326a63617465676f72696573a2637365746d782d6578616d706c652d736574656e616d657380",
+      "request_cbor_digest": "8e738f93c2d6ff41e3c87a0615841baf92d11e6366a2cd69b514926c3ca1c31c",
+      "expect": {
+        "well_formed": false,
+        "reason": "request_malformed"
+      },
+      "kind": "request"
+    },
+    {
+      "id": "neg-cat-names-duplicate",
+      "section": [
+        "§3.9 Categories"
+      ],
+      "description": "names repeats a name.",
+      "request_json": "{\"categories\":{\"names\":[\"alpha\",\"alpha\"],\"set\":\"x-example-set\"},\"coverage\":{\"expected_pin\":\"6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202\"},\"subject\":{\"record\":\"2ab350895f867d54a5cfdc1dd1aa214cbc723c659663460e7511dff16a5ccc85\"}}",
+      "request_json_digest": "04b1a16606344060a900a95fe555e6af78ee290dd1d6ec833627232081084f45",
+      "request_cbor_hex": "a3677375626a656374a1667265636f726478403261623335303839356638363764353461356366646331646431616132313463626337323363363539363633343630653735313164666631366135636363383568636f766572616765a16c65787065637465645f70696e7840363434313337303935356432623430383838343739333936326136363464616563366262323565303664373661326635336438613830663636613637353230326a63617465676f72696573a2637365746d782d6578616d706c652d736574656e616d65738265616c70686165616c706861",
+      "request_cbor_digest": "73be6d13e694905b684e5af8f3f12b631f63d061d382c3842e967a33467d8516",
+      "expect": {
+        "well_formed": false,
+        "reason": "request_malformed"
+      },
+      "kind": "request"
+    },
+    {
+      "id": "neg-cat-names-not-array",
+      "section": [
+        "§3.9 Categories"
+      ],
+      "description": "names is a text string, not an array.",
+      "request_json": "{\"categories\":{\"names\":\"alpha\",\"set\":\"x-example-set\"},\"coverage\":{\"expected_pin\":\"6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202\"},\"subject\":{\"record\":\"2ab350895f867d54a5cfdc1dd1aa214cbc723c659663460e7511dff16a5ccc85\"}}",
+      "request_json_digest": "a586887bd6e5257bba8024f570ea28c5f0b09d25592675c821fc1c0de63e87a9",
+      "request_cbor_hex": "a3677375626a656374a1667265636f726478403261623335303839356638363764353461356366646331646431616132313463626337323363363539363633343630653735313164666631366135636363383568636f766572616765a16c65787065637465645f70696e7840363434313337303935356432623430383838343739333936326136363464616563366262323565303664373661326635336438613830663636613637353230326a63617465676f72696573a2637365746d782d6578616d706c652d736574656e616d657365616c706861",
+      "request_cbor_digest": "a9c244bf17d315d1d97e98c057ea5d54a0c2f6d048549d2ac9378ea50f6d49f2",
+      "expect": {
+        "well_formed": false,
+        "reason": "request_malformed"
+      },
+      "kind": "request"
+    },
+    {
+      "id": "neg-cat-set-not-text",
+      "section": [
+        "§3.9 Categories"
+      ],
+      "description": "set is an integer, not a text string.",
+      "request_json": "{\"categories\":{\"names\":[\"alpha\"],\"set\":7},\"coverage\":{\"expected_pin\":\"6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202\"},\"subject\":{\"record\":\"2ab350895f867d54a5cfdc1dd1aa214cbc723c659663460e7511dff16a5ccc85\"}}",
+      "request_json_digest": "72b3e401f3c516bece96fbab77fe10d68fbf1d015d37f53ba2471b41f0cdb694",
+      "request_cbor_hex": "a3677375626a656374a1667265636f726478403261623335303839356638363764353461356366646331646431616132313463626337323363363539363633343630653735313164666631366135636363383568636f766572616765a16c65787065637465645f70696e7840363434313337303935356432623430383838343739333936326136363464616563366262323565303664373661326635336438613830663636613637353230326a63617465676f72696573a26373657407656e616d65738165616c706861",
+      "request_cbor_digest": "30ebca9895584d0adc257da375c5b60818130b19edf03e1c23d8661015b800ae",
+      "expect": {
+        "well_formed": false,
+        "reason": "request_malformed"
+      },
+      "kind": "request"
+    },
+    {
+      "id": "neg-cat-name-not-text",
+      "section": [
+        "§3.9 Categories"
+      ],
+      "description": "A name is an integer, not a text string.",
+      "request_json": "{\"categories\":{\"names\":[1],\"set\":\"x-example-set\"},\"coverage\":{\"expected_pin\":\"6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202\"},\"subject\":{\"record\":\"2ab350895f867d54a5cfdc1dd1aa214cbc723c659663460e7511dff16a5ccc85\"}}",
+      "request_json_digest": "5c672a9d20b6dc11cf542af80e0ebca0a11e5b51c5779d9597bfde044c998382",
+      "request_cbor_hex": "a3677375626a656374a1667265636f726478403261623335303839356638363764353461356366646331646431616132313463626337323363363539363633343630653735313164666631366135636363383568636f766572616765a16c65787065637465645f70696e7840363434313337303935356432623430383838343739333936326136363464616563366262323565303664373661326635336438613830663636613637353230326a63617465676f72696573a2637365746d782d6578616d706c652d736574656e616d65738101",
+      "request_cbor_digest": "6c2ff6895d252855904a163642b64074e57b416a6eb993e4df44fb2bc24a5596",
+      "expect": {
+        "well_formed": false,
+        "reason": "request_malformed"
+      },
+      "kind": "request"
+    },
+    {
+      "id": "cat-inv-same-categories",
+      "kind": "invariance",
+      "section": [
+        "§5 Caller Invariance",
+        "§3.9 Categories"
+      ],
+      "description": "Same subject, pin and categories from two requesters: the same bytes, declaration included.",
+      "observations": [
+        {
+          "requester": "requester-a",
+          "request": {
+            "subject": {
+              "record": "2ab350895f867d54a5cfdc1dd1aa214cbc723c659663460e7511dff16a5ccc85"
+            },
+            "coverage": {
+              "expected_pin": "6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202"
+            },
+            "nonce": "n-0901",
+            "categories": {
+              "set": "x-example-set",
+              "names": [
+                "alpha",
+                "beta"
+              ]
+            }
+          },
+          "resolved_anchor": "6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202",
+          "artifact_hex": "7b22616e63686f72223a2236343431333730393535643262343038383834373933393632613636346461656336626232356530366437366132663533643861383066363661363735323032222c2263617465676f72795f6465636c61726174696f6e223a7b22616c706861223a22617661696c61626c65222c2262657461223a227769746868656c64222c22736574223a22782d6578616d706c652d736574227d2c227265636f726473223a5b2232616233353038393566383637643534613563666463316464316161323134636263373233633635393636333436306537353131646666313661356363633835225d7d",
+          "artifact_digest": "705e49e4e9674db7c371ea3f7900db55dfa745913b58205659ad407ea46286ca"
+        },
+        {
+          "requester": "requester-b",
+          "request": {
+            "subject": {
+              "record": "2ab350895f867d54a5cfdc1dd1aa214cbc723c659663460e7511dff16a5ccc85"
+            },
+            "coverage": {
+              "expected_pin": "6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202"
+            },
+            "nonce": "n-0902",
+            "categories": {
+              "set": "x-example-set",
+              "names": [
+                "alpha",
+                "beta"
+              ]
+            }
+          },
+          "resolved_anchor": "6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202",
+          "artifact_hex": "7b22616e63686f72223a2236343431333730393535643262343038383834373933393632613636346461656336626232356530366437366132663533643861383066363661363735323032222c2263617465676f72795f6465636c61726174696f6e223a7b22616c706861223a22617661696c61626c65222c2262657461223a227769746868656c64222c22736574223a22782d6578616d706c652d736574227d2c227265636f726473223a5b2232616233353038393566383637643534613563666463316464316161323134636263373233633635393636333436306537353131646666313661356363633835225d7d",
+          "artifact_digest": "705e49e4e9674db7c371ea3f7900db55dfa745913b58205659ad407ea46286ca"
+        }
+      ],
+      "expect": {
+        "invariance": "holds"
+      }
+    },
+    {
+      "id": "cat-inv-different-categories-not-comparable",
+      "kind": "invariance",
+      "section": [
+        "§5 Caller Invariance",
+        "§3.9 Categories"
+      ],
+      "description": "Same subject and pin, different categories: categories is an input of the artifact when honored (§5), so different bytes are expected and no invariance claim applies.",
+      "observations": [
+        {
+          "requester": "requester-a",
+          "request": {
+            "subject": {
+              "record": "2ab350895f867d54a5cfdc1dd1aa214cbc723c659663460e7511dff16a5ccc85"
+            },
+            "coverage": {
+              "expected_pin": "6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202"
+            },
+            "nonce": "n-0903",
+            "categories": {
+              "set": "x-example-set",
+              "names": [
+                "alpha",
+                "beta"
+              ]
+            }
+          },
+          "resolved_anchor": "6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202",
+          "artifact_hex": "7b22616e63686f72223a2236343431333730393535643262343038383834373933393632613636346461656336626232356530366437366132663533643861383066363661363735323032222c2263617465676f72795f6465636c61726174696f6e223a7b22616c706861223a22617661696c61626c65222c2262657461223a227769746868656c64222c22736574223a22782d6578616d706c652d736574227d2c227265636f726473223a5b2232616233353038393566383637643534613563666463316464316161323134636263373233633635393636333436306537353131646666313661356363633835225d7d",
+          "artifact_digest": "705e49e4e9674db7c371ea3f7900db55dfa745913b58205659ad407ea46286ca"
+        },
+        {
+          "requester": "requester-b",
+          "request": {
+            "subject": {
+              "record": "2ab350895f867d54a5cfdc1dd1aa214cbc723c659663460e7511dff16a5ccc85"
+            },
+            "coverage": {
+              "expected_pin": "6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202"
+            },
+            "nonce": "n-0904",
+            "categories": {
+              "set": "x-example-set",
+              "names": [
+                "alpha"
+              ]
+            }
+          },
+          "resolved_anchor": "6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202",
+          "artifact_hex": "7b22616e63686f72223a2236343431333730393535643262343038383834373933393632613636346461656336626232356530366437366132663533643861383066363661363735323032222c2263617465676f72795f6465636c61726174696f6e223a7b22616c706861223a22617661696c61626c65222c22736574223a22782d6578616d706c652d736574227d2c227265636f726473223a5b2232616233353038393566383637643534613563666463316464316161323134636263373233633635393636333436306537353131646666313661356363633835225d7d",
+          "artifact_digest": "42d5d33f631993e53ba97797d1d304c0eacb1085e95b4e9b6b82765f4f0b3224"
+        }
+      ],
+      "expect": {
+        "invariance": "not_comparable"
+      }
+    },
+    {
+      "id": "neg-cat-inv-same-categories-divergent",
+      "kind": "invariance",
+      "section": [
+        "§5 Caller Invariance",
+        "§3.9 Categories"
+      ],
+      "description": "Same subject, pin and categories, different declarations for different requesters: a violation.",
+      "observations": [
+        {
+          "requester": "requester-a",
+          "request": {
+            "subject": {
+              "record": "2ab350895f867d54a5cfdc1dd1aa214cbc723c659663460e7511dff16a5ccc85"
+            },
+            "coverage": {
+              "expected_pin": "6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202"
+            },
+            "nonce": "n-0905",
+            "categories": {
+              "set": "x-example-set",
+              "names": [
+                "alpha",
+                "beta"
+              ]
+            }
+          },
+          "resolved_anchor": "6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202",
+          "artifact_hex": "7b22616e63686f72223a2236343431333730393535643262343038383834373933393632613636346461656336626232356530366437366132663533643861383066363661363735323032222c2263617465676f72795f6465636c61726174696f6e223a7b22616c706861223a22617661696c61626c65222c2262657461223a227769746868656c64222c22736574223a22782d6578616d706c652d736574227d2c227265636f726473223a5b2232616233353038393566383637643534613563666463316464316161323134636263373233633635393636333436306537353131646666313661356363633835225d7d",
+          "artifact_digest": "705e49e4e9674db7c371ea3f7900db55dfa745913b58205659ad407ea46286ca"
+        },
+        {
+          "requester": "requester-b",
+          "request": {
+            "subject": {
+              "record": "2ab350895f867d54a5cfdc1dd1aa214cbc723c659663460e7511dff16a5ccc85"
+            },
+            "coverage": {
+              "expected_pin": "6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202"
+            },
+            "nonce": "n-0906",
+            "categories": {
+              "set": "x-example-set",
+              "names": [
+                "alpha",
+                "beta"
+              ]
+            }
+          },
+          "resolved_anchor": "6441370955d2b408884793962a664daec6bb25e06d76a2f53d8a80f66a675202",
+          "artifact_hex": "7b22616e63686f72223a2236343431333730393535643262343038383834373933393632613636346461656336626232356530366437366132663533643861383066363661363735323032222c2263617465676f72795f6465636c61726174696f6e223a7b22616c706861223a22617661696c61626c65222c22736574223a22782d6578616d706c652d736574227d2c227265636f726473223a5b2232616233353038393566383637643534613563666463316464316161323134636263373233633635393636333436306537353131646666313661356363633835225d7d",
+          "artifact_digest": "42d5d33f631993e53ba97797d1d304c0eacb1085e95b4e9b6b82765f4f0b3224"
+        }
+      ],
+      "expect": {
+        "invariance": "violated"
+      }
+    }
+  ]
+}
