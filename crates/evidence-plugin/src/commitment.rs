@@ -56,6 +56,11 @@ pub const LEGACY_COMMITMENT_PROFILE: &str = "evidence-commitment/0";
 /// The community a mesh node's stapled card belongs to (loop's
 /// `history_cards.DEFAULT_COMMUNITY`).
 pub const COMMUNITY: &str = "mesh-llm";
+/// The communities a peer's stapled card may name: a word-for-word copy of
+/// loop's closed list (`scripts/history_cards.py` `COMMUNITIES`, evidence-network/loop).
+/// A new community is added there first and here after it (Mesh-LLM/capsules-plugin#320).
+/// Only [`COMMUNITY`] is written on this node's own card.
+const KNOWN_COMMUNITIES: [&str; 3] = ["mesh-llm", "muse", "goose"];
 pub const POLICY_PROFILE: &str = "disclosure-policy/0";
 /// The stapled answer's format: the plugin's flat interop reply.
 pub const STAPLE_PROFILE: &str = "evidence-interop/0";
@@ -1022,7 +1027,9 @@ fn card_problems(cards: &Value) -> Vec<String> {
             }
             streams.push(stream.to_string());
         }
-        if text("community") != Some(COMMUNITY) && map.contains_key("community") {
+        if map.contains_key("community")
+            && !text("community").is_some_and(|c| KNOWN_COMMUNITIES.contains(&c))
+        {
             problems.push(format!("{name}.community is not a known community"));
         }
         if map.contains_key("derivation")

@@ -765,6 +765,22 @@ fn the_staple_is_one_card_filed_under_its_own_stream_with_the_checkpoint_key() {
     assert_eq!(spki, super::spki(&key().verifying_key()));
 }
 
+/// loop's closed list (`COMMUNITIES`): a card in any of its three
+/// communities is read, one test per name (Mesh-LLM/capsules-plugin#320).
+#[test]
+fn a_card_in_each_of_loops_communities_is_accepted() {
+    for community in ["mesh-llm", "muse", "goose"] {
+        let signed = resigned(&built(&defaults()), |d| {
+            d["history_cards"][0]["community"] = json!(community)
+        });
+        let problems = verify(&signed);
+        assert!(
+            !problems.iter().any(|p| p.contains("community")),
+            "{community}: {problems:?}"
+        );
+    }
+}
+
 #[test]
 fn a_card_that_is_not_filed_as_loop_files_it_is_refused() {
     for (edit, says) in [
@@ -780,7 +796,14 @@ fn a_card_that_is_not_filed_as_loop_files_it_is_refused() {
             |c| c["stream"] = json!(null),
             "stream must be a plain log id",
         ),
-        (|c| c["community"] = json!("nowhere"), "community"),
+        (
+            |c| c["community"] = json!("nowhere"),
+            "not a known community",
+        ),
+        (|c| c["community"] = json!("Goose"), "not a known community"),
+        (|c| c["community"] = json!(""), "not a known community"),
+        (|c| c["community"] = json!(5), "not a known community"),
+        (|c| c["community"] = json!(null), "not a known community"),
         (|c| c["checkpoint_key"] = json!("AAAA"), "checkpoint_key"),
         (
             |c| c["extra"] = json!("x"),

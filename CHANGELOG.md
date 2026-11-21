@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- **A peer's commitment may staple a card in any of loop's three communities, not only `mesh-llm` (Mesh-LLM/capsules-plugin#320, loop#443).** `nostr_evidence_request` and the commitment check refused a Goose node's card (`community: goose`, stream `goose/node`) with `history_cards[0].community is not a known community`, which blocked loop step 13's mesh-asks-Goose cell. The check now takes the closed list in loop's `scripts/history_cards.py` (`mesh-llm`, `muse`, `goose`) and still refuses any other value, including a non-string. The community this node writes on its own card is still `mesh-llm`.
+
 ## 0.1.21
 
 ### Added
