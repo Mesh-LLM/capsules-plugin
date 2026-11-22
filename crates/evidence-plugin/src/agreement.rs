@@ -48,7 +48,7 @@ pub const UNIT: &str = "msat";
 /// A pack recompile changes it: bump this in the same release (evidencebook-
 /// skills `tests/test_inference_deals.py` pins the value it must equal).
 pub const INFERENCE_DEALS_DIGEST: &str =
-    "d8aa9967ebd346e386b3f27d1fe582902d964d30183e9fa377206b4ccb116a18";
+    "cfcc3ce44fecb3ea2b5378d9a905151d2197f4f2dd9be28f29717d5313f636ae";
 /// The member that carries it, in the terms document and beside
 /// `acceptance` in an `x-mesh-poc-v1` block.
 pub const DIGEST_MEMBER: &str = "inference_deals_digest";
