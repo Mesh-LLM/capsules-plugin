@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
+// Copyright (c) 2026 Action State Group, Inc. Ported from agent-action-capsule's
+// tests/bundle_composed_vectors.rs; the license text is
+// vectors/bundle/composed-history/LICENSE.
 //! Evidence Bundle -03 History members and the `same_key` join basis
 //! (Mesh-LLM/capsules-plugin#331): the 30 cases of
 //! `vectors/bundle/composed-history/` (pinned in `vectors/SOURCES.md`), run
