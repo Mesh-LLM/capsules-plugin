@@ -41,8 +41,7 @@
 set -euo pipefail
 
 # The 9b wording pack (action-state-group/evidencebook-skills#206, 329ba53d)
-# the sealed report renders in (Mesh-LLM/capsules-plugin#96, Steven's 10-29
-# ruling: THE_LOOP step 11's bar).
+# the sealed report renders in (Mesh-LLM/capsules-plugin#96, button 2).
 PACK_REL=wording/inference-deals-settlement-en.json
 PACK_DIGEST=db7065547fd7332dfb6c4d642f71bdad7b5e4d4afcb517f4aaeda755c623414c
 
@@ -78,9 +77,9 @@ fi
 [ -f "$SKILLS/scripts/report.sh" ] || fail "$SKILLS is not an evidencebook-skills checkout (no scripts/report.sh)"
 SPEC="$SKILLS/packs/inference-deals/compiled/compiled.json"
 [ -f "$SPEC" ] || fail "$SKILLS has no inference-deals pack ($SPEC)"
-[ -f "$WORDING" ] || fail "no wording pack at $WORDING (the pack is evidencebook-skills' $PACK_REL, merged in evidencebook-skills#206 at 329ba53d; update the checkout)"
+[ -f "$WORDING" ] || fail "no wording pack at $WORDING (the pack is evidencebook-skills' $PACK_REL, merged in evidencebook-skills#206 at 329ba53d; check out evidencebook-skills at that commit or later with the pack, or pass --wording FILE --wording-digest SHA256 for another pack)"
 ACTUAL=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$WORDING")
-[ "$ACTUAL" = "$WORDING_DIGEST" ] || fail "the wording pack $WORDING has sha256 $ACTUAL, not the expected $WORDING_DIGEST (the pack merged in evidencebook-skills#206 at 329ba53d is $PACK_DIGEST)"
+[ "$ACTUAL" = "$WORDING_DIGEST" ] || fail "the wording pack $WORDING has sha256 $ACTUAL, not the expected $WORDING_DIGEST (this script pins the pack merged in evidencebook-skills#206 at 329ba53d, sha256 $PACK_DIGEST: check out that pack, or pass --wording FILE --wording-digest SHA256 for another)"
 DATE=${DATE:-$(python3 -c 'import datetime; print((datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)).date())')}
 
 [ -n "$DATA_DIR" ] || fail "set --data-dir (or CAPSULES_DATA_DIR) to the node's data directory"
