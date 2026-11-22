@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- **Agreement terms cite inference-deals 0.1.2 (Mesh-LLM/capsules-plugin#329).** `INFERENCE_DEALS_DIGEST` is now `cfcc3ce4…36ae`, the `pack_source_digest` of the inference-deals pack 0.1.2 (contract `inference-deals@0.1.2`, evidencebook-skills `a49a84f`), in place of 0.1.1's `d8aa9967…6a18`. **A node on this build and a node on an older one refuse each other's proposals, and the judge refuses records that cite the old digest, until both run it.**
+
 - **The Evidence page's History-page check says why it refuses a checkpoint whose claims are out of deterministic CBOR order (Mesh-LLM/capsules-plugin#327).** A node whose log still holds a checkpoint written by checkpointed-local-log 0.2.0 or earlier (claims in insertion order, fixed in cll 0.2.1) failed with only "Checkpoint 1 does not verify.", although its signature holds. The check now names the non-canonical encoding, and only when the key that answered signed the checkpoint with a valid signature and a claims key is out of order; the checkpoint is still not accepted. Nothing in this plugin writes that form (it pins cll 0.6.0).
 
 ## 0.1.23
