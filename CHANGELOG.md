@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- **The Evidence page's History-page check says why it refuses a checkpoint that an older build signed (Mesh-LLM/capsules-plugin#327).** A node whose log still holds a checkpoint written by checkpointed-local-log 0.2.0 or earlier (claims in insertion order, not deterministic CBOR; fixed in cll 0.2.1) failed with only "Checkpoint 1 does not verify.", although its signature holds. The check now says the checkpoint was signed by an older build and is refused for its non-canonical encoding, and only when the key that answered signed it with a valid signature; the checkpoint is still not accepted. Nothing in this plugin writes that form (it pins cll 0.6.0).
+
 ## 0.1.23
 
 ### Changed

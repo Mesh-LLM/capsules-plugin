@@ -164,6 +164,29 @@ export function coseSign1KeyId(bytes: Uint8Array): Uint8Array | undefined {
   }
 }
 
+/** Whether a COSE payload is a CBOR map with text keys listed in RFC 8949 4.2.1 deterministic order (shorter encoded key first,
+ * then bytewise). Checkpoints signed by checkpointed-local-log 0.2.0 or earlier list their claims in insertion order instead
+ * (cll 0.2.1 CHANGELOG), which cll-ts refuses. False for anything that is not a map of text keys, or is not readable. */
+export function claimsKeysAreCanonical(payload: Uint8Array): boolean {
+  try {
+    const item = new CborReader(payload).readItem()
+    if (item.majorType !== 5 || !(item.value instanceof Map)) return false
+    const keys = [...item.value.keys()]
+    if (!keys.every((k): k is string => typeof k === 'string')) return false
+    const encoded = keys.map((k) => cborEncodeTextString(k))
+    for (let i = 1; i < encoded.length; i++) {
+      const a = encoded[i - 1]
+      const b = encoded[i]
+      let order = a.length - b.length
+      for (let j = 0; order === 0 && j < a.length; j++) order = a[j] - b[j]
+      if (order >= 0) return false
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Builds the "Signature1" Sig_structure bytes (RFC 9052 SS4.4) COSE signs over. */
 function buildSigStructure(protectedHeader: Uint8Array, payload: Uint8Array): Uint8Array {
   const items = [

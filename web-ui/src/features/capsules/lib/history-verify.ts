@@ -18,7 +18,7 @@
 // This file is bundled twice: into the Evidence page (tests) and, as an IIFE,
 // into every saved page (`saved-pages.ts`), so it imports only the cll
 // browser build and the DOM-free `cose.ts` (to read a checkpoint's key), and uses no DOM.
-import { coseSign1KeyId } from '@/features/capsules/lib/cose'
+import { claimsKeysAreCanonical, coseSign1KeyId, verifyCoseSign1 } from '@/features/capsules/lib/cose'
 import { checkpointMetadata, checkpointRejectionField, leafCount, verifyCheckpoint, verifyConsistency } from '@cll-browser'
 
 /** The most checkpoints a node puts in one `/1` card (`MAX_ANSWER_CHECKPOINTS`,
@@ -388,6 +388,18 @@ export async function verifyHistoryReply(replyText: string): Promise<HistoryVerd
         const kid = coseSign1KeyId(statement)
         if (!kid || bytesToHex(kid) !== responder) return fail('checkpoints', `Checkpoint ${i + 1} is not signed by the key that answered.`)
         return fail('checkpoints', `Checkpoint ${i + 1}: \`issued_at\` is not in the expected format (a format rejection, not a failed signature).`)
+      }
+      // A checkpoint the key that answered signed, but with its claims in insertion order, not deterministic CBOR: what
+      // checkpointed-local-log 0.2.0 and earlier wrote. The signature holds; this verifier does not accept the encoding.
+      const key = hexToBytes(responder)
+      if (key) {
+        const signed = verifyCoseSign1(statement, key)
+        if (signed.verified && !claimsKeysAreCanonical(signed.payload)) {
+          return fail(
+            'checkpoints',
+            `Checkpoint ${i + 1} was signed by an older build: its claims are not in canonical CBOR order (non-canonical encoding), which this verifier refuses. The signature itself holds under the key that answered.`
+          )
+        }
       }
       return fail('checkpoints', `Checkpoint ${i + 1} does not verify.`)
     }

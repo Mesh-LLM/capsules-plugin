@@ -145,6 +145,38 @@ describe('verifyHistoryReply', () => {
     expect(failDetail(v)).toBe('Checkpoint 1 does not verify.')
   })
 
+  // The oldest checkpoint of a real demo node's log (position 0: log_size 63, prev_size 0, issued_at with milliseconds
+  // "2026-10-02T02:40:00.000Z"), signed by checkpointed-local-log 0.2.0 or earlier. Its signature holds, but its claims are in
+  // insertion order (kind, log_size, commitment, prev_size, prev_commitment, issued_at), not deterministic CBOR (issue #327).
+  const LEGACY_ORDER_CHECKPOINT =
+    'd28458a1a4012703781f6170706c69636174696f6e2f636c6c2d636865636b706f696e742b63626f720458205631608d05e1eee382e519abd6e93730a091a7334cbd5c33cb07f92af000b0310fa201782763617073756c652d656d69742d6d6573682f753232372d6335653761663038643833353635383202782a63617073756c652d656d69742d6d6573682f753232372d63356537616630386438333536353832233633a05890a6646b696e646e636c6c2d636865636b706f696e74686c6f675f73697a65183f6a636f6d6d69746d656e74582381582030a982d56a27997e5db6c793b428d6937fbebec892a8e335054963feb9765eba69707265765f73697a65006f707265765f636f6d6d69746d656e7440696973737565645f61747818323032362d31302d30325430323a34303a30302e3030305a5840e8603e44cfbc2a39990e912eb1071757c04fc3f16689b790ccae9b1d911b3f39df07bd3d1bd524b3c22bab927fa7a0a167c22d42b858f6eb016bd05c4c73e706'
+  const LEGACY_KEY = '5631608d05e1eee382e519abd6e93730a091a7334cbd5c33cb07f92af000b031'
+
+  it('says an older build wrote a checkpoint whose claims are not in canonical order, and that its signature holds', async () => {
+    const artifact = artifactOf(card) as { history: { checkpoint: string }[] }
+    artifact.history[0].checkpoint = LEGACY_ORDER_CHECKPOINT
+    const v = await verifyHistoryReply(JSON.stringify({ ...card, responder: LEGACY_KEY, ...(await encodeArtifact(artifact)) }))
+    expect(v.verified).toBe(false)
+    expect(failed(v)).toBe('checkpoints')
+    expect(failDetail(v)).toContain('Checkpoint 1 was signed by an older build')
+    expect(failDetail(v)).toContain('non-canonical encoding')
+  })
+
+  it('does not call a legacy-order checkpoint an older build\'s when another key answered', async () => {
+    const v = await replaceFirstCheckpoint(LEGACY_ORDER_CHECKPOINT)
+    expect(failed(v)).toBe('checkpoints')
+    expect(failDetail(v)).toBe('Checkpoint 1 does not verify.')
+  })
+
+  it('shows the signature failure, not the older-build text, for a legacy-order checkpoint with a tampered signature', async () => {
+    const bytes = Buffer.from(LEGACY_ORDER_CHECKPOINT, 'hex')
+    bytes[bytes.length - 1] ^= 0xff
+    const artifact = artifactOf(card) as { history: { checkpoint: string }[] }
+    artifact.history[0].checkpoint = bytes.toString('hex')
+    const v = await verifyHistoryReply(JSON.stringify({ ...card, responder: LEGACY_KEY, ...(await encodeArtifact(artifact)) }))
+    expect(failDetail(v)).toBe('Checkpoint 1 does not verify.')
+  })
+
   it('shows the signature failure for a malformed issued_at edited after signing', async () => {
     const artifact = artifactOf(card) as { history: { checkpoint: string }[] }
     // The T of the first checkpoint's issued_at becomes a space: the same length, so still valid CBOR, but no longer RFC 3339,
