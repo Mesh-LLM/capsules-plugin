@@ -196,9 +196,12 @@ evidencebook = { version = "=0.0.24", features = ["deal", "shelf"] }
 capsule-engine = { git = "https://github.com/action-state-group/capsule-engine", rev = "c7701385b87b68c631803e5d0adeee4d617ff5d4" }
 # Class 1 verification of a received half (capsule-emit main moved it here),
 # and, with `inference-history`, the Service History's derivation and checks
-# (`service_history`, evidencebook#322). capsule-emit 0.0.13 builds on 0.11.0 too, so
-# one line of this crate is in the tree.
-agent-action-capsule = { version = "0.12.0", features = ["strict", "inference-history"] }
+# (`service_history`, evidencebook#322). 0.14.0 adds Evidence Bundle -03 History
+# members and the `same_key` join to `bundle::composed` (Mesh-LLM/capsules-plugin#331).
+# The lock holds three lines of this crate: 0.11.0 (capsule-emit 0.0.13,
+# capsule-emit-artifact), 0.12.0 (evidencebook 0.0.24, which pins `^0.12`) and
+# this one. No value of this crate's types crosses between them.
+agent-action-capsule = { version = "0.14.0", features = ["strict", "inference-history"] }
 # The witness's own record of this log (`witness_status`): one blocking GET,
 # no redirects, a capped body. Already in the tree through capsule-emit.
 ureq = { version = "2", features = ["json"] }

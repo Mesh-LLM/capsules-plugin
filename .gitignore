@@ -1,5 +1,7 @@
 target/
 node_modules/
 bundle/
+# The conformance vectors' own `bundle/` directory (vectors/SOURCES.md) is tracked.
+!vectors/bundle/
 dist/
 .DS_Store
