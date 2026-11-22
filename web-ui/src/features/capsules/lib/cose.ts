@@ -164,10 +164,11 @@ export function coseSign1KeyId(bytes: Uint8Array): Uint8Array | undefined {
   }
 }
 
-/** Whether a COSE payload is a CBOR map with text keys listed in RFC 8949 4.2.1 deterministic order (shorter encoded key first,
- * then bytewise). Checkpoints signed by checkpointed-local-log 0.2.0 or earlier list their claims in insertion order instead
- * (cll 0.2.1 CHANGELOG), which cll-ts refuses. False for anything that is not a map of text keys, or is not readable. */
-export function claimsKeysAreCanonical(payload: Uint8Array): boolean {
+/** Whether a COSE payload is a CBOR map of text keys in which some key sits out of RFC 8949 4.2.1 deterministic order (shorter
+ * encoded key first, then bytewise). Checkpoints signed by checkpointed-local-log 0.2.0 or earlier list their claims in
+ * insertion order, which cll-ts refuses (cll 0.2.1 CHANGELOG). False when the order was not read: not a map, a key that is not
+ * text, bytes this reader cannot parse, or keys that are in order. */
+export function claimsKeysOutOfOrder(payload: Uint8Array): boolean {
   try {
     const item = new CborReader(payload).readItem()
     if (item.majorType !== 5 || !(item.value instanceof Map)) return false
@@ -179,9 +180,9 @@ export function claimsKeysAreCanonical(payload: Uint8Array): boolean {
       const b = encoded[i]
       let order = a.length - b.length
       for (let j = 0; order === 0 && j < a.length; j++) order = a[j] - b[j]
-      if (order >= 0) return false
+      if (order > 0) return true
     }
-    return true
+    return false
   } catch {
     return false
   }
