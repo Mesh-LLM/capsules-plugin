@@ -249,6 +249,21 @@ fn the_composition_is_an_interval_complete_bundle_rooted_at_its_record() {
             ..Default::default()
         },
     );
+    // The `composed/v1` block's own check (`bundle::composed`, which 0.14.0
+    // extends with -03 History members and `same_key`) is not one of the
+    // claims: read its extension result. This block has no History member and
+    // no join, so its closure and digest are what is checked.
+    let composed = checked
+        .base
+        .extensions
+        .iter()
+        .find(|e| e.kind == COMPOSED_KIND)
+        .and_then(|e| e.composed.as_ref())
+        .expect("a composed result");
+    assert_eq!(composed.status, "pass", "{:?}", composed.findings);
+    assert!(composed.composed_digest.as_ref().unwrap().matches);
+    assert_eq!(composed.members.len(), 1);
+    assert!(composed.joins.is_empty());
     let statuses: Vec<_> = checked
         .claims
         .iter()
