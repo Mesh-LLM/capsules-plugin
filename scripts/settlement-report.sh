@@ -33,9 +33,18 @@
 #   --period-policy the node's own period_policy, when it is not the pack's default
 #   --now          report.sh's clock (default: the wall clock); for tests
 #   --wording, --wording-digest
-#                  the 9b wording pack, passed to report.sh when it takes one
-#                  (action-state-group/evidencebook-skills#102)
+#                  the 9b wording pack and its sha256, given together. Default: the
+#                  pack evidencebook-skills merged in #206 (329ba53d), at
+#                  <skills>/wording/inference-deals-settlement-en.json, pinned by
+#                  the digest below. The pack's digest is checked before the run
+#                  touches the book, so a checkout whose pack differs is refused.
 set -euo pipefail
+
+# The 9b wording pack (action-state-group/evidencebook-skills#206, 329ba53d)
+# the sealed report renders in (Mesh-LLM/capsules-plugin#96, Steven's 10-29
+# ruling: THE_LOOP step 11's bar).
+PACK_REL=wording/inference-deals-settlement-en.json
+PACK_DIGEST=db7065547fd7332dfb6c4d642f71bdad7b5e4d4afcb517f4aaeda755c623414c
 
 usage() { sed -n '/^# Usage:/,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2; exit 2; }
 fail() { echo "settlement-report: $*" >&2; exit 1; }
@@ -62,10 +71,16 @@ done
 if { [ -n "$WORDING" ] && [ -z "$WORDING_DIGEST" ]; } || { [ -z "$WORDING" ] && [ -n "$WORDING_DIGEST" ]; }; then
   fail "--wording and --wording-digest go together"
 fi
+if [ -z "$WORDING" ]; then
+  WORDING="$SKILLS/$PACK_REL" WORDING_DIGEST=$PACK_DIGEST
+fi
 [ -x "$CAPSULECTL" ] || fail "no capsulectl at $CAPSULECTL"
 [ -f "$SKILLS/scripts/report.sh" ] || fail "$SKILLS is not an evidencebook-skills checkout (no scripts/report.sh)"
 SPEC="$SKILLS/packs/inference-deals/compiled/compiled.json"
 [ -f "$SPEC" ] || fail "$SKILLS has no inference-deals pack ($SPEC)"
+[ -f "$WORDING" ] || fail "no wording pack at $WORDING (the pack is evidencebook-skills' $PACK_REL, merged in evidencebook-skills#206 at 329ba53d; update the checkout)"
+ACTUAL=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$WORDING")
+[ "$ACTUAL" = "$WORDING_DIGEST" ] || fail "the wording pack $WORDING has sha256 $ACTUAL, not the expected $WORDING_DIGEST (the pack merged in evidencebook-skills#206 at 329ba53d is $PACK_DIGEST)"
 DATE=${DATE:-$(python3 -c 'import datetime; print((datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)).date())')}
 
 [ -n "$DATA_DIR" ] || fail "set --data-dir (or CAPSULES_DATA_DIR) to the node's data directory"
@@ -235,7 +250,7 @@ book set published_lines="$(cat "$WORK/requests.total")"
 # The report, sealed and checked by report.sh; it leaves no page unless
 # `book report check` said match.
 extra=()
-[ -z "$WORDING" ] || extra+=(--wording "$WORDING" --wording-digest "$WORDING_DIGEST")
+extra+=(--wording "$WORDING" --wording-digest "$WORDING_DIGEST")
 [ -z "$PERIOD_POLICY" ] || extra+=(--period-policy "$PERIOD_POLICY")
 [ -z "$NOW" ] || extra+=(--now "$NOW")
 bash "$SKILLS/scripts/report.sh" --spec "$SPEC" --profile "$PROFILE" --date "$DATE" \

@@ -16,7 +16,12 @@
 #     publishing that record twice;
 #   - a chain shorter than what was published, a node key other than the
 #     book's, and a second run while one holds the lock are refused, leaving
-#     the page as it was and no seed behind (a finished run leaves none either).
+#     the page as it was and no seed behind (a finished run leaves none either);
+#   - the sealed page shows the 9b wording pack's words (its row label, group
+#     title and verdict word, seen in the page's visible text in headless
+#     Chrome, CHROME naming it when it is not in the usual places) and not the
+#     viewer's "wording pack ... was refused" line, and a wording pack whose
+#     digest is not the pinned one is refused before the book is touched.
 set -euo pipefail
 
 if [ -z "${CAPSULECTL:-}" ] || [ -z "${EVIDENCEBOOK_SKILLS:-}" ]; then
@@ -39,7 +44,7 @@ EOF
 chmod +x "$work/bin/capsules"
 
 run() {
-  "$here/settlement-report.sh" --report-dir "$work/report" --capsulectl "$CAPSULECTL" \
+  "$here/settlement-report.sh" "$@" --report-dir "$work/report" --capsulectl "$CAPSULECTL" \
     --skills "$EVIDENCEBOOK_SKILLS" --capsules "$work/bin/capsules" --data-dir "$work/data" \
     --date 2026-11-01 --now 2026-11-02T00:00:00Z </dev/null >"$work/run.log" 2>&1
 }
@@ -96,6 +101,37 @@ run || { cat "$work/run.log"; fail "a run with nothing new did not seal"; }
 grep -q '"page": *"match"' "$work/report/settlement.json" || fail "the note does not record a match"
 [ "$(copies "$(id_at 1)")" = 1 ] || fail "a run with nothing new published a record again"
 
+# The page as a person sees it: its visible text, in headless Chrome.
+CHROME=${CHROME:-}
+for c in "$CHROME" "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" google-chrome chromium chrome; do
+  if [ -n "$c" ] && command -v "$c" >/dev/null 2>&1; then CHROME=$c; break; else CHROME=; fi
+done
+[ -n "$CHROME" ] || fail "NOT RUN: no Chrome to read the page's text (set CHROME)"
+pack="$EVIDENCEBOOK_SKILLS/wording/inference-deals-settlement-en.json"
+# The window size matters to the viewer (see evidencebook-skills tests/fresh_env_deals.sh).
+"$CHROME" --headless=new --disable-gpu --window-size=1280,2400 --virtual-time-budget=60000 \
+  --dump-dom "file://$work/report/settlement.html" >"$work/page.dom" 2>/dev/null || true
+[ -s "$work/page.dom" ] || fail "Chrome wrote no DOM for the page"
+python3 - "$work/page.dom" "$pack" <<'EOF3' || fail "the sealed page does not show the wording pack"
+import html, json, re, sys
+text = open(sys.argv[1]).read()
+text = re.sub(r"<script.*?</script>|<style.*?</style>", "", text, flags=re.S)
+text = html.unescape(re.sub(r"<[^>]+>", "\n", text))
+entries = json.load(open(sys.argv[2]))["entries"]
+problems = []
+if "wording pack supplied with this page was refused" in text:
+    problems.append("the viewer refused the pack")
+# The payer fixture's page: its own row, the group, the met verdict.
+for key in ("row.come_through.paid_as_agreed.label", "group.come_through.title", "report.title"):
+    if entries[key] not in text:
+        problems.append(f"{key} not shown: {entries[key]!r}")
+if not re.search(r"(?<![A-Za-z])" + re.escape(entries["verdict.met"]) + r"(?![A-Za-z])", text):
+    problems.append("verdict.met word not shown")
+if problems:
+    print("; ".join(problems), file=sys.stderr)
+    sys.exit(1)
+EOF3
+
 before=$(shasum -a 256 "$work/report/settlement.html")
 [ ! -e "$work/report/node.seed" ] || fail "a finished run left the book's seed behind"
 "$CAPSULECTL" book report check --profile settlement --page "$work/report/settlement.html" >/dev/null || fail "book report check needs the seed"
@@ -113,6 +149,14 @@ rmdir "$work/report/.lock"
 openssl genpkey -algorithm ed25519 -out "$work/data/keys/node-key.pem" 2>/dev/null
 if run; then fail "a node key other than the book's was accepted"; fi
 grep -q "not this node's" "$work/run.log" || fail "the foreign key's refusal does not say why"
+
+# A wording pack other than the pinned one is refused before the book is touched.
+cp "$pack" "$work/other-pack.json"
+printf ' ' >>"$work/other-pack.json"
+lines_before=$(wc -l <"$work/report/book/book/records/records.jsonl")
+if run --wording "$work/other-pack.json" --wording-digest "$(shasum -a 256 "$pack" | cut -d' ' -f1)"; then fail "a pack whose bytes are not the digest's was accepted"; fi
+grep -q "not the expected" "$work/run.log" || fail "the wrong pack's refusal does not say why"
+[ "$lines_before" = "$(wc -l <"$work/report/book/book/records/records.jsonl")" ] || fail "a refused pack still wrote to the book"
 
 [ "$before" = "$(shasum -a 256 "$work/report/settlement.html")" ] || fail "a refused run changed the page"
 [ ! -e "$work/report/node.seed" ] || fail "a refused run left the book's seed behind"
