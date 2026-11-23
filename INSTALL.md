@@ -275,10 +275,12 @@ All peer traffic uses mesh-llm's own peer connections. Nothing goes to any
 third party unless you name a witness. The switches are under Configuration ›
 Plugins › Capsules, and [`docs/SHARING-POLICY.md`](docs/SHARING-POLICY.md)
 explains each one. The plugin reads what you save there from mesh-llm's
-config file: `~/.mesh-llm/config.toml`, or the file `MESH_LLM_CONFIG` names.
-**If you start the node with `--config <path>`, also set
-`MESH_LLM_CONFIG=<path>`** in its environment, or the plugin reads the default
-file and your console settings don't reach it. Settings in the environment win
+config file, found the way mesh-llm finds it: the file the node was started
+with (`mesh-llm serve --config <path>`; on Linux the plugin reads it from the
+node's command line and logs which file it uses), else the file a non-empty
+`MESH_LLM_CONFIG` names, else `~/.mesh-llm/config.toml`. On other systems, a
+node started with `--config <path>` also needs `MESH_LLM_CONFIG=<path>` in its
+environment, or your console settings don't reach the plugin. Settings in the environment win
 over the console. The witness and the checkpoint cadence are read when the
 plugin starts: restart the node after changing them.
 

@@ -47,7 +47,7 @@ The plugin declares the eight switches in its `config_schema`
 (`crates/evidence-plugin/src/share_policy.rs`), so the console shows them under
 Configuration › Plugins › Capsules. mesh-llm keeps what you save there in
 its config file and does not pass it to the plugin, so the plugin reads it
-there (`~/.mesh-llm/config.toml`, or the file `MESH_LLM_CONFIG` names). The
+there, found the way mesh-llm finds it (the file mesh-llm was started with by `--config`, read from its command line on Linux, else the file a non-empty `MESH_LLM_CONFIG` names, else `~/.mesh-llm/config.toml`). The
 same settings can be set in the plugin's environment, which wins over the
 console: `CAPSULES_SHARE_RECORD_AT_COMPLETION`,
 `CAPSULES_SHARE_HISTORY_SEGMENTS`, `CAPSULES_SHARE_STANDARD_HISTORY`,
