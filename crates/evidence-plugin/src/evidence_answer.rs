@@ -2145,6 +2145,27 @@ pub(crate) mod tests {
         );
     }
 
+    /// Admission's card ask (`admission::base::CARD_FORM`, `history_card/2`)
+    /// is answered to a stranger and reads as a card under the node's key, and
+    /// so does the `/1` ask it falls back to for an older peer (#339).
+    #[test]
+    fn admissions_card_asks_read_as_cards() {
+        use crate::admission::base;
+        let dir = tempfile::tempdir().unwrap();
+        crate::evidence_request_parity::long_ledger_dir(dir.path(), &key(), 40);
+        for form in [base::CARD_FORM, base::OLDER_CARD_FORM] {
+            let sent = serde_json::to_vec(&base::card_request_as(form)).unwrap();
+            let Outcome::Answered { wire, .. } = ask_by_default(dir.path(), &sent) else {
+                panic!("a stranger is answered {form}");
+            };
+            let read = base::read_card(&sent, &wire, Some(&key_id_of(&key())), &Default::default());
+            assert!(
+                matches!(read, base::CardOutcome::Read(ref card) if card.key_id == key_id_of(&key())),
+                "{form}: {read:?}"
+            );
+        }
+    }
+
     /// A `checkpoint_range` request past the anchor is
     /// `coverage_unsatisfiable`, and one under a history card is
     /// `no_such_subject` (ER -03 §8.1.3), whoever asks.
