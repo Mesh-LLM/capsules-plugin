@@ -2146,8 +2146,9 @@ pub(crate) mod tests {
     }
 
     /// Admission's card ask (`admission::base::CARD_FORM`, `history_card/2`)
-    /// is answered to a stranger and reads as a card under the node's key, and
-    /// so does the `/1` ask it falls back to for an older peer (#339).
+    /// is answered to a stranger and reads as a card under the node's key,
+    /// naming the form it answered, and so does the `/1` ask it falls back to
+    /// for an older peer (#339).
     #[test]
     fn admissions_card_asks_read_as_cards() {
         use crate::admission::base;
@@ -2160,7 +2161,8 @@ pub(crate) mod tests {
             };
             let read = base::read_card(&sent, &wire, Some(&key_id_of(&key())), &Default::default());
             assert!(
-                matches!(read, base::CardOutcome::Read(ref card) if card.key_id == key_id_of(&key())),
+                matches!(read, base::CardOutcome::Read(ref card)
+                    if card.key_id == key_id_of(&key()) && card.derivation == form),
                 "{form}: {read:?}"
             );
         }

@@ -11,6 +11,7 @@ fn card(age_days: i64) -> CardOutcome {
         artifact_digest: "c".repeat(64),
         first_checkpoint_at: Some(Utc::now() - chrono::Duration::days(age_days)),
         key_id: KEY.to_string(),
+        derivation: CARD_FORM.to_string(),
     })
 }
 
@@ -158,7 +159,13 @@ fn a_card_old_enough_passes_every_row_and_is_cited() {
     passing().set(&base);
     let read = base.read_keyed(PEER, at, Utc::now());
     assert_eq!(read.rows, [RowResult::Pass; 5]);
-    assert_eq!(read.card.as_deref(), Some("c".repeat(64).as_str()));
+    assert_eq!(
+        read.card,
+        Some(CardCite {
+            artifact_digest: "c".repeat(64),
+            derivation: CARD_FORM.to_string()
+        })
+    );
 }
 
 #[test]
@@ -597,6 +604,7 @@ fn card_at(first: Option<DateTime<Utc>>) -> CardOutcome {
         artifact_digest: "c".repeat(64),
         first_checkpoint_at: first,
         key_id: KEY.to_string(),
+        derivation: CARD_FORM.to_string(),
     })
 }
 

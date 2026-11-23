@@ -159,6 +159,16 @@ pub struct Card {
     /// The record key it verified under. The card speaks for that key only:
     /// once the peer's announced key changes, it is no longer read.
     pub key_id: String,
+    /// The card form the peer answered ([`CARD_FORM`] or
+    /// [`OLDER_CARD_FORM`]), which the sealed admission record names.
+    pub derivation: String,
+}
+
+/// The card a read cites: its artifact digest and the form it answered.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CardCite {
+    pub artifact_digest: String,
+    pub derivation: String,
 }
 
 /// What one ask of a peer's card came to.
@@ -220,8 +230,8 @@ pub struct Facts {
 #[derive(Debug)]
 pub struct Read {
     pub rows: [RowResult; 5],
-    /// The card cited: `Some(artifact digest)` when one was read.
-    pub card: Option<String>,
+    /// The card cited, when one was read.
+    pub card: Option<CardCite>,
     /// The evaluator's decision under the base pack, its rows included.
     pub decision: engine::Decision,
 }
@@ -339,7 +349,7 @@ impl Base {
     /// The card the identity and key-age rows read, and the card cited.
     /// `key` is the peer's announced record key now; a card read under
     /// another key is not read.
-    fn card(&self, peer: &str, key: Option<&str>, at: Instant) -> (Option<String>, engine::Card) {
+    fn card(&self, peer: &str, key: Option<&str>, at: Instant) -> (Option<CardCite>, engine::Card) {
         let mut cards = self.cards.lock().expect("the card lock is never poisoned");
         let entry = cards.entry(peer.to_string()).or_default();
         // A new key starts over: neither an old card nor an old failure
@@ -381,7 +391,10 @@ impl Base {
         }
         if let Some((card, _)) = &entry.card {
             return (
-                Some(card.artifact_digest.clone()),
+                Some(CardCite {
+                    artifact_digest: card.artifact_digest.clone(),
+                    derivation: card.derivation.clone(),
+                }),
                 engine::Card {
                     state: engine::CARD_VERIFIED.into(),
                     first_checkpoint_at: card.first_checkpoint_at.map(timestamp),
@@ -590,10 +603,11 @@ pub fn ask_older_card(answer: &Value) -> bool {
 
 /// Ask `peer` for its history card, sealing the ask in `capsules`' book
 /// first (loop step 7): [`CARD_FORM`], then [`OLDER_CARD_FORM`] once if the
-/// peer refuses the first as an older build would. The queue sends an ask
-/// only when a read is due (`CARD_TTL`, `ASK_RETRY`), which bounds what is
-/// booked per peer to two asks a read. If an ask cannot be sealed, nothing is
-/// sent and the card reads `NotRead`.
+/// peer refuses the first as an older build would. Each form may itself be
+/// re-sent once under `evidence-interop/0` (`send_evidence_request`), so a
+/// read books up to four asks; the queue sends one only when a read is due
+/// (`CARD_TTL`, `ASK_RETRY`). If an ask cannot be sealed, nothing is sent and
+/// the card reads `NotRead`.
 async fn ask_card(
     context: &mut mesh_llm_plugin::PluginContext<'_>,
     peer: &str,
@@ -680,6 +694,10 @@ pub fn read_card(
                 .and_then(|at| DateTime::parse_from_rfc3339(&at).ok())
                 .map(|at| at.with_timezone(&Utc)),
             key_id: key_id.to_ascii_lowercase(),
+            derivation: serde_json::from_slice::<Value>(sent)
+                .ok()
+                .and_then(|r| r.get("derivation")?.as_str().map(str::to_string))
+                .unwrap_or_default(),
         }),
         _ => CardOutcome::Unverifiable,
     }

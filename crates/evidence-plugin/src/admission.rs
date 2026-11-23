@@ -620,8 +620,8 @@ impl Admission {
             reads.push(match &rows.card {
                 Some(card) => json!({
                     "kind": "history_card",
-                    "derivation": "history_card/1",
-                    "commitment": {"alg": "SHA-256", "digest": peer_commitment(card, &self.salt)},
+                    "derivation": card.derivation,
+                    "commitment": {"alg": "SHA-256", "digest": peer_commitment(&card.artifact_digest, &self.salt)},
                 }),
                 None => json!({"kind": "history_card", "state": "not_read"}),
             });
@@ -820,6 +820,7 @@ mod tests {
                 artifact_digest: "c".repeat(64),
                 first_checkpoint_at: Some(now - chrono::Duration::days(30)),
                 key_id: key.to_string(),
+                derivation: base::CARD_FORM.to_string(),
             }),
             at,
         );
@@ -860,7 +861,7 @@ mod tests {
         );
         let salt = salt(capsules.signing_key());
         assert_eq!(block["reads"][1]["kind"], "history_card");
-        assert_eq!(block["reads"][1]["derivation"], "history_card/1");
+        assert_eq!(block["reads"][1]["derivation"], "history_card/2");
         assert_eq!(
             block["reads"][1]["commitment"]["digest"],
             peer_commitment(&"c".repeat(64), &salt)
