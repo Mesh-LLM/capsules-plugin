@@ -505,8 +505,9 @@ const DEAL_CHANGED: &str = "the deal changed while it was read; ask again";
 /// `diagnostics` says so. A deal with no receipt yet (no report, no covering
 /// checkpoint, no deal) is left out, as is one whose payload the journal
 /// lacks or that kept changing while it was read (the last two say so on
-/// `diagnostics`). Any other failure to read the ledger fails the call, so a
-/// report is never sealed silently missing a deal's receipt. A receipt is never built by cutting
+/// `diagnostics`). Any other failure to read the ledger or build the bundle
+/// fails the call, so a report is never sealed silently missing a deal's
+/// receipt. A receipt is never built by cutting
 /// a checkpoint: the route does that, this reads what exists.
 pub(crate) fn receipt_lines(
     ledger_dir: &Path,
@@ -558,8 +559,8 @@ pub(crate) fn receipt_lines(
                     "deal-receipts: exchange {exchange}: {why}; no receipt"
                 )?;
             }
-            // The ledger could not be read: never seal a report that is
-            // silently missing this deal's receipt.
+            // The ledger could not be read or the bundle not built: never seal
+            // a report that is silently missing this deal's receipt.
             Err(Error::Failed(why)) => {
                 return Err(std::io::Error::other(format!("exchange {exchange}: {why}")));
             }
