@@ -1121,9 +1121,10 @@ describe('LedgerPageContent — Part 3: Exchanges two-sided stream + row inspect
       rows: [
         { ...base, exchange_key: 'w2-a', theirs: { state: 'present', capsule_id: 'a'.repeat(64), evidence_outcome: 'claims_refused' }, timestamp: '2026-11-23T06:46:00Z' },
         { ...base, exchange_key: 'w2-b', theirs: { state: 'absent', capsule_id: null }, timestamp: '2026-11-24T06:46:00Z' },
-        { ...base, exchange_key: 'w1-a', theirs: { state: 'absent', capsule_id: null }, timestamp: '2026-11-17T06:46:00Z' }
+        { ...base, exchange_key: 'w1-a', theirs: { state: 'absent', capsule_id: null }, timestamp: '2026-11-17T06:46:00Z' },
+        { ...base, exchange_key: 'undated', theirs: { state: 'absent', capsule_id: null }, timestamp: null }
       ],
-      row_count: 3,
+      row_count: 4,
       default_sort: '',
       filters: [],
       next_after_seq: null,
@@ -1138,6 +1139,11 @@ describe('LedgerPageContent — Part 3: Exchanges two-sided stream + row inspect
     expect(lines).toHaveLength(2)
     expect(lines[0]).toMatch(/^Week of .*23.*: 1 of 2 with both sides' records held \(0 matching, 1 differing\)$/)
     expect(lines[1]).toMatch(/: 0 of 1 with both sides' records held \(0 matching, 0 differing\)$/)
+    // The undated exchange is in no week's denominator, and is said once.
+    expect(
+      within(card).getByText("1 exchange has no time, so no week: 0 of 1 with both sides' records held (0 matching, 0 differing).")
+    ).toBeInTheDocument()
+    expect(within(card).queryByText(/earlier week/)).not.toBeInTheDocument()
     expect(within(card).getByText(/Counts only the other side’s records this node holds/)).toBeInTheDocument()
   })
 

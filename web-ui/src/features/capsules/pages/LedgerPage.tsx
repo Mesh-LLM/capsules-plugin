@@ -25,7 +25,7 @@ import { fetchCapsuleLedger } from '@/features/capsules/api/client'
 import { ReportsPanel } from '@/features/capsules/components/ReportsPanel'
 import { fetchRefereeMargin } from '@/features/capsules/api/verdictClient'
 import { loweredMarginNotice } from '@/features/capsules/lib/adjudication-view'
-import { TWO_SIDED_NOTE, twoSidedWeeks, weekLine } from '@/features/capsules/lib/two-sided-weeks'
+import { TWO_SIDED_NOTE, earlierLine, twoSidedWeeks, undatedLine, weekLine } from '@/features/capsules/lib/two-sided-weeks'
 import { announcedKeyFor, askForHistory, askForRecord } from '@/features/capsules/api/evidenceRequestClient'
 import {
   judgeAskReply,
@@ -1334,7 +1334,7 @@ const WEEK_LABEL = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'nu
  *  exchanges whose other side's signed record this node holds, matching and
  *  differing (`two-sided-weeks.ts`). */
 function TwoSidedWeeksCard({ rows }: { rows: readonly PaneCRow[] }) {
-  const { weeks, undated } = twoSidedWeeks(rows, (row) => {
+  const { weeks, undated, earlier, earlierWeeks } = twoSidedWeeks(rows, (row) => {
     const kind = deriveRightCellState(row).kind
     return kind === 'closed' ? 'matching' : kind === 'contradicted' ? 'differing' : 'not_held'
   })
@@ -1354,7 +1354,8 @@ function TwoSidedWeeksCard({ rows }: { rows: readonly PaneCRow[] }) {
           </li>
         ))}
       </ul>
-      {undated > 0 ? <p className="type-caption text-fg-faint">{undated} exchanges with no time are not in a week.</p> : null}
+      {earlierWeeks > 0 ? <p className="type-caption text-fg-faint">{earlierLine(earlierWeeks, earlier)}</p> : null}
+      {undated.exchanges > 0 ? <p className="type-caption text-fg-faint">{undatedLine(undated)}</p> : null}
       <p className="type-caption text-fg-faint">{TWO_SIDED_NOTE}</p>
     </section>
   )
