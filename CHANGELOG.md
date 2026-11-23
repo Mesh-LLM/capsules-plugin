@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- **`scripts/settlement-report.sh` renders the sealed settlement report in the 9b wording pack, pinned by digest (Mesh-LLM/capsules-plugin#333, #96).** It passes evidencebook-skills' `wording/inference-deals-settlement-en.json` (evidencebook-skills#206, `329ba53d`, sha256 `db7065547fd7332dfb6c4d642f71bdad7b5e4d4afcb517f4aaeda755c623414c`) to `report.sh` by default, and refuses a checkout whose pack differs before it touches the book. `--wording` and `--wording-digest` together name another pack. Nothing else in the node changes.
+
 ### Fixed
 
 - **Agreement terms cite inference-deals 0.1.2 (Mesh-LLM/capsules-plugin#329).** `INFERENCE_DEALS_DIGEST` is now `cfcc3ce4…36ae`, the `pack_source_digest` of the inference-deals pack 0.1.2 (contract `inference-deals@0.1.2`, evidencebook-skills `a49a84f`), in place of 0.1.0's `d8aa9967…6a18` (the plugin never cited 0.1.1, whose digest is `f8e5c9d6…0940`). **A node on this build and a node on an older one refuse each other's proposals, and the judge refuses records that cite the old digest, until both run it.**
