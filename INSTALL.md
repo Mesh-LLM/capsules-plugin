@@ -662,9 +662,10 @@ The Exchanges tab's "What happened" row has three buttons, one per grade of an a
   `capsules deal-receipts --chain FILE [--data-dir DIR] [--through DAY]`, which prints one line per deal on the
   chain it was given (a receipt, or `held`), reads without the node's lock, and exits 0 on
   success, 2 for a bad argument and 1 when the log or the key cannot be read, or when a deal on or
-  before the report's day has no receipt yet (no report, or no checkpoint covers it: it names the
-  deal, and you run again later), so a page is never built that says "Receipt not carried with this
-  page" for a deal that is only not ready. It needs an evidencebook-skills whose `report.sh` takes
+  before the report's day has a report but no signed checkpoint covers it yet (it names the deal,
+  and you run again after the next checkpoint), so a page is never built that says "Receipt not
+  carried with this page" for a deal that is only not checkpointed. A deal that was never closed
+  has no report to carry: it is left out, with its reason on stderr. It needs an evidencebook-skills whose `report.sh` takes
   `--receipts`.
 
   Set `CAPSULES_SETTLEMENT_REPORT_DIR=DIR` and `CAPSULES_CAPSULECTL=PATH` in the node's

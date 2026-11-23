@@ -267,8 +267,8 @@ extra+=(--wording "$WORDING" --wording-digest "$WORDING_DIGEST")
 [ -z "$NOW" ] || extra+=(--now "$NOW")
 if [ "$WITH_RECEIPTS" = 1 ]; then
   # One line per deal on the chain read above: the bundle if the node allows it,
-  # else `held`. A deal on or before --date whose receipt is not ready yet (no
-  # report, or no checkpoint covers it) fails the run, naming it: the page would
+  # else `held`. A deal on or before --date whose report no checkpoint covers
+  # yet fails the run, naming it (a deal never closed has no report and is left out): the page would
   # otherwise say "Receipt not carried with this page", the viewer's line for a
   # page built wrong. Run again later. No line at all passes no file.
   "$CAPSULES" deal-receipts --data-dir "$DATA_DIR" --chain "$WORK/chain.jsonl" --through "$DATE" >"$WORK/receipts.jsonl" \
