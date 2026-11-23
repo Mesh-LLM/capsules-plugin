@@ -11,6 +11,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
 import { pluginRouteFixtures } from './dev/plugin-route-fixtures.ts'
 import { scopeToMountRoot } from './scope-css.ts'
+import { inlineIife, sharedAliases } from './vite-shared.ts'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const fixtures = process.env.VITE_EVIDENCE_FIXTURES
@@ -18,8 +19,8 @@ const apiTarget = process.env.MESH_UI_API_ORIGIN ?? 'http://127.0.0.1:3131'
 
 export default defineConfig({
   root: path.resolve(dirname, 'dev'),
-  plugins: [pluginRouteFixtures(fixtures), react(), tailwindcss(), scopeToMountRoot()],
-  resolve: { alias: { '@': path.resolve(dirname, './src') } },
+  plugins: [pluginRouteFixtures(fixtures), inlineIife(), react(), tailwindcss(), scopeToMountRoot()],
+  resolve: { alias: sharedAliases },
   server: {
     host: '127.0.0.1',
     port: 5180,

@@ -26,5 +26,5 @@
       "@aac-browser": ["./node_modules/@action-state-group/agent-action-capsule/dist/browser.d.ts"]
     }
   },
-  "include": ["src", "dev", "vite.config.ts", "vite.dev.config.ts", "scope-css.ts"]
+  "include": ["src", "dev", "vite.config.ts", "vite.dev.config.ts", "vite-shared.ts", "vite-shared.test.ts", "scope-css.ts"]
 }
