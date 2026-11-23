@@ -377,9 +377,7 @@ pub fn bundle(
     let deal = read_deal(ledger_dir, ids)?;
     evidence_log::with_index(ledger_dir, node_key_id, |index| {
         if linked(index) != deal.ids {
-            return Err(Error::Failed(
-                "the deal changed while it was read; ask again".into(),
-            ));
+            return Err(Error::Failed(DEAL_CHANGED.into()));
         }
         // The payloads are disclosed; nothing else (the intent's opening is
         // not in them, and its nonce is kept only in the node's journal).
@@ -492,18 +490,23 @@ pub fn with_route(
     )
 }
 
+/// What a bundle build says when the deal's records moved while it was read;
+/// `receipt_lines` retries on exactly this.
+const DEAL_CHANGED: &str = "the deal changed while it was read; ask again";
+
 /// One line of `capsules deal-receipts`: a deal this node holds, either with
 /// its receipt bundle (JSON text, as the route serves it) or held back by the
 /// share policy. The shape the report builder reads (evidencebook#764):
 /// `{"exchange_capsule_id", "receipt"}` or `{"exchange_capsule_id", "held": true}`.
 ///
 /// `exchanges` are the exchange capsule ids on the page's chain, so a receipt
-/// of a deal outside it is never built. With `allowed` false no payload is
-/// read and no bundle is built: every deal is `held`, and `diagnostics` says
-/// why (`hold`). A deal with no receipt
-/// yet (no report, no covering checkpoint, no deal) is left out, as is one
-/// whose payload the journal lacks or that kept changing while it was read;
-/// the last two say so on `diagnostics`. A receipt is never built by cutting
+/// of a deal outside it is never built. With `hold` set no payload is
+/// read and no bundle is built: every deal is `held` (`hold` is why), and
+/// `diagnostics` says so. A deal with no receipt yet (no report, no covering
+/// checkpoint, no deal) is left out, as is one whose payload the journal
+/// lacks or that kept changing while it was read (the last two say so on
+/// `diagnostics`). Any other failure to read the ledger fails the call, so a
+/// report is never sealed silently missing a deal's receipt. A receipt is never built by cutting
 /// a checkpoint: the route does that, this reads what exists.
 pub(crate) fn receipt_lines(
     ledger_dir: &Path,
@@ -533,7 +536,7 @@ pub(crate) fn receipt_lines(
             continue;
         }
         let mut built = bundle(ledger_dir, node_key_id, &exchange);
-        if matches!(&built, Err(Error::Failed(why)) if why.starts_with("the deal changed")) {
+        if matches!(&built, Err(Error::Failed(why)) if why == DEAL_CHANGED) {
             built = bundle(ledger_dir, node_key_id, &exchange);
         }
         match built {
@@ -548,11 +551,17 @@ pub(crate) fn receipt_lines(
                 )?;
             }
             Err(Error::Refused(_)) => {}
-            Err(Error::Failed(why)) => {
+            // The deal kept moving under a running node: left out, said so.
+            Err(Error::Failed(why)) if why == DEAL_CHANGED => {
                 writeln!(
                     diagnostics,
                     "deal-receipts: exchange {exchange}: {why}; no receipt"
                 )?;
+            }
+            // The ledger could not be read: never seal a report that is
+            // silently missing this deal's receipt.
+            Err(Error::Failed(why)) => {
+                return Err(std::io::Error::other(format!("exchange {exchange}: {why}")));
             }
         }
     }
@@ -571,7 +580,9 @@ fn read_node_key_id(data_dir: &Path) -> Result<String, String> {
             path.display()
         )
     })?;
-    Ok(crate::producer::keys::key_id_of(&key.verifying_key()))
+    // The `key_id` form the ledger index and every checkpoint carry (the raw
+    // public key in hex), not capsule-emit's short fingerprint.
+    Ok(crate::commitment::key_id(&key))
 }
 
 /// What `capsules deal-receipts --help` says (Sherlock2's condition, ops
@@ -801,6 +812,32 @@ pub(crate) mod tests {
         (lines, String::from_utf8(diagnostics).unwrap())
     }
 
+    /// The command's own key read, not the tests' shortcut: the id it takes
+    /// from `<data dir>/keys/node-key.pem` must be the one the ledger index and
+    /// the checkpoints carry, or no deal ever has a covering checkpoint.
+    #[test]
+    fn the_key_read_from_the_data_dir_gives_a_receipt_on_a_real_node() {
+        let (dir, state) = node(true);
+        cut(&state);
+        let key_id = read_node_key_id(dir.path()).unwrap();
+        assert_eq!(key_id, crate::commitment::key_id(state.signing_key()));
+        let exchanges = [exchange_capsule()].into_iter().collect();
+        let lines = receipt_lines(
+            &dir.path().join("ledger"),
+            &key_id,
+            &exchanges,
+            None,
+            &mut Vec::new(),
+        )
+        .unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].get("receipt").is_some(), "{lines:?}");
+        // No key there: refused, and nothing is created.
+        let empty = tempfile::tempdir().unwrap();
+        assert!(read_node_key_id(empty.path()).is_err());
+        assert!(!empty.path().join("keys").exists());
+    }
+
     #[test]
     fn a_receipt_line_carries_the_bundle_the_route_serves() {
         let (_dir, state) = node(true);
@@ -858,6 +895,26 @@ pub(crate) mod tests {
         assert!(lines.is_empty());
         let (lines, _) = lines_for(&state, &[hex64('9')], HELD);
         assert!(lines.is_empty());
+    }
+
+    #[test]
+    fn an_unreadable_ledger_fails_the_call_instead_of_leaving_the_deal_out() {
+        let (_dir, state) = node(true);
+        cut(&state);
+        // A journal that cannot be read (a directory where the file is).
+        let journal = state.ledger_dir().join(crate::deal_flow::PAYLOADS_FILE);
+        std::fs::remove_file(&journal).unwrap();
+        std::fs::create_dir(&journal).unwrap();
+        let exchanges = [exchange_capsule()].into_iter().collect();
+        let result = receipt_lines(
+            state.ledger_dir(),
+            &crate::commitment::key_id(state.signing_key()),
+            &exchanges,
+            None,
+            &mut Vec::new(),
+        );
+        let why = result.unwrap_err().to_string();
+        assert!(why.contains("not readable"), "{why}");
     }
 
     #[test]

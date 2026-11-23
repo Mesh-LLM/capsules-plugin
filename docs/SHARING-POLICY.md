@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Sharing policy
 
-Every sharing decision the plugin makes is one of seven switches, and every
+Every sharing decision the plugin makes is one of eight switches, and every
 default keys on **relationship** (whether this node has exchanged with the
 other node), never on proximity, latency, or any computed standing. Nothing
 here is a score, and nothing here ranks anyone.
@@ -13,6 +13,7 @@ share_standard_history:      on | off                              # default: of
 share_exchange_corroboration: on | off                             # default: on
 advertise_evidence_requests: on | off                              # default: off
 share_adjudications:         deliver_to_subjects | off             # default: deliver_to_subjects
+share_settlement_receipts:   on | off                              # default: off
 witness:                     [] | [{endpoint, public_key?}, ...]   # default: [] (off)
 ```
 
@@ -34,7 +35,15 @@ instead. `prospective` stops being read in 0.2.0, where an unknown value means
 `off`, so a node still set to `prospective` then shares no history segments,
 even with counterparties.
 
-The plugin declares the seven switches in its `config_schema`
+`share_settlement_receipts` is not a message to a peer: it decides whether the
+settlement report the owner builds carries each deal's receipt (the deal
+records' contents) to whoever gets that page. `on` means every deal on the
+page, for every counterparty on it; it is never on while
+`share_record_at_completion` is `off`. It is not a member of the signed
+disclosure policy, and the owner's own copy of a receipt on the local
+`deal-receipt-bundle` route is not gated by it.
+
+The plugin declares the eight switches in its `config_schema`
 (`crates/evidence-plugin/src/share_policy.rs`), so the console shows them under
 Configuration › Plugins › Capsules. mesh-llm keeps what you save there in
 its config file and does not pass it to the plugin, so the plugin reads it
@@ -43,7 +52,8 @@ same settings can be set in the plugin's environment, which wins over the
 console: `CAPSULES_SHARE_RECORD_AT_COMPLETION`,
 `CAPSULES_SHARE_HISTORY_SEGMENTS`, `CAPSULES_SHARE_STANDARD_HISTORY`,
 `CAPSULES_SHARE_EXCHANGE_CORROBORATION`,
-`CAPSULES_ADVERTISE_EVIDENCE_REQUESTS`, `CAPSULES_SHARE_ADJUDICATIONS` and
+`CAPSULES_ADVERTISE_EVIDENCE_REQUESTS`, `CAPSULES_SHARE_ADJUDICATIONS`,
+`CAPSULES_SHARE_SETTLEMENT_RECEIPTS` and
 `CAPSULES_CHECKPOINT_WITNESS_URLS` (a comma list of witness URLs) with
 `CAPSULES_CHECKPOINT_WITNESS_KEYS` (a JSON object from witness URL to its key
 in hex). An unset value means the default; an unknown value means `off` for the

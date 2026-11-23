@@ -959,6 +959,7 @@ mod tests {
             (STOP_ROUTING_WINDOW_KEY, "STOP_ROUTING_WINDOW_DAYS"),
             (ADMISSION_ALLOW_KEY, "ADMISSION_ALLOW"),
             (ADMISSION_DEFAULT_KEY, "ADMISSION_DEFAULT"),
+            (SETTLEMENT_RECEIPTS_KEY, "SHARE_SETTLEMENT_RECEIPTS"),
         ];
         for (key, suffix) in expected_env_suffix {
             assert_eq!(
