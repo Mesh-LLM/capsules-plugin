@@ -107,6 +107,31 @@
         }
       },
       {
+        "key": "share_settlement_receipts",
+        "value_schema": {
+          "kind": "enum",
+          "enum_values": [
+            "off",
+            "on"
+          ],
+          "allow_additional_properties": false
+        },
+        "required": false,
+        "default_json": "\"off\"",
+        "apply_mode": "static_on_load",
+        "restart_scope": "none",
+        "visibility": "user",
+        "description": "Let the settlement report you build carry each deal's receipt, so a reader can open it from the deal's line. On means every deal's receipt on the page, for every counterparty on it, goes to whoever gets the page, and each receipt shows what your deal records say; the words of the deal's intent stay closed, only its commitment shows. Off (the default) marks each deal held back. Your own copy of a receipt is still on this node's local receipt route, whatever this is set to. Never on while \"Send your record to the other side\" is off.",
+        "presentation": {
+          "label": "Receipts in the settlement report",
+          "category_id": "show",
+          "category_label": "What you show others",
+          "category_summary": "What this node answers when a peer asks about you. Peers can only admit you on what you let them see.",
+          "category_order": 0,
+          "setting_order": 4
+        }
+      },
+      {
         "key": "adjudicate_differing_twins",
         "value_schema": {
           "kind": "enum",
@@ -128,7 +153,7 @@
           "category_label": "When answers differ",
           "category_summary": "A client can send one request to two machines. These settings decide what happens when the two answers don't match.",
           "category_order": 1,
-          "setting_order": 4
+          "setting_order": 5
         }
       },
       {
@@ -148,7 +173,7 @@
           "category_label": "When answers differ",
           "category_summary": "A client can send one request to two machines. These settings decide what happens when the two answers don't match.",
           "category_order": 1,
-          "setting_order": 5
+          "setting_order": 6
         }
       },
       {
@@ -169,7 +194,7 @@
           "category_label": "When answers differ",
           "category_summary": "A client can send one request to two machines. These settings decide what happens when the two answers don't match.",
           "category_order": 1,
-          "setting_order": 6
+          "setting_order": 7
         }
       },
       {
@@ -190,7 +215,7 @@
           "category_label": "When answers differ",
           "category_summary": "A client can send one request to two machines. These settings decide what happens when the two answers don't match.",
           "category_order": 1,
-          "setting_order": 7
+          "setting_order": 8
         }
       },
       {
@@ -211,7 +236,7 @@
           "category_label": "When answers differ",
           "category_summary": "A client can send one request to two machines. These settings decide what happens when the two answers don't match.",
           "category_order": 1,
-          "setting_order": 8
+          "setting_order": 9
         }
       },
       {
@@ -236,7 +261,7 @@
           "category_label": "When answers differ",
           "category_summary": "A client can send one request to two machines. These settings decide what happens when the two answers don't match.",
           "category_order": 1,
-          "setting_order": 9
+          "setting_order": 10
         }
       },
       {
@@ -261,7 +286,7 @@
           "category_label": "Keeping records",
           "category_summary": "Who else holds a copy of what you sealed. This is what makes a later rewrite provable by someone other than you.",
           "category_order": 2,
-          "setting_order": 10
+          "setting_order": 11
         }
       },
       {
@@ -305,7 +330,7 @@
           "category_label": "Keeping records",
           "category_summary": "Who else holds a copy of what you sealed. This is what makes a later rewrite provable by someone other than you.",
           "category_order": 2,
-          "setting_order": 11,
+          "setting_order": 12,
           "placeholder": "https://witness.agentactioncapsule.org",
           "renderer_id": "set-value"
         }
@@ -332,7 +357,7 @@
           "category_label": "Evidence network",
           "category_summary": "Whether this node is on the evidence network's list. Off by default.",
           "category_order": 3,
-          "setting_order": 12
+          "setting_order": 13
         }
       },
       {
@@ -352,7 +377,7 @@
           "category_label": "Which peers you route to",
           "category_summary": "Before this node sends a request to a mesh peer it decides go or no from these. Each decision is sealed in this node's capsule record. A sealed decision names a peer only by a salted fingerprint, never by its node id. To refuse a peer, block it in mesh-llm's peer blocks. Takes effect when mesh-llm is restarted.",
           "category_order": 4,
-          "setting_order": 13
+          "setting_order": 14
         }
       },
       {
@@ -377,7 +402,7 @@
           "category_label": "Which peers you route to",
           "category_summary": "Before this node sends a request to a mesh peer it decides go or no from these. Each decision is sealed in this node's capsule record. A sealed decision names a peer only by a salted fingerprint, never by its node id. To refuse a peer, block it in mesh-llm's peer blocks. Takes effect when mesh-llm is restarted.",
           "category_order": 4,
-          "setting_order": 14
+          "setting_order": 15
         }
       }
     ]

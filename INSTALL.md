@@ -638,8 +638,8 @@ The Exchanges tab's "What happened" row has three buttons, one per grade of an a
   a capsulectl book under the node's own key in `DIR`, and runs evidencebook-skills'
   `report.sh --seal` over the inference-deals pack. It keeps the page as `DIR/settlement.html`.
   The page is worded with the 9b wording pack, `wording/inference-deals-settlement-en.json` in
-  the evidencebook-skills checkout (merged in evidencebook-skills#206 at `329ba53d`), pinned by
-  its sha256 `db7065547fd7332dfb6c4d642f71bdad7b5e4d4afcb517f4aaeda755c623414c`; the script
+  the evidencebook-skills checkout (last changed in evidencebook-skills#210 at `994a33e`), pinned by
+  its sha256 `393d9985558e10aa2a031c7fb97eff95a4ef532ec2b0cd943d6a40a5322dba86`; the script
   refuses a checkout whose pack differs, before it touches the book. `--wording FILE
   --wording-digest SHA256` name another pack.
   It needs capsulectl with capsulectl-book (v0.1.0-rc31 or later), an evidencebook-skills
@@ -649,6 +649,24 @@ The Exchanges tab's "What happened" row has three buttons, one per grade of an a
   publishes and seals; `book report check` needs no signing secret from capsulectl-book
   v0.1.0-rc31 on (action-state-group/evidencebook#349). Keep `DIR` as private as the data
   directory.
+
+  **Receipts on the page.** With `--with-receipts`, the page can open each deal's receipt from its
+  line. A receipt carries the contents of your deal records, so it is off by default: the option hands
+  `report.sh` a receipt only when the node's `share_settlement_receipts` setting ("Receipts in
+  the settlement report", under "What you show others") is `on`. `on` means every deal's
+  receipt on the page, for every counterparty on it, goes to whoever gets the page; the words of
+  the deal's intent stay closed, only its commitment shows. It is never on while `share_record_at_completion` is `off`. Otherwise every deal
+  is marked as held back by your sharing policy, the page carries no receipt, and the command
+  says on stderr which setting held it. There is no flag that overrides the setting, and your
+  own copy of a receipt is still on the node's local receipt route whatever it says. The script asks the node itself,
+  `capsules deal-receipts --chain FILE [--data-dir DIR] [--through DAY]`, which prints one line per deal on the
+  chain it was given (a receipt, or `held`), reads without the node's lock, and exits 0 on
+  success, 2 for a bad argument and 1 when the log or the key cannot be read, or when a deal on or
+  before the report's day has a report but no signed checkpoint covers it yet (it names the deal,
+  and you run again after the next checkpoint), so a page is never built that says "Receipt not
+  carried with this page" for a deal that is only not checkpointed. A deal that was never closed
+  has no report to carry: it is left out, with its reason on stderr. It needs an evidencebook-skills whose `report.sh` takes
+  `--receipts`.
 
   Set `CAPSULES_SETTLEMENT_REPORT_DIR=DIR` and `CAPSULES_CAPSULECTL=PATH` in the node's
   environment. When you save the page, the node runs `capsulectl book report check` on it and

@@ -19,10 +19,19 @@
 #   4. Keep the page as <report dir>/settlement.html, with settlement.json
 #      naming when it was sealed and the day it reports on.
 #
+# With --with-receipts, step 3 also hands report.sh each deal's receipt, so the
+# page can open it from the deal's line (Mesh-LLM/capsules-plugin#336): the
+# node's own `capsules deal-receipts` gives, for each deal whose exchange is on
+# the chain read in step 1 (a deal not ready yet fails the run), the receipt bundle only when the node's
+# `share_settlement_receipts` allows it, and `held` otherwise. The node
+# decides; this script reads no setting. Receipts carry the deal records'
+# contents, so the option is off by default, and without it the report is built
+# exactly as before.
+#
 # Usage:
 #   scripts/settlement-report.sh --report-dir DIR --capsulectl PATH --skills DIR \
 #       [--capsules PATH] [--data-dir DIR] [--date YYYY-MM-DD] [--period-policy FILE] [--now TIME]
-#       [--wording FILE --wording-digest SHA256]
+#       [--wording FILE --wording-digest SHA256] [--with-receipts]
 #
 #   --report-dir   the reporting book's directory; the node's CAPSULES_SETTLEMENT_REPORT_DIR
 #   --capsulectl   a capsulectl that loads capsulectl-book v0.1.0-rc31 or later; the node's CAPSULES_CAPSULECTL
@@ -34,23 +43,26 @@
 #   --now          report.sh's clock (default: the wall clock); for tests
 #   --wording, --wording-digest
 #                  the 9b wording pack and its sha256, given together. Default: the
-#                  pack evidencebook-skills merged in #206 (329ba53d), at
+#                  pack evidencebook-skills last changed in #210 (994a33e), at
 #                  <skills>/wording/inference-deals-settlement-en.json, pinned by
 #                  the digest below. The pack's digest is checked before the run
 #                  touches the book, so a checkout whose pack differs is refused.
+#   --with-receipts hand report.sh the deal receipts (needs an evidencebook-skills
+#                  whose report.sh takes --receipts FILE, a JSON list of
+#                  {"exchange_capsule_id", "receipt" | "held": true})
 set -euo pipefail
 
-# The 9b wording pack (action-state-group/evidencebook-skills#206, 329ba53d)
+# The 9b wording pack (action-state-group/evidencebook-skills#206, as #210 changed it at 994a33e)
 # the sealed report renders in (Mesh-LLM/capsules-plugin#96, button 2).
 PACK_REL=wording/inference-deals-settlement-en.json
-PACK_DIGEST=db7065547fd7332dfb6c4d642f71bdad7b5e4d4afcb517f4aaeda755c623414c
+PACK_DIGEST=393d9985558e10aa2a031c7fb97eff95a4ef532ec2b0cd943d6a40a5322dba86
 
 usage() { sed -n '/^# Usage:/,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2; exit 2; }
 fail() { echo "settlement-report: $*" >&2; exit 1; }
 
 REPORT_DIR=${CAPSULES_SETTLEMENT_REPORT_DIR:-}
 CAPSULECTL=${CAPSULES_CAPSULECTL:-}
-SKILLS="" CAPSULES=capsules DATA_DIR=${CAPSULES_DATA_DIR:-} DATE="" WORDING="" WORDING_DIGEST="" PERIOD_POLICY="" NOW=""
+SKILLS="" CAPSULES=capsules DATA_DIR=${CAPSULES_DATA_DIR:-} DATE="" WORDING="" WORDING_DIGEST="" PERIOD_POLICY="" NOW="" WITH_RECEIPTS=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --report-dir) REPORT_DIR=$2; shift 2 ;;
@@ -63,6 +75,7 @@ while [ "$#" -gt 0 ]; do
     --wording-digest) WORDING_DIGEST=$2; shift 2 ;;
     --period-policy) PERIOD_POLICY=$2; shift 2 ;;
     --now) NOW=$2; shift 2 ;;
+    --with-receipts) WITH_RECEIPTS=1; shift ;;
     *) usage ;;
   esac
 done
@@ -77,9 +90,9 @@ fi
 [ -f "$SKILLS/scripts/report.sh" ] || fail "$SKILLS is not an evidencebook-skills checkout (no scripts/report.sh)"
 SPEC="$SKILLS/packs/inference-deals/compiled/compiled.json"
 [ -f "$SPEC" ] || fail "$SKILLS has no inference-deals pack ($SPEC)"
-[ -f "$WORDING" ] || fail "no wording pack at $WORDING (the pack is evidencebook-skills' $PACK_REL, merged in evidencebook-skills#206 at 329ba53d; check out evidencebook-skills at that commit or later with the pack, or pass --wording FILE --wording-digest SHA256 for another pack)"
+[ -f "$WORDING" ] || fail "no wording pack at $WORDING (the pack is evidencebook-skills' $PACK_REL, last changed in evidencebook-skills#210 at 994a33e; check out evidencebook-skills at that commit or later with the pack, or pass --wording FILE --wording-digest SHA256 for another pack)"
 ACTUAL=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$WORDING")
-[ "$ACTUAL" = "$WORDING_DIGEST" ] || fail "the wording pack $WORDING has sha256 $ACTUAL, not the expected $WORDING_DIGEST (this script pins the pack merged in evidencebook-skills#206 at 329ba53d, sha256 $PACK_DIGEST: check out that pack, or pass --wording FILE --wording-digest SHA256 for another)"
+[ "$ACTUAL" = "$WORDING_DIGEST" ] || fail "the wording pack $WORDING has sha256 $ACTUAL, not the expected $WORDING_DIGEST (this script pins the pack last changed in evidencebook-skills#210 at 994a33e, sha256 $PACK_DIGEST: check out that pack, or pass --wording FILE --wording-digest SHA256 for another)"
 DATE=${DATE:-$(python3 -c 'import datetime; print((datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)).date())')}
 
 [ -n "$DATA_DIR" ] || fail "set --data-dir (or CAPSULES_DATA_DIR) to the node's data directory"
@@ -252,6 +265,20 @@ extra=()
 extra+=(--wording "$WORDING" --wording-digest "$WORDING_DIGEST")
 [ -z "$PERIOD_POLICY" ] || extra+=(--period-policy "$PERIOD_POLICY")
 [ -z "$NOW" ] || extra+=(--now "$NOW")
+if [ "$WITH_RECEIPTS" = 1 ]; then
+  # One line per deal on the chain read above: the bundle if the node allows it,
+  # else `held`. A deal on or before --date whose report no checkpoint covers
+  # yet fails the run, naming it (a deal never closed has no report and is left out): the page would
+  # otherwise say "Receipt not carried with this page", the viewer's line for a
+  # page built wrong. Run again later. No line at all passes no file.
+  "$CAPSULES" deal-receipts --data-dir "$DATA_DIR" --chain "$WORK/chain.jsonl" --through "$DATE" >"$WORK/receipts.jsonl" \
+    || fail "capsules deal-receipts failed (its message is above); no page was built"
+  if [ -s "$WORK/receipts.jsonl" ]; then
+    python3 -c 'import json,sys; json.dump([json.loads(l) for l in open(sys.argv[1], encoding="utf-8") if l.strip()], open(sys.argv[2], "w"), sort_keys=True)' \
+      "$WORK/receipts.jsonl" "$WORK/receipts.json"
+    extra+=(--receipts "$WORK/receipts.json")
+  fi
+fi
 bash "$SKILLS/scripts/report.sh" --spec "$SPEC" --profile "$PROFILE" --date "$DATE" \
   --out "$WORK/settlement.html" --capsulectl "$CAPSULECTL" --work "$WORK/report" --seal ${extra[@]+"${extra[@]}"} \
   || fail "report.sh did not hand over a checked page (its output above says why)"

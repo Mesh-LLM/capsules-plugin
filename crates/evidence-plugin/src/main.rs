@@ -1957,6 +1957,12 @@ async fn main() -> anyhow::Result<()> {
         let args: Vec<String> = std::env::args().skip(2).collect();
         std::process::exit(chain_store::cli(&args));
     }
+    // Each deal's receipt bundle for the settlement report, or `held` when the
+    // share policy keeps it off (`deal_receipt::cli`); reads without the lock.
+    if std::env::args().nth(1).as_deref() == Some("deal-receipts") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        std::process::exit(deal_receipt::cli(&args));
+    }
     // The chain's checkpoints in the `checkpoints.jsonl` line format, read the
     // same way (`chain_store::checkpoints_cli`).
     if std::env::args().nth(1).as_deref() == Some("chain-checkpoints") {

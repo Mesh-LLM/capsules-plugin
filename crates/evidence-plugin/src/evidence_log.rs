@@ -616,6 +616,20 @@ impl LedgerIndex {
         ))
     }
 
+    /// The exchange capsule ids this node holds a deal for, sorted. Metadata
+    /// only: no payload is read.
+    pub fn deal_exchanges(&self) -> Vec<&str> {
+        let mut found: Vec<&str> = self
+            .deal_exchange
+            .iter()
+            .filter(|(id, _)| self.leaf_index_of(id).is_some())
+            .map(|(_, exchange)| exchange.as_str())
+            .collect();
+        found.sort_unstable();
+        found.dedup();
+        found
+    }
+
     /// The deal capsules linked to `exchange_capsule_id`, in log order.
     pub fn deal_capsules_of(&self, exchange_capsule_id: &str) -> Vec<&str> {
         let mut found: Vec<(u64, &str)> = self

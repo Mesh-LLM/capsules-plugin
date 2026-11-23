@@ -173,6 +173,7 @@ fn narrowest() -> std::collections::BTreeMap<String, String> {
         "share_exchange_corroboration",
         "advertise_evidence_requests",
         "share_adjudications",
+        "share_settlement_receipts",
         "adjudicate_differing_twins",
         crate::network_join::JOIN_NETWORK_KEY,
     ]
@@ -614,6 +615,7 @@ witness = [
             "share_exchange_corroboration",
             "advertise_evidence_requests",
             "share_adjudications",
+            "share_settlement_receipts",
             "adjudicate_differing_twins",
         ] {
             assert_eq!(first.get(key).map(String::as_str), Some("off"), "{key}");

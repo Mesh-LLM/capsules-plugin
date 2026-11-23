@@ -28,6 +28,7 @@ use mesh_llm_plugin::{
 pub const RECORD_AT_COMPLETION_KEY: &str = "share_record_at_completion";
 pub const HISTORY_SEGMENTS_KEY: &str = "share_history_segments";
 pub const ADJUDICATIONS_KEY: &str = "share_adjudications";
+pub const SETTLEMENT_RECEIPTS_KEY: &str = "share_settlement_receipts";
 pub const WITNESS_KEY: &str = "witness";
 
 /// Shown greyed in the Witnesses field as a suggestion. Not a default: the
@@ -168,6 +169,37 @@ pub(crate) fn shares_exchange_corroboration_for(raw: Option<&str>) -> bool {
 /// This process's own env var for `share_exchange_corroboration`.
 pub const ENV_EXCHANGE_CORROBORATION: &str = "CAPSULES_SHARE_EXCHANGE_CORROBORATION";
 
+/// This process's own env var for `share_settlement_receipts`.
+pub const ENV_SETTLEMENT_RECEIPTS: &str = "CAPSULES_SHARE_SETTLEMENT_RECEIPTS";
+
+/// Whether a settlement report page may carry each deal's receipt bundle
+/// (Mesh-LLM/capsules-plugin#336, #96 button 2): only when the operator
+/// switched `share_settlement_receipts` on, and never while
+/// `share_record_at_completion` is off (a node that will not push its own
+/// record to the counterparty does not hand over the deal payloads on a
+/// page). Off by default; an unreadable or unknown value is off. `None` means
+/// allowed; `Some(why)` is what the owner is told, so a held receipt is never
+/// taken for a missing one.
+pub fn settlement_receipts_hold_reason() -> Option<&'static str> {
+    settlement_receipts_hold_reason_for(
+        var_or_unreadable(ENV_SETTLEMENT_RECEIPTS).as_deref(),
+        record_at_completion_is_off(),
+    )
+}
+
+pub(crate) fn settlement_receipts_hold_reason_for(
+    raw: Option<&str>,
+    record_at_completion_off: bool,
+) -> Option<&'static str> {
+    if !switched_on(raw) {
+        Some("share_settlement_receipts is off")
+    } else if record_at_completion_off {
+        Some("share_record_at_completion is off")
+    } else {
+        None
+    }
+}
+
 /// An on/off switch: on only for `on` (or `1`, `true`, `yes`); unset and
 /// anything else is off.
 pub(crate) fn switched_on(raw: Option<&str>) -> bool {
@@ -181,7 +213,7 @@ pub(crate) fn switched_on(raw: Option<&str>) -> bool {
 /// as off: for the page, so a typo is seen rather than silently obeyed.
 pub fn setting_problems() -> Vec<String> {
     const ON_OFF: &[&str] = &["on", "off", "1", "0", "true", "false", "yes", "no"];
-    let known: [(&str, &[&str]); 9] = [
+    let known: [(&str, &[&str]); 10] = [
         (ENV_RECORD_AT_COMPLETION, &["counterparty", "off"]),
         (
             ENV_HISTORY_SEGMENTS,
@@ -190,6 +222,7 @@ pub fn setting_problems() -> Vec<String> {
         (ENV_STANDARD_HISTORY, ON_OFF),
         (ENV_EXCHANGE_CORROBORATION, ON_OFF),
         (ENV_ADVERTISE_EVIDENCE_REQUESTS, ON_OFF),
+        (ENV_SETTLEMENT_RECEIPTS, ON_OFF),
         (ENV_ADJUDICATIONS, &["deliver_to_subjects", "off"]),
         (
             crate::referee::request::ENV_ADJUDICATE_DIFFERING_TWINS,
@@ -337,6 +370,23 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 .category(SHOW_CATEGORY_ID, SHOW_CATEGORY_LABEL, SHOW_CATEGORY_SUMMARY, 0)
                 .order(3),
         )
+        .setting(
+            config_setting(SETTLEMENT_RECEIPTS_KEY, config_enum(["off", "on"]))
+                .default_value(&"off")
+                .description(
+                    "Let the settlement report you build carry each deal's receipt, so a reader \
+                     can open it from the deal's line. On means every deal's receipt on the page, \
+                     for every counterparty on it, goes to whoever gets the page, and each \
+                     receipt shows what your deal records say; the words of the deal's intent \
+                     stay closed, only its commitment shows. Off \
+                     (the default) marks each deal held back. Your own copy of a receipt is \
+                     still on this node's local receipt route, whatever this is set to. Never \
+                     on while \"Send your record to the other side\" is off.",
+                )
+                .label("Receipts in the settlement report")
+                .category(SHOW_CATEGORY_ID, SHOW_CATEGORY_LABEL, SHOW_CATEGORY_SUMMARY, 0)
+                .order(4),
+        )
         // When answers differ.
         .setting(
             config_setting(ADJUDICATE_DIFFERING_TWINS_KEY, config_enum(["off", "on"]))
@@ -347,7 +397,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 )
                 .label("Ask a referee")
                 .category(DIFFER_CATEGORY_ID, DIFFER_CATEGORY_LABEL, DIFFER_CATEGORY_SUMMARY, 1)
-                .order(4),
+                .order(5),
         )
         .setting(
             config_setting(STOP_ROUTING_AFTER_KEY, config_integer())
@@ -359,7 +409,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 )
                 .label("Stop routing after N contradictions")
                 .category(DIFFER_CATEGORY_ID, DIFFER_CATEGORY_LABEL, DIFFER_CATEGORY_SUMMARY, 1)
-                .order(5),
+                .order(6),
         )
         .setting(
             config_setting(STOP_ROUTING_WINDOW_KEY, config_integer())
@@ -367,7 +417,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 .description("The window, in days, the contradictions must fall in (default 30).")
                 .label("In D days")
                 .category(DIFFER_CATEGORY_ID, DIFFER_CATEGORY_LABEL, DIFFER_CATEGORY_SUMMARY, 1)
-                .order(6),
+                .order(7),
         )
         .setting(
             config_setting(REFEREE_BAR_DAYS_KEY, config_integer())
@@ -378,7 +428,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 )
                 .label("Bar a contradicted referee for")
                 .category(DIFFER_CATEGORY_ID, DIFFER_CATEGORY_LABEL, DIFFER_CATEGORY_SUMMARY, 1)
-                .order(7),
+                .order(8),
         )
         .setting(
             config_setting(SPLIT_MARGIN_THRESHOLD_KEY, config_float())
@@ -396,7 +446,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 )
                 .label("Referee's least margin to name a twin")
                 .category(DIFFER_CATEGORY_ID, DIFFER_CATEGORY_LABEL, DIFFER_CATEGORY_SUMMARY, 1)
-                .order(8),
+                .order(9),
         )
         .setting(
             config_setting(ADJUDICATIONS_KEY, config_enum(["deliver_to_subjects", "off"]))
@@ -407,7 +457,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 )
                 .label("Deliver verdicts to the nodes judged")
                 .category(DIFFER_CATEGORY_ID, DIFFER_CATEGORY_LABEL, DIFFER_CATEGORY_SUMMARY, 1)
-                .order(9),
+                .order(10),
         )
         // Keeping records.
         .setting(
@@ -422,7 +472,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 )
                 .label("Send your record to the other side")
                 .category(RECORDS_CATEGORY_ID, RECORDS_CATEGORY_LABEL, RECORDS_CATEGORY_SUMMARY, 2)
-                .order(10),
+                .order(11),
         )
         .setting(
             config_setting(
@@ -451,7 +501,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 .placeholder(SUGGESTED_WITNESS_URL)
                 .renderer_id("set-value")
                 .category(RECORDS_CATEGORY_ID, RECORDS_CATEGORY_LABEL, RECORDS_CATEGORY_SUMMARY, 2)
-                .order(11),
+                .order(12),
         )
         .setting(
             // The statement, byte for byte, as Steven approved it (loop's
@@ -461,7 +511,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 .description(crate::network_join::SWITCH_CONSENT)
                 .label(JOIN_NETWORK_LABEL)
                 .category(NETWORK_CATEGORY_ID, NETWORK_CATEGORY_LABEL, NETWORK_CATEGORY_SUMMARY, 3)
-                .order(12),
+                .order(13),
         )
         .setting(
             config_setting(ADMISSION_ALLOW_KEY, config_string())
@@ -476,7 +526,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                     ADMISSION_CATEGORY_SUMMARY,
                     4,
                 )
-                .order(13),
+                .order(14),
         )
         .setting(
             config_setting(ADMISSION_DEFAULT_KEY, config_enum(["go", "no"]))
@@ -489,7 +539,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                     ADMISSION_CATEGORY_SUMMARY,
                     4,
                 )
-                .order(14),
+                .order(15),
         )
         .into()
 }
@@ -518,6 +568,7 @@ mod tests {
                 STANDARD_HISTORY_KEY,
                 EXCHANGE_CORROBORATION_KEY,
                 ADVERTISE_EVIDENCE_REQUESTS_KEY,
+                SETTLEMENT_RECEIPTS_KEY,
                 ADJUDICATE_DIFFERING_TWINS_KEY,
                 STOP_ROUTING_AFTER_KEY,
                 STOP_ROUTING_WINDOW_KEY,
@@ -573,6 +624,11 @@ mod tests {
                     "What you show others",
                     "Advertise evidence requests",
                     ADVERTISE_EVIDENCE_REQUESTS_KEY
+                ),
+                row(
+                    "What you show others",
+                    "Receipts in the settlement report",
+                    SETTLEMENT_RECEIPTS_KEY
                 ),
                 row(
                     "When answers differ",
@@ -662,6 +718,12 @@ mod tests {
         assert!(text(STOP_ROUTING_AFTER_KEY).contains("`allow_peer_blocks = true`"));
         assert!(!text(STOP_ROUTING_AFTER_KEY).contains("Peer block requests"));
         assert!(text(ADVERTISE_EVIDENCE_REQUESTS_KEY).contains("Off publishes nothing"));
+        // Sherlock2's conditions on the switch (ops 09640739): the help says what
+        // `on` does, and that the owner's own copy is not gated.
+        let receipts = text(SETTLEMENT_RECEIPTS_KEY);
+        assert!(receipts.contains("every deal's receipt on the page, for every counterparty"));
+        assert!(receipts.contains("whoever gets the page"));
+        assert!(receipts.contains("local receipt route"));
         let record = text(RECORD_AT_COMPLETION_KEY);
         assert!(record.contains("With checkpointing on"));
         assert!(record.contains("when your exchanges ended"));
@@ -718,6 +780,7 @@ mod tests {
                 Some("\"off\""),
                 v(&["off", "on"]),
             ),
+            (SETTLEMENT_RECEIPTS_KEY, Some("\"off\""), v(&["off", "on"])),
             (
                 ADJUDICATE_DIFFERING_TWINS_KEY,
                 Some("\"off\""),
@@ -804,7 +867,7 @@ mod tests {
             );
             checked += 1;
         }
-        assert_eq!(checked, 9, "the nine choice settings were checked");
+        assert_eq!(checked, 10, "the ten choice settings were checked");
     }
 
     #[test]
@@ -820,6 +883,33 @@ mod tests {
         assert_eq!(
             format!("CAPSULES_{}", SPLIT_MARGIN_THRESHOLD_KEY.to_uppercase()),
             crate::referee::verdict::ENV_SPLIT_MARGIN_THRESHOLD
+        );
+    }
+
+    #[test]
+    fn settlement_receipts_are_off_unless_switched_on_and_never_while_the_record_push_is_off() {
+        for raw in [
+            None,
+            Some(""),
+            Some("off"),
+            Some("counterparty"),
+            Some("unreadable"),
+            Some("typo"),
+        ] {
+            assert_eq!(
+                settlement_receipts_hold_reason_for(raw, false),
+                Some("share_settlement_receipts is off"),
+                "{raw:?}"
+            );
+        }
+        assert_eq!(settlement_receipts_hold_reason_for(Some("on"), false), None);
+        assert_eq!(
+            settlement_receipts_hold_reason_for(Some(" ON "), false),
+            None
+        );
+        assert_eq!(
+            settlement_receipts_hold_reason_for(Some("on"), true),
+            Some("share_record_at_completion is off")
         );
     }
 
@@ -870,6 +960,7 @@ mod tests {
             (STOP_ROUTING_WINDOW_KEY, "STOP_ROUTING_WINDOW_DAYS"),
             (ADMISSION_ALLOW_KEY, "ADMISSION_ALLOW"),
             (ADMISSION_DEFAULT_KEY, "ADMISSION_DEFAULT"),
+            (SETTLEMENT_RECEIPTS_KEY, "SHARE_SETTLEMENT_RECEIPTS"),
         ];
         for (key, suffix) in expected_env_suffix {
             assert_eq!(

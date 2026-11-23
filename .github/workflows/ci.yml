@@ -259,6 +259,9 @@ jobs:
       - name: plugin.toml declares min_host_version
         run: scripts/plugin-toml.test.sh
 
+      - name: settlement-report.sh --with-receipts hands report.sh the node's receipts
+        run: scripts/settlement-report-receipts.test.sh
+
       - name: Package twice and compare
         env:
           SOURCE_DATE_EPOCH: "0"
