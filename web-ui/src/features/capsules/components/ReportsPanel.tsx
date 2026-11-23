@@ -77,7 +77,7 @@ export function ReportsPanel() {
           Reports
         </h2>
         <Button
-          aria-describedby={statusLine ? 'report-status-line' : undefined}
+          aria-describedby={statusLine && statusLine !== note ? 'report-status-line' : undefined}
           className={BUTTON_CLASS}
           disabled={saving !== null}
           onClick={() => void save('settlement')}
@@ -98,7 +98,8 @@ export function ReportsPanel() {
           {STAMPED_LABEL}
         </Button>
       </div>
-      {statusLine ? (
+      {/* Said once: after a press that gave the same reason, the note alone. */}
+      {statusLine && statusLine !== note ? (
         <p className="text-xs text-fg-faint" id="report-status-line">
           {statusLine}
         </p>
