@@ -109,7 +109,8 @@ done
 [ -n "$CHROME" ] || fail "NOT RUN: no Chrome to read the page's text (set CHROME)"
 pack="$EVIDENCEBOOK_SKILLS/wording/inference-deals-settlement-en.json"
 # The window size matters to the viewer (see evidencebook-skills tests/fresh_env_deals.sh).
-"$CHROME" --headless=new --disable-gpu --window-size=1280,2400 --virtual-time-budget=60000 \
+"$CHROME" --headless=new --disable-gpu --use-mock-keychain --password-store=basic --user-data-dir="$work/chrome-profile" \
+  --window-size=1280,2400 --virtual-time-budget=60000 \
   --dump-dom "file://$work/report/settlement.html" >"$work/page.dom" 2>/dev/null || true
 [ -s "$work/page.dom" ] || fail "Chrome wrote no DOM for the page"
 python3 - "$work/page.dom" "$pack" <<'EOF3' || fail "the sealed page does not show the wording pack"

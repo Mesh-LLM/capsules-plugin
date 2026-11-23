@@ -43,7 +43,7 @@
 #   --now          report.sh's clock (default: the wall clock); for tests
 #   --wording, --wording-digest
 #                  the 9b wording pack and its sha256, given together. Default: the
-#                  pack evidencebook-skills merged in #206 (329ba53d), at
+#                  pack evidencebook-skills last changed in #210 (994a33e), at
 #                  <skills>/wording/inference-deals-settlement-en.json, pinned by
 #                  the digest below. The pack's digest is checked before the run
 #                  touches the book, so a checkout whose pack differs is refused.
@@ -52,10 +52,10 @@
 #                  {"exchange_capsule_id", "receipt" | "held": true})
 set -euo pipefail
 
-# The 9b wording pack (action-state-group/evidencebook-skills#206, 329ba53d)
+# The 9b wording pack (action-state-group/evidencebook-skills#206, as #210 changed it at 994a33e)
 # the sealed report renders in (Mesh-LLM/capsules-plugin#96, button 2).
 PACK_REL=wording/inference-deals-settlement-en.json
-PACK_DIGEST=db7065547fd7332dfb6c4d642f71bdad7b5e4d4afcb517f4aaeda755c623414c
+PACK_DIGEST=393d9985558e10aa2a031c7fb97eff95a4ef532ec2b0cd943d6a40a5322dba86
 
 usage() { sed -n '/^# Usage:/,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2; exit 2; }
 fail() { echo "settlement-report: $*" >&2; exit 1; }
@@ -90,9 +90,9 @@ fi
 [ -f "$SKILLS/scripts/report.sh" ] || fail "$SKILLS is not an evidencebook-skills checkout (no scripts/report.sh)"
 SPEC="$SKILLS/packs/inference-deals/compiled/compiled.json"
 [ -f "$SPEC" ] || fail "$SKILLS has no inference-deals pack ($SPEC)"
-[ -f "$WORDING" ] || fail "no wording pack at $WORDING (the pack is evidencebook-skills' $PACK_REL, merged in evidencebook-skills#206 at 329ba53d; check out evidencebook-skills at that commit or later with the pack, or pass --wording FILE --wording-digest SHA256 for another pack)"
+[ -f "$WORDING" ] || fail "no wording pack at $WORDING (the pack is evidencebook-skills' $PACK_REL, last changed in evidencebook-skills#210 at 994a33e; check out evidencebook-skills at that commit or later with the pack, or pass --wording FILE --wording-digest SHA256 for another pack)"
 ACTUAL=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$WORDING")
-[ "$ACTUAL" = "$WORDING_DIGEST" ] || fail "the wording pack $WORDING has sha256 $ACTUAL, not the expected $WORDING_DIGEST (this script pins the pack merged in evidencebook-skills#206 at 329ba53d, sha256 $PACK_DIGEST: check out that pack, or pass --wording FILE --wording-digest SHA256 for another)"
+[ "$ACTUAL" = "$WORDING_DIGEST" ] || fail "the wording pack $WORDING has sha256 $ACTUAL, not the expected $WORDING_DIGEST (this script pins the pack last changed in evidencebook-skills#210 at 994a33e, sha256 $PACK_DIGEST: check out that pack, or pass --wording FILE --wording-digest SHA256 for another)"
 DATE=${DATE:-$(python3 -c 'import datetime; print((datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)).date())')}
 
 [ -n "$DATA_DIR" ] || fail "set --data-dir (or CAPSULES_DATA_DIR) to the node's data directory"

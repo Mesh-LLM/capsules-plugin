@@ -638,8 +638,8 @@ The Exchanges tab's "What happened" row has three buttons, one per grade of an a
   a capsulectl book under the node's own key in `DIR`, and runs evidencebook-skills'
   `report.sh --seal` over the inference-deals pack. It keeps the page as `DIR/settlement.html`.
   The page is worded with the 9b wording pack, `wording/inference-deals-settlement-en.json` in
-  the evidencebook-skills checkout (merged in evidencebook-skills#206 at `329ba53d`), pinned by
-  its sha256 `db7065547fd7332dfb6c4d642f71bdad7b5e4d4afcb517f4aaeda755c623414c`; the script
+  the evidencebook-skills checkout (last changed in evidencebook-skills#210 at `994a33e`), pinned by
+  its sha256 `393d9985558e10aa2a031c7fb97eff95a4ef532ec2b0cd943d6a40a5322dba86`; the script
   refuses a checkout whose pack differs, before it touches the book. `--wording FILE
   --wording-digest SHA256` name another pack.
   It needs capsulectl with capsulectl-book (v0.1.0-rc31 or later), an evidencebook-skills

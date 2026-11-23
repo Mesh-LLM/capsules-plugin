@@ -8,6 +8,8 @@
 
 ### Changed
 
+- **`scripts/settlement-report.sh` pins the 9b wording pack as evidencebook-skills#210 left it (Mesh-LLM/capsules-plugin#336, #96).** The pack `wording/inference-deals-settlement-en.json` changed in evidencebook-skills#210 (`994a33e`): sha256 `393d9985558e10aa2a031c7fb97eff95a4ef532ec2b0cd943d6a40a5322dba86`, in place of `db7065547fd7…` (#206, `329ba53d`). A checkout with the old pack is refused before the book is touched; `--wording` and `--wording-digest` still name another pack. Nothing else in the node changes.
+
 - **`scripts/settlement-report.sh` renders the sealed settlement report in the 9b wording pack, pinned by digest (Mesh-LLM/capsules-plugin#333, #96).** It passes evidencebook-skills' `wording/inference-deals-settlement-en.json` (evidencebook-skills#206, `329ba53d`, sha256 `db7065547fd7332dfb6c4d642f71bdad7b5e4d4afcb517f4aaeda755c623414c`) to `report.sh` by default, and refuses a checkout whose pack differs before it touches the book. `--wording` and `--wording-digest` together name another pack. Nothing else in the node changes.
 
 ### Fixed
