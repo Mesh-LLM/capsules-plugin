@@ -499,7 +499,8 @@ pub fn with_route(
 ///
 /// `exchanges` are the exchange capsule ids on the page's chain, so a receipt
 /// of a deal outside it is never built. With `allowed` false no payload is
-/// read and no bundle is built: every deal is `held`. A deal with no receipt
+/// read and no bundle is built: every deal is `held`, and `diagnostics` says
+/// why (`hold`). A deal with no receipt
 /// yet (no report, no covering checkpoint, no deal) is left out, as is one
 /// whose payload the journal lacks or that kept changing while it was read;
 /// the last two say so on `diagnostics`. A receipt is never built by cutting
@@ -508,7 +509,7 @@ pub(crate) fn receipt_lines(
     ledger_dir: &Path,
     node_key_id: &str,
     exchanges: &std::collections::HashSet<String>,
-    allowed: bool,
+    hold: Option<&str>,
     diagnostics: &mut dyn std::io::Write,
 ) -> std::io::Result<Vec<Value>> {
     let held: Vec<String> = evidence_log::with_index(ledger_dir, node_key_id, |index| {
@@ -521,7 +522,13 @@ pub(crate) fn receipt_lines(
     })?;
     let mut lines = Vec::new();
     for exchange in held {
-        if !allowed {
+        if let Some(why) = hold {
+            // Said once per deal, so a held receipt is never taken for a
+            // missing one.
+            writeln!(
+                diagnostics,
+                "deal-receipts: exchange {exchange}: held: {why}"
+            )?;
             lines.push(json!({"exchange_capsule_id": exchange, "held": true}));
             continue;
         }
@@ -567,6 +574,18 @@ fn read_node_key_id(data_dir: &Path) -> Result<String, String> {
     Ok(crate::producer::keys::key_id_of(&key.verifying_key()))
 }
 
+/// What `capsules deal-receipts --help` says (Sherlock2's condition, ops
+/// a2eadf09: the help names its job, and that the owner's own copy is not
+/// gated). There is no flag that carries a receipt against the setting.
+const HELP: &str = "Feeds the settlement report (scripts/settlement-report.sh --with-receipts): \
+prints one JSON line per deal on the chain snapshot FILE, either its receipt \
+bundle or {\"held\": true}. A receipt is carried only when this node's \
+share_settlement_receipts setting is on (and share_record_at_completion is not \
+off); otherwise every deal is held and each says why on stderr. There is no \
+flag to override that. It reads without the node's lock.\n\n\
+Your own copy of a receipt is not affected by the setting: the node's local \
+deal-receipt-bundle route has no share gate.";
+
 /// `capsules deal-receipts --chain FILE [--data-dir DIR]`: write one
 /// [`receipt_lines`] line per deal whose exchange capsule is on the chain
 /// snapshot `FILE` (the `capsules chain-lines` output the settlement report
@@ -577,6 +596,10 @@ fn read_node_key_id(data_dir: &Path) -> Result<String, String> {
 /// usage error, 1 when the ledger or key cannot be read.
 pub fn cli(args: &[String]) -> i32 {
     const USAGE: &str = "usage: capsules deal-receipts --chain FILE [--data-dir DIR]";
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        println!("{USAGE}\n\n{HELP}");
+        return 0;
+    }
     let (mut chain, mut data_dir) = (None, None);
     let mut rest = args.iter();
     while let Some(arg) = rest.next() {
@@ -624,12 +647,12 @@ pub fn cli(args: &[String]) -> i32 {
             return 1;
         }
     };
-    let allowed = crate::share_policy::settlement_receipts_allowed();
+    let hold = crate::share_policy::settlement_receipts_hold_reason();
     let lines = match receipt_lines(
         &data_dir.join("ledger"),
         &key_id,
         &exchanges,
-        allowed,
+        hold,
         &mut std::io::stderr(),
     ) {
         Ok(lines) => lines,
@@ -758,14 +781,20 @@ pub(crate) mod tests {
         )
     }
 
-    fn lines_for(state: &CapsuleState, on_chain: &[String], allowed: bool) -> (Vec<Value>, String) {
+    const HELD: Option<&str> = Some("share_settlement_receipts is off");
+
+    fn lines_for(
+        state: &CapsuleState,
+        on_chain: &[String],
+        hold: Option<&str>,
+    ) -> (Vec<Value>, String) {
         let exchanges = on_chain.iter().cloned().collect();
         let mut diagnostics = Vec::new();
         let lines = receipt_lines(
             state.ledger_dir(),
             &crate::commitment::key_id(state.signing_key()),
             &exchanges,
-            allowed,
+            hold,
             &mut diagnostics,
         )
         .unwrap();
@@ -776,7 +805,7 @@ pub(crate) mod tests {
     fn a_receipt_line_carries_the_bundle_the_route_serves() {
         let (_dir, state) = node(true);
         cut(&state);
-        let (lines, diagnostics) = lines_for(&state, &[exchange_capsule()], true);
+        let (lines, diagnostics) = lines_for(&state, &[exchange_capsule()], None);
         assert_eq!(diagnostics, "");
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0]["exchange_capsule_id"], json!(exchange_capsule()));
@@ -792,15 +821,22 @@ pub(crate) mod tests {
     #[test]
     fn a_policy_held_deal_is_a_held_line_and_no_bundle_is_built() {
         let (_dir, state) = node(true);
-        let (lines, diagnostics) = lines_for(&state, &[exchange_capsule()], false);
-        assert_eq!(diagnostics, "");
+        let (lines, diagnostics) = lines_for(&state, &[exchange_capsule()], HELD);
+        assert_eq!(
+            diagnostics,
+            format!(
+                "deal-receipts: exchange {}: held: share_settlement_receipts is off\n",
+                exchange_capsule()
+            ),
+            "a held deal says why"
+        );
         assert_eq!(
             lines,
             vec![json!({"exchange_capsule_id": exchange_capsule(), "held": true})]
         );
         // The payload journal is not even needed.
         std::fs::remove_file(state.ledger_dir().join(crate::deal_flow::PAYLOADS_FILE)).ok();
-        let (again, _) = lines_for(&state, &[exchange_capsule()], false);
+        let (again, _) = lines_for(&state, &[exchange_capsule()], HELD);
         assert_eq!(again, lines);
     }
 
@@ -808,19 +844,19 @@ pub(crate) mod tests {
     fn a_deal_with_no_receipt_yet_or_off_the_chain_snapshot_has_no_line() {
         // Sealed, delivered, but no checkpoint covers it.
         let (_dir, state) = node(true);
-        let (lines, diagnostics) = lines_for(&state, &[exchange_capsule()], true);
+        let (lines, diagnostics) = lines_for(&state, &[exchange_capsule()], None);
         assert!(lines.is_empty());
         assert_eq!(diagnostics, "");
         // A deal whose close has no report yet.
         let (_dir2, open) = node(false);
         cut(&open);
-        let (lines, _) = lines_for(&open, &[exchange_capsule()], true);
+        let (lines, _) = lines_for(&open, &[exchange_capsule()], None);
         assert!(lines.is_empty());
         // An exchange that is not on the page's chain snapshot is not read.
         cut(&state);
-        let (lines, _) = lines_for(&state, &[hex64('9')], true);
+        let (lines, _) = lines_for(&state, &[hex64('9')], None);
         assert!(lines.is_empty());
-        let (lines, _) = lines_for(&state, &[hex64('9')], false);
+        let (lines, _) = lines_for(&state, &[hex64('9')], HELD);
         assert!(lines.is_empty());
     }
 
@@ -845,7 +881,7 @@ pub(crate) mod tests {
             "a baseline line was dropped"
         );
         std::fs::write(&journal, kept.join("\n") + "\n").unwrap();
-        let (lines, diagnostics) = lines_for(&state, &[exchange_capsule()], true);
+        let (lines, diagnostics) = lines_for(&state, &[exchange_capsule()], None);
         assert!(lines.is_empty());
         assert!(
             diagnostics.contains("not kept; no receipt"),

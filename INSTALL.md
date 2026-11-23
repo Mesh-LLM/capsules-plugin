@@ -652,9 +652,13 @@ The Exchanges tab's "What happened" row has three buttons, one per grade of an a
 
   **Receipts on the page.** With `--with-receipts`, the page can open each deal's receipt from its
   line. A receipt carries the contents of your deal records, so it is off: the option hands
-  `report.sh` a receipt only when the node's `share_settlement_receipts` setting is `on` (and
-  `share_record_at_completion` is not `off`); otherwise every deal is marked as held back by
-  your sharing policy and the page carries no receipt. The script asks the node itself,
+  `report.sh` a receipt only when the node's `share_settlement_receipts` setting ("Receipts in
+  the settlement report", under "What you show others") is `on`. `on` means every deal on the
+  page, for every counterparty on it, goes to whoever gets the page; the words of what was asked
+  stay closed. It is never on while `share_record_at_completion` is `off`. Otherwise every deal
+  is marked as held back by your sharing policy, the page carries no receipt, and the command
+  says on stderr which setting held it. There is no flag that overrides the setting, and your
+  own copy of a receipt is still on the node's local receipt route whatever it says. The script asks the node itself,
   `capsules deal-receipts --chain FILE [--data-dir DIR]`, which prints one line per deal on the
   chain it was given (a receipt, or `held`), reads without the node's lock, and exits 0 on
   success, 2 for a bad argument and 1 when the log or the key cannot be read. A deal with no
