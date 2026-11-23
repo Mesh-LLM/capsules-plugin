@@ -4,8 +4,9 @@
 //! operator saved in mesh's console (Configuration > Plugins). mesh-llm keeps
 //! that value in its own config file, under this plugin's `[[plugin]]` entry
 //! (`[plugin.settings]`), and does not pass it to the plugin process, so the
-//! plugin reads it there itself: the file `MESH_LLM_CONFIG` names, or
-//! `~/.mesh-llm/config.toml`. The console key is the setting's name without
+//! plugin reads it there itself: the file `MESH_LLM_CONFIG` names, else the
+//! file the host was started with (`mesh-llm serve --config <path>`, read from
+//! the host's command line on Linux), else `~/.mesh-llm/config.toml`. The console key is the setting's name without
 //! the prefix, lower-cased (`CAPSULES_SHARE_HISTORY_SEGMENTS` is
 //! `share_history_segments`), except the witness: the console's `witness` is
 //! `CAPSULES_CHECKPOINT_WITNESS_URLS`. The environment wins over the
@@ -46,7 +47,9 @@ pub fn console_key(name: &str) -> Option<String> {
 /// mesh's config file is read only up to this size.
 const MAX_CONFIG_BYTES: u64 = 1024 * 1024;
 
-/// mesh's config file: the one `MESH_LLM_CONFIG` names, or the default.
+/// mesh's config file: the one `MESH_LLM_CONFIG` names, else the one the host
+/// was started with (`mesh-llm serve --config <path>`, read from its command
+/// line, #147), else the default.
 fn host_config_path() -> Option<std::path::PathBuf> {
     if let Some(path) = std::env::var_os("MESH_LLM_CONFIG") {
         return Some(path.into());
@@ -55,7 +58,9 @@ fn host_config_path() -> Option<std::path::PathBuf> {
     if cfg!(test) {
         return None;
     }
-    warn_if_host_uses_another_config();
+    if let Some(path) = host_flag_config() {
+        return Some(path.clone());
+    }
     let home = std::env::var_os("HOME").filter(|h| !h.is_empty())?;
     Some(
         std::path::Path::new(&home)
@@ -64,37 +69,107 @@ fn host_config_path() -> Option<std::path::PathBuf> {
     )
 }
 
-/// mesh-llm started with `--config <path>` reads that file, but does not tell
-/// this plugin; without `MESH_LLM_CONFIG` the plugin reads the default file and
-/// the console's settings do not reach it. Said once (Linux: from the host's
-/// command line).
-fn warn_if_host_uses_another_config() {
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(|| {
-        // `/proc/self/stat` is "pid (comm) state ppid ...".
-        let host_cmdline = || -> Option<Vec<u8>> {
-            let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
-            let ppid = stat.rsplit_once(')')?.1.split_whitespace().nth(1)?.to_string();
-            std::fs::read(format!("/proc/{ppid}/cmdline")).ok()
-        };
-        let Some(raw) = host_cmdline() else {
-            return;
-        };
-        if host_args_name_a_config(&raw) {
-            tracing::warn!(
-                "mesh-llm was started with --config, but MESH_LLM_CONFIG is not set for this plugin: \
-                 the console's plugin settings are read from ~/.mesh-llm/config.toml, not that file. \
-                 Set MESH_LLM_CONFIG to the same path"
-            );
-        }
-    });
+/// What the host's command line says about its config file.
+#[derive(Debug, PartialEq, Eq)]
+enum HostConfig {
+    /// The parent is not mesh-llm, or its command line could not be read.
+    NotMesh,
+    /// mesh-llm, started without `--config`.
+    NoFlag,
+    /// mesh-llm, started with `--config` naming this file.
+    Path(std::path::PathBuf),
+    /// mesh-llm, started with a `--config` this plugin cannot read a path
+    /// from: no value, an empty one, one that looks like another flag, or a
+    /// relative path whose base is not known.
+    Unusable,
 }
 
-/// Whether a NUL-separated command line passes `--config`.
-fn host_args_name_a_config(cmdline: &[u8]) -> bool {
-    cmdline
-        .split(|b| *b == 0)
-        .any(|arg| arg == b"--config" || arg.starts_with(b"--config="))
+/// The config file the host was started with, resolved once per process: a
+/// host may change directory later, and a relative `--config` is relative to
+/// where it started. Linux only (`/proc`); elsewhere `None`. The path is
+/// logged once; a `--config` it cannot use is warned about once.
+fn host_flag_config() -> Option<&'static std::path::PathBuf> {
+    static RESOLVED: OnceLock<Option<std::path::PathBuf>> = OnceLock::new();
+    RESOLVED
+        .get_or_init(|| {
+            // `/proc/self/stat` is "pid (comm) state ppid ...".
+            let ppid = std::fs::read_to_string("/proc/self/stat")
+                .ok()
+                .and_then(|stat| {
+                    Some(
+                        stat.rsplit_once(')')?
+                            .1
+                            .split_whitespace()
+                            .nth(1)?
+                            .to_string(),
+                    )
+                })?;
+            let cmdline = std::fs::read(format!("/proc/{ppid}/cmdline")).ok()?;
+            let cwd = std::fs::read_link(format!("/proc/{ppid}/cwd")).ok();
+            match host_config_from_args(&cmdline, cwd.as_deref()) {
+                HostConfig::Path(path) => {
+                    tracing::info!(
+                        "console plugin settings are read from {} (mesh-llm's --config)",
+                        path.display()
+                    );
+                    Some(path)
+                }
+                HostConfig::Unusable => {
+                    tracing::warn!(
+                        "mesh-llm was started with a --config this plugin cannot read a path from: \
+                         the console's plugin settings are read from ~/.mesh-llm/config.toml. \
+                         Set MESH_LLM_CONFIG to the file mesh-llm uses"
+                    );
+                    None
+                }
+                HostConfig::NotMesh | HostConfig::NoFlag => None,
+            }
+        })
+        .as_ref()
+}
+
+/// Reads the host's NUL-separated command line: whether it is mesh-llm (its
+/// program's file name is `mesh-llm`) and which file its `--config` names.
+/// The last `--config` counts. A relative path is joined to `cwd`, the host's
+/// working directory.
+fn host_config_from_args(cmdline: &[u8], cwd: Option<&std::path::Path>) -> HostConfig {
+    let mut args = cmdline.split(|b| *b == 0);
+    let is_mesh = args
+        .next()
+        .and_then(|program| std::str::from_utf8(program).ok())
+        .and_then(|program| std::path::Path::new(program).file_name())
+        .is_some_and(|name| name == "mesh-llm");
+    if !is_mesh {
+        return HostConfig::NotMesh;
+    }
+    let args: Vec<&[u8]> = args.collect();
+    let mut found = HostConfig::NoFlag;
+    let mut i = 0;
+    while i < args.len() {
+        let value = if args[i] == b"--config" {
+            i += 1;
+            Some(args.get(i).copied().unwrap_or_default())
+        } else {
+            args[i].strip_prefix(b"--config=")
+        };
+        if let Some(value) = value {
+            found = match std::str::from_utf8(value) {
+                Ok(v) if !v.is_empty() && !v.starts_with('-') => {
+                    let path = std::path::Path::new(v);
+                    if path.is_absolute() {
+                        HostConfig::Path(path.to_path_buf())
+                    } else if let Some(base) = cwd {
+                        HostConfig::Path(base.join(path))
+                    } else {
+                        HostConfig::Unusable
+                    }
+                }
+                _ => HostConfig::Unusable,
+            };
+        }
+        i += 1;
+    }
+    found
 }
 
 /// The settings saved in the console for this plugin, from mesh's config
@@ -629,16 +704,51 @@ witness = [
     }
 
     #[test]
-    fn the_hosts_config_flag_is_seen_in_its_command_line() {
-        assert!(host_args_name_a_config(
-            b"mesh-llm\0serve\0--config\0/etc/mesh.toml\0"
-        ));
-        assert!(host_args_name_a_config(
-            b"mesh-llm\0--config=/etc/mesh.toml\0"
-        ));
-        assert!(!host_args_name_a_config(
-            b"mesh-llm\0serve\0--console\0port\0"
-        ));
+    fn the_hosts_config_file_is_read_from_its_command_line() {
+        use std::path::{Path, PathBuf};
+        let cwd = Some(Path::new("/home/node"));
+        let read = |cmdline: &[u8]| host_config_from_args(cmdline, cwd);
+        let path = |p: &str| HostConfig::Path(PathBuf::from(p));
+
+        assert_eq!(
+            read(b"/opt/ml/mesh-llm\0serve\0--config\0/etc/mesh.toml\0--log-format\0json\0"),
+            path("/etc/mesh.toml")
+        );
+        assert_eq!(
+            read(b"mesh-llm\0--config=/etc/mesh.toml\0"),
+            path("/etc/mesh.toml")
+        );
+        // Relative to where the host was started.
+        assert_eq!(
+            read(b"mesh-llm\0serve\0--config\0node/config.toml\0"),
+            path("/home/node/node/config.toml")
+        );
+        assert_eq!(
+            host_config_from_args(b"mesh-llm\0serve\0--config\0config.toml\0", None),
+            HostConfig::Unusable
+        );
+        // The last --config counts.
+        assert_eq!(
+            read(b"mesh-llm\0--config\0/a.toml\0--config=/b.toml\0"),
+            path("/b.toml")
+        );
+        // No value, an empty value, a value that is another flag.
+        assert_eq!(read(b"mesh-llm\0serve\0--config\0"), HostConfig::Unusable);
+        assert_eq!(read(b"mesh-llm\0serve\0--config=\0"), HostConfig::Unusable);
+        assert_eq!(
+            read(b"mesh-llm\0serve\0--config\0--log-format\0json\0"),
+            HostConfig::Unusable
+        );
+        // Without --config, and when the parent is not mesh-llm.
+        assert_eq!(
+            read(b"mesh-llm\0serve\0--console\0port\0"),
+            HostConfig::NoFlag
+        );
+        assert_eq!(
+            read(b"/usr/bin/goose\0--config\0/etc/mesh.toml\0"),
+            HostConfig::NotMesh
+        );
+        assert_eq!(read(b""), HostConfig::NotMesh);
     }
 
     #[test]
