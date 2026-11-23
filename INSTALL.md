@@ -657,7 +657,7 @@ The **Reports** group, under the Evidence page's header, gives one entry per gra
   `report.sh` a receipt only when the node's `share_settlement_receipts` setting ("Receipts in
   the settlement report", under "What you show others") is `on`. `on` means every deal's
   receipt on the page, for every counterparty on it, goes to whoever gets the page; the words of
-  the deal's intent stay closed, only its commitment shows. It is never on while `share_record_at_completion` is `off`. Otherwise every deal
+  the deal's intent stay closed, only its commitment shows. It is never on while `share_record_at_completion` is `off`. Otherwise every deal with a report
   is marked as held back by your sharing policy, the page carries no receipt, and the command
   says on stderr which setting held it. There is no flag that overrides the setting, and your
   own copy of a receipt is still on the node's local receipt route whatever it says. The script asks the node itself,

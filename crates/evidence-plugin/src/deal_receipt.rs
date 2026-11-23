@@ -503,7 +503,8 @@ const DEAL_CHANGED: &str = "the deal changed while it was read; ask again";
 ///
 /// `exchanges` maps the exchange capsule ids on the page's chain to their
 /// timestamps, so a receipt of a deal outside it is never built. With `hold`
-/// set no payload is read and no bundle is built: every deal is `held`
+/// set no payload is read and no bundle is built: every deal with a report is
+/// `held`
 /// (`hold` is why), and `diagnostics` says so. A deal whose payload the
 /// journal lacks or that kept changing while it was read is left out and says
 /// so on `diagnostics`.
@@ -542,8 +543,14 @@ pub(crate) fn receipt_lines(
         if !closed {
             // No report: the deal had not closed when this was read, so there
             // is no receipt to carry and none to hold back. The page says so
-            // (capsule-viewer#358; evidencebook#786), not "held by policy".
-            lines.push(json!({"exchange_capsule_id": exchange, "not_closed": true}));
+            // (capsule-viewer#358; evidencebook#786), not "held by policy". A
+            // deal after `through` is not on the page: not asked about, so a
+            // capsulectl without `not_closed` is never handed one for today's
+            // still-open deals.
+            let day = exchanges[&exchange].get(..10).unwrap_or("");
+            if through.is_none_or(|through| day <= through) {
+                lines.push(json!({"exchange_capsule_id": exchange, "not_closed": true}));
+            }
             continue;
         }
         if let Some(why) = hold {
@@ -977,6 +984,29 @@ pub(crate) mod tests {
             );
             assert_eq!(said, "");
         }
+        // The index's answer, pinned directly: a linked capsule that never
+        // leaves the node is the report, and only the report is one.
+        let key_id = key(&open);
+        let closed = |state: &CapsuleState| {
+            evidence_log::with_index(state.ledger_dir(), &key(state), |index| {
+                index.deal_has_report(&exchange_capsule())
+            })
+            .unwrap()
+        };
+        assert!(!closed(&open));
+        assert!(closed(&state), "{key_id}");
+        // After the report's day an open deal is not on the page: no line.
+        let exchanges = [(exchange_capsule(), AT.to_string())].into_iter().collect();
+        let later = receipt_lines(
+            open.ledger_dir(),
+            &key(&open),
+            &exchanges,
+            Some("2026-10-31"),
+            None,
+            &mut Vec::new(),
+        )
+        .unwrap();
+        assert!(later.is_empty(), "{later:?}");
         // Off the chain snapshot: never read, held or not.
         cut(&state);
         assert!(ask(&state, &hex64('9'), None, None).unwrap().is_empty());
