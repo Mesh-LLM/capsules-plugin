@@ -168,6 +168,29 @@ pub(crate) fn shares_exchange_corroboration_for(raw: Option<&str>) -> bool {
 /// This process's own env var for `share_exchange_corroboration`.
 pub const ENV_EXCHANGE_CORROBORATION: &str = "CAPSULES_SHARE_EXCHANGE_CORROBORATION";
 
+/// This process's own env var for `share_settlement_receipts`.
+pub const ENV_SETTLEMENT_RECEIPTS: &str = "CAPSULES_SHARE_SETTLEMENT_RECEIPTS";
+
+/// Whether a settlement report page may carry each deal's receipt bundle
+/// (Mesh-LLM/capsules-plugin#336, #96 button 2): only when the operator
+/// switched `share_settlement_receipts` on, and never while
+/// `share_record_at_completion` is off (a node that will not push its own
+/// record to the counterparty does not hand over the deal payloads on a
+/// page). Off by default; an unreadable or unknown value is off.
+pub fn settlement_receipts_allowed() -> bool {
+    settlement_receipts_allowed_for(
+        var_or_unreadable(ENV_SETTLEMENT_RECEIPTS).as_deref(),
+        record_at_completion_is_off(),
+    )
+}
+
+pub(crate) fn settlement_receipts_allowed_for(
+    raw: Option<&str>,
+    record_at_completion_off: bool,
+) -> bool {
+    !record_at_completion_off && switched_on(raw)
+}
+
 /// An on/off switch: on only for `on` (or `1`, `true`, `yes`); unset and
 /// anything else is off.
 pub(crate) fn switched_on(raw: Option<&str>) -> bool {
@@ -821,6 +844,23 @@ mod tests {
             format!("CAPSULES_{}", SPLIT_MARGIN_THRESHOLD_KEY.to_uppercase()),
             crate::referee::verdict::ENV_SPLIT_MARGIN_THRESHOLD
         );
+    }
+
+    #[test]
+    fn settlement_receipts_are_off_unless_switched_on_and_never_while_the_record_push_is_off() {
+        for raw in [
+            None,
+            Some(""),
+            Some("off"),
+            Some("counterparty"),
+            Some("unreadable"),
+            Some("typo"),
+        ] {
+            assert!(!settlement_receipts_allowed_for(raw, false), "{raw:?}");
+        }
+        assert!(settlement_receipts_allowed_for(Some("on"), false));
+        assert!(settlement_receipts_allowed_for(Some(" ON "), false));
+        assert!(!settlement_receipts_allowed_for(Some("on"), true));
     }
 
     #[test]

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- **`scripts/settlement-report.sh --with-receipts` hands each deal's receipt to the sealed settlement report only when the node's share policy allows (Mesh-LLM/capsules-plugin#336, #96).** A new `capsules deal-receipts --chain FILE [--data-dir DIR]` prints one line per deal on the chain snapshot: the receipt bundle (the bytes the receipt route serves) or `held`. It reads without the node's lock, builds no bundle and reads no deal payload while receipts are not allowed, and never cuts a checkpoint (a deal no checkpoint covers yet has no line). Receipts are allowed only when `share_settlement_receipts` is `on` and `share_record_at_completion` is not `off`; the default is off, so by default every deal is `held` and the report is built as before without the option. The file shape is the report builder's (evidencebook#764); the page shows the receipts once evidencebook-skills' `report.sh` takes `--receipts`.
+
 ### Changed
 
 - **`scripts/settlement-report.sh` renders the sealed settlement report in the 9b wording pack, pinned by digest (Mesh-LLM/capsules-plugin#333, #96).** It passes evidencebook-skills' `wording/inference-deals-settlement-en.json` (evidencebook-skills#206, `329ba53d`, sha256 `db7065547fd7332dfb6c4d642f71bdad7b5e4d4afcb517f4aaeda755c623414c`) to `report.sh` by default, and refuses a checkout whose pack differs before it touches the book. `--wording` and `--wording-digest` together name another pack. Nothing else in the node changes.

@@ -650,6 +650,16 @@ The Exchanges tab's "What happened" row has three buttons, one per grade of an a
   v0.1.0-rc31 on (action-state-group/evidencebook#349). Keep `DIR` as private as the data
   directory.
 
+  **Receipts on the page.** With `--with-receipts`, the page can open each deal's receipt from its
+  line. A receipt carries the contents of your deal records, so it is off: the option hands
+  `report.sh` a receipt only when the node's `share_settlement_receipts` setting is `on` (and
+  `share_record_at_completion` is not `off`); otherwise every deal is marked as held back by
+  your sharing policy and the page carries no receipt. The script asks the node itself,
+  `capsules deal-receipts --chain FILE [--data-dir DIR]`, which prints one line per deal on the
+  chain it was given (a receipt, or `held`), reads without the node's lock, and exits 0 on
+  success, 2 for a bad argument and 1 when the log or the key cannot be read. A deal with no
+  receipt yet is left out. It needs an evidencebook-skills whose `report.sh` takes `--receipts`.
+
   Set `CAPSULES_SETTLEMENT_REPORT_DIR=DIR` and `CAPSULES_CAPSULECTL=PATH` in the node's
   environment. When you save the page, the node runs `capsulectl book report check` on it and
   hands it over only if it matches its seal. Otherwise, or when no report is sealed yet, you

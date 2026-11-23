@@ -19,10 +19,19 @@
 #   4. Keep the page as <report dir>/settlement.html, with settlement.json
 #      naming when it was sealed and the day it reports on.
 #
+# With --with-receipts, step 3 also hands report.sh each deal's receipt, so the
+# page can open it from the deal's line (Mesh-LLM/capsules-plugin#336): the
+# node's own `capsules deal-receipts` gives, for each deal whose exchange is on
+# the chain read in step 1, the receipt bundle only when the node's
+# `share_settlement_receipts` allows it, and `held` otherwise. The node
+# decides; this script reads no setting. Receipts carry the deal records'
+# contents, so the option is off by default, and without it the report is built
+# exactly as before.
+#
 # Usage:
 #   scripts/settlement-report.sh --report-dir DIR --capsulectl PATH --skills DIR \
 #       [--capsules PATH] [--data-dir DIR] [--date YYYY-MM-DD] [--period-policy FILE] [--now TIME]
-#       [--wording FILE --wording-digest SHA256]
+#       [--wording FILE --wording-digest SHA256] [--with-receipts]
 #
 #   --report-dir   the reporting book's directory; the node's CAPSULES_SETTLEMENT_REPORT_DIR
 #   --capsulectl   a capsulectl that loads capsulectl-book v0.1.0-rc31 or later; the node's CAPSULES_CAPSULECTL
@@ -38,6 +47,9 @@
 #                  <skills>/wording/inference-deals-settlement-en.json, pinned by
 #                  the digest below. The pack's digest is checked before the run
 #                  touches the book, so a checkout whose pack differs is refused.
+#   --with-receipts hand report.sh the deal receipts (needs an evidencebook-skills
+#                  whose report.sh takes --receipts FILE, a JSON list of
+#                  {"exchange_capsule_id", "receipt" | "held": true})
 set -euo pipefail
 
 # The 9b wording pack (action-state-group/evidencebook-skills#206, 329ba53d)
@@ -50,7 +62,7 @@ fail() { echo "settlement-report: $*" >&2; exit 1; }
 
 REPORT_DIR=${CAPSULES_SETTLEMENT_REPORT_DIR:-}
 CAPSULECTL=${CAPSULES_CAPSULECTL:-}
-SKILLS="" CAPSULES=capsules DATA_DIR=${CAPSULES_DATA_DIR:-} DATE="" WORDING="" WORDING_DIGEST="" PERIOD_POLICY="" NOW=""
+SKILLS="" CAPSULES=capsules DATA_DIR=${CAPSULES_DATA_DIR:-} DATE="" WORDING="" WORDING_DIGEST="" PERIOD_POLICY="" NOW="" WITH_RECEIPTS=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --report-dir) REPORT_DIR=$2; shift 2 ;;
@@ -63,6 +75,7 @@ while [ "$#" -gt 0 ]; do
     --wording-digest) WORDING_DIGEST=$2; shift 2 ;;
     --period-policy) PERIOD_POLICY=$2; shift 2 ;;
     --now) NOW=$2; shift 2 ;;
+    --with-receipts) WITH_RECEIPTS=1; shift ;;
     *) usage ;;
   esac
 done
@@ -252,6 +265,18 @@ extra=()
 extra+=(--wording "$WORDING" --wording-digest "$WORDING_DIGEST")
 [ -z "$PERIOD_POLICY" ] || extra+=(--period-policy "$PERIOD_POLICY")
 [ -z "$NOW" ] || extra+=(--now "$NOW")
+if [ "$WITH_RECEIPTS" = 1 ]; then
+  # One line per deal on the chain read above: the bundle if the node allows it,
+  # else `held`. A deal with no receipt yet has no line (the page says "Receipt
+  # not carried with this page" for it), and no line at all passes no file.
+  "$CAPSULES" deal-receipts --data-dir "$DATA_DIR" --chain "$WORK/chain.jsonl" >"$WORK/receipts.jsonl" \
+    || fail "capsules deal-receipts could not read the node's deals"
+  if [ -s "$WORK/receipts.jsonl" ]; then
+    python3 -c 'import json,sys; json.dump([json.loads(l) for l in open(sys.argv[1], encoding="utf-8") if l.strip()], open(sys.argv[2], "w"), sort_keys=True)' \
+      "$WORK/receipts.jsonl" "$WORK/receipts.json"
+    extra+=(--receipts "$WORK/receipts.json")
+  fi
+fi
 bash "$SKILLS/scripts/report.sh" --spec "$SPEC" --profile "$PROFILE" --date "$DATE" \
   --out "$WORK/settlement.html" --capsulectl "$CAPSULECTL" --work "$WORK/report" --seal ${extra[@]+"${extra[@]}"} \
   || fail "report.sh did not hand over a checked page (its output above says why)"
