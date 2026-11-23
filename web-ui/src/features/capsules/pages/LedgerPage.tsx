@@ -25,6 +25,7 @@ import { fetchCapsuleLedger } from '@/features/capsules/api/client'
 import { ReportsPanel } from '@/features/capsules/components/ReportsPanel'
 import { fetchRefereeMargin } from '@/features/capsules/api/verdictClient'
 import { loweredMarginNotice } from '@/features/capsules/lib/adjudication-view'
+import { TWO_SIDED_NOTE, earlierLine, twoSidedWeeks, undatedLine, weekLine } from '@/features/capsules/lib/two-sided-weeks'
 import { announcedKeyFor, askForHistory, askForRecord } from '@/features/capsules/api/evidenceRequestClient'
 import {
   judgeAskReply,
@@ -154,7 +155,7 @@ import {
   EXCHANGES_INTRO,
   SETTLEMENT_REFUSED_NOTE
 } from '@/features/capsules/lib/tooltip-copy'
-import type { PaymentsPresence } from '@/features/capsules/api/sidecarTypes'
+import type { PaneCRow, PaymentsPresence } from '@/features/capsules/api/sidecarTypes'
 import { NOT_ADJUDICATED_LINES } from '@/features/capsules/lib/referee-row'
 import {
   settlementCloseCounts,
@@ -1327,6 +1328,39 @@ function CloseCard({
   )
 }
 
+const WEEK_LABEL = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })
+
+/** The Mesh-LLM checkpoint metric as this node sees it: per week, the
+ *  exchanges whose other side's signed record this node holds, matching and
+ *  differing (`two-sided-weeks.ts`). */
+function TwoSidedWeeksCard({ rows }: { rows: readonly PaneCRow[] }) {
+  const { weeks, undated, earlier, earlierWeeks } = twoSidedWeeks(rows, (row) => {
+    const kind = deriveRightCellState(row).kind
+    return kind === 'closed' ? 'matching' : kind === 'contradicted' ? 'differing' : 'not_held'
+  })
+  return (
+    <section
+      aria-labelledby="two-sided-weeks-heading"
+      className="panel-shell flex flex-col gap-1 rounded-[var(--radius-lg)] border border-border bg-panel px-[var(--panel-x)] py-[var(--panel-y)]"
+      data-testid="two-sided-weeks"
+    >
+      <h3 className="type-label text-fg-faint" id="two-sided-weeks-heading">
+        Two-sided exchanges by week
+      </h3>
+      <ul className="flex flex-col gap-0.5">
+        {weeks.map((week) => (
+          <li className="type-caption text-fg-dim" key={week.weekStart}>
+            Week of {WEEK_LABEL.format(new Date(`${week.weekStart}T00:00:00Z`))}: {weekLine(week)}
+          </li>
+        ))}
+      </ul>
+      {earlierWeeks > 0 ? <p className="type-caption text-fg-faint">{earlierLine(earlierWeeks, earlier)}</p> : null}
+      {undated.exchanges > 0 ? <p className="type-caption text-fg-faint">{undatedLine(undated)}</p> : null}
+      <p className="type-caption text-fg-faint">{TWO_SIDED_NOTE}</p>
+    </section>
+  )
+}
+
 /** A tile count with its denominator; "not checked" where the exchange list
  *  was not read, "none yet" where there are no exchanges. */
 function tileCount(count: number, total: number | null): string {
@@ -1499,6 +1533,8 @@ function IntegritySection({ onGoToExchanges }: { onGoToExchanges?: () => void } 
           />
           <CloseCard counts={closeCounts} payments={paneCQuery.data?.payments} unjoined={unjoinedPayments} />
         </div>
+
+        {paneCQuery.isSuccess && paneCRows.length > 0 ? <TwoSidedWeeksCard rows={paneCRows} /> : null}
 
         <WitnessList
           note={witnessRestartNote(card ?? null)}
