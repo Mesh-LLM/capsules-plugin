@@ -10,7 +10,7 @@ import { formatExchangeTimestamp } from '@/features/capsules/lib/local-time'
  *  no agent, so a plain line says where narration comes from (Sherlock2, Q2 on
  *  #96; a line, not a button that does nothing: Sherlock2 on #339). */
 export const NARRATION_NEEDS_AGENT =
-  'Narrated: ask your agent, with the evidencebook-report skill, to read your sealed records. This dashboard has no agent, so it narrates nothing.'
+  'For a narrated report, ask your own agent, with the evidencebook-report skill, to read your sealed records. This dashboard has no agent.'
 
 /** Grade 2: the node's latest sealed report, checked against its seal when
  *  the node hands it over (`settlement_report.rs`). */
@@ -25,16 +25,17 @@ export function sealedNote(sealedAt: string | null, date: string | null): string
   return `Saved the EvidenceBook report sealed ${sealedAt ? formatExchangeTimestamp(sealedAt) : 'at an unrecorded time'}, reporting up to ${date ?? 'an unrecorded day'}. It matched its seal when the node handed it over.`
 }
 
-/** What the row says when the node has no sealed report to give. Nothing is
- *  saved: the honest refusal is the reason, in words (Sherlock2 on #339). */
+/** What the row says when the node has no sealed report to give: the node's
+ *  own reason, a full sentence, as it is. Nothing is saved: the honest
+ *  refusal is the reason, in words (Sherlock2 on #339). */
 export function noReportNote(why: string): string {
-  return `No report to give: ${why}.`
+  return why
 }
 
 /** What the sealed-report button says before it is pressed, from
  *  `settlement-report/status`; `null` when the node did not say. */
 export function reportStatusLine(status: SettlementReportStatus): string | null {
-  if (status.kind === 'not_ready') return `No report yet: ${status.why}.`
+  if (status.kind === 'not_ready') return status.why
   if (status.kind === 'ready') {
     return status.sealedAt
       ? `A report is ready: sealed ${formatExchangeTimestamp(status.sealedAt)}, reporting up to ${status.date ?? 'an unrecorded day'}. It is checked against its seal when you save it.`

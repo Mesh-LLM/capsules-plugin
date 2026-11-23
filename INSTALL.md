@@ -674,7 +674,10 @@ The **Reports** group, under the Evidence page's header, gives one entry per gra
   (or `CAPSULES_SETTLEMENT_REPORT_DIR=DIR` in the node's environment). The script records the
   capsulectl it ran in `DIR/book.json`, and the node checks the page with that one
   (`CAPSULES_CAPSULECTL=PATH` in the node's environment overrides it); the console never names
-  a program the plugin runs. Under the button, the page says whether a report is ready and when
+  a program the plugin runs. Because the folder decides what runs, the node uses it only when
+  the folder, its `book.json` and `config`, and the recorded capsulectl belong to the node's
+  user and no other user can write them (the script makes the folder private). Under the
+  button, the page says whether a report is ready and when
   it was sealed, or why there is none, before you press it. When you press it, the node runs
   `capsulectl book report check` on the page and hands it over only if it matches its seal.
   Otherwise, or when no report is sealed yet, the page says why, in words, and saves nothing.

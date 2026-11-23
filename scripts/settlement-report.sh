@@ -101,6 +101,9 @@ DATE=${DATE:-$(python3 -c 'import datetime; print((datetime.datetime.now(datetim
 KEY="$DATA_DIR/keys/node-key.pem"
 [ -r "$KEY" ] || fail "the node's key is not readable at $KEY"
 
+# Everything the run writes is the owner's alone: the node uses nothing in the
+# folder that another user can write (settlement_report.rs).
+umask 077
 mkdir -p "$REPORT_DIR"
 chmod 700 "$REPORT_DIR"
 REPORT_DIR=$(cd "$REPORT_DIR" && pwd)

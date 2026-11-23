@@ -6,11 +6,13 @@
 //! `scripts/settlement-report.sh`, which publishes the node's records into a
 //! capsulectl book under the node's own key, runs evidencebook-skills'
 //! `report.sh --seal` over the inference-deals pack, and leaves the page as
-//! `<CAPSULES_SETTLEMENT_REPORT_DIR>/settlement.html` with
+//! `settlement.html` in the reporting book's folder (the console's
+//! "Settlement report folder", or `CAPSULES_SETTLEMENT_REPORT_DIR`) with
 //! `settlement.json` (when it was sealed, the day it reports on). This route
 //! only hands that page over. It writes nothing.
 //!
-//! At hand-over it asks the owner's capsulectl (`CAPSULES_CAPSULECTL`, with
+//! At hand-over it asks the owner's capsulectl (the one the script recorded
+//! in the folder's `book.json`, unless `CAPSULES_CAPSULECTL` names one; with
 //! capsulectl-book) `book report check` on the page, so the check is
 //! capsulectl's own. It hands the page over only when the check says the page
 //! matches its seal and the embedded evidence is `VALID`, and only when the
@@ -45,17 +47,20 @@ pub const NOTE_FILE: &str = "settlement.json";
 const CHECK_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Where the report is, when the owner has set it up.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Setup {
     pub report_dir: Option<PathBuf>,
     pub capsulectl: Option<PathBuf>,
+    /// The capsulectl came from the book's `book.json`, not from the node's
+    /// environment, so it is run only if the file is the node user's own.
+    pub capsulectl_recorded: bool,
 }
 
 impl Setup {
     /// The reporting book's folder from the console's "Settlement report
     /// folder" (or `CAPSULES_SETTLEMENT_REPORT_DIR`), and the capsulectl the
     /// script recorded in its `book.json` there (`CAPSULES_CAPSULECTL`
-    /// overrides it). The console never names the program the plugin runs.
+    /// overrides it).
     pub fn from_settings() -> Self {
         let path = |name: &str| {
             crate::settings::var(name)
@@ -64,39 +69,91 @@ impl Setup {
                 .filter(|v| !v.is_empty())
                 .map(PathBuf::from)
         };
-        let report_dir = path(ENV_REPORT_DIR);
+        Self::from_paths(path(ENV_REPORT_DIR), path(ENV_CAPSULECTL))
+    }
+
+    /// [`Setup::from_settings`] over its two inputs: the environment's
+    /// capsulectl wins over the one the book records.
+    fn from_paths(report_dir: Option<PathBuf>, env_capsulectl: Option<PathBuf>) -> Self {
+        let recorded = env_capsulectl.is_none();
         let capsulectl =
-            path(ENV_CAPSULECTL).or_else(|| report_dir.as_deref().and_then(recorded_capsulectl));
+            env_capsulectl.or_else(|| report_dir.as_deref().and_then(recorded_capsulectl));
         Self {
+            capsulectl_recorded: recorded && capsulectl.is_some(),
             report_dir,
             capsulectl,
         }
     }
 
-    /// Why this setup cannot hand over a report, in the owner's words, or
-    /// `None` when it can try.
-    fn problem(&self) -> Option<&'static str> {
-        if self.report_dir.is_none() {
-            return Some(NOT_SET_UP);
+    /// The folder and the capsulectl to check its page with, or why this
+    /// setup cannot hand over a report, in the owner's words.
+    ///
+    /// The folder can be named from the console, and what it holds decides
+    /// what runs: the recorded capsulectl, its plugin roots and its config
+    /// (`XDG_CONFIG_HOME`). So the folder, its `book.json` and `config`, and
+    /// a recorded capsulectl must be the node user's own and writable by no
+    /// one else, or nothing in them is used.
+    fn ready(&self) -> Result<(&Path, &Path), String> {
+        let Some(report_dir) = self.report_dir.as_deref() else {
+            return Err(NOT_SET_UP.into());
+        };
+        for path in [
+            report_dir.to_path_buf(),
+            report_dir.join("book.json"),
+            report_dir.join("config"),
+        ] {
+            private_or_absent(&path)?;
         }
-        if self.capsulectl.is_none() {
-            return Some(NO_CAPSULECTL);
+        let Some(capsulectl) = self.capsulectl.as_deref() else {
+            return Err(NO_CAPSULECTL.into());
+        };
+        if self.capsulectl_recorded {
+            if !capsulectl.is_file() {
+                return Err(format!(
+                    "The capsulectl this report was made with is no longer at {}. Make the report again with scripts/settlement-report.sh.",
+                    capsulectl.display()
+                ));
+            }
+            private_or_absent(capsulectl)?;
         }
-        None
+        Ok((report_dir, capsulectl))
     }
 }
 
 /// No reporting book is set.
-pub const NOT_SET_UP: &str = "no settlement report is set up on this node: set \
-     \"Settlement report folder\" under Configuration > Plugins > Capsules > Reports, then \
-     make a report there with scripts/settlement-report.sh on the node's machine";
+pub const NOT_SET_UP: &str = "No settlement report is set up on this node. Set \
+     \"Settlement report folder\" under Configuration › Plugins › Capsules › Reports, then \
+     make a report there with scripts/settlement-report.sh on this node's machine.";
 /// The book names no capsulectl to check its page with.
-pub const NO_CAPSULECTL: &str = "the reporting book does not name the capsulectl that \
-     checks its report: make the report again with scripts/settlement-report.sh, which \
-     records it";
+pub const NO_CAPSULECTL: &str = "This report was made without recording which capsulectl \
+     checks it. Make it again with scripts/settlement-report.sh, which records it.";
 /// The folder holds no page yet.
-pub const NO_REPORT_YET: &str = "no settlement report has been sealed yet: the node's \
-     owner makes one with scripts/settlement-report.sh";
+pub const NO_REPORT_YET: &str = "No settlement report has been sealed yet. Make one with \
+     scripts/settlement-report.sh on this node's machine.";
+
+/// `Err` with the owner's reason when `path` exists and is not the node
+/// user's own, or another user can write it. Unix only; elsewhere every path
+/// passes.
+fn private_or_absent(path: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        let Ok(meta) = std::fs::metadata(path) else {
+            return Ok(());
+        };
+        // SAFETY: geteuid has no preconditions and cannot fail.
+        let me = unsafe { libc::geteuid() };
+        if meta.uid() != me || meta.mode() & 0o022 != 0 {
+            return Err(format!(
+                "{} is not this node user's own, or others can write it, so the report there is not used. Keep the report folder private, as scripts/settlement-report.sh makes it.",
+                path.display()
+            ));
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
+}
 
 /// The capsulectl `scripts/settlement-report.sh` ran, as it records it in
 /// `book.json`.
@@ -132,12 +189,17 @@ async fn report_check(capsulectl: &Path, report_dir: &Path, page: &Path) -> Resu
         .stdin(std::process::Stdio::null())
         .kill_on_drop(true);
     if let Some(roots) = plugin_roots(report_dir).await {
+        for root in std::env::split_paths(&roots) {
+            private_or_absent(&root)?;
+        }
         command.env("CAPSULECTL_PLUGIN_ROOTS", roots);
     }
     let output = tokio::time::timeout(CHECK_TIMEOUT, command.output())
         .await
-        .map_err(|_| "book report check did not finish in time".to_string())?
-        .map_err(|e| format!("capsulectl could not be run: {e}"))?;
+        .map_err(|_| {
+            "The report's check (book report check) did not finish in time. Try again.".to_string()
+        })?
+        .map_err(|e| format!("The capsulectl that checks the report could not be run: {e}."))?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let last = stdout.lines().rev().find(|l| !l.trim().is_empty());
     match last.and_then(|l| serde_json::from_str::<Value>(l).ok()) {
@@ -145,7 +207,7 @@ async fn report_check(capsulectl: &Path, report_dir: &Path, page: &Path) -> Resu
         None => {
             let stderr = String::from_utf8_lossy(&output.stderr);
             Err(format!(
-                "book report check answered nothing it could read: {}",
+                "The report's check (book report check) answered nothing readable: {}",
                 stderr.trim().chars().take(400).collect::<String>()
             ))
         }
@@ -154,19 +216,15 @@ async fn report_check(capsulectl: &Path, report_dir: &Path, page: &Path) -> Resu
 
 /// The route's answer for `setup`.
 pub async fn answer(setup: &Setup) -> Value {
-    if let Some(why) = setup.problem() {
-        return refused(why);
-    }
-    let (Some(report_dir), Some(capsulectl)) =
-        (setup.report_dir.as_deref(), setup.capsulectl.as_deref())
-    else {
-        return refused(NOT_SET_UP);
+    let (report_dir, capsulectl) = match setup.ready() {
+        Ok(paths) => paths,
+        Err(why) => return refused(why),
     };
     let page_path = report_dir.join(PAGE_FILE);
     let page = match tokio::fs::read(&page_path).await {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return refused(NO_REPORT_YET),
-        Err(e) => return refused(format!("the settlement report could not be read: {e}")),
+        Err(e) => return refused(format!("The settlement report could not be read: {e}.")),
     };
     let check = match report_check(capsulectl, report_dir, &page_path).await {
         Ok(check) => check,
@@ -182,7 +240,7 @@ pub async fn answer(setup: &Setup) -> Value {
                 .unwrap_or("not reported")
         };
         return refused(format!(
-            "the settlement report did not check, so it is not handed over (page: {}, seal: {})",
+            "The settlement report did not match its seal, so it is not handed over (page: {}, seal: {}).",
             field("page"),
             field("verification")
         ));
@@ -190,10 +248,10 @@ pub async fn answer(setup: &Setup) -> Value {
     // The bytes served are the bytes checked: a new report written in
     // between is checked on the next ask, never served unchecked.
     if tokio::fs::read(&page_path).await.ok().as_deref() != Some(page.as_slice()) {
-        return refused("the settlement report changed while it was checked; ask again");
+        return refused("The settlement report changed while it was checked. Try again.");
     }
     let Ok(page) = String::from_utf8(page) else {
-        return refused("the settlement report is not text");
+        return refused("The settlement report is not text.");
     };
     let note: Value = tokio::fs::read(report_dir.join(NOTE_FILE))
         .await
@@ -222,13 +280,16 @@ pub async fn answer(setup: &Setup) -> Value {
 /// pressing the button still runs `book report check`, and only `match VALID`
 /// hands the page over.
 pub async fn status(setup: &Setup) -> Value {
-    if let Some(why) = setup.problem() {
-        return json!({"state": "not_set_up", "why": why});
-    }
-    let (Some(report_dir), Some(capsulectl)) =
-        (setup.report_dir.as_deref(), setup.capsulectl.as_deref())
-    else {
-        return json!({"state": "not_set_up", "why": NOT_SET_UP});
+    let report_dir = match setup.ready() {
+        Ok((report_dir, _)) => report_dir,
+        Err(why) => {
+            let state = if setup.report_dir.is_none() || why == NO_CAPSULECTL {
+                "not_set_up"
+            } else {
+                "unreadable"
+            };
+            return json!({"state": state, "why": why});
+        }
     };
     let page = match tokio::fs::read(report_dir.join(PAGE_FILE)).await {
         Ok(bytes) => bytes,
@@ -236,15 +297,9 @@ pub async fn status(setup: &Setup) -> Value {
             return json!({"state": "no_report_yet", "why": NO_REPORT_YET})
         }
         Err(e) => {
-            return json!({"state": "unreadable", "why": format!("the settlement report could not be read: {e}")})
+            return json!({"state": "unreadable", "why": format!("The settlement report could not be read: {e}.")})
         }
     };
-    if !tokio::fs::metadata(capsulectl)
-        .await
-        .is_ok_and(|m| m.is_file())
-    {
-        return json!({"state": "unreadable", "why": NO_CAPSULECTL});
-    }
     use sha2::Digest as _;
     let digest = format!("sha256:{}", hex::encode(sha2::Sha256::digest(&page)));
     let note: Value = tokio::fs::read(report_dir.join(NOTE_FILE))
@@ -337,6 +392,7 @@ mod tests {
         let setup = Setup {
             report_dir: Some(report_dir(dir.path())),
             capsulectl: Some(fake_capsulectl(dir.path(), MATCH)),
+            ..Default::default()
         };
         let answered = answer(&setup).await;
         assert_eq!(answered["state"], "report");
@@ -353,6 +409,7 @@ mod tests {
         let setup = Setup {
             report_dir: Some(report_dir(dir.path())),
             capsulectl: Some(fake_capsulectl(dir.path(), newer)),
+            ..Default::default()
         };
         let answered = answer(&setup).await;
         assert_eq!(answered["state"], "report");
@@ -381,6 +438,7 @@ mod tests {
         let answered = answer(&Setup {
             report_dir: Some(report),
             capsulectl: Some(ctl),
+            ..Default::default()
         })
         .await;
         assert_eq!(answered["state"], "report", "{answered}");
@@ -396,11 +454,12 @@ mod tests {
             let setup = Setup {
                 report_dir: Some(report_dir(dir.path())),
                 capsulectl: Some(fake_capsulectl(dir.path(), check)),
+                ..Default::default()
             };
             let answered = answer(&setup).await;
             assert_eq!(answered["state"], "refused", "{check}");
             let why = answered["why"].as_str().unwrap();
-            assert!(why.contains("did not check"));
+            assert!(why.contains("did not match its seal"));
             assert!(!why.contains('{'), "no raw check JSON in the reason: {why}");
             assert!(answered.get("page").is_none());
         }
@@ -412,6 +471,7 @@ mod tests {
         let none = answer(&Setup {
             report_dir: None,
             capsulectl: None,
+            ..Default::default()
         })
         .await;
         assert_eq!(none["why"], NOT_SET_UP);
@@ -419,6 +479,7 @@ mod tests {
         let no_ctl = answer(&Setup {
             report_dir: Some(report_dir(dir.path())),
             capsulectl: None,
+            ..Default::default()
         })
         .await;
         assert_eq!(no_ctl["why"], NO_CAPSULECTL);
@@ -432,6 +493,7 @@ mod tests {
         let unsealed = answer(&Setup {
             report_dir: Some(empty),
             capsulectl: Some(fake_capsulectl(dir.path(), MATCH)),
+            ..Default::default()
         })
         .await;
         assert_eq!(unsealed["state"], "refused");
@@ -443,6 +505,7 @@ mod tests {
         let missing = answer(&Setup {
             report_dir: Some(report_dir(dir.path())),
             capsulectl: Some(dir.path().join("no-such-capsulectl")),
+            ..Default::default()
         })
         .await;
         assert!(missing["why"]
@@ -459,6 +522,7 @@ mod tests {
             status(&Setup {
                 report_dir,
                 capsulectl,
+                ..Default::default()
             })
             .await
         };
@@ -501,9 +565,21 @@ mod tests {
             json!({"state": "ready", "sealed_at": "2026-11-23T06:00:00Z", "date": "2026-11-22"})
         );
 
-        // A capsulectl that is not there, and a page that cannot be read.
-        let gone = status_of(Some(report.clone()), Some(dir.path().join("gone"))).await;
+        // A recorded capsulectl that is no longer there names its path; one
+        // the environment names is the operator's and is not looked up here.
+        let gone = status(&Setup {
+            report_dir: Some(report.clone()),
+            capsulectl: Some(dir.path().join("gone")),
+            capsulectl_recorded: true,
+        })
+        .await;
         assert_eq!(gone["state"], "unreadable");
+        assert!(
+            gone["why"].as_str().unwrap().contains("no longer at"),
+            "{gone}"
+        );
+        let bare = status_of(Some(report.clone()), Some(PathBuf::from("capsulectl"))).await;
+        assert_eq!(bare["state"], "ready", "a bare name on PATH: {bare}");
         std::fs::set_permissions(
             report.join(PAGE_FILE),
             std::fs::Permissions::from_mode(0o000),
@@ -513,6 +589,77 @@ mod tests {
             let locked = status_of(Some(report.clone()), Some(never_run)).await;
             assert_eq!(locked["state"], "unreadable", "{locked}");
         }
+    }
+
+    #[test]
+    fn the_environment_capsulectl_wins_over_the_recorded_one() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("book.json"),
+            r#"{"capsulectl":"/opt/recorded"}"#,
+        )
+        .unwrap();
+        let recorded = Setup::from_paths(Some(dir.path().into()), None);
+        assert_eq!(recorded.capsulectl, Some(PathBuf::from("/opt/recorded")));
+        assert!(recorded.capsulectl_recorded);
+        let env = Setup::from_paths(Some(dir.path().into()), Some("/opt/env".into()));
+        assert_eq!(env.capsulectl, Some(PathBuf::from("/opt/env")));
+        assert!(!env.capsulectl_recorded);
+        assert_eq!(Setup::from_paths(None, None).capsulectl, None);
+    }
+
+    /// The console can name the folder, and the folder decides what runs, so
+    /// a folder, book or recorded capsulectl that another user can write is
+    /// never used: nothing is run and the reason says why.
+    #[tokio::test]
+    async fn a_folder_or_capsulectl_others_can_write_is_not_used() {
+        let dir = tempfile::tempdir().unwrap();
+        let report = report_dir(dir.path());
+        let ctl = fake_capsulectl(dir.path(), MATCH);
+        std::fs::write(
+            report.join("book.json"),
+            json!({"capsulectl": ctl.display().to_string()}).to_string(),
+        )
+        .unwrap();
+        let setup = Setup::from_paths(Some(report.clone()), None);
+        assert_eq!(answer(&setup).await["state"], "report");
+
+        for (path, mode) in [
+            (report.join("book.json"), 0o666),
+            (report.clone(), 0o777),
+            (ctl.clone(), 0o777),
+        ] {
+            let before = std::fs::metadata(&path).unwrap().permissions();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).unwrap();
+            let refused = answer(&setup).await;
+            assert_eq!(refused["state"], "refused", "{}", path.display());
+            assert!(
+                refused["why"]
+                    .as_str()
+                    .unwrap()
+                    .contains("others can write it"),
+                "{refused}"
+            );
+            assert_eq!(status(&setup).await["state"], "unreadable");
+            std::fs::set_permissions(&path, before).unwrap();
+        }
+        // Plugin roots another user can write are refused at the check.
+        let roots = dir.path().join("roots");
+        std::fs::create_dir(&roots).unwrap();
+        std::fs::set_permissions(&roots, std::fs::Permissions::from_mode(0o777)).unwrap();
+        std::fs::write(
+            report.join("book.json"),
+            json!({"capsulectl": ctl.display().to_string(), "plugin_roots": roots.display().to_string()}).to_string(),
+        )
+        .unwrap();
+        let refused = answer(&setup).await;
+        assert!(
+            refused["why"]
+                .as_str()
+                .unwrap()
+                .contains("others can write it"),
+            "{refused}"
+        );
     }
 
     #[test]
@@ -552,6 +699,7 @@ mod tests {
         let setup = Setup {
             report_dir: Some(copy.clone()),
             capsulectl: Some(ctl),
+            ..Default::default()
         };
         let answered = answer(&setup).await;
         assert_eq!(answered["state"], "report", "{answered}");

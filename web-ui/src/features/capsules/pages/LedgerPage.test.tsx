@@ -1085,25 +1085,25 @@ describe('LedgerPageContent — Part 3: Exchanges two-sided stream + row inspect
     expect(await saved[0].text()).toBe('<!doctype html><p>sealed</p>')
 
     // No sealed report: the reason in words, and nothing saved.
-    vi.mocked(fetchSettlementReport).mockResolvedValueOnce({ kind: 'refused', why: 'no settlement report has been sealed yet' })
+    vi.mocked(fetchSettlementReport).mockResolvedValueOnce({ kind: 'refused', why: 'No settlement report has been sealed yet.' })
     await user.click(settlementButton)
-    expect(await within(reports).findByRole('status')).toHaveTextContent(noReportNote('no settlement report has been sealed yet'))
+    expect(await within(reports).findByRole('status')).toHaveTextContent(noReportNote('No settlement report has been sealed yet.'))
     expect(saved).toHaveLength(1)
   })
 
   it('the report button says why there is no report before it is pressed, and says nothing when the node does not say', async () => {
     const { fetchSettlementReportStatus } = await import('@/features/capsules/api/client')
-    vi.mocked(fetchSettlementReportStatus).mockResolvedValueOnce({ kind: 'not_ready', why: 'no settlement report is set up on this node' })
+    vi.mocked(fetchSettlementReportStatus).mockResolvedValueOnce({ kind: 'not_ready', why: 'No settlement report is set up on this node.' })
     render(<LedgerPageContent />, { wrapper: makeWrapper() })
     const reports = await screen.findByRole('region', { name: 'Reports' })
-    expect(await within(reports).findByText('No report yet: no settlement report is set up on this node.')).toBeInTheDocument()
+    expect(await within(reports).findByText('No settlement report is set up on this node.')).toBeInTheDocument()
     cleanup()
 
     vi.mocked(fetchSettlementReportStatus).mockResolvedValueOnce({ kind: 'unknown' })
     render(<LedgerPageContent />, { wrapper: makeWrapper() })
     const quiet = await screen.findByRole('region', { name: 'Reports' })
     await waitFor(() => expect(fetchSettlementReportStatus).toHaveBeenCalledTimes(2))
-    expect(within(quiet).queryByText(/^No report yet|^A report is ready/)).not.toBeInTheDocument()
+    expect(within(quiet).queryByText(/^No settlement report|^A report is ready/)).not.toBeInTheDocument()
     expect(within(quiet).getByRole('button', { name: SEALED_LABEL })).toBeEnabled()
   })
 
