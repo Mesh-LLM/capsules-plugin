@@ -11,6 +11,7 @@ fn card(age_days: i64) -> CardOutcome {
         artifact_digest: "c".repeat(64),
         first_checkpoint_at: Some(Utc::now() - chrono::Duration::days(age_days)),
         key_id: KEY.to_string(),
+        derivation: CARD_FORM.to_string(),
     })
 }
 
@@ -158,7 +159,13 @@ fn a_card_old_enough_passes_every_row_and_is_cited() {
     passing().set(&base);
     let read = base.read_keyed(PEER, at, Utc::now());
     assert_eq!(read.rows, [RowResult::Pass; 5]);
-    assert_eq!(read.card.as_deref(), Some("c".repeat(64).as_str()));
+    assert_eq!(
+        read.card,
+        Some(CardCite {
+            artifact_digest: "c".repeat(64),
+            derivation: CARD_FORM.to_string()
+        })
+    );
 }
 
 #[test]
@@ -432,7 +439,7 @@ fn a_card_read_under_another_key_or_failing_later_is_no_longer_read() {
 
 #[test]
 fn a_refusal_or_an_answer_with_no_key_is_never_a_card() {
-    let sent = serde_json::to_vec(&card_request()).unwrap();
+    let sent = serde_json::to_vec(&card_request_as(CARD_FORM)).unwrap();
     assert_eq!(
         read_card(
             &sent,
@@ -460,6 +467,26 @@ fn a_refusal_or_an_answer_with_no_key_is_never_a_card() {
             &Default::default()
         ),
         CardOutcome::Unverifiable
+    );
+}
+
+#[test]
+fn only_an_older_builds_refusal_of_the_card_form_asks_again_for_history_card_1() {
+    for reason in ["derivation_unsupported", "policy_declined"] {
+        assert!(ask_older_card(&json!({"reason": reason})), "{reason}");
+    }
+    for answer in [
+        json!({"reason": "capacity_exceeded"}),
+        json!({"reason": "not_authorized"}),
+        json!({"reason": "request_malformed"}),
+        json!({"artifact": {}}),
+        json!({}),
+    ] {
+        assert!(!ask_older_card(&answer), "{answer}");
+    }
+    assert_eq!(
+        card_request_as(OLDER_CARD_FORM)["derivation"],
+        "history_card/1"
     );
 }
 
@@ -577,6 +604,7 @@ fn card_at(first: Option<DateTime<Utc>>) -> CardOutcome {
         artifact_digest: "c".repeat(64),
         first_checkpoint_at: first,
         key_id: KEY.to_string(),
+        derivation: CARD_FORM.to_string(),
     })
 }
 

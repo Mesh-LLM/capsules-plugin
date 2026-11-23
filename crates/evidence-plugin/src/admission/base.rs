@@ -159,6 +159,16 @@ pub struct Card {
     /// The record key it verified under. The card speaks for that key only:
     /// once the peer's announced key changes, it is no longer read.
     pub key_id: String,
+    /// The card form the peer answered ([`CARD_FORM`] or
+    /// [`OLDER_CARD_FORM`]), which the sealed admission record names.
+    pub derivation: String,
+}
+
+/// The card a read cites: its artifact digest and the form it answered.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CardCite {
+    pub artifact_digest: String,
+    pub derivation: String,
 }
 
 /// What one ask of a peer's card came to.
@@ -220,8 +230,8 @@ pub struct Facts {
 #[derive(Debug)]
 pub struct Read {
     pub rows: [RowResult; 5],
-    /// The card cited: `Some(artifact digest)` when one was read.
-    pub card: Option<String>,
+    /// The card cited, when one was read.
+    pub card: Option<CardCite>,
     /// The evaluator's decision under the base pack, its rows included.
     pub decision: engine::Decision,
 }
@@ -339,7 +349,7 @@ impl Base {
     /// The card the identity and key-age rows read, and the card cited.
     /// `key` is the peer's announced record key now; a card read under
     /// another key is not read.
-    fn card(&self, peer: &str, key: Option<&str>, at: Instant) -> (Option<String>, engine::Card) {
+    fn card(&self, peer: &str, key: Option<&str>, at: Instant) -> (Option<CardCite>, engine::Card) {
         let mut cards = self.cards.lock().expect("the card lock is never poisoned");
         let entry = cards.entry(peer.to_string()).or_default();
         // A new key starts over: neither an old card nor an old failure
@@ -381,7 +391,10 @@ impl Base {
         }
         if let Some((card, _)) = &entry.card {
             return (
-                Some(card.artifact_digest.clone()),
+                Some(CardCite {
+                    artifact_digest: card.artifact_digest.clone(),
+                    derivation: card.derivation.clone(),
+                }),
                 engine::Card {
                     state: engine::CARD_VERIFIED.into(),
                     first_checkpoint_at: card.first_checkpoint_at.map(timestamp),
@@ -557,46 +570,59 @@ impl Base {
     }
 }
 
+/// The card form the identity and key-age rows ask first. A node past the
+/// answer cap no longer offers `history_card/1` and refuses it (#70), so
+/// asking `/1` alone would leave a long-lived peer's rows unread (#339).
+pub const CARD_FORM: &str = "history_card/2";
+/// The form asked again of a peer that refuses [`CARD_FORM`]: builds before
+/// `/2` was answered (#302) serve only `history_card/1`.
+pub const OLDER_CARD_FORM: &str = "history_card/1";
+
 /// The Evidence Request the identity and key-age rows read: the peer's
-/// history card.
-pub fn card_request() -> Value {
+/// history card, in `form`.
+pub fn card_request_as(form: &str) -> Value {
     json!({
         "subject": {"full_history": null},
         "coverage": {"min_freshness": 1},
-        "derivation": "history_card/1",
+        "derivation": form,
     })
 }
 
+/// Whether `answer`, to a [`CARD_FORM`] ask, is a refusal an older build
+/// gives a form it does not serve: `derivation_unsupported` to a
+/// counterparty, or the `policy_declined` its gate gives everyone else for
+/// any derivation it does not offer strangers (it does not say which). Any
+/// other answer is read as it is.
+pub fn ask_older_card(answer: &Value) -> bool {
+    use evidence_request::registry::Reason;
+    let reason = answer.get("reason").and_then(Value::as_str);
+    [Reason::DerivationUnsupported, Reason::PolicyDeclined]
+        .iter()
+        .any(|r| reason == Some(r.token()))
+}
+
 /// Ask `peer` for its history card, sealing the ask in `capsules`' book
-/// first (loop step 7). The queue sends an ask only when a read is due
-/// (`CARD_TTL`, `ASK_RETRY`), which bounds what is booked per peer. If the
-/// ask cannot be sealed, nothing is sent and the card reads `NotRead`.
+/// first (loop step 7): [`CARD_FORM`], then [`OLDER_CARD_FORM`] once if the
+/// peer refuses the first as an older build would. Each form may itself be
+/// re-sent once under `evidence-interop/0` (`send_evidence_request`), so a
+/// read books up to four asks; the queue sends one only when a read is due
+/// (`CARD_TTL`, `ASK_RETRY`). If an ask cannot be sealed, nothing is sent and
+/// the card reads `NotRead`.
 async fn ask_card(
     context: &mut mesh_llm_plugin::PluginContext<'_>,
     peer: &str,
     capsules: Option<&Arc<crate::capsule_emit::CapsuleState>>,
 ) -> CardOutcome {
-    let answered = match crate::mesh_evidence_bridge::send_evidence_request(
-        context,
-        peer,
-        &card_request(),
-        capsules,
-    )
-    .await
-    {
-        Ok(answered) => answered,
-        Err(error) => {
-            // A local failure to seal the ask must not look like an
-            // unreachable peer.
-            if matches!(
-                error,
-                crate::mesh_evidence_bridge::SendError::NotRecorded(_)
-            ) {
-                tracing::warn!(%peer, ?error, "admission's history card ask was not sent: it could not be sealed");
-            }
-            return CardOutcome::NotRead;
-        }
+    let mut answered = match send_card(context, peer, CARD_FORM, capsules).await {
+        Some(answered) => answered,
+        None => return CardOutcome::NotRead,
     };
+    if ask_older_card(&answered.answer) {
+        answered = match send_card(context, peer, OLDER_CARD_FORM, capsules).await {
+            Some(answered) => answered,
+            None => return CardOutcome::NotRead,
+        };
+    }
     let crate::mesh_evidence_bridge::Answered { sent, answer, .. } = answered;
     let registry = crate::peer_keys::registry();
     read_card(
@@ -605,6 +631,36 @@ async fn ask_card(
         crate::peer_keys::announced_key_in(registry.as_deref(), peer).as_deref(),
         &crate::checkpoint_cadence::active_witness_keys(),
     )
+}
+
+/// One card ask in `form`, or `None` when it was not answered.
+async fn send_card(
+    context: &mut mesh_llm_plugin::PluginContext<'_>,
+    peer: &str,
+    form: &str,
+    capsules: Option<&Arc<crate::capsule_emit::CapsuleState>>,
+) -> Option<crate::mesh_evidence_bridge::Answered> {
+    match crate::mesh_evidence_bridge::send_evidence_request(
+        context,
+        peer,
+        &card_request_as(form),
+        capsules,
+    )
+    .await
+    {
+        Ok(answered) => Some(answered),
+        Err(error) => {
+            // A local failure to seal the ask must not look like an
+            // unreachable peer.
+            if matches!(
+                error,
+                crate::mesh_evidence_bridge::SendError::NotRecorded(_)
+            ) {
+                tracing::warn!(%peer, ?error, form, "admission's history card ask was not sent: it could not be sealed");
+            }
+            None
+        }
+    }
 }
 
 /// The card in `answer` to the request `sent`, verified under `key_id` (the
@@ -638,6 +694,10 @@ pub fn read_card(
                 .and_then(|at| DateTime::parse_from_rfc3339(&at).ok())
                 .map(|at| at.with_timezone(&Utc)),
             key_id: key_id.to_ascii_lowercase(),
+            derivation: serde_json::from_slice::<Value>(sent)
+                .ok()
+                .and_then(|r| r.get("derivation")?.as_str().map(str::to_string))
+                .unwrap_or_default(),
         }),
         _ => CardOutcome::Unverifiable,
     }
