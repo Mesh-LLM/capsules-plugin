@@ -4,9 +4,10 @@
 //! operator saved in mesh's console (Configuration > Plugins). mesh-llm keeps
 //! that value in its own config file, under this plugin's `[[plugin]]` entry
 //! (`[plugin.settings]`), and does not pass it to the plugin process, so the
-//! plugin reads it there itself: the file `MESH_LLM_CONFIG` names, else the
+//! plugin reads it there itself, finding the file the way mesh-llm does: the
 //! file the host was started with (`mesh-llm serve --config <path>`, read from
-//! the host's command line on Linux), else `~/.mesh-llm/config.toml`. The console key is the setting's name without
+//! the host's command line on Linux), else a non-empty `MESH_LLM_CONFIG`, else
+//! `~/.mesh-llm/config.toml`. The console key is the setting's name without
 //! the prefix, lower-cased (`CAPSULES_SHARE_HISTORY_SEGMENTS` is
 //! `share_history_segments`), except the witness: the console's `witness` is
 //! `CAPSULES_CHECKPOINT_WITNESS_URLS`. The environment wins over the
@@ -47,21 +48,39 @@ pub fn console_key(name: &str) -> Option<String> {
 /// mesh's config file is read only up to this size.
 const MAX_CONFIG_BYTES: u64 = 1024 * 1024;
 
-/// mesh's config file: the one `MESH_LLM_CONFIG` names, else the one the host
-/// was started with (`mesh-llm serve --config <path>`, read from its command
-/// line, #147), else the default.
+/// mesh's config file, found the way mesh-llm finds it
+/// (`mesh-llm-config` `store::config_path`): the file the host was started
+/// with (`mesh-llm serve --config <path>`, read from its command line, #147),
+/// else a non-empty `MESH_LLM_CONFIG`, else the default.
 fn host_config_path() -> Option<std::path::PathBuf> {
-    if let Some(path) = std::env::var_os("MESH_LLM_CONFIG") {
+    // Tests never read the developer's own mesh config, nor the test
+    // runner's command line.
+    if cfg!(test) {
+        return config_path_in(None, std::env::var_os("MESH_LLM_CONFIG"), None);
+    }
+    config_path_in(
+        host_flag_config().map(std::path::PathBuf::as_path),
+        std::env::var_os("MESH_LLM_CONFIG"),
+        std::env::var_os("HOME"),
+    )
+}
+
+/// [`host_config_path`] over its inputs: the host's `--config`, the
+/// environment's `MESH_LLM_CONFIG` and `HOME`. An empty `MESH_LLM_CONFIG`
+/// (what a systemd `Environment=MESH_LLM_CONFIG=` line sets) is no value, as
+/// mesh-llm reads it.
+fn config_path_in(
+    flag: Option<&std::path::Path>,
+    env: Option<OsString>,
+    home: Option<OsString>,
+) -> Option<std::path::PathBuf> {
+    if let Some(path) = flag {
+        return Some(path.to_path_buf());
+    }
+    if let Some(path) = env.filter(|p| !p.is_empty()) {
         return Some(path.into());
     }
-    // Tests never read the developer's own mesh config.
-    if cfg!(test) {
-        return None;
-    }
-    if let Some(path) = host_flag_config() {
-        return Some(path.clone());
-    }
-    let home = std::env::var_os("HOME").filter(|h| !h.is_empty())?;
+    let home = home.filter(|h| !h.is_empty())?;
     Some(
         std::path::Path::new(&home)
             .join(".mesh-llm")
@@ -117,8 +136,8 @@ fn host_flag_config() -> Option<&'static std::path::PathBuf> {
                 HostConfig::Unusable => {
                     tracing::warn!(
                         "mesh-llm was started with a --config this plugin cannot read a path from: \
-                         the console's plugin settings are read from ~/.mesh-llm/config.toml. \
-                         Set MESH_LLM_CONFIG to the file mesh-llm uses"
+                         the console's plugin settings are read from MESH_LLM_CONFIG or \
+                         ~/.mesh-llm/config.toml. Set MESH_LLM_CONFIG to the file mesh-llm uses"
                     );
                     None
                 }
@@ -153,11 +172,10 @@ fn host_config_from_args(cmdline: &[u8], cwd: Option<&std::path::Path>) -> HostC
             args[i].strip_prefix(b"--config=")
         };
         if let Some(value) = value {
-            found = match std::str::from_utf8(value) {
-                Ok(v) if !v.is_empty() && !v.starts_with('-') => {
-                    let path = std::path::Path::new(v);
+            found = match path_from_bytes(value) {
+                Some(path) if !value.is_empty() && !value.starts_with(b"-") => {
                     if path.is_absolute() {
-                        HostConfig::Path(path.to_path_buf())
+                        HostConfig::Path(path)
                     } else if let Some(base) = cwd {
                         HostConfig::Path(base.join(path))
                     } else {
@@ -170,6 +188,20 @@ fn host_config_from_args(cmdline: &[u8], cwd: Option<&std::path::Path>) -> HostC
         i += 1;
     }
     found
+}
+
+/// A path from a command line's bytes: any bytes on Unix, as mesh-llm's
+/// `PathBuf` argument takes them; UTF-8 elsewhere.
+fn path_from_bytes(bytes: &[u8]) -> Option<std::path::PathBuf> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt as _;
+        Some(std::ffi::OsStr::from_bytes(bytes).into())
+    }
+    #[cfg(not(unix))]
+    {
+        std::str::from_utf8(bytes).ok().map(Into::into)
+    }
 }
 
 /// The settings saved in the console for this plugin, from mesh's config
@@ -749,6 +781,39 @@ witness = [
             HostConfig::NotMesh
         );
         assert_eq!(read(b""), HostConfig::NotMesh);
+    }
+
+    #[test]
+    fn the_hosts_config_comes_first_then_a_non_empty_environment_then_home() {
+        use std::path::{Path, PathBuf};
+        let flag = Some(Path::new("/b.toml"));
+        let env = |v: &str| Some(OsString::from(v));
+        assert_eq!(
+            config_path_in(flag, env("/a.toml"), env("/home/n")),
+            Some(PathBuf::from("/b.toml")),
+            "--config wins over MESH_LLM_CONFIG, as mesh-llm reads them"
+        );
+        assert_eq!(
+            config_path_in(None, env("/a.toml"), env("/home/n")),
+            Some(PathBuf::from("/a.toml"))
+        );
+        assert_eq!(
+            config_path_in(None, env(""), env("/home/n")),
+            Some(PathBuf::from("/home/n/.mesh-llm/config.toml")),
+            "an empty MESH_LLM_CONFIG is no value"
+        );
+        assert_eq!(config_path_in(None, None, env("")), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_config_path_that_is_not_utf8_is_still_read() {
+        use std::os::unix::ffi::OsStrExt as _;
+        let read = host_config_from_args(b"mesh-llm\0--config\0/etc/m\xffsh.toml\0", None);
+        assert_eq!(
+            read,
+            HostConfig::Path(std::ffi::OsStr::from_bytes(b"/etc/m\xffsh.toml").into())
+        );
     }
 
     #[test]
