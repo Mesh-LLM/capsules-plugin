@@ -96,4 +96,4 @@ export function earlierLine(weeks: number, rest: Rest): string {
 
 /** What the counts can and cannot show, beside the series. */
 export const TWO_SIDED_NOTE =
-  'Weeks start Monday, UTC. Counts only the other side’s records this node holds: if the other side stops sending its record, or this node’s “Send your record to the other side” is off, the count reads low.'
+  'Weeks start Monday, UTC. Counts only the other side’s records this node holds and has checked: if the other side stops sending its record, or this node’s “Send your record to the other side” is off, the count reads low.'
