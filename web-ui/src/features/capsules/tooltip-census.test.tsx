@@ -239,7 +239,8 @@ vi.mock('@/features/capsules/api/sidecarClient', () => ({
 }))
 vi.mock('@/features/capsules/api/client', () => ({
   fetchCapsuleLedger: vi.fn().mockResolvedValue({ records: [], nodePubKeyPem: null }),
-  fetchSignedStatement: vi.fn().mockResolvedValue(null)
+  fetchSignedStatement: vi.fn().mockResolvedValue(null),
+  fetchSettlementReportStatus: vi.fn().mockResolvedValue({ kind: 'unknown' })
 }))
 vi.mock('@/features/network/api/use-status-query', () => ({
   useStatusQuery: vi.fn(() => ({ data: undefined }))

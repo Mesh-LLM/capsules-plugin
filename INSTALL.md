@@ -623,10 +623,10 @@ unrecorded.
 
 ## Your settlement report
 
-The Exchanges tab's "What happened" row has three buttons, one per grade of an answer:
+The **Reports** group, under the Evidence page's header, gives one entry per grade of an answer:
 
-- **Narrated by your agent.** The dashboard has no agent, so this button only says to ask your
-  own agent, with the evidencebook-report skill, to read your sealed records.
+- **Narrated.** The dashboard has no agent, so a line says to ask your own agent, with the
+  evidencebook-report skill, to read your sealed records.
 - **EvidenceBook report (sealed and checked).** This saves your node's latest sealed settlement
   report, a page anyone can check offline. The node never builds the report itself. You build
   it on the node's machine, while the node runs, by hand or on a schedule:
@@ -670,10 +670,14 @@ The Exchanges tab's "What happened" row has three buttons, one per grade of an a
   has no report to carry: it is left out, with its reason on stderr. It needs an evidencebook-skills whose `report.sh` takes
   `--receipts`.
 
-  Set `CAPSULES_SETTLEMENT_REPORT_DIR=DIR` and `CAPSULES_CAPSULECTL=PATH` in the node's
-  environment. When you save the page, the node runs `capsulectl book report check` on it and
-  hands it over only if it matches its seal. Otherwise, or when no report is sealed yet, you
-  get a page that says why and holds no evidence.
+  Set **Settlement report folder** to `DIR` under Configuration › Plugins › Capsules › Reports
+  (or `CAPSULES_SETTLEMENT_REPORT_DIR=DIR` in the node's environment). The script records the
+  capsulectl it ran in `DIR/book.json`, and the node checks the page with that one
+  (`CAPSULES_CAPSULECTL=PATH` in the node's environment overrides it); the console never names
+  a program the plugin runs. Under the button, the page says whether a report is ready and when
+  it was sealed, or why there is none, before you press it. When you press it, the node runs
+  `capsulectl book report check` on the page and hands it over only if it matches its seal.
+  Otherwise, or when no report is sealed yet, the page says why, in words, and saves nothing.
 - **Stamped: History page.** This saves what your node answers a stranger who asks for its
   history. Each paid exchange's receipt is on its own row ("Save receipt page").
 

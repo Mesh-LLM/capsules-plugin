@@ -1,5 +1,5 @@
 //! `GET settlement-report`: the node's latest EvidenceBook settlement report,
-//! for the Exchanges tab's "EvidenceBook report (sealed and checked)"
+//! for the Reports group's "EvidenceBook report (sealed and checked)"
 //! (Mesh-LLM/capsules-plugin#96, button 2).
 //!
 //! The node never builds the report. Its owner runs
@@ -52,6 +52,10 @@ pub struct Setup {
 }
 
 impl Setup {
+    /// The reporting book's folder from the console's "Settlement report
+    /// folder" (or `CAPSULES_SETTLEMENT_REPORT_DIR`), and the capsulectl the
+    /// script recorded in its `book.json` there (`CAPSULES_CAPSULECTL`
+    /// overrides it). The console never names the program the plugin runs.
     pub fn from_settings() -> Self {
         let path = |name: &str| {
             crate::settings::var(name)
@@ -60,11 +64,49 @@ impl Setup {
                 .filter(|v| !v.is_empty())
                 .map(PathBuf::from)
         };
+        let report_dir = path(ENV_REPORT_DIR);
+        let capsulectl =
+            path(ENV_CAPSULECTL).or_else(|| report_dir.as_deref().and_then(recorded_capsulectl));
         Self {
-            report_dir: path(ENV_REPORT_DIR),
-            capsulectl: path(ENV_CAPSULECTL),
+            report_dir,
+            capsulectl,
         }
     }
+
+    /// Why this setup cannot hand over a report, in the owner's words, or
+    /// `None` when it can try.
+    fn problem(&self) -> Option<&'static str> {
+        if self.report_dir.is_none() {
+            return Some(NOT_SET_UP);
+        }
+        if self.capsulectl.is_none() {
+            return Some(NO_CAPSULECTL);
+        }
+        None
+    }
+}
+
+/// No reporting book is set.
+pub const NOT_SET_UP: &str = "no settlement report is set up on this node: set \
+     \"Settlement report folder\" under Configuration > Plugins > Capsules > Reports, then \
+     make a report there with scripts/settlement-report.sh on the node's machine";
+/// The book names no capsulectl to check its page with.
+pub const NO_CAPSULECTL: &str = "the reporting book does not name the capsulectl that \
+     checks its report: make the report again with scripts/settlement-report.sh, which \
+     records it";
+/// The folder holds no page yet.
+pub const NO_REPORT_YET: &str = "no settlement report has been sealed yet: the node's \
+     owner makes one with scripts/settlement-report.sh";
+
+/// The capsulectl `scripts/settlement-report.sh` ran, as it records it in
+/// `book.json`.
+fn recorded_capsulectl(report_dir: &Path) -> Option<PathBuf> {
+    let book: Value =
+        serde_json::from_slice(&std::fs::read(report_dir.join("book.json")).ok()?).ok()?;
+    book.get("capsulectl")?
+        .as_str()
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
 }
 
 fn refused(why: impl Into<String>) -> Value {
@@ -112,24 +154,18 @@ async fn report_check(capsulectl: &Path, report_dir: &Path, page: &Path) -> Resu
 
 /// The route's answer for `setup`.
 pub async fn answer(setup: &Setup) -> Value {
-    let Some(report_dir) = setup.report_dir.as_deref() else {
-        return refused(format!(
-            "this node has no reporting book set ({ENV_REPORT_DIR}), so it has no settlement report to give"
-        ));
-    };
-    let Some(capsulectl) = setup.capsulectl.as_deref() else {
-        return refused(format!(
-            "this node cannot check its settlement report: no capsulectl is set ({ENV_CAPSULECTL})"
-        ));
+    if let Some(why) = setup.problem() {
+        return refused(why);
+    }
+    let (Some(report_dir), Some(capsulectl)) =
+        (setup.report_dir.as_deref(), setup.capsulectl.as_deref())
+    else {
+        return refused(NOT_SET_UP);
     };
     let page_path = report_dir.join(PAGE_FILE);
     let page = match tokio::fs::read(&page_path).await {
         Ok(bytes) => bytes,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return refused(
-                "no settlement report has been sealed yet: the node's owner makes one with scripts/settlement-report.sh",
-            )
-        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return refused(NO_REPORT_YET),
         Err(e) => return refused(format!("the settlement report could not be read: {e}")),
     };
     let check = match report_check(capsulectl, report_dir, &page_path).await {
@@ -177,14 +213,78 @@ pub async fn answer(setup: &Setup) -> Value {
     })
 }
 
+/// What the button can say before it is pressed, without running the check
+/// (`GET settlement-report/status`): `not_set_up` or `no_report_yet` with
+/// `why`, `unreadable` with `why` (a page there that cannot be read, or a
+/// capsulectl that is not a file), or `ready`. `ready` gives `sealed_at` and
+/// `date` only when the note's own `check.page_digest` is the page's sha256,
+/// so a page is never dated by an older run's note. `ready` is not a promise:
+/// pressing the button still runs `book report check`, and only `match VALID`
+/// hands the page over.
+pub async fn status(setup: &Setup) -> Value {
+    if let Some(why) = setup.problem() {
+        return json!({"state": "not_set_up", "why": why});
+    }
+    let (Some(report_dir), Some(capsulectl)) =
+        (setup.report_dir.as_deref(), setup.capsulectl.as_deref())
+    else {
+        return json!({"state": "not_set_up", "why": NOT_SET_UP});
+    };
+    let page = match tokio::fs::read(report_dir.join(PAGE_FILE)).await {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return json!({"state": "no_report_yet", "why": NO_REPORT_YET})
+        }
+        Err(e) => {
+            return json!({"state": "unreadable", "why": format!("the settlement report could not be read: {e}")})
+        }
+    };
+    if !tokio::fs::metadata(capsulectl)
+        .await
+        .is_ok_and(|m| m.is_file())
+    {
+        return json!({"state": "unreadable", "why": NO_CAPSULECTL});
+    }
+    use sha2::Digest as _;
+    let digest = format!("sha256:{}", hex::encode(sha2::Sha256::digest(&page)));
+    let note: Value = tokio::fs::read(report_dir.join(NOTE_FILE))
+        .await
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .filter(|note: &Value| {
+            note.pointer("/check/page_digest").and_then(Value::as_str) == Some(digest.as_str())
+        })
+        .unwrap_or(Value::Null);
+    json!({
+        "state": "ready",
+        "sealed_at": note.get("sealed_at").cloned().unwrap_or(Value::Null),
+        "date": note.get("date").cloned().unwrap_or(Value::Null),
+    })
+}
+
 /// `builder` with the `settlement-report` route declared.
 pub fn with_route(builder: DeclarativePluginBuilder) -> DeclarativePluginBuilder {
+    let builder = builder.http_item(
+        http::get("/settlement-report/status")
+            .binding_id("evidence_settlement_report_status")
+            .description(
+                "Whether the node has a sealed EvidenceBook settlement report to hand over, \
+                 and when it was sealed, without checking it: what the report button says \
+                 before it is pressed.",
+            )
+            .input::<NoArgs>()
+            .handle(move |_args, _context| {
+                Box::pin(
+                    async move { Ok::<Value, PluginError>(status(&Setup::from_settings()).await) },
+                )
+            }),
+    );
     builder.http_item(
         http::get("/settlement-report")
             .binding_id("evidence_settlement_report")
             .description(
                 "The node's latest sealed EvidenceBook settlement report, checked with the \
-                 owner's capsulectl at hand-over, for the Exchanges tab's EvidenceBook report.",
+                 owner's capsulectl at hand-over, for the Reports group's EvidenceBook report.",
             )
             .input::<NoArgs>()
             .handle(move |_args, _context| {
@@ -314,14 +414,18 @@ mod tests {
             capsulectl: None,
         })
         .await;
-        assert!(none["why"].as_str().unwrap().contains(ENV_REPORT_DIR));
+        assert_eq!(none["why"], NOT_SET_UP);
 
         let no_ctl = answer(&Setup {
             report_dir: Some(report_dir(dir.path())),
             capsulectl: None,
         })
         .await;
-        assert!(no_ctl["why"].as_str().unwrap().contains(ENV_CAPSULECTL));
+        assert_eq!(no_ctl["why"], NO_CAPSULECTL);
+        // The owner is told in console words, never an environment name.
+        for why in [NOT_SET_UP, NO_CAPSULECTL, NO_REPORT_YET] {
+            assert!(!why.contains("CAPSULES_"), "{why}");
+        }
 
         let empty = dir.path().join("empty");
         std::fs::create_dir_all(&empty).unwrap();
@@ -345,6 +449,87 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("could not be run"));
+    }
+
+    #[tokio::test]
+    async fn the_status_says_what_the_button_will_do_without_checking() {
+        use sha2::Digest as _;
+        let dir = tempfile::tempdir().unwrap();
+        let status_of = |report_dir, capsulectl| async move {
+            status(&Setup {
+                report_dir,
+                capsulectl,
+            })
+            .await
+        };
+        let none = status_of(None, None).await;
+        assert_eq!(none, json!({"state": "not_set_up", "why": NOT_SET_UP}));
+        let report = report_dir(dir.path());
+        let no_ctl = status_of(Some(report.clone()), None).await;
+        assert_eq!(no_ctl["state"], "not_set_up");
+
+        // A capsulectl that would fail the check is never run: the status
+        // only reads the folder.
+        let never_run = fake_capsulectl(dir.path(), "not json");
+        let empty = dir.path().join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        let unsealed = status_of(Some(empty), Some(never_run.clone())).await;
+        assert_eq!(
+            unsealed,
+            json!({"state": "no_report_yet", "why": NO_REPORT_YET})
+        );
+
+        // The note names another page: ready, but undated.
+        let undated = status_of(Some(report.clone()), Some(never_run.clone())).await;
+        assert_eq!(
+            undated,
+            json!({"state": "ready", "sealed_at": null, "date": null})
+        );
+
+        // The note names this page: dated.
+        let page = std::fs::read(report.join(PAGE_FILE)).unwrap();
+        let digest = format!("sha256:{}", hex::encode(sha2::Sha256::digest(&page)));
+        std::fs::write(
+            report.join(NOTE_FILE),
+            json!({"date": "2026-11-22", "sealed_at": "2026-11-23T06:00:00Z", "check": {"page_digest": digest}})
+                .to_string(),
+        )
+        .unwrap();
+        let dated = status_of(Some(report.clone()), Some(never_run.clone())).await;
+        assert_eq!(
+            dated,
+            json!({"state": "ready", "sealed_at": "2026-11-23T06:00:00Z", "date": "2026-11-22"})
+        );
+
+        // A capsulectl that is not there, and a page that cannot be read.
+        let gone = status_of(Some(report.clone()), Some(dir.path().join("gone"))).await;
+        assert_eq!(gone["state"], "unreadable");
+        std::fs::set_permissions(
+            report.join(PAGE_FILE),
+            std::fs::Permissions::from_mode(0o000),
+        )
+        .unwrap();
+        if std::fs::read(report.join(PAGE_FILE)).is_err() {
+            let locked = status_of(Some(report.clone()), Some(never_run)).await;
+            assert_eq!(locked["state"], "unreadable", "{locked}");
+        }
+    }
+
+    #[test]
+    fn the_capsulectl_is_the_one_the_book_records_unless_the_environment_names_one() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(recorded_capsulectl(dir.path()), None);
+        std::fs::write(
+            dir.path().join("book.json"),
+            r#"{"capsulectl":"/opt/capsulectl/capsulectl","plugin_roots":"/opt/capsulectl"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            recorded_capsulectl(dir.path()),
+            Some(PathBuf::from("/opt/capsulectl/capsulectl"))
+        );
+        std::fs::write(dir.path().join("book.json"), r#"{"capsulectl":""}"#).unwrap();
+        assert_eq!(recorded_capsulectl(dir.path()), None);
     }
 
     /// Against a real capsulectl and a report `scripts/settlement-report.sh`

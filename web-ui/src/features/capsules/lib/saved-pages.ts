@@ -51,11 +51,6 @@ ul{padding-left:1.25rem}table{border-collapse:collapse;width:100%}td,th{border-b
 button{font:inherit;padding:.25rem .75rem}code{font-family:ui-monospace,monospace;font-size:.9em;overflow-wrap:anywhere}
 `
 
-/** What the Settlement page says when the node has no sealed settlement report
- *  to give, before the node's own reason: the refusal, never an empty page. */
-export const SETTLEMENT_REFUSAL_WORDS =
-  'This node gave no settlement report, so there are no figures to show, and none are made up.'
-
 // The page's own script: reads the embedded bytes, checks them, and draws the
 // result with textContent only (nothing from the bundle is ever parsed as HTML).
 const RUNTIME = `
@@ -82,14 +77,6 @@ const RUNTIME = `
       out.appendChild(el('p','muted','This page holds no evidence from the node.'))}
     else out.appendChild(el('p','bad','This page could not read its own note, so it shows nothing.'));
     return}
-  if(kind==='settlement-refusal'){
-    var doc;try{doc=JSON.parse(text)}catch(e){doc=null}
-    if(doc&&doc.source==='dashboard'&&doc.reason==='no_report'&&doc.words===${JSON.stringify(SETTLEMENT_REFUSAL_WORDS)}&&typeof doc.why==='string'){
-      out.appendChild(el('p','warn','No report: this page holds no evidence from the node.'));
-      out.appendChild(el('p',null,doc.words));
-      out.appendChild(el('p',null,'Its reason: '+doc.why))}
-    else out.appendChild(el('p','bad','This page could not read its own note, so it shows nothing.'));
-    return}
   var context=JSON.parse(document.getElementById('${CONTEXT_ELEMENT_ID}').textContent);
   function draw(verdict){CapsulesSavedPage.renderHistoryView(CapsulesSavedPage.historyViewInput(verdict,context),out)}
   CapsulesSavedPage.verifyHistoryReply(text).then(draw,function(){draw({kind:'unreadable',verified:false,checks:[{id:'readable',status:'fail',detail:''}],checkpoints:[]})});
@@ -98,7 +85,7 @@ const RUNTIME = `
 
 type Shell = {
   title: string
-  kind: 'history' | 'settlement-refusal' | 'receipt' | 'receipt-note'
+  kind: 'history' | 'receipt' | 'receipt-note'
   intro: string
   bundleText: string
   jsonName: string
@@ -164,24 +151,6 @@ export function historyPage(
       jsonName: `${name}.json`,
       inside: 'This page carries the exact bytes the node served, below. Save them to check them with your own tools.',
       context: { nodeKeyId: node.nodeKeyId, savedAt, sharing: node.sharing, builtBy: BUILT_BY }
-    })
-  }
-}
-
-/** The Settlement page when the node has no sealed report to give: a note
- *  with the node's own reason (`settlement-report`'s refusal), word for word. */
-export function settlementPage(savedAt: string, why: string): SavedPage {
-  const name = `mesh-settlement-${stamp(savedAt)}`
-  const refusal = `${JSON.stringify({ source: 'dashboard', reason: 'no_report', words: SETTLEMENT_REFUSAL_WORDS, why })}\n`
-  return {
-    fileName: `${name}.html`,
-    html: shell({
-      title: 'This node’s settlement report',
-      kind: 'settlement-refusal',
-      intro: 'Saved ' + savedAt + '.',
-      bundleText: refusal,
-      jsonName: `${name}.json`,
-      inside: 'Written by this dashboard when you saved the page. It is not from the node, and it holds no evidence.'
     })
   }
 }

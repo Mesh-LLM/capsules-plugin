@@ -13,11 +13,11 @@
 //   6. The exceptions-first line above the table, and the Ledger badge's
 //      "This node's copy" rename
 import {
-  NARRATED_LABEL,
   NARRATION_NEEDS_AGENT,
   SEALED_LABEL,
   STAMPED_LABEL,
   noReportNote,
+  reportStatusLine,
   sealedNote
 } from '@/features/capsules/lib/what-happened'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
@@ -101,7 +101,8 @@ vi.mock('@/features/capsules/lib/ask-for-record', async (importOriginal) => {
 vi.mock('@/features/capsules/api/client', () => ({
   fetchCapsuleLedger: vi.fn().mockResolvedValue({ records: [], nodePubKeyPem: null }),
   fetchServedHistory: vi.fn(),
-  fetchSettlementReport: vi.fn()
+  fetchSettlementReport: vi.fn(),
+  fetchSettlementReportStatus: vi.fn().mockResolvedValue({ kind: 'unknown' })
 }))
 
 // Owner identity is live `/api/status` data
@@ -139,6 +140,8 @@ describe('LedgerPageContent', () => {
   // *within* their own test (see the "Exchanges header shows two counts"
   // test's own comment on that).
   beforeEach(async () => {
+    const { fetchSettlementReportStatus } = await import('@/features/capsules/api/client')
+    vi.mocked(fetchSettlementReportStatus).mockResolvedValue({ kind: 'unknown' })
     const { fetchPaneA, fetchPaneB, fetchPaneCList } = await import('@/features/capsules/api/sidecarClient')
     vi.mocked(fetchPaneA).mockResolvedValue({
       rows: [],
@@ -1017,7 +1020,7 @@ describe('LedgerPageContent — Part 3: Exchanges two-sided stream + row inspect
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('Export view (CSV) and the three What happened buttons are distinct, present toolbar actions', async () => {
+  it('Export view (CSV) stays in the Exchanges toolbar; the Reports group sits in the page header', async () => {
     const { fetchPaneCList } = await import('@/features/capsules/api/sidecarClient')
     vi.mocked(fetchPaneCList).mockResolvedValue({
       rows: [
@@ -1039,27 +1042,34 @@ describe('LedgerPageContent — Part 3: Exchanges two-sided stream + row inspect
       next_after_seq: null,
       archived_segments: []
     })
+    const { fetchSettlementReport, fetchSettlementReportStatus } = await import('@/features/capsules/api/client')
+    vi.mocked(fetchSettlementReportStatus).mockResolvedValue({
+      kind: 'ready',
+      sealedAt: '2026-11-01T19:45:33Z',
+      date: '2026-11-01'
+    })
 
     const user = userEvent.setup()
     render(<LedgerPageContent />, { wrapper: makeWrapper() })
+    const reports = await screen.findByRole('region', { name: 'Reports' })
+    const historyButton = within(reports).getByRole('button', { name: STAMPED_LABEL })
+    const settlementButton = within(reports).getByRole('button', { name: SEALED_LABEL })
+    // Before it is pressed, the button says whether there is a report.
+    const statusLine = reportStatusLine({ kind: 'ready', sealedAt: '2026-11-01T19:45:33Z', date: '2026-11-01' })
+    expect(await within(reports).findByText(statusLine as string)).toBeInTheDocument()
+    expect(settlementButton).toHaveAccessibleDescription(statusLine as string)
+    // Narration is a line, not a button that does nothing.
+    expect(within(reports).getByText(NARRATION_NEEDS_AGENT)).toBeInTheDocument()
+    expect(within(reports).getAllByRole('button')).toHaveLength(2)
+
     await user.click(screen.getByRole('tab', { name: /exchanges/i }))
     await screen.findByRole('group', { name: 'Exchange exch-1' })
-
     const exportButton = screen.getByRole('button', { name: /export view \(csv\)/i })
-    const narratedButton = screen.getByRole('button', { name: NARRATED_LABEL })
-    const historyButton = screen.getByRole('button', { name: STAMPED_LABEL })
-    const settlementButton = screen.getByRole('button', { name: SEALED_LABEL })
-    expect(exportButton).toBeInTheDocument()
-    expect(new Set([exportButton, narratedButton, historyButton, settlementButton]).size).toBe(4)
-    // The old JSON download of every exchange is gone from this row.
+    expect(reports).not.toContainElement(exportButton)
+    expect(new Set([exportButton, historyButton, settlementButton]).size).toBe(3)
     expect(screen.queryByRole('button', { name: /save evidence file/i })).not.toBeInTheDocument()
 
-    // Narrated: the dashboard has no agent, so it says so and narrates nothing.
-    await user.click(narratedButton)
-    expect(screen.getByRole('status')).toHaveTextContent(NARRATION_NEEDS_AGENT)
-
     // Sealed and checked: the node's page, saved unchanged, with its seal time.
-    const { fetchSettlementReport } = await import('@/features/capsules/api/client')
     const saved: Blob[] = []
     const createObjectURL = vi.fn((blob: Blob) => (saved.push(blob), 'blob:x'))
     vi.stubGlobal('URL', Object.assign(function () {}, { createObjectURL, revokeObjectURL: () => {} }))
@@ -1071,14 +1081,30 @@ describe('LedgerPageContent — Part 3: Exchanges two-sided stream + row inspect
       date: '2026-11-01'
     })
     await user.click(settlementButton)
-    expect(await screen.findByRole('status')).toHaveTextContent(sealedNote('2026-11-01T19:45:33Z', '2026-11-01'))
+    expect(await within(reports).findByRole('status')).toHaveTextContent(sealedNote('2026-11-01T19:45:33Z', '2026-11-01'))
     expect(await saved[0].text()).toBe('<!doctype html><p>sealed</p>')
 
-    // No sealed report: the refusal page, with the node's reason.
+    // No sealed report: the reason in words, and nothing saved.
     vi.mocked(fetchSettlementReport).mockResolvedValueOnce({ kind: 'refused', why: 'no settlement report has been sealed yet' })
     await user.click(settlementButton)
-    expect(await screen.findByRole('status')).toHaveTextContent(noReportNote('no settlement report has been sealed yet'))
-    expect(await saved[1].text()).toContain('This node’s settlement report')
+    expect(await within(reports).findByRole('status')).toHaveTextContent(noReportNote('no settlement report has been sealed yet'))
+    expect(saved).toHaveLength(1)
+  })
+
+  it('the report button says why there is no report before it is pressed, and says nothing when the node does not say', async () => {
+    const { fetchSettlementReportStatus } = await import('@/features/capsules/api/client')
+    vi.mocked(fetchSettlementReportStatus).mockResolvedValueOnce({ kind: 'not_ready', why: 'no settlement report is set up on this node' })
+    render(<LedgerPageContent />, { wrapper: makeWrapper() })
+    const reports = await screen.findByRole('region', { name: 'Reports' })
+    expect(await within(reports).findByText('No report yet: no settlement report is set up on this node.')).toBeInTheDocument()
+    cleanup()
+
+    vi.mocked(fetchSettlementReportStatus).mockResolvedValueOnce({ kind: 'unknown' })
+    render(<LedgerPageContent />, { wrapper: makeWrapper() })
+    const quiet = await screen.findByRole('region', { name: 'Reports' })
+    await waitFor(() => expect(fetchSettlementReportStatus).toHaveBeenCalledTimes(2))
+    expect(within(quiet).queryByText(/^No report yet|^A report is ready/)).not.toBeInTheDocument()
+    expect(within(quiet).getByRole('button', { name: SEALED_LABEL })).toBeEnabled()
   })
 
   it('§3A sticky day headers: one per calendar day, tallying the whole day', async () => {

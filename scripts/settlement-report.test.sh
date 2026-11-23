@@ -58,6 +58,9 @@ id_at() { sed -n "$1p" "$fixture" | python3 -c 'import json,sys; print(json.load
 head -n 10 "$fixture" >"$work/chain.jsonl"
 run || { cat "$work/run.log"; fail "the first run did not seal a page"; }
 [ -s "$work/report/settlement.html" ] || fail "no page after the first run"
+# The node checks the page with the capsulectl the run used, read from the book.
+[ "$(field capsulectl)" = "$(cd "$(dirname "$CAPSULECTL")" && pwd)/$(basename "$CAPSULECTL")" ] \
+  || fail "book.json does not record the capsulectl the run used"
 [ "$(field published_lines)" = 10 ] || fail "the watermark is not the partial chain's length"
 
 # A run killed after publishing record 11 but before moving the watermark.

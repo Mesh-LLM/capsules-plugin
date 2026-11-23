@@ -4,11 +4,9 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   NO_PAID_DEAL_WHY,
-  SETTLEMENT_REFUSAL_WORDS,
   historyPage,
   receiptPage,
-  sealedSettlementPage,
-  settlementPage
+  sealedSettlementPage
 } from '@/features/capsules/lib/saved-pages'
 import composedAgree from '@/features/capsules/lib/receipt-fixtures/composed-agree.bundle.json'
 import producerSelected from '@/features/capsules/lib/receipt-fixtures/producer-selected.bundle.json'
@@ -171,43 +169,6 @@ describe('the sealed Settlement page', () => {
     const saved = sealedSettlementPage(page, SAVED)
     expect(saved.html).toBe(page)
     expect(saved.fileName).toBe('mesh-settlement-20261029T180000.html')
-  })
-})
-
-describe('the Settlement page, opened offline', () => {
-  it('says plainly it holds no evidence from the node, gives the node\'s reason, and hands back its note byte for byte', async () => {
-    const why = 'no settlement report has been sealed yet: the node\'s owner makes one with scripts/settlement-report.sh'
-    const { html } = settlementPage(SAVED, why)
-    const json = JSON.parse(new TextDecoder().decode(embedded(html))) as Record<string, string>
-    expect(json).toEqual({ source: 'dashboard', reason: 'no_report', words: SETTLEMENT_REFUSAL_WORDS, why })
-    const { dom, text, requested } = await open(html)
-    expect(text).toContain('No report: this page holds no evidence from the node.')
-    expect(text).toContain(SETTLEMENT_REFUSAL_WORDS)
-    expect(text).toContain(`Its reason: ${why}`)
-    expect(text).toContain('It is not from the node')
-    expect(requested).toEqual([])
-
-    expect((await savedBytes(dom)).equals(Buffer.from(embedded(html)))).toBe(true)
-  })
-
-  it('shows nothing from a note that is not the one it writes', async () => {
-    const { html } = settlementPage(SAVED, 'none sealed')
-    const forged = html.replace(
-      /(id="mesh-bundle"[^>]*>)[^<]*</,
-      `$1${Buffer.from('{"source":"node","reason":"all_good","words":"All settled."}').toString('base64')}<`
-    )
-    const { text } = await open(forged)
-    expect(text).toContain('could not read its own note, so it shows nothing')
-    expect(text).not.toContain('All settled.')
-
-    // Only the words changed: source and reason are still the dashboard's.
-    const reworded = html.replace(
-      /(id="mesh-bundle"[^>]*>)[^<]*</,
-      `$1${Buffer.from('{"source":"dashboard","reason":"no_report","words":"All settled.","why":"x"}').toString('base64')}<`
-    )
-    const { text: rewordedText } = await open(reworded)
-    expect(rewordedText).toContain('could not read its own note, so it shows nothing')
-    expect(rewordedText).not.toContain('All settled.')
   })
 })
 

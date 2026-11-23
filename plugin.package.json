@@ -404,6 +404,26 @@
           "category_order": 4,
           "setting_order": 15
         }
+      },
+      {
+        "key": "settlement_report_dir",
+        "value_schema": {
+          "kind": "path",
+          "allow_additional_properties": false
+        },
+        "required": false,
+        "apply_mode": "static_on_load",
+        "restart_scope": "none",
+        "visibility": "user",
+        "description": "The folder scripts/settlement-report.sh keeps your reporting book and settlement report in, on this node's machine. The Evidence page's EvidenceBook report button hands over the report sealed there. Empty: the button says no report is set up. Read on each press, no restart.",
+        "presentation": {
+          "label": "Settlement report folder",
+          "category_id": "reports",
+          "category_label": "Reports",
+          "category_summary": "Where the Evidence page finds the reports you make from this node's records. Nothing here is sent anywhere.",
+          "category_order": 5,
+          "setting_order": 16
+        }
       }
     ]
   },

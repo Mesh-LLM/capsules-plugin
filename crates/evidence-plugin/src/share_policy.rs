@@ -22,7 +22,7 @@
 
 use mesh_llm_plugin::{
     config_array, config_enum, config_float, config_integer, config_object, config_object_property,
-    config_schema, config_setting, config_string, config_url, ManifestEntry,
+    config_path, config_schema, config_setting, config_string, config_url, ManifestEntry,
 };
 
 pub const RECORD_AT_COMPLETION_KEY: &str = "share_record_at_completion";
@@ -302,6 +302,14 @@ const ADMISSION_CATEGORY_SUMMARY: &str = "Before this node sends a request to a 
     decision names a peer only by a salted fingerprint, never by its node id. To refuse a peer, \
     block it in mesh-llm's peer blocks. Takes effect when mesh-llm is restarted.";
 
+const REPORTS_CATEGORY_ID: &str = "reports";
+const REPORTS_CATEGORY_LABEL: &str = "Reports";
+const REPORTS_CATEGORY_SUMMARY: &str = "Where the Evidence page finds the reports you make \
+     from this node's records. Nothing here is sent anywhere.";
+/// The reporting book's folder, `CAPSULES_SETTLEMENT_REPORT_DIR`
+/// (`settlement_report.rs`).
+pub const SETTLEMENT_REPORT_DIR_KEY: &str = "settlement_report_dir";
+
 const NETWORK_CATEGORY_ID: &str = "network";
 const NETWORK_CATEGORY_LABEL: &str = "Evidence network";
 const NETWORK_CATEGORY_SUMMARY: &str =
@@ -541,6 +549,23 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 )
                 .order(15),
         )
+        .setting(
+            config_setting(SETTLEMENT_REPORT_DIR_KEY, config_path())
+                .description(
+                    "The folder scripts/settlement-report.sh keeps your reporting book and \
+                     settlement report in, on this node's machine. The Evidence page's \
+                     EvidenceBook report button hands over the report sealed there. Empty: \
+                     the button says no report is set up. Read on each press, no restart.",
+                )
+                .label("Settlement report folder")
+                .category(
+                    REPORTS_CATEGORY_ID,
+                    REPORTS_CATEGORY_LABEL,
+                    REPORTS_CATEGORY_SUMMARY,
+                    5,
+                )
+                .order(16),
+        )
         .into()
 }
 
@@ -580,6 +605,7 @@ mod tests {
                 crate::network_join::JOIN_NETWORK_KEY,
                 ADMISSION_ALLOW_KEY,
                 ADMISSION_DEFAULT_KEY,
+                SETTLEMENT_REPORT_DIR_KEY,
             ]
         );
     }
@@ -676,6 +702,11 @@ mod tests {
                     "Which peers you route to",
                     "Peers on neither list",
                     ADMISSION_DEFAULT_KEY
+                ),
+                row(
+                    "Reports",
+                    "Settlement report folder",
+                    SETTLEMENT_REPORT_DIR_KEY
                 ),
             ]
         );
@@ -808,6 +839,7 @@ mod tests {
             ),
             (ADMISSION_ALLOW_KEY, None, v(&[])),
             (ADMISSION_DEFAULT_KEY, Some("\"go\""), v(&["go", "no"])),
+            (SETTLEMENT_REPORT_DIR_KEY, None, v(&[])),
         ];
         let expected: Vec<_> = expected
             .into_iter()
