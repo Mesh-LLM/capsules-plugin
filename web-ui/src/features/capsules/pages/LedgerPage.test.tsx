@@ -1100,9 +1100,12 @@ describe('LedgerPageContent — Part 3: Exchanges two-sided stream + row inspect
     // Pressed with the same reason: it is said once, not twice.
     const { fetchSettlementReport } = await import('@/features/capsules/api/client')
     vi.mocked(fetchSettlementReport).mockResolvedValueOnce({ kind: 'refused', why: 'No settlement report is set up on this node.' })
+    // The status the press refetches still says the same.
+    vi.mocked(fetchSettlementReportStatus).mockResolvedValueOnce({ kind: 'not_ready', why: 'No settlement report is set up on this node.' })
     await userEvent.setup().click(within(reports).getByRole('button', { name: SEALED_LABEL }))
     expect(await within(reports).findByRole('status')).toHaveTextContent('No settlement report is set up on this node.')
     expect(within(reports).getAllByText('No settlement report is set up on this node.')).toHaveLength(1)
+    expect(within(reports).getByRole('button', { name: SEALED_LABEL })).not.toHaveAccessibleDescription()
     cleanup()
 
     vi.mocked(fetchSettlementReportStatus).mockResolvedValueOnce({ kind: 'unknown' })
