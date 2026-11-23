@@ -1107,6 +1107,40 @@ describe('LedgerPageContent — Part 3: Exchanges two-sided stream + row inspect
     expect(within(quiet).getByRole('button', { name: SEALED_LABEL })).toBeEnabled()
   })
 
+  it('Integrity shows two-sided exchanges by week, each count with its denominator', async () => {
+    const { fetchPaneCList } = await import('@/features/capsules/api/sidecarClient')
+    const base = {
+      role_tag: 'ASKED',
+      header_state: 'ok',
+      properties: null,
+      has_issue: false,
+      mine: { state: 'present', capsule_id: 'mine-x' },
+      unilateral: false
+    }
+    vi.mocked(fetchPaneCList).mockResolvedValue({
+      rows: [
+        { ...base, exchange_key: 'w2-a', theirs: { state: 'present', capsule_id: 'a'.repeat(64), evidence_outcome: 'claims_refused' }, timestamp: '2026-11-23T06:46:00Z' },
+        { ...base, exchange_key: 'w2-b', theirs: { state: 'absent', capsule_id: null }, timestamp: '2026-11-24T06:46:00Z' },
+        { ...base, exchange_key: 'w1-a', theirs: { state: 'absent', capsule_id: null }, timestamp: '2026-11-17T06:46:00Z' }
+      ],
+      row_count: 3,
+      default_sort: '',
+      filters: [],
+      next_after_seq: null,
+      archived_segments: []
+    } as never)
+
+    const user = userEvent.setup()
+    render(<LedgerPageContent />, { wrapper: makeWrapper() })
+    await user.click(screen.getByRole('tab', { name: /integrity/i }))
+    const card = await screen.findByRole('region', { name: 'Two-sided exchanges by week' })
+    const lines = within(card).getAllByRole('listitem').map((li) => li.textContent)
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toMatch(/^Week of .*23.*: 1 of 2 with both sides' records held \(0 matching, 1 differing\)$/)
+    expect(lines[1]).toMatch(/: 0 of 1 with both sides' records held \(0 matching, 0 differing\)$/)
+    expect(within(card).getByText(/Counts only the other side’s records this node holds/)).toBeInTheDocument()
+  })
+
   it('§3A sticky day headers: one per calendar day, tallying the whole day', async () => {
     const { fetchPaneCList } = await import('@/features/capsules/api/sidecarClient')
     vi.mocked(fetchPaneCList).mockResolvedValue({
