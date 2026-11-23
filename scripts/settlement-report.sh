@@ -51,7 +51,7 @@
 #                  touches the book, so a checkout whose pack differs is refused.
 #   --with-receipts hand report.sh the deal receipts (needs an evidencebook-skills
 #                  whose report.sh takes --receipts FILE, a JSON list of
-#                  {"exchange_capsule_id", "receipt" | "held": true})
+#                  {"exchange_capsule_id", "receipt" | "held": true | "not_closed": true})
 set -euo pipefail
 
 # The 9b wording pack (action-state-group/evidencebook-skills#206, as #210 changed it at 994a33e)
@@ -276,7 +276,7 @@ extra+=(--wording "$WORDING" --wording-digest "$WORDING_DIGEST")
 if [ "$WITH_RECEIPTS" = 1 ]; then
   # One line per deal on the chain read above: the bundle if the node allows it,
   # else `held`. A deal on or before --date whose report no checkpoint covers
-  # yet fails the run, naming it (a deal never closed has no report and is left out): the page would
+  # yet fails the run, naming it (a deal with no report is a `not_closed` entry): the page would
   # otherwise say "Receipt not carried with this page", the viewer's line for a
   # page built wrong. Run again later. No line at all passes no file.
   "$CAPSULES" deal-receipts --data-dir "$DATA_DIR" --chain "$WORK/chain.jsonl" --through "$DATE" >"$WORK/receipts.jsonl" \

@@ -497,7 +497,9 @@ const DEAL_CHANGED: &str = "the deal changed while it was read; ask again";
 /// One line of `capsules deal-receipts`: a deal this node holds, either with
 /// its receipt bundle (JSON text, as the route serves it) or held back by the
 /// share policy. The shape the report builder reads (evidencebook#764):
-/// `{"exchange_capsule_id", "receipt"}` or `{"exchange_capsule_id", "held": true}`.
+/// `{"exchange_capsule_id", "receipt"}`, `{"exchange_capsule_id", "held": true}`
+/// or, for a deal with no report (it had not closed), `{"exchange_capsule_id",
+/// "not_closed": true}`, whatever `hold` says: nothing is read for it.
 ///
 /// `exchanges` maps the exchange capsule ids on the page's chain to their
 /// timestamps, so a receipt of a deal outside it is never built. With `hold`
@@ -512,8 +514,8 @@ const DEAL_CHANGED: &str = "the deal changed while it was read; ask again";
 /// read "Receipt not carried with this page", which capsule-viewer#351 locked
 /// to mean the page was built wrong (Sherlock2, #337). A deal after `through`
 /// is not on the report's page and is left out. A deal that has no report
-/// (never closed: nothing will ever clear it, so waiting would block every
-/// later report) and any other refusal is left out and says why on
+/// (not closed: waiting for one could block every later report) is a
+/// `not_closed` line. Any other refusal is left out and says why on
 /// `diagnostics`. Any other failure to read the ledger or
 /// build the bundle fails the call too, so a report is never sealed silently
 /// missing a deal's receipt. A receipt is never built by cutting a
@@ -526,17 +528,24 @@ pub(crate) fn receipt_lines(
     hold: Option<&str>,
     diagnostics: &mut dyn std::io::Write,
 ) -> std::io::Result<Vec<Value>> {
-    let held: Vec<String> = evidence_log::with_index(ledger_dir, node_key_id, |index| {
+    let held: Vec<(String, bool)> = evidence_log::with_index(ledger_dir, node_key_id, |index| {
         index
             .deal_exchanges()
             .into_iter()
             .filter(|id| exchanges.contains_key(*id))
-            .map(str::to_string)
+            .map(|id| (id.to_string(), index.deal_has_report(id)))
             .collect()
     })?;
     let mut lines = Vec::new();
     let mut not_ready = Vec::new();
-    for exchange in held {
+    for (exchange, closed) in held {
+        if !closed {
+            // No report: the deal had not closed when this was read, so there
+            // is no receipt to carry and none to hold back. The page says so
+            // (capsule-viewer#358; evidencebook#786), not "held by policy".
+            lines.push(json!({"exchange_capsule_id": exchange, "not_closed": true}));
+            continue;
+        }
         if let Some(why) = hold {
             // Said once per deal, so a held receipt is never taken for a
             // missing one.
@@ -620,13 +629,13 @@ fn read_node_key_id(data_dir: &Path) -> Result<String, String> {
 /// gated). There is no flag that carries a receipt against the setting.
 const HELP: &str = "Feeds the settlement report (scripts/settlement-report.sh --with-receipts): \
 prints one JSON line per deal on the chain snapshot FILE, either its receipt \
-bundle or {\"held\": true}. A receipt is carried only when this node's \
+bundle, {\"held\": true}, or {\"not_closed\": true} for a deal with no report \
+yet (nothing to carry or hold back, whatever the setting). A receipt is carried only when this node's \
 share_settlement_receipts setting is on (and share_record_at_completion is not \
-off); otherwise every deal is held and each says why on stderr. There is no \
+off); otherwise every deal with a report is held and each says why on stderr. There is no \
 flag to override that. A deal on or before --through (a day, YYYY-MM-DD) whose \
 receipt is not ready yet (no signed checkpoint covers it) fails the command \
-and is named; run again later. A deal with no report is left out and says so. \
-It reads without the node's lock.\n\n\
+and is named; run again later. It reads without the node's lock.\n\n\
 Your own copy of a receipt is not affected by the setting: the node's local \
 deal-receipt-bundle route has no share gate.";
 
@@ -953,25 +962,21 @@ pub(crate) mod tests {
         assert!(ask(&state, &exchange_capsule(), Some("2026-10-31"), None)
             .unwrap()
             .is_empty());
-        // A deal that was never closed has no report and never will, so it must
-        // not block every later report: left out, with its reason said.
+        // A deal that has not closed has no report and may never get one, so it
+        // must not block every later report: it is a `not_closed` entry (the
+        // page says "No receipt: this deal had not closed", capsule-viewer#358),
+        // never `held` (which says the owner chose to hold it back), whatever
+        // the setting, and with nothing read.
         let (_dir2, open) = node(false);
         cut(&open);
-        let mut said = Vec::new();
-        let exchanges = [(exchange_capsule(), AT.to_string())].into_iter().collect();
-        let lines = receipt_lines(
-            open.ledger_dir(),
-            &key(&open),
-            &exchanges,
-            None,
-            None,
-            &mut said,
-        )
-        .unwrap();
-        assert!(lines.is_empty());
-        assert!(String::from_utf8(said)
-            .unwrap()
-            .contains("has no report yet"));
+        for hold in [None, HELD] {
+            let (lines, said) = lines_for(&open, &[exchange_capsule()], hold);
+            assert_eq!(
+                lines,
+                vec![json!({"exchange_capsule_id": exchange_capsule(), "not_closed": true})]
+            );
+            assert_eq!(said, "");
+        }
         // Off the chain snapshot: never read, held or not.
         cut(&state);
         assert!(ask(&state, &hex64('9'), None, None).unwrap().is_empty());

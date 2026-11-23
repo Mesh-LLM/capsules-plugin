@@ -662,12 +662,13 @@ The **Reports** group, under the Evidence page's header, gives one entry per gra
   says on stderr which setting held it. There is no flag that overrides the setting, and your
   own copy of a receipt is still on the node's local receipt route whatever it says. The script asks the node itself,
   `capsules deal-receipts --chain FILE [--data-dir DIR] [--through DAY]`, which prints one line per deal on the
-  chain it was given (a receipt, or `held`), reads without the node's lock, and exits 0 on
+  chain it was given (a receipt, `held`, or `not_closed` for a deal with no report yet), reads without the node's lock, and exits 0 on
   success, 2 for a bad argument and 1 when the log or the key cannot be read, or when a deal on or
   before the report's day has a report but no signed checkpoint covers it yet (it names the deal,
   and you run again after the next checkpoint), so a page is never built that says "Receipt not
-  carried with this page" for a deal that is only not checkpointed. A deal that was never closed
-  has no report to carry: it is left out, with its reason on stderr. It needs an evidencebook-skills whose `report.sh` takes
+  carried with this page" for a deal that is only not checkpointed. A deal with no report (it had not
+  closed) is a `not_closed` entry, whatever the setting, and the page says so; it needs a capsulectl
+  that takes `not_closed` (evidencebook#786). It needs an evidencebook-skills whose `report.sh` takes
   `--receipts`.
 
   Set **Settlement report folder** to `DIR` under Configuration › Plugins › Capsules › Reports
