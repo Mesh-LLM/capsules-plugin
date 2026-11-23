@@ -19,7 +19,8 @@ export const PLUGIN_ROUTES = {
   signedStatement: (capsuleId: string) => `http/ledger/signed-statement?capsule_id=${encodeURIComponent(capsuleId)}`,
   disclosure: (capsuleId: string) => `http/ledger/disclosure?capsule_id=${encodeURIComponent(capsuleId)}`,
   historyPage: 'http/history-page',
-  settlementReport: 'http/settlement-report'
+  settlementReport: 'http/settlement-report',
+  settlementReportStatus: 'http/settlement-report/status'
 } as const
 
 type LedgerBody = { records?: unknown; node_pub_key_pem?: unknown }
@@ -148,4 +149,36 @@ export function settlementReportFrom(raw: unknown): SettlementReport {
   }
   if (body.state === 'refused' && typeof body.why === 'string') return { kind: 'refused', why: body.why }
   throw new Error('this node did not answer for its settlement report')
+}
+
+/** What the report button can say before it is pressed
+ *  (`settlement-report/status`): the node reads its reporting book's folder
+ *  and runs no check. `ready` is not a promise; pressing still checks the page
+ *  against its seal. `unknown` when the node does not serve the route (an
+ *  older plugin, fixtures) or answers something else: the button then
+ *  behaves as before. */
+export type SettlementReportStatus =
+  | { kind: 'ready'; sealedAt: string | null; date: string | null }
+  | { kind: 'not_ready'; why: string }
+  | { kind: 'unknown' }
+
+export async function fetchSettlementReportStatus(): Promise<SettlementReportStatus> {
+  try {
+    return settlementReportStatusFrom(await getPluginJson<unknown>(PLUGIN_ROUTES.settlementReportStatus))
+  } catch {
+    return { kind: 'unknown' }
+  }
+}
+
+export function settlementReportStatusFrom(raw: unknown): SettlementReportStatus {
+  const body = (isRecord(raw) ? raw : {}) as { state?: unknown; why?: unknown; sealed_at?: unknown; date?: unknown }
+  const text = (v: unknown) => (typeof v === 'string' ? v : null)
+  if (body.state === 'ready') return { kind: 'ready', sealedAt: text(body.sealed_at), date: text(body.date) }
+  if (
+    (body.state === 'not_set_up' || body.state === 'no_report_yet' || body.state === 'unreadable') &&
+    typeof body.why === 'string'
+  ) {
+    return { kind: 'not_ready', why: body.why }
+  }
+  return { kind: 'unknown' }
 }

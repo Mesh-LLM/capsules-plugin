@@ -33,8 +33,10 @@
 #       [--capsules PATH] [--data-dir DIR] [--date YYYY-MM-DD] [--period-policy FILE] [--now TIME]
 #       [--wording FILE --wording-digest SHA256] [--with-receipts]
 #
-#   --report-dir   the reporting book's directory; the node's CAPSULES_SETTLEMENT_REPORT_DIR
-#   --capsulectl   a capsulectl that loads capsulectl-book v0.1.0-rc31 or later; the node's CAPSULES_CAPSULECTL
+#   --report-dir   the reporting book's directory; the node's "Settlement report folder"
+#                  setting (Configuration > Plugins > Capsules > Reports, or CAPSULES_SETTLEMENT_REPORT_DIR)
+#   --capsulectl   a capsulectl that loads capsulectl-book v0.1.0-rc31 or later; recorded in
+#                  book.json, where the node finds it (CAPSULES_CAPSULECTL overrides it)
 #   --skills       an evidencebook-skills checkout (scripts/report.sh, packs/inference-deals)
 #   --capsules     the plugin binary (default: capsules on PATH)
 #   --data-dir     the node's data directory (default: CAPSULES_DATA_DIR)
@@ -99,6 +101,9 @@ DATE=${DATE:-$(python3 -c 'import datetime; print((datetime.datetime.now(datetim
 KEY="$DATA_DIR/keys/node-key.pem"
 [ -r "$KEY" ] || fail "the node's key is not readable at $KEY"
 
+# Everything the run writes is the owner's alone: the node uses nothing in the
+# folder that another user can write (settlement_report.rs).
+umask 077
 mkdir -p "$REPORT_DIR"
 chmod 700 "$REPORT_DIR"
 REPORT_DIR=$(cd "$REPORT_DIR" && pwd)
@@ -172,7 +177,10 @@ if [ -z "$BOOK_KEY" ]; then
   # an existing profile is kept and `store init` is idempotent.
   book set node_key:="$NODE_PUB" published_lines=0 last_capsule_id=null book_sequence=0 pending=null
 fi
-book set plugin_roots:="$CAPSULECTL_PLUGIN_ROOTS"
+# The node's route checks the page with this same capsulectl, found here: the
+# console never names a program the plugin runs.
+CAPSULECTL_ABS="$(cd "$(dirname "$CAPSULECTL")" && pwd)/$(basename "$CAPSULECTL")"
+book set plugin_roots:="$CAPSULECTL_PLUGIN_ROOTS" capsulectl:="$CAPSULECTL_ABS"
 if ! "$CAPSULECTL" profile list | python3 -c 'import json,sys; sys.exit(sys.argv[1] not in json.load(sys.stdin)["profiles"])' "$PROFILE"; then
   "$CAPSULECTL" profile create --name "$PROFILE" --type jsonl --jsonl-path "$REPORT_DIR/book" \
     --namespace settlement --log-id "settlement-$NODE_PUB" --log book --operator "$NODE_PUB" \
