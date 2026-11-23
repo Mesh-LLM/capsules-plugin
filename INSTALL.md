@@ -651,18 +651,21 @@ The Exchanges tab's "What happened" row has three buttons, one per grade of an a
   directory.
 
   **Receipts on the page.** With `--with-receipts`, the page can open each deal's receipt from its
-  line. A receipt carries the contents of your deal records, so it is off: the option hands
+  line. A receipt carries the contents of your deal records, so it is off by default: the option hands
   `report.sh` a receipt only when the node's `share_settlement_receipts` setting ("Receipts in
-  the settlement report", under "What you show others") is `on`. `on` means every deal on the
-  page, for every counterparty on it, goes to whoever gets the page; the words of what was asked
-  stay closed. It is never on while `share_record_at_completion` is `off`. Otherwise every deal
+  the settlement report", under "What you show others") is `on`. `on` means every deal's
+  receipt on the page, for every counterparty on it, goes to whoever gets the page; the words of
+  the deal's intent stay closed, only its commitment shows. It is never on while `share_record_at_completion` is `off`. Otherwise every deal
   is marked as held back by your sharing policy, the page carries no receipt, and the command
   says on stderr which setting held it. There is no flag that overrides the setting, and your
   own copy of a receipt is still on the node's local receipt route whatever it says. The script asks the node itself,
-  `capsules deal-receipts --chain FILE [--data-dir DIR]`, which prints one line per deal on the
+  `capsules deal-receipts --chain FILE [--data-dir DIR] [--through DAY]`, which prints one line per deal on the
   chain it was given (a receipt, or `held`), reads without the node's lock, and exits 0 on
-  success, 2 for a bad argument and 1 when the log or the key cannot be read. A deal with no
-  receipt yet is left out. It needs an evidencebook-skills whose `report.sh` takes `--receipts`.
+  success, 2 for a bad argument and 1 when the log or the key cannot be read, or when a deal on or
+  before the report's day has no receipt yet (no report, or no checkpoint covers it: it names the
+  deal, and you run again later), so a page is never built that says "Receipt not carried with this
+  page" for a deal that is only not ready. It needs an evidencebook-skills whose `report.sh` takes
+  `--receipts`.
 
   Set `CAPSULES_SETTLEMENT_REPORT_DIR=DIR` and `CAPSULES_CAPSULECTL=PATH` in the node's
   environment. When you save the page, the node runs `capsulectl book report check` on it and

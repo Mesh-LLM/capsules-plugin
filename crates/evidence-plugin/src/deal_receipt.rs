@@ -499,20 +499,27 @@ const DEAL_CHANGED: &str = "the deal changed while it was read; ask again";
 /// share policy. The shape the report builder reads (evidencebook#764):
 /// `{"exchange_capsule_id", "receipt"}` or `{"exchange_capsule_id", "held": true}`.
 ///
-/// `exchanges` are the exchange capsule ids on the page's chain, so a receipt
-/// of a deal outside it is never built. With `hold` set no payload is
-/// read and no bundle is built: every deal is `held` (`hold` is why), and
-/// `diagnostics` says so. A deal with no receipt yet (no report, no covering
-/// checkpoint, no deal) is left out, as is one whose payload the journal
-/// lacks or that kept changing while it was read (the last two say so on
-/// `diagnostics`). Any other failure to read the ledger or build the bundle
-/// fails the call, so a report is never sealed silently missing a deal's
-/// receipt. A receipt is never built by cutting
-/// a checkpoint: the route does that, this reads what exists.
+/// `exchanges` maps the exchange capsule ids on the page's chain to their
+/// timestamps, so a receipt of a deal outside it is never built. With `hold`
+/// set no payload is read and no bundle is built: every deal is `held`
+/// (`hold` is why), and `diagnostics` says so. A deal whose payload the
+/// journal lacks or that kept changing while it was read is left out and says
+/// so on `diagnostics`.
+///
+/// A deal that has no receipt *yet* (no report, or no covering checkpoint)
+/// and is on or before `through` (a `YYYY-MM-DD`; none means every deal) fails
+/// the call and is named: a page built without it would read "Receipt not
+/// carried with this page", which capsule-viewer#351 locked to mean the page
+/// was built wrong (Sherlock2, #337). A deal after `through` is not on the
+/// report's page and is left out. Any other failure to read the ledger or
+/// build the bundle fails the call too, so a report is never sealed silently
+/// missing a deal's receipt. A receipt is never built by cutting a
+/// checkpoint: the route does that, this reads what exists.
 pub(crate) fn receipt_lines(
     ledger_dir: &Path,
     node_key_id: &str,
-    exchanges: &std::collections::HashSet<String>,
+    exchanges: &std::collections::HashMap<String, String>,
+    through: Option<&str>,
     hold: Option<&str>,
     diagnostics: &mut dyn std::io::Write,
 ) -> std::io::Result<Vec<Value>> {
@@ -520,11 +527,12 @@ pub(crate) fn receipt_lines(
         index
             .deal_exchanges()
             .into_iter()
-            .filter(|id| exchanges.contains(*id))
+            .filter(|id| exchanges.contains_key(*id))
             .map(str::to_string)
             .collect()
     })?;
     let mut lines = Vec::new();
+    let mut not_ready = Vec::new();
     for exchange in held {
         if let Some(why) = hold {
             // Said once per deal, so a held receipt is never taken for a
@@ -551,7 +559,12 @@ pub(crate) fn receipt_lines(
                     "deal-receipts: exchange {exchange}: the payload of deal record {id} is not kept; no receipt"
                 )?;
             }
-            Err(Error::Refused(_)) => {}
+            Err(Error::Refused(_)) => {
+                let day = exchanges[&exchange].get(..10).unwrap_or("");
+                if through.is_none_or(|through| day <= through) {
+                    not_ready.push(exchange);
+                }
+            }
             // The deal kept moving under a running node: left out, said so.
             Err(Error::Failed(why)) if why == DEAL_CHANGED => {
                 writeln!(
@@ -565,6 +578,12 @@ pub(crate) fn receipt_lines(
                 return Err(std::io::Error::other(format!("exchange {exchange}: {why}")));
             }
         }
+    }
+    if !not_ready.is_empty() {
+        return Err(std::io::Error::other(format!(
+            "the receipt of {} is not ready: the next checkpoint covers it, or the deal has no report yet; run again later",
+            not_ready.join(", ")
+        )));
     }
     Ok(lines)
 }
@@ -594,7 +613,9 @@ prints one JSON line per deal on the chain snapshot FILE, either its receipt \
 bundle or {\"held\": true}. A receipt is carried only when this node's \
 share_settlement_receipts setting is on (and share_record_at_completion is not \
 off); otherwise every deal is held and each says why on stderr. There is no \
-flag to override that. It reads without the node's lock.\n\n\
+flag to override that. A deal on or before --through (a day, YYYY-MM-DD) whose \
+receipt is not ready yet (no report, or no checkpoint covers it) fails the \
+command and is named; run again later. It reads without the node's lock.\n\n\
 Your own copy of a receipt is not affected by the setting: the node's local \
 deal-receipt-bundle route has no share gate.";
 
@@ -607,12 +628,13 @@ deal-receipt-bundle route has no share gate.";
 /// environment), the one resolver the node uses. Exit 0 on success, 2 for a
 /// usage error, 1 when the ledger or key cannot be read.
 pub fn cli(args: &[String]) -> i32 {
-    const USAGE: &str = "usage: capsules deal-receipts --chain FILE [--data-dir DIR]";
+    const USAGE: &str =
+        "usage: capsules deal-receipts --chain FILE [--data-dir DIR] [--through YYYY-MM-DD]";
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println!("{USAGE}\n\n{HELP}");
         return 0;
     }
-    let (mut chain, mut data_dir) = (None, None);
+    let (mut chain, mut data_dir, mut through) = (None, None, None::<String>);
     let mut rest = args.iter();
     while let Some(arg) = rest.next() {
         match (arg.as_str(), rest.next()) {
@@ -620,6 +642,7 @@ pub fn cli(args: &[String]) -> i32 {
             ("--data-dir", Some(v)) if !v.is_empty() => {
                 data_dir = Some(std::path::PathBuf::from(v))
             }
+            ("--through", Some(v)) if v.len() == 10 => through = Some(v.clone()),
             _ => {
                 eprintln!("deal-receipts: {USAGE}");
                 return 2;
@@ -630,14 +653,15 @@ pub fn cli(args: &[String]) -> i32 {
         eprintln!("deal-receipts: {USAGE}");
         return 2;
     };
-    let exchanges: std::collections::HashSet<String> = match std::fs::read_to_string(&chain) {
+    let exchanges: std::collections::HashMap<String, String> = match std::fs::read_to_string(&chain)
+    {
         Ok(text) => text
             .lines()
             .filter_map(|l| serde_json::from_str::<Value>(l).ok())
             .filter_map(|v| {
-                v.get("capsule_id")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
+                let id = v.get("capsule_id").and_then(Value::as_str)?;
+                let at = v.get("timestamp").and_then(Value::as_str).unwrap_or("");
+                Some((id.to_string(), at.to_string()))
             })
             .collect(),
         Err(e) => {
@@ -664,12 +688,13 @@ pub fn cli(args: &[String]) -> i32 {
         &data_dir.join("ledger"),
         &key_id,
         &exchanges,
+        through.as_deref(),
         hold,
         &mut std::io::stderr(),
     ) {
         Ok(lines) => lines,
         Err(e) => {
-            eprintln!("deal-receipts: the ledger is not readable: {e}");
+            eprintln!("deal-receipts: {e}");
             return 1;
         }
     };
@@ -794,18 +819,24 @@ pub(crate) mod tests {
     }
 
     const HELD: Option<&str> = Some("share_settlement_receipts is off");
+    /// The exchange capsule's timestamp on the chain snapshot.
+    const AT: &str = "2026-11-01T10:00:00Z";
 
     fn lines_for(
         state: &CapsuleState,
         on_chain: &[String],
         hold: Option<&str>,
     ) -> (Vec<Value>, String) {
-        let exchanges = on_chain.iter().cloned().collect();
+        let exchanges = on_chain
+            .iter()
+            .map(|id| (id.clone(), AT.to_string()))
+            .collect();
         let mut diagnostics = Vec::new();
         let lines = receipt_lines(
             state.ledger_dir(),
             &crate::commitment::key_id(state.signing_key()),
             &exchanges,
+            None,
             hold,
             &mut diagnostics,
         )
@@ -822,11 +853,12 @@ pub(crate) mod tests {
         cut(&state);
         let key_id = read_node_key_id(dir.path()).unwrap();
         assert_eq!(key_id, crate::commitment::key_id(state.signing_key()));
-        let exchanges = [exchange_capsule()].into_iter().collect();
+        let exchanges = [(exchange_capsule(), AT.to_string())].into_iter().collect();
         let lines = receipt_lines(
             &dir.path().join("ledger"),
             &key_id,
             &exchanges,
+            None,
             None,
             &mut Vec::new(),
         )
@@ -878,24 +910,52 @@ pub(crate) mod tests {
         assert_eq!(again, lines);
     }
 
+    /// The page must never read "Receipt not carried with this page" (locked in
+    /// capsule-viewer#351 to mean "built wrong") for a deal that is only not
+    /// ready yet, so a deal on the page without a receipt fails the call and is
+    /// named; a deal after the report's day, or off the chain, is not asked about.
     #[test]
-    fn a_deal_with_no_receipt_yet_or_off_the_chain_snapshot_has_no_line() {
-        // Sealed, delivered, but no checkpoint covers it.
+    fn a_deal_on_the_page_with_no_receipt_yet_fails_the_call_and_is_named() {
+        let key = |state: &CapsuleState| crate::commitment::key_id(state.signing_key());
+        let ask = |state: &CapsuleState, id: &str, through: Option<&str>, hold| {
+            let exchanges = [(id.to_string(), AT.to_string())].into_iter().collect();
+            receipt_lines(
+                state.ledger_dir(),
+                &key(state),
+                &exchanges,
+                through,
+                hold,
+                &mut Vec::new(),
+            )
+        };
+        // Sealed and delivered, but no checkpoint covers it yet.
         let (_dir, state) = node(true);
-        let (lines, diagnostics) = lines_for(&state, &[exchange_capsule()], None);
-        assert!(lines.is_empty());
-        assert_eq!(diagnostics, "");
+        for through in [None, Some("2026-11-01"), Some("2026-12-31")] {
+            let why = ask(&state, &exchange_capsule(), through, None)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                why.contains(&exchange_capsule()) && why.contains("not ready"),
+                "{why}"
+            );
+        }
+        // After the report's day, it is not on the page.
+        assert!(ask(&state, &exchange_capsule(), Some("2026-10-31"), None)
+            .unwrap()
+            .is_empty());
         // A deal whose close has no report yet.
         let (_dir2, open) = node(false);
         cut(&open);
-        let (lines, _) = lines_for(&open, &[exchange_capsule()], None);
-        assert!(lines.is_empty());
-        // An exchange that is not on the page's chain snapshot is not read.
+        assert!(ask(&open, &exchange_capsule(), None, None).is_err());
+        // Off the chain snapshot: never read, held or not.
         cut(&state);
-        let (lines, _) = lines_for(&state, &[hex64('9')], None);
-        assert!(lines.is_empty());
-        let (lines, _) = lines_for(&state, &[hex64('9')], HELD);
-        assert!(lines.is_empty());
+        assert!(ask(&state, &hex64('9'), None, None).unwrap().is_empty());
+        assert!(ask(&state, &hex64('9'), None, HELD).unwrap().is_empty());
+        // Once checkpointed, the receipt is carried.
+        assert_eq!(
+            ask(&state, &exchange_capsule(), None, None).unwrap().len(),
+            1
+        );
     }
 
     #[test]
@@ -906,11 +966,12 @@ pub(crate) mod tests {
         let journal = state.ledger_dir().join(crate::deal_flow::PAYLOADS_FILE);
         std::fs::remove_file(&journal).unwrap();
         std::fs::create_dir(&journal).unwrap();
-        let exchanges = [exchange_capsule()].into_iter().collect();
+        let exchanges = [(exchange_capsule(), AT.to_string())].into_iter().collect();
         let result = receipt_lines(
             state.ledger_dir(),
             &crate::commitment::key_id(state.signing_key()),
             &exchanges,
+            None,
             None,
             &mut Vec::new(),
         );

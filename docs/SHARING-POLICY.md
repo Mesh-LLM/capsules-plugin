@@ -37,8 +37,8 @@ even with counterparties.
 
 `share_settlement_receipts` is not a message to a peer: it decides whether the
 settlement report the owner builds carries each deal's receipt (the deal
-records' contents) to whoever gets that page. `on` means every deal on the
-page, for every counterparty on it; it is never on while
+records' contents) to whoever gets that page. `on` means every deal's receipt
+on the page, for every counterparty on it; it is never on while
 `share_record_at_completion` is `off`. It is not a member of the signed
 disclosure policy, and the owner's own copy of a receipt on the local
 `deal-receipt-bundle` route is not gated by it.

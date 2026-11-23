@@ -375,9 +375,10 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 .default_value(&"off")
                 .description(
                     "Let the settlement report you build carry each deal's receipt, so a reader \
-                     can open it from the deal's line. On means every deal on the page, for every \
-                     counterparty on it, goes to whoever gets the page, and each receipt shows \
-                     what your deal records say; the words of what was asked stay closed. Off \
+                     can open it from the deal's line. On means every deal's receipt on the page, \
+                     for every counterparty on it, goes to whoever gets the page, and each \
+                     receipt shows what your deal records say; the words of the deal's intent \
+                     stay closed, only its commitment shows. Off \
                      (the default) marks each deal held back. Your own copy of a receipt is \
                      still on this node's local receipt route, whatever this is set to. Never \
                      on while \"Send your record to the other side\" is off.",
@@ -720,7 +721,7 @@ mod tests {
         // Sherlock2's conditions on the switch (ops 09640739): the help says what
         // `on` does, and that the owner's own copy is not gated.
         let receipts = text(SETTLEMENT_RECEIPTS_KEY);
-        assert!(receipts.contains("every deal on the page, for every counterparty"));
+        assert!(receipts.contains("every deal's receipt on the page, for every counterparty"));
         assert!(receipts.contains("whoever gets the page"));
         assert!(receipts.contains("local receipt route"));
         let record = text(RECORD_AT_COMPLETION_KEY);

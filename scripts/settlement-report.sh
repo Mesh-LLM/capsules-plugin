@@ -22,7 +22,7 @@
 # With --with-receipts, step 3 also hands report.sh each deal's receipt, so the
 # page can open it from the deal's line (Mesh-LLM/capsules-plugin#336): the
 # node's own `capsules deal-receipts` gives, for each deal whose exchange is on
-# the chain read in step 1, the receipt bundle only when the node's
+# the chain read in step 1 (a deal not ready yet fails the run), the receipt bundle only when the node's
 # `share_settlement_receipts` allows it, and `held` otherwise. The node
 # decides; this script reads no setting. Receipts carry the deal records'
 # contents, so the option is off by default, and without it the report is built
@@ -267,10 +267,12 @@ extra+=(--wording "$WORDING" --wording-digest "$WORDING_DIGEST")
 [ -z "$NOW" ] || extra+=(--now "$NOW")
 if [ "$WITH_RECEIPTS" = 1 ]; then
   # One line per deal on the chain read above: the bundle if the node allows it,
-  # else `held`. A deal with no receipt yet has no line (the page says "Receipt
-  # not carried with this page" for it), and no line at all passes no file.
-  "$CAPSULES" deal-receipts --data-dir "$DATA_DIR" --chain "$WORK/chain.jsonl" >"$WORK/receipts.jsonl" \
-    || fail "capsules deal-receipts could not read the node's deals"
+  # else `held`. A deal on or before --date whose receipt is not ready yet (no
+  # report, or no checkpoint covers it) fails the run, naming it: the page would
+  # otherwise say "Receipt not carried with this page", the viewer's line for a
+  # page built wrong. Run again later. No line at all passes no file.
+  "$CAPSULES" deal-receipts --data-dir "$DATA_DIR" --chain "$WORK/chain.jsonl" --through "$DATE" >"$WORK/receipts.jsonl" \
+    || fail "capsules deal-receipts failed (its message is above); no page was built"
   if [ -s "$WORK/receipts.jsonl" ]; then
     python3 -c 'import json,sys; json.dump([json.loads(l) for l in open(sys.argv[1], encoding="utf-8") if l.strip()], open(sys.argv[2], "w"), sort_keys=True)' \
       "$WORK/receipts.jsonl" "$WORK/receipts.json"

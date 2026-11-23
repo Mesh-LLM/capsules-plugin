@@ -51,7 +51,8 @@ case "\$1" in
   deal-receipts)
     echo deal-receipts >>"$work/capsules.calls"
     [ ! -e "$work/deal-receipts.fail" ] || { echo "deal-receipts: the ledger is not readable" >&2; exit 1; }
-    # The chain snapshot must be the one the run read.
+    # The chain snapshot must be the one the run read, and the report's day is passed.
+    case " \$* " in *" --through 2026-11-01 "*) ;; *) echo "deal-receipts: no --through" >&2; exit 8 ;; esac
     cmp -s "\$(printf '%s\n' "\$@" | sed -n '/^--chain\$/{n;p;}')" "$work/chain.jsonl" || exit 7
     cat "$work/deal-receipts.out" ;;
 esac
@@ -113,6 +114,6 @@ grep -q -- '--receipts' "$work/report.argv" && fail "report.sh was given a recei
 # 4. deal-receipts failing fails the run, with no page.
 touch "$work/deal-receipts.fail"
 if run --with-receipts; then fail "a failing deal-receipts was accepted"; fi
-grep -q "could not read the node's deals" "$work/run.log" || fail "the refusal does not say why"
+grep -q "deal-receipts failed" "$work/run.log" || fail "the refusal does not say why"
 [ ! -e "$work/report/settlement.html" ] || fail "a failed run left a page"
 echo "settlement-report-receipts.test: ok"

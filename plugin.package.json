@@ -121,7 +121,7 @@
         "apply_mode": "static_on_load",
         "restart_scope": "none",
         "visibility": "user",
-        "description": "Let the settlement report you build carry each deal's receipt, so a reader can open it from the deal's line. On means every deal on the page, for every counterparty on it, goes to whoever gets the page, and each receipt shows what your deal records say; the words of what was asked stay closed. Off (the default) marks each deal held back. Your own copy of a receipt is still on this node's local receipt route, whatever this is set to. Never on while \"Send your record to the other side\" is off.",
+        "description": "Let the settlement report you build carry each deal's receipt, so a reader can open it from the deal's line. On means every deal's receipt on the page, for every counterparty on it, goes to whoever gets the page, and each receipt shows what your deal records say; the words of the deal's intent stay closed, only its commitment shows. Off (the default) marks each deal held back. Your own copy of a receipt is still on this node's local receipt route, whatever this is set to. Never on while \"Send your record to the other side\" is off.",
         "presentation": {
           "label": "Receipts in the settlement report",
           "category_id": "show",
