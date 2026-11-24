@@ -4,14 +4,18 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 
+// `only`: the 1-based calls (one per checkpoint, in checkpoint order) that lose their time; null means all.
+const untimed: { only: number[] | null; calls: number } = { only: null, calls: 0 }
+
 vi.mock('@action-state-group/agent-action-capsule/witness', async (importOriginal) => {
   const real = await importOriginal<typeof import('@action-state-group/agent-action-capsule/witness')>()
   return {
     ...real,
-    checkAnchorWitnessed: async (...args: Parameters<typeof real.checkAnchorWitnessed>) => ({
-      ...(await real.checkAnchorWitnessed(...args)),
-      witnessed_time: null
-    })
+    checkAnchorWitnessed: async (...args: Parameters<typeof real.checkAnchorWitnessed>) => {
+      const call = ++untimed.calls
+      const report = await real.checkAnchorWitnessed(...args)
+      return untimed.only === null || untimed.only.includes(call) ? { ...report, witnessed_time: null } : report
+    }
   }
 })
 
@@ -26,5 +30,20 @@ describe('a verified receipt with no registration time', () => {
     expect(v.verified).toBe(true)
     expect(v.checks.find((c) => c.id === 'witness_receipts')!.status).toBe('not_run')
     for (const c of v.checkpoints) expect(c.witness).toEqual({ state: 'not_checked' })
+  })
+
+  it('is not Checked in the list when only an earlier checkpoint lacks its time and the last one passes (#359)', async () => {
+    untimed.only = [1]
+    untimed.calls = 0
+    try {
+      const v = await verifyHistoryReply(witnessed, { witnesses: [{ name: 'w', keys: [KEY] }] })
+      expect(v.verified).toBe(true)
+      expect(v.checks.find((c) => c.id === 'witness_receipts')!.status).toBe('not_run')
+      // Not "unregistered": a witness may hold it, so the line never says it is not registered.
+      expect(v.checkpoints[0]!.witness).toEqual({ state: 'not_checked' })
+      expect(v.checkpoints[v.checkpoints.length - 1]!.witness?.state).toBe('passed')
+    } finally {
+      untimed.only = null
+    }
   })
 })

@@ -433,6 +433,20 @@ describe('the witness receipts check', () => {
     // A receipt that verifies but states no registration time (the mocked time-less pass is in history-verify-untimed.test.ts).
   })
 
+  it('does not say Checked when a middle checkpoint has no registered receipt and the last one passes (#359)', async () => {
+    const reply = structuredClone(witnessed)
+    const v0 = await verifyHistoryReply(JSON.stringify(witnessed), readerList(WITNESS_KEY))
+    const middle = v0.checkpoints[Math.floor(v0.checkpoints.length / 2)].anchor
+    reply.witness_receipts = receiptsOf(reply).filter((r) => r.checkpoint !== middle)
+    const v = await verifyHistoryReply(JSON.stringify(reply), readerList(WITNESS_KEY))
+    expect(witnessCheck(v).status).toBe('not_run')
+    expect(v.verified).toBe(true)
+    const open = v.checkpoints.flatMap((c, i) => (c.witness?.state === 'passed' ? [] : [i]))
+    expect(open).toEqual([Math.floor(v.checkpoints.length / 2)])
+    expect(v.checkpoints[open[0]].witness).toEqual({ state: 'not_checked', unregistered: true })
+    expect(v.checkpoints[v.checkpoints.length - 1].witness?.state).toBe('passed')
+  })
+
   it('fails the check, and that checkpoint alone, when an earlier checkpoint’s receipt does not verify', async () => {
     const reply = structuredClone(witnessed)
     const anchor = (reply.anchor as { digest: string }).digest
