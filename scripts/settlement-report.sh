@@ -203,6 +203,10 @@ found = None
 while found is None:
     page = json.loads(subprocess.run([ctl, "cll", "list", "--profile", profile, "--after", str(after), "--limit", "1000"],
                                      check=True, capture_output=True, text=True).stdout)
+    # next_after is a cursor, not has_more (capsule-cli's skills/capsulectl/references/capsule-cli.md):
+    # stop on an empty page and refuse a cursor that does not advance.
+    if not page["entries"]:
+        break
     for entry in page["entries"]:
         if entry.get("record_type") != "own_capsule":
             continue
@@ -211,9 +215,11 @@ while found is None:
         if got.get("capsule", {}).get("action_id") == want:
             found = entry["sequence"]
             break
-    if found is None and not page.get("next_after"):
-        break
-    after = page.get("next_after") or after
+    if found is None:
+        last = max(e["sequence"] for e in page["entries"])
+        if last <= after:
+            sys.exit("settlement-report: capsulectl cll list did not advance its cursor")
+        after = last
 with open(out, "w") as f:
     f.write("" if found is None else str(found))
 EOF
