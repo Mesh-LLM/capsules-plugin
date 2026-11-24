@@ -46,6 +46,8 @@ impl Host {
         let mut cmd = Command::new(PLUGIN_BIN);
         cmd.env("MESH_LLM_PLUGIN_ENDPOINT", &socket_path)
             .env("MESH_LLM_PLUGIN_TRANSPORT", "unix")
+            // No test contacts the hosted witness the plugin defaults to.
+            .env("CAPSULES_CHECKPOINT_WITNESS_URLS", "off")
             .env("CAPSULES_DATA_DIR", &data_dir)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped());

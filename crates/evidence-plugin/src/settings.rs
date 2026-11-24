@@ -582,8 +582,9 @@ mod tests {
     }
 
     /// The console's `witness = "off"` reaches the cadence as the same `off`
-    /// the environment takes, while an empty list reads as unset (the
-    /// default witness), so `off` is the only opt-out.
+    /// the environment takes, while an empty list is stored as a blank value,
+    /// which the cadence reads as unset (the default witness), so `off` is
+    /// the only opt-out.
     #[test]
     fn the_console_witness_off_is_the_opt_out_and_an_empty_list_is_not() {
         let config = |value: &str| {
@@ -597,6 +598,10 @@ mod tests {
         .is_empty());
         let empty = settings_from_config(&config("[]")).unwrap();
         assert_eq!(empty.get("witness").map(String::as_str), Some(""));
+        assert_eq!(
+            crate::checkpoint_cadence::witness_urls_from(empty.get("witness").map(String::as_str)),
+            [crate::share_policy::DEFAULT_WITNESS_URL]
+        );
     }
 
     #[test]

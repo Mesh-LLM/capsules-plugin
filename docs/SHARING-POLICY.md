@@ -406,8 +406,8 @@ never sends it to a peer. The operator's "Ask again" is the same switch.
 
 `witness` is a list of witnesses. Unset (or an empty list) is the default: Action State's
 hosted witness, `https://witness.agentactioncapsule.org`, whose key ships with the plugin.
-It is run by Action State, so it is not independent of us, and it sees checkpoint hashes
-only (never content). Set `witness = "off"` (or `CAPSULES_CHECKPOINT_WITNESS_URLS=off`)
+It is run by Action State, so it is not independent of us, and it sees checkpoint hashes,
+sizes and times (never content). Set `witness = "off"` (or `CAPSULES_CHECKPOINT_WITNESS_URLS=off`)
 to contact no witness at all, or name other witnesses to replace it. Each is an
 `endpoint` (the witness's URL) and, if you have it, its `public_key` (its
 Ed25519 key in hex, as its operator publishes it): the same endpoint-and-key

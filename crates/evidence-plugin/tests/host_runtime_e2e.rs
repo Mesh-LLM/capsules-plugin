@@ -134,6 +134,8 @@ args = []
                 "blocked-test-model,allowed-test-model",
             )
             .env("CAPSULES_DATA_DIR", &capsule_data_dir)
+            // No test contacts the hosted witness the plugin defaults to.
+            .env("CAPSULES_CHECKPOINT_WITNESS_URLS", "off")
             .stdin(Stdio::null())
             .stdout(Stdio::from(log_file.try_clone().expect("clone log fd")))
             .stderr(Stdio::from(log_file))

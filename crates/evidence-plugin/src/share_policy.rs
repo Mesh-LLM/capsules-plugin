@@ -507,7 +507,7 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 ])),
             )
             .description(
-                "Witness services to offer this node's checkpoints to: each one's URL, and its public key if you have it. Unset (or empty) means the default witness, run by Action State (not independent of us), which sees checkpoint hashes only; name other witnesses to replace it, or enter `off` to contact none. The Evidence page shows what each witness holds. Takes effect when mesh-llm is restarted.",
+                "Witness services to offer this node's checkpoints to: each one's URL, and its public key if you have it. Unset (or empty) means the default witness, run by Action State (not independent of us), which sees checkpoint hashes, sizes and times, never content; name other witnesses to replace it, or enter `off` to contact none. The Evidence page shows what each witness holds. Takes effect when mesh-llm is restarted.",
             )
                 .label("Witnesses")
                 // The console shows this greyed with a Set button (the generic

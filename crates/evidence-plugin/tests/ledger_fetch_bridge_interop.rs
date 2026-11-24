@@ -46,6 +46,8 @@ impl Harness {
         let mut cmd = Command::new(PLUGIN_BIN);
         cmd.env("MESH_LLM_PLUGIN_ENDPOINT", &socket_path)
             .env("MESH_LLM_PLUGIN_TRANSPORT", "unix")
+            // No test contacts the hosted witness the plugin defaults to.
+            .env("CAPSULES_CHECKPOINT_WITNESS_URLS", "off")
             .env("CAPSULES_BLOCKED_MODELS", "blocked-test-model")
             .env("CAPSULES_LEDGER_FETCH_TIMEOUT_MS", "1500")
             .env("CAPSULES_DATA_DIR", &data_dir)

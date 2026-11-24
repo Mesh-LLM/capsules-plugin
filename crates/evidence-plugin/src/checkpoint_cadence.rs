@@ -94,7 +94,8 @@ pub fn witness_urls() -> Vec<String> {
 /// (any of them can carry a credential, and the URL is kept in receipts and
 /// shown on the page); it is logged instead.
 pub(crate) fn witness_urls_from(raw: Option<&str>) -> Vec<String> {
-    let Some(raw) = raw else {
+    // A blank value is unset, as `settings::var` reads it for every setting.
+    let Some(raw) = raw.filter(|r| !r.trim().is_empty()) else {
         return vec![DEFAULT_WITNESS_URL.to_string()];
     };
     if raw.trim().eq_ignore_ascii_case("off") {
@@ -708,7 +709,7 @@ mod tests {
         assert_eq!(witness_urls_from(None), [DEFAULT_WITNESS_URL]);
         assert!(witness_urls_from(Some("off")).is_empty());
         assert!(witness_urls_from(Some(" OFF ")).is_empty());
-        assert!(witness_urls_from(Some("")).is_empty());
+        assert_eq!(witness_urls_from(Some("  ")), [DEFAULT_WITNESS_URL]);
         assert!(witness_urls_from(Some(" , ,")).is_empty());
         assert_eq!(
             witness_urls_from(Some("https://a.example, https://b.example")),

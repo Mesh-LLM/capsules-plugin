@@ -118,8 +118,10 @@ network: payment legs record observations, they do not move money.
   distinct from a configured key (SHARING-POLICY, "Witness"). A node with no
   witness set offers checkpoints to the default witness (run by Action State,
   not independent of us), so its history card carries receipts once that
-  witness answers; with `witness = off` the History says "no witness named",
-  not "unwitnessed by failure". On the
+  witness answers. The History's "witness receipts: no witness named" line is
+  the standard's text for any History with no receipt held (a default node
+  before its first receipt, or `witness = off`); it is not "unwitnessed by
+  failure". On the
   requester side, 0.1.4 holds no witness keys, so "no receipt in an answer is
   counted as witnessed" (CHANGELOG 0.1.4). Witnessed means only that a later
   rewrite is detectable (Link 7).
