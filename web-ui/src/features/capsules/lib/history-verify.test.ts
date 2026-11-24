@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { base64urlToBytes, cardPositions, verifyHistoryReply } from '@/features/capsules/lib/history-verify'
+import { base64urlToBytes, cardPositions, parseReaderWitnesses, verifyHistoryReply } from '@/features/capsules/lib/history-verify'
 
 // A real reply from a corpus node (crates/evidence-plugin/tests/fixtures).
 const fixture = JSON.parse(
@@ -345,3 +345,81 @@ describe('verifyHistoryReply', () => {
     })
   })
 })
+
+// A history_card/2 of a 40-checkpoint log whose checkpoints each carry a real receipt, minted with the
+// plugin's own witness code under the key of seed 21 repeated 32 times (`evidence_answer.rs`,
+// `the_witnessed_history_card_2_reply_is_the_golden_fixture`).
+const witnessed = JSON.parse(
+  readFileSync(path.resolve(process.cwd(), '../crates/evidence-plugin/tests/fixtures/history_card_2_witnessed.json'), 'utf8')
+) as Record<string, unknown>
+const SPKI_PREFIX = '302a300506032b6570032100'
+const WITNESS_KEY = SPKI_PREFIX + 'd54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da'
+const otherKey = SPKI_PREFIX + '11'.repeat(32)
+const readerList = (key: string) => ({ witnesses: [{ name: 'the witness', keys: [key] }] })
+const witnessCheck = (v: Awaited<ReturnType<typeof verifyHistoryReply>>) => v.checks.find((c) => c.id === 'witness_receipts')!
+const receiptsOf = (reply: Record<string, unknown>) => reply.witness_receipts as { checkpoint: string; witness: Record<string, unknown> }[]
+
+describe('the witness receipts check', () => {
+  it('passes a real receipt for the anchor under a key the reader supplied', async () => {
+    const v = await verifyHistoryReply(JSON.stringify(witnessed), readerList(WITNESS_KEY))
+    expect(v.verified).toBe(true)
+    expect(witnessCheck(v).status).toBe('pass')
+    expect(witnessCheck(v).detail).toContain('the witness')
+  })
+
+  it('does not run the check with no reader keys, and never passes it', async () => {
+    for (const keys of [undefined, { witnesses: [] }]) {
+      const v = await verifyHistoryReply(JSON.stringify(witnessed), keys)
+      expect(v.verified).toBe(true)
+      expect(witnessCheck(v).status).toBe('not_run')
+    }
+  })
+
+  it('fails a receipt that no supplied key verifies', async () => {
+    const v = await verifyHistoryReply(JSON.stringify(witnessed), readerList(otherKey))
+    expect(v.verified).toBe(false)
+    expect(witnessCheck(v).status).toBe('fail')
+  })
+
+  it('fails a receipt whose entry is not the one the anchor checkpoint states', async () => {
+    const reply = structuredClone(witnessed)
+    const anchor = (reply.anchor as { digest: string }).digest
+    const mine = receiptsOf(reply).find((r) => r.checkpoint === anchor)!
+    mine.witness.entry_hash = '0'.repeat(64)
+    const v = await verifyHistoryReply(JSON.stringify(reply), readerList(WITNESS_KEY))
+    expect(witnessCheck(v).status).toBe('fail')
+  })
+
+  it('counts only the anchor checkpoint’s receipts', async () => {
+    const reply = structuredClone(witnessed)
+    const anchor = (reply.anchor as { digest: string }).digest
+    reply.witness_receipts = receiptsOf(reply).filter((r) => r.checkpoint !== anchor)
+    const v = await verifyHistoryReply(JSON.stringify(reply), readerList(WITNESS_KEY))
+    expect(v.verified).toBe(true)
+    expect(witnessCheck(v).status).toBe('not_run')
+  })
+
+  it('does not count a stub, which was never registered', async () => {
+    const reply = structuredClone(witnessed)
+    for (const r of receiptsOf(reply)) Object.assign(r.witness, { is_stub: true, receipt_b64: '' })
+    const v = await verifyHistoryReply(JSON.stringify(reply), readerList(WITNESS_KEY))
+    expect(witnessCheck(v).status).toBe('not_run')
+  })
+
+  it('does not take a key from the reply: the reply cannot add a witness', async () => {
+    const reply = structuredClone(witnessed) as Record<string, unknown>
+    reply.witnesses = readerList(WITNESS_KEY).witnesses
+    const v = await verifyHistoryReply(JSON.stringify(reply))
+    expect(witnessCheck(v).status).toBe('not_run')
+  })
+
+  it('reads the reader’s list strictly', () => {
+    expect(parseReaderWitnesses(readerList(WITNESS_KEY))).toEqual(readerList(WITNESS_KEY))
+    expect(parseReaderWitnesses({ witnesses: [{ name: '', keys: [WITNESS_KEY] }] })).toBeNull()
+    expect(parseReaderWitnesses({ witnesses: [{ name: 'w', keys: ['zz'] }] })).toBeNull()
+    expect(parseReaderWitnesses({ witnesses: [{ name: 'w', keys: [WITNESS_KEY], extra: 1 }] })).toBeNull()
+    expect(parseReaderWitnesses({ witnesses: [], extra: 1 })).toBeNull()
+    expect(parseReaderWitnesses([])).toBeNull()
+  })
+})
+

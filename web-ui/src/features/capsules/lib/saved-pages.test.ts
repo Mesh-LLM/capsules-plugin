@@ -47,6 +47,34 @@ describe('the History page, opened offline', () => {
     expect((await savedBytes(dom)).equals(Buffer.from(served, 'utf8'))).toBe(true)
   })
 
+  it('checks the witness receipts only under witnesses the reader pastes,', async () => {
+    const witnessed = readFileSync(
+      path.resolve(process.cwd(), '../crates/evidence-plugin/tests/fixtures/history_card_2_witnessed.json'),
+      'utf8'
+    )
+    const { dom, requested, text } = await open(historyPage(witnessed, SAVED, NODE).html)
+    // No list: the receipts are not checked, and the page says so.
+    expect(text).toContain('Not checked here: A witness time-stamped these records')
+    const doc = dom.window.document
+    const list = (key: string) => JSON.stringify({ witnesses: [{ name: 'my witness', keys: [key] }] })
+    const apply = async (value: string) => {
+      ;(doc.getElementById('witness-list') as HTMLTextAreaElement).value = value
+      ;(doc.getElementById('witness-apply') as HTMLButtonElement).click()
+      await new Promise((r) => setTimeout(r, 300))
+    }
+    await apply('not a list')
+    expect(doc.getElementById('witness-note')!.textContent).toContain('not a witness list')
+    const key = '302a300506032b6570032100d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da'
+    await apply(list(key))
+    expect(doc.getElementById('witness-note')!.textContent).toContain('1 witness you named')
+    expect(doc.querySelector('main')!.textContent).not.toContain('Not checked here: A witness time-stamped these records')
+    expect(doc.querySelector('main')!.textContent).toContain('Checked: A witness time-stamped these records')
+    // A key that does not verify the receipt fails it, and nothing was fetched.
+    await apply(list('302a300506032b6570032100' + '11'.repeat(32)))
+    expect(doc.querySelector('main')!.textContent).toContain("Didn't verify: A witness time-stamped these records")
+    expect(requested).toEqual([])
+  })
+
   it('shows what this node shares, from the settings the node reported', async () => {
     const { text } = await open(historyPage(served, SAVED, NODE).html)
     expect(text).toContain('What this node shares')
