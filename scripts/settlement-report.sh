@@ -203,7 +203,7 @@ found = None
 while found is None:
     page = json.loads(subprocess.run([ctl, "cll", "list", "--profile", profile, "--after", str(after), "--limit", "1000"],
                                      check=True, capture_output=True, text=True).stdout)
-    # next_after is a cursor, not has_more (capsule-cli's references/capsule-cli.md):
+    # next_after is a cursor, not has_more (capsule-cli's skills/capsulectl/references/capsule-cli.md):
     # stop on an empty page and refuse a cursor that does not advance.
     if not page["entries"]:
         break

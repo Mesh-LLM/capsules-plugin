@@ -134,8 +134,10 @@ book = json.load(open(sys.argv[1]))
 book["pending"] = {"line": book["published_lines"], "capsule_id": "0" * 64}
 json.dump(book, open(sys.argv[1], "w"))
 EOF5
+TIMEOUT=$(command -v timeout || command -v gtimeout || true)
+[ -n "$TIMEOUT" ] || fail "NOT RUN: no timeout or gtimeout to bound the absent-pending run"
 held_absent=$(held)
-timeout 600 "$here/settlement-report.sh" --report-dir "$work/report" --capsulectl "$CAPSULECTL" \
+"$TIMEOUT" 600 "$here/settlement-report.sh" --report-dir "$work/report" --capsulectl "$CAPSULECTL" \
   --skills "$EVIDENCEBOOK_SKILLS" --capsules "$work/bin/capsules" --data-dir "$work/data" \
   --date 2026-11-01 --now 2026-11-02T00:00:00Z </dev/null >"$work/run.log" 2>&1 \
   || { cat "$work/run.log"; fail "a run with a pending record absent from the book did not finish"; }
