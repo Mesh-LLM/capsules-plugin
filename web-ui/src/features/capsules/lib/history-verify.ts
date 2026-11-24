@@ -73,7 +73,12 @@ export type CheckStatus = 'pass' | 'fail' | 'not_run'
 export type Check = { id: VerifierCheckId; status: CheckStatus; detail: string }
 
 /** What a checkpoint's time-stamp slot shows, from that checkpoint's own witness receipts. */
-export type WitnessSlot = { state: 'passed'; by: string; at: string } | { state: 'failed' } | { state: 'not_checked' }
+export type WitnessSlot =
+  | { state: 'passed'; by: string; at: string }
+  | { state: 'failed' }
+  // `unregistered`: the answer holds no registered receipt for this checkpoint (none, or only stubs). Other reasons
+  // for "not checked" (no keys, a receipt without a time, an algorithm this browser cannot check) never say it.
+  | { state: 'not_checked'; unregistered?: true }
 
 export type HistoryVerdict = {
   /** `answered`: the node gave its card; `refused`: it signed a refusal;
@@ -305,21 +310,23 @@ const base64ToBytes = (text: string): Uint8Array | null => {
  *  A stub was never registered, and no keys or no receipt is `not_run`: never a pass. A receipt
  *  counts only for the checkpoint it names (evidencebook#209). */
 type WitnessReport =
-  | { status: 'not_run'; detail: string }
+  | { status: 'not_run'; detail: string; unregistered?: true }
   | { status: 'fail'; detail: string }
   | { status: 'pass'; detail: string; by: string; at: string }
 
 async function witnessReport(reply: Record<string, unknown>, link: Link, readerWitnesses: ReaderWitnesses | undefined): Promise<WitnessReport> {
-  const notRun = (detail: string): WitnessReport => ({ status: 'not_run', detail })
+  const notRun = (detail: string, unregistered?: true): WitnessReport => (unregistered ? { status: 'not_run', detail, unregistered } : { status: 'not_run', detail })
   const carried = Array.isArray(reply.witness_receipts) ? reply.witness_receipts : []
   const forLink = carried.flatMap((item) => {
     const entry = object(item)
     const witness = object(entry?.witness)
     return entry && witness && entry.checkpoint === link.digest ? [witness] : []
   })
-  if (forLink.length === 0) return notRun('The answer holds no witness receipt for this checkpoint, so none was checked.')
+  if (forLink.length === 0) return notRun('The answer holds no witness receipt for this checkpoint, so none was checked.', true)
   const registered = forLink.filter((w) => w.is_stub !== true)
-  if (registered.length === 0) return notRun('The only witness receipts for this checkpoint are stubs: they were never registered with a witness.')
+  if (registered.length === 0) {
+    return notRun('The only witness receipts for this checkpoint are stubs: they were never registered with a witness.', true)
+  }
   if (!readerWitnesses || readerWitnesses.witnesses.length === 0) {
     return notRun('Witness receipts were not checked: no witness keys were supplied. Give this page the witnesses you accept.')
   }
@@ -623,7 +630,13 @@ export async function verifyHistoryReply(replyText: string, readerWitnesses?: Re
     detail: earlierFailed ? 'A witness receipt for an earlier checkpoint does not verify under a key you supplied.' : anchorReport.detail
   }
   const witnessSlot = (r: WitnessReport): WitnessSlot =>
-    r.status === 'pass' ? { state: 'passed', by: r.by, at: r.at } : r.status === 'fail' ? { state: 'failed' } : { state: 'not_checked' }
+    r.status === 'pass'
+      ? { state: 'passed', by: r.by, at: r.at }
+      : r.status === 'fail'
+        ? { state: 'failed' }
+        : r.unregistered
+          ? { state: 'not_checked', unregistered: true }
+          : { state: 'not_checked' }
   return {
     kind: 'answered',
     verified: witnessCheck.status !== 'fail',

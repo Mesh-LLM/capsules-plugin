@@ -80,6 +80,50 @@ describe('historyViewInput', () => {
     expect(html).not.toContain('Time stamps not checked here')
   })
 
+  describe('the witness check names the checkpoint the witness has not registered', () => {
+    const cp = (i: number, witness: HistoryVerdict['checkpoints'][number]['witness']) => ({
+      size: 10 * (i + 1),
+      time: `2026-11-03T0${i}:00:00Z`,
+      anchor: `${i}`.repeat(64),
+      ...(witness ? { witness } : {})
+    })
+    const stamped = { state: 'passed', by: 'w', at: '2026-11-03T09:00:00Z' } as const
+    const verdictOf = (checkpoints: HistoryVerdict['checkpoints'], witnessStatus: 'pass' | 'not_run' = 'not_run'): HistoryVerdict => ({
+      kind: 'answered',
+      verified: true,
+      checks: [{ id: 'checkpoints', status: 'pass', detail: '' }, { id: 'witness_receipts', status: witnessStatus, detail: '' }],
+      checkpoints,
+      keyId: 'c'.repeat(64)
+    })
+    const witnessCheck = (v: HistoryVerdict) => historyViewInput(v, context).checks.find((c) => c.id === 'witness')
+
+    it('sends the last checkpoint when it has no registered receipt and every earlier one is stamped', () => {
+      const v = verdictOf([cp(1, stamped), cp(2, stamped), cp(3, { state: 'not_checked', unregistered: true })])
+      expect(witnessCheck(v)).toEqual({ id: 'witness', status: 'not_run', values: { n: 3, at: '2026-11-03T03:00:00Z' } })
+      // The view takes it, and the chip and the list name the same checkpoint.
+      const text = historyViewHtml(historyViewInput(v, context))
+      expect(text).toContain('Time-stamped: 2 of 3')
+      expect(text).toContain('A witness time-stamped these records. Checkpoint 3 (cut ')
+    })
+
+    it('sends nothing for a last checkpoint that is not checked for any other reason', () => {
+      // No keys, a receipt without a time, an algorithm this browser cannot check: never "not registered".
+      const v = verdictOf([cp(1, stamped), cp(2, { state: 'not_checked' })])
+      expect(witnessCheck(v)).toEqual({ id: 'witness', status: 'not_run' })
+    })
+
+    it('sends nothing when an earlier checkpoint is also open, or failed, or there is only one checkpoint', () => {
+      const open = { state: 'not_checked', unregistered: true } as const
+      expect(witnessCheck(verdictOf([cp(1, stamped), cp(2, open), cp(3, open)]))).toEqual({ id: 'witness', status: 'not_run' })
+      expect(witnessCheck(verdictOf([cp(1, { state: 'failed' }), cp(2, open)]))).toEqual({ id: 'witness', status: 'not_run' })
+      expect(witnessCheck(verdictOf([cp(1, open)]))).toEqual({ id: 'witness', status: 'not_run' })
+    })
+
+    it('sends nothing when every checkpoint is stamped', () => {
+      expect(witnessCheck(verdictOf([cp(1, stamped), cp(2, stamped)], 'pass'))).toEqual({ id: 'witness', status: 'pass' })
+    })
+  })
+
   it('keeps node-supplied text inside what the view accepts', () => {
     for (const reason of ['', 'x'.repeat(300)]) {
       const refusal: HistoryVerdict = { kind: 'refused', verified: false, checks: [{ id: 'refusal', status: 'not_run', detail: '' }], checkpoints: [], reason }

@@ -94,10 +94,41 @@ describe('the History page, opened offline', () => {
     expect(requested).toEqual([])
   })
 
+  it('names the checkpoint the witness has not registered, in the list and not only in the chip', async () => {
+    const reply = JSON.parse(
+      readFileSync(path.resolve(process.cwd(), '../crates/evidence-plugin/tests/fixtures/history_card_2_witnessed.json'), 'utf8')
+    ) as { anchor: { digest: string }; witness_receipts: { checkpoint: string }[] }
+    // A page saved right after a checkpoint: the answer holds no receipt yet for the last (anchor) checkpoint.
+    const before = reply.witness_receipts.length
+    reply.witness_receipts = reply.witness_receipts.filter((r) => r.checkpoint !== reply.anchor.digest)
+    expect(reply.witness_receipts).toHaveLength(before - 1)
+    const { dom } = await open(historyPage(`${JSON.stringify(reply)}\n`, SAVED, NODE).html)
+    const doc = dom.window.document
+    const key = '302a300506032b6570032100d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da'
+    ;(doc.getElementById('witness-list') as HTMLTextAreaElement).value = JSON.stringify({ witnesses: [{ name: 'my witness', keys: [key] }] })
+    ;(doc.getElementById('witness-apply') as HTMLButtonElement).click()
+    await new Promise((r) => setTimeout(r, 300))
+    const main = doc.querySelector('main')!.textContent!
+    expect(main).toContain('Time-stamped: 18 of 19')
+    // The one checkpoint the chip is missing is the one the list names, with that row's own cut time.
+    const stamps = Array.from(doc.querySelectorAll('.cvh-stamp')).filter((e) => e.textContent!.startsWith('TIME-STAMPED'))
+    expect(stamps).toHaveLength(19)
+    const unstamped = stamps.flatMap((e, i) => (e.getAttribute('data-state') === 'passed' ? [] : [i + 1]))
+    expect(unstamped).toEqual([19])
+    const rows = Array.from(doc.querySelectorAll('.cvh-row'))
+    expect(rows).toHaveLength(19)
+    const cut = rows[18]!.querySelector('.cvh-row-title')!.textContent!.replace(/^Cut /, '')
+    expect(main).toContain(
+      `Not checked here: A witness time-stamped these records. Checkpoint 19 (cut ${cut}) is not registered with the witness yet.`
+    )
+  })
+
   it('shows what this node shares, from the settings the node reported', async () => {
     const { text } = await open(historyPage(served, SAVED, NODE).html)
     expect(text).toContain('What this node shares')
     expect(text).toContain('With anyone: the Service History.')
+    // The viewer 0.24 says what the node's settings leave unstated (these settings omit the witnesses and the referee setting).
+    expect(text).toContain("This node's settings don't say")
     expect(text).toContain("Only with the other side of an exchange, when they ask: that exchange's record.")
     const off = { ...NODE, sharing: { ...NODE.sharing, standard_history: false, history_segments: 'off' as const } }
     const { text: offText } = await open(historyPage(served, SAVED, off).html)
