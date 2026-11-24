@@ -12,8 +12,8 @@ importers:
         specifier: 0.14.0
         version: 0.14.0(@action-state-group/cll@0.4.0(@types/node@26.4.1))
       '@action-state-group/capsule-viewer':
-        specifier: 0.14.0
-        version: 0.14.0(@types/node@26.4.1)
+        specifier: 0.24.0
+        version: 0.24.0(@types/node@26.4.1)
       '@action-state-group/cll':
         specifier: 0.4.0
         version: 0.4.0(@types/node@26.4.1)
@@ -120,15 +120,6 @@ importers:
 
 packages:
 
-  '@action-state-group/agent-action-capsule@0.13.1':
-    resolution: {integrity: sha512-3W2t+6eCmGFTwTBjfV6AvD5YkvxTZ9y/jCW6BBc27f5tyEBh6CCQFVEdzQ5+QKr95PktnVpXabl3PJFes+6W0w==}
-    engines: {node: '>=20'}
-    peerDependencies:
-      '@action-state-group/cll': 0.3.0
-    peerDependenciesMeta:
-      '@action-state-group/cll':
-        optional: true
-
   '@action-state-group/agent-action-capsule@0.14.0':
     resolution: {integrity: sha512-QLdgnu8gRGsEGBMui+c2CB3LP/sGI6nsUpR5d5qbV81T93kUfUjQJnI6LoZN6NGQObLpO7xKk1ztlwt53Wxm0Q==}
     engines: {node: '>=20'}
@@ -138,13 +129,18 @@ packages:
       '@action-state-group/cll':
         optional: true
 
-  '@action-state-group/capsule-viewer@0.14.0':
-    resolution: {integrity: sha512-irjzHOSPsWYgz9U0VjDsBO4zrgxKgm2RzC3VtBysLejHemQenOGzUv5hf2jVt8gkGBels2tTGnmk9wI2FzSBPQ==}
+  '@action-state-group/agent-action-capsule@0.16.0':
+    resolution: {integrity: sha512-XCWm6iLAsk3eoHplxuUzKzpQ17s18zmE5tENTI7Ufsqb+KEjWbYgfRUf/yUgjIHC8l2EjuVFQpUvAhgYrQwxAg==}
     engines: {node: '>=20'}
+    peerDependencies:
+      '@action-state-group/cll': 0.4.0
+    peerDependenciesMeta:
+      '@action-state-group/cll':
+        optional: true
 
-  '@action-state-group/cll@0.3.0':
-    resolution: {integrity: sha512-mKWEo6Z19+dNrJVX5uF15x0j2wxWbV4O7eTg1ODAX9tNka4LQc5gIiyKfNulcuEVI/E5eL9yeJNCq7a0PFfnLQ==}
-    engines: {node: '>=22'}
+  '@action-state-group/capsule-viewer@0.24.0':
+    resolution: {integrity: sha512-2L2jhuMoHNHEx+JZnNPUgsM1ylEse0/rStAUeV66l13DgJKns4jarK8itIo3urcm0rYj3AH79A11sZDGc7YTQA==}
+    engines: {node: '>=20'}
 
   '@action-state-group/cll@0.4.0':
     resolution: {integrity: sha512-6aSocuF3Ya6JaLdoQdzImaqy095SquibgDp1kbA9RU5YO7OigBw1aGFxSH+JqdQfCpXTcugr+nPDu+R1n0E/jg==}
@@ -1887,29 +1883,18 @@ packages:
 
 snapshots:
 
-  '@action-state-group/agent-action-capsule@0.13.1(@action-state-group/cll@0.3.0(@types/node@26.4.1))':
-    optionalDependencies:
-      '@action-state-group/cll': 0.3.0(@types/node@26.4.1)
-
   '@action-state-group/agent-action-capsule@0.14.0(@action-state-group/cll@0.4.0(@types/node@26.4.1))':
     optionalDependencies:
       '@action-state-group/cll': 0.4.0(@types/node@26.4.1)
 
-  '@action-state-group/capsule-viewer@0.14.0(@types/node@26.4.1)':
-    dependencies:
-      '@action-state-group/agent-action-capsule': 0.13.1(@action-state-group/cll@0.3.0(@types/node@26.4.1))
-      '@action-state-group/cll': 0.3.0(@types/node@26.4.1)
-    transitivePeerDependencies:
-      - '@types/node'
+  '@action-state-group/agent-action-capsule@0.16.0(@action-state-group/cll@0.4.0(@types/node@26.4.1))':
+    optionalDependencies:
+      '@action-state-group/cll': 0.4.0(@types/node@26.4.1)
 
-  '@action-state-group/cll@0.3.0(@types/node@26.4.1)':
+  '@action-state-group/capsule-viewer@0.24.0(@types/node@26.4.1)':
     dependencies:
-      '@noble/curves': 2.4.0
-      '@noble/hashes': 2.4.0
-      better-sqlite3: 13.0.3
-      cborg: 6.1.2
-      fs-ext: 2.1.1
-      mysql2: 3.24.3(@types/node@26.4.1)
+      '@action-state-group/agent-action-capsule': 0.16.0(@action-state-group/cll@0.4.0(@types/node@26.4.1))
+      '@action-state-group/cll': 0.4.0(@types/node@26.4.1)
     transitivePeerDependencies:
       - '@types/node'
 

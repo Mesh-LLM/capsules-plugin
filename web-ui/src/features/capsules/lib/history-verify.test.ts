@@ -410,8 +410,27 @@ describe('the witness receipts check', () => {
     reply.witness_receipts = receiptsOf(reply).filter((r) => r.checkpoint !== anchor)
     const v = await verifyHistoryReply(JSON.stringify(reply), readerList(WITNESS_KEY))
     expect(witnessCheck(v).status).toBe('not_run')
-    expect(v.checkpoints[v.checkpoints.length - 1].witness).toEqual({ state: 'not_checked' })
+    // `unregistered`: the answer holds no receipt for it, which is what lets the list name it.
+    expect(v.checkpoints[v.checkpoints.length - 1].witness).toEqual({ state: 'not_checked', unregistered: true })
     expect(v.checkpoints.slice(0, -1).every((c) => c.witness?.state === 'passed')).toBe(true)
+  })
+
+  it('says a last checkpoint is unregistered only when the answer holds no registered receipt for it', async () => {
+    const lastSlot = async (change: (reply: Record<string, unknown>, anchor: string) => void, keys: object | null = readerList(WITNESS_KEY)) => {
+      const reply = structuredClone(witnessed) as Record<string, unknown>
+      change(reply, (reply.anchor as { digest: string }).digest)
+      const v = await verifyHistoryReply(JSON.stringify(reply), (keys ?? undefined) as never)
+      return v.checkpoints[v.checkpoints.length - 1].witness
+    }
+    // Only stubs for the last checkpoint: never registered.
+    expect(
+      await lastSlot((reply, anchor) => {
+        for (const r of receiptsOf(reply)) if (r.checkpoint === anchor) Object.assign(r.witness, { is_stub: true, receipt_b64: '' })
+      })
+    ).toEqual({ state: 'not_checked', unregistered: true })
+    // No witness keys supplied: the receipt is there, so "not registered" would be untrue.
+    expect(await lastSlot(() => undefined, null)).toEqual({ state: 'not_checked' })
+    // A receipt that verifies but states no registration time (the mocked time-less pass is in history-verify-untimed.test.ts).
   })
 
   it('fails the check, and that checkpoint alone, when an earlier checkpoint’s receipt does not verify', async () => {
