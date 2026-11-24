@@ -306,7 +306,7 @@ dependencies = [
 [[package]]
 name = "capsule-engine"
 version = "0.1.0"
-source = "git+https://github.com/action-state-group/capsule-engine?rev=c7701385b87b68c631803e5d0adeee4d617ff5d4#c7701385b87b68c631803e5d0adeee4d617ff5d4"
+source = "git+https://github.com/action-state-group/capsule-engine?rev=b84d7d0f2d48f9acdf79880dc1e3fa059aba1355#b84d7d0f2d48f9acdf79880dc1e3fa059aba1355"
 dependencies = [
  "hex",
  "serde",

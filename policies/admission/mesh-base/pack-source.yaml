@@ -6,8 +6,9 @@
 # to recompile.
 #
 # It is base/1 (#55, #64) as a pack, decided by capsule-engine's admission
-# evaluator: the operator's lists decide NO, and the five base rows are read
-# and sealed with the decision but decide nothing (Steven, 10-29: u126, u137).
+# evaluator: the operator's lists decide NO, and the base rows (the five of #64
+# and the witnessed-card row of #349) are read and sealed with the decision but
+# decide nothing (Steven, 10-29: u126, u137; u1598).
 # A NO comes only from the operator's lists here, and from the price rule
 # (#105) after them in the plugin.
 #
@@ -90,5 +91,15 @@ rows:
     source: own_history
     check: own.held_halves
     params: {min: 1}
+    from: T0
+    on_fail: "record"
+  # A sixth row (#349): whether the peer's card carries a witness receipt this
+  # node verified, under a key the operator configured, on the card's latest
+  # checkpoint. Recorded with its label (witnessed, unwitnessed or
+  # unknown_witness) and deciding nothing, like the five above (u1598).
+  - id: witnessed_card
+    statement: The peer's history card carries a witness receipt this node verified on its latest checkpoint.
+    source: card
+    check: card.witness_label
     from: T0
     on_fail: "record"

@@ -1,4 +1,4 @@
-//! The base policy's five rows (`base/1`, #64): what admission reads about
+//! The base policy's rows (`base/1`'s five, #64, and the witnessed-card row, #349): what admission reads about
 //! any peer an attempt names, listed or not, and seals with its decision.
 //!
 //! - **identity**: the peer's history card verifies under the record key it
@@ -18,6 +18,13 @@
 //!   windows them. Adverse is a `contradicted` verdict naming the peer.
 //! - **corroboration**: this node holds the peer's pushed half for at least
 //!   [`MIN_HELD_HALVES`] exchange ("no half, no deal above T0").
+//! - **witnessed card** (#349): the card carries a witness receipt this node
+//!   verified on its latest checkpoint, under a key the operator configured. A
+//!   receipt on an earlier checkpoint does not count (evidencebook#209). The
+//!   evaluator labels the card `witnessed`, `unknown_witness` (receipts were
+//!   carried and none verified) or `unwitnessed`, and the sealed row records the
+//!   label. Only `witnessed` passes, and a label that does not pass decides
+//!   nothing (u1598).
 //!
 //! The rows decide nothing (Steven, 10-29): each decision seals them as read,
 //! and the verdict stays the operator's config's (the lists and the default).
@@ -32,7 +39,7 @@
 //! (`capsule_engine::admission`, #178), never by a second evaluator here,
 //! under the Mesh base pack this plugin ships
 //! (`policies/admission/mesh-base/`): the operator's lists as its two NO rows,
-//! then these five as `record` rows, each with today's id and threshold. This
+//! then these six as `record` rows, each with today's id and threshold. This
 //! module gathers what the rows read and hands it to the evaluator as
 //! `Inputs`. The pack yields GO and NO only and its missing default is NO, so
 //! nothing but a list may reach NO: the deal is always passed as
@@ -75,7 +82,7 @@ pub const PACK_ID: &str = "asg/mesh_admission_base/1.0.0";
 /// pinned load then fails until this is updated with it
 /// (`policies/admission/mesh-base/README.md`).
 pub const DEFINITION_DIGEST: &str =
-    "d7cdf88f0c6c401ad35039a10686f1b68adf08334c1bf04bd419302caf31b09b";
+    "4469ec02808c0c0e83434a53d60886692abc0965b224604179357868f028496b";
 /// The pack's compiled `pack-definition.json`, embedded as committed.
 pub const DEFINITION: &[u8] =
     include_bytes!("../../../../policies/admission/mesh-base/pack-definition.json");
@@ -141,12 +148,13 @@ impl RowResult {
 }
 
 /// The rows in the order a record lists them.
-pub const ROWS: [&str; 5] = [
+pub const ROWS: [&str; 6] = [
     "identity",
     "key_age",
     "performed_and_settled",
     "disputes",
     "corroboration",
+    "witnessed_card",
 ];
 
 /// A verified history card, as the rows read it.
@@ -159,9 +167,45 @@ pub struct Card {
     /// The record key it verified under. The card speaks for that key only:
     /// once the peer's announced key changes, it is no longer read.
     pub key_id: String,
+    /// The witness receipts the card carries for the checkpoint it is served
+    /// under, as `witnessed_card` reads them.
+    pub receipts: AnchorReceipts,
     /// The card form the peer answered ([`CARD_FORM`] or
     /// [`OLDER_CARD_FORM`]), which the sealed admission record names.
     pub derivation: String,
+}
+
+/// The witness receipts on a card's anchor (the checkpoint it is served
+/// under): the ones this node verified under a key the operator configured, and
+/// the ones carried that were registered (not stubs). A receipt on an earlier
+/// checkpoint is not counted: it leaves the anchor possibly a private extension
+/// (evidencebook#209), and the History page counts the anchor's alone too.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AnchorReceipts {
+    pub counted: i64,
+    pub presented: i64,
+}
+
+impl AnchorReceipts {
+    pub fn of(checked: &crate::evidence_artifact::Checked) -> Self {
+        use crate::evidence_artifact::ReceiptStatus;
+        let on_anchor = checked
+            .receipts
+            .iter()
+            .filter(|r| r.checkpoint == checked.anchor);
+        let (mut counted, mut presented) = (0, 0);
+        for receipt in on_anchor {
+            match receipt.status {
+                ReceiptStatus::Stub => {}
+                ReceiptStatus::Verified => {
+                    counted += 1;
+                    presented += 1;
+                }
+                ReceiptStatus::NoKey => presented += 1,
+            }
+        }
+        Self { counted, presented }
+    }
 }
 
 /// The card a read cites: its artifact digest and the form it answered.
@@ -229,7 +273,7 @@ pub struct Facts {
 /// What the rows read for one attempt.
 #[derive(Debug)]
 pub struct Read {
-    pub rows: [RowResult; 5],
+    pub rows: [RowResult; 6],
     /// The card cited, when one was read.
     pub card: Option<CardCite>,
     /// The evaluator's decision under the base pack, its rows included.
@@ -398,6 +442,14 @@ impl Base {
                 engine::Card {
                     state: engine::CARD_VERIFIED.into(),
                     first_checkpoint_at: card.first_checkpoint_at.map(timestamp),
+                    // Only the anchor's receipts are passed, so the engine's
+                    // label (which also counts an earlier checkpoint's) reads
+                    // the anchor alone: one checkpoint.
+                    receipts: Some(engine::Receipts {
+                        counted: card.receipts.counted,
+                        checkpoints: 1,
+                        presented: card.receipts.presented,
+                    }),
                     ..engine::Card::default()
                 },
             );
@@ -688,6 +740,7 @@ pub fn read_card(
         |ts_url: &str| crate::evidence_answer::configured_witness_key(witness_keys, ts_url);
     match crate::evidence_artifact::check(sent, &request, answer, &key, &witness_key) {
         Ok(checked) if checked.checkpoints > 0 => CardOutcome::Read(Card {
+            receipts: AnchorReceipts::of(&checked),
             artifact_digest: checked.artifact_digest,
             first_checkpoint_at: checked
                 .first_checkpoint_at

@@ -11,6 +11,7 @@ fn card(age_days: i64) -> CardOutcome {
         artifact_digest: "c".repeat(64),
         first_checkpoint_at: Some(Utc::now() - chrono::Duration::days(age_days)),
         key_id: KEY.to_string(),
+        receipts: AnchorReceipts::default(),
         derivation: CARD_FORM.to_string(),
     })
 }
@@ -69,7 +70,7 @@ fn no_card_read_yet_is_not_read_and_queues_one_ask() {
     let at = Instant::now();
     let read = base.read_keyed(PEER, at, Utc::now());
     assert_eq!(read.card, None);
-    assert_eq!(read.rows, [RowResult::NotRead; 5], "nothing read yet");
+    assert_eq!(read.rows, [RowResult::NotRead; 6], "nothing read yet");
     assert_eq!(asks.try_recv().as_deref(), Ok(PEER));
     base.read_keyed(PEER, at, Utc::now());
     assert!(asks.try_recv().is_err(), "one ask in flight per peer");
@@ -88,7 +89,7 @@ fn a_failed_ask_leaves_the_card_rows_not_read_and_is_retried_only_after_an_hour(
 
     let read = base.read_keyed(PEER, at, Utc::now());
     assert_eq!(read.rows[..2], [RowResult::NotRead; 2]);
-    assert_eq!(read.rows[2..], [RowResult::Pass; 3]);
+    assert_eq!(read.rows[2..5], [RowResult::Pass; 3]);
     assert!(asks.try_recv().is_err(), "not asked again within the hour");
 
     base.read_keyed(PEER, at + ASK_RETRY, Utc::now());
@@ -140,7 +141,7 @@ fn each_row_fails_on_its_own_input_alone() {
         base.record_card(PEER, card, at);
         facts.set(&base);
         let read = base.read_keyed(PEER, at, Utc::now());
-        for (i, row) in read.rows.iter().enumerate() {
+        for (i, row) in read.rows[..5].iter().enumerate() {
             let expected = if i == failing {
                 RowResult::Fail
             } else {
@@ -158,7 +159,11 @@ fn a_card_old_enough_passes_every_row_and_is_cited() {
     base.record_card(PEER, card(KEY_AGE_DAYS), at);
     passing().set(&base);
     let read = base.read_keyed(PEER, at, Utc::now());
-    assert_eq!(read.rows, [RowResult::Pass; 5]);
+    // The five of #64 pass; the witnessed-card row fails here because this card carries no
+    // receipt, and a failing recorded row decides nothing.
+    assert_eq!(read.rows[..5], [RowResult::Pass; 5]);
+    assert_eq!(read.rows[5], RowResult::Fail);
+    assert_eq!(read.decision.verdict, engine::Verdict::Go);
     assert_eq!(
         read.card,
         Some(CardCite {
@@ -175,7 +180,7 @@ fn before_the_first_refresh_the_local_rows_are_not_read() {
     base.record_card(PEER, card(30), at);
     let read = base.read_keyed(PEER, at, Utc::now());
     assert_eq!(
-        read.rows[2..],
+        read.rows[2..5],
         [RowResult::NotRead; 3],
         "an unread dispute row never passes"
     );
@@ -337,7 +342,7 @@ fn a_chain_that_does_not_read_whole_leaves_the_local_rows_not_read() {
     let base = Base::new(dir.path().to_path_buf());
     base.refresh();
     assert_eq!(
-        base.read_keyed(PEER, Instant::now(), now).rows[2..],
+        base.read_keyed(PEER, Instant::now(), now).rows[2..5],
         [RowResult::NotRead; 3]
     );
 }
@@ -520,10 +525,7 @@ fn the_packs_rows_are_base_1s_with_its_thresholds() {
     let ids: Vec<&str> = rows.iter().map(|r| r["id"].as_str().unwrap()).collect();
     let mut expected = vec!["deny_list", "allow_list"];
     expected.extend(ROWS);
-    assert_eq!(
-        ids, expected,
-        "the lists first, then the five rows in order"
-    );
+    assert_eq!(ids, expected, "the lists first, then the six rows in order");
     let row = |id: &str| rows.iter().find(|r| r["id"] == id).unwrap();
     for id in ["deny_list", "allow_list"] {
         assert_eq!(row(id)["on_fail"], "NO");
@@ -604,6 +606,7 @@ fn card_at(first: Option<DateTime<Utc>>) -> CardOutcome {
         artifact_digest: "c".repeat(64),
         first_checkpoint_at: first,
         key_id: KEY.to_string(),
+        receipts: AnchorReceipts::default(),
         derivation: CARD_FORM.to_string(),
     })
 }
@@ -654,7 +657,7 @@ fn the_evaluators_rows_are_the_rows_base_1_read() {
             }
             let read = base.read_keyed(PEER, at, now);
             assert_eq!(
-                read.rows,
+                read.rows[..5],
                 rows_before_178(card.as_ref(), local.as_ref(), now),
                 "{card:?} {local:?}"
             );
@@ -726,7 +729,7 @@ fn the_evaluator_windows_verdicts_as_base_1_did() {
         base.refresh();
         let read = base.read_keyed(PEER, Instant::now(), now);
         assert_eq!(
-            read.rows,
+            read.rows[..5],
             rows_before_178(None, Some(&local), now),
             "{at} {kind}"
         );
@@ -770,7 +773,7 @@ fn deal(amount: &str) -> engine::Inputs {
 fn a_peer_with_no_card_and_no_book_is_go() {
     let (base, _dir) = base();
     let read = base.read_keyed(PEER, Instant::now(), Utc::now());
-    assert_eq!(read.rows, [RowResult::NotRead; 5]);
+    assert_eq!(read.rows, [RowResult::NotRead; 6]);
     assert_eq!(read.decision.verdict, engine::Verdict::Go);
     assert_eq!(read.decision.source, "rows");
     assert_eq!(read.decision.tier.as_deref(), Some("T0"));
@@ -1167,5 +1170,103 @@ async fn a_request_during_the_join_key_wait_sends_no_keyless_ask() {
         asked.unwrap().as_deref(),
         Some(PEER),
         "the join asks once the key lands"
+    );
+}
+
+fn card_with_receipts(counted: i64, presented: i64) -> CardOutcome {
+    CardOutcome::Read(Card {
+        artifact_digest: "c".repeat(64),
+        first_checkpoint_at: Some(Utc::now() - chrono::Duration::days(30)),
+        key_id: KEY.to_string(),
+        receipts: AnchorReceipts { counted, presented },
+        derivation: CARD_FORM.to_string(),
+    })
+}
+
+/// The witnessed-card row (#349) records the card's witness label and decides
+/// nothing, whatever the label.
+#[test]
+fn the_witnessed_card_row_records_its_label_and_decides_nothing() {
+    for (counted, presented, result, label) in [
+        (1, 1, RowResult::Pass, "witnessed"),
+        (0, 1, RowResult::Fail, "unknown_witness"),
+        (0, 0, RowResult::Fail, "unwitnessed"),
+    ] {
+        let (base, _dir) = base();
+        let at = Instant::now();
+        base.record_card(PEER, card_with_receipts(counted, presented), at);
+        let read = base.read_keyed(PEER, at, Utc::now());
+        assert_eq!(read.rows[5], result, "{label}");
+        let row = read
+            .decision
+            .rows
+            .iter()
+            .find(|r| r.row == "witnessed_card")
+            .unwrap();
+        assert_eq!(row.label, label);
+        assert_eq!(row.effect.as_str(), "none", "{label}: a recorded row");
+        assert_eq!(read.decision.verdict, engine::Verdict::Go, "{label}");
+    }
+}
+
+/// No card, or a card that did not verify: the row is not read (a card never read has no label).
+#[test]
+fn the_witnessed_card_row_is_not_read_without_a_verified_card() {
+    for outcome in [None, Some(CardOutcome::Unverifiable)] {
+        let (base, _dir) = base();
+        let at = Instant::now();
+        if let Some(outcome) = outcome {
+            base.record_card(PEER, outcome, at);
+        }
+        assert_eq!(
+            base.read_keyed(PEER, at, Utc::now()).rows[5],
+            RowResult::NotRead
+        );
+    }
+}
+
+/// Only the receipts on the anchor count: one on an earlier checkpoint leaves
+/// the anchor possibly a private extension (evidencebook#209), and a stub was
+/// never registered.
+#[test]
+fn only_the_anchors_registered_receipts_are_counted() {
+    use crate::evidence_artifact::{Checked, ReceiptCheck, ReceiptStatus};
+    let receipt = |checkpoint: &str, status| ReceiptCheck {
+        checkpoint: checkpoint.to_string(),
+        ts_url: "https://witness.example".to_string(),
+        status,
+    };
+    let checked = Checked {
+        anchor: "anchor".into(),
+        records: vec![],
+        checkpoints: 3,
+        first_checkpoint_at: None,
+        artifact_digest: String::new(),
+        halves: vec![],
+        held: vec![],
+        receipts: vec![
+            receipt("earlier", ReceiptStatus::Verified),
+            receipt("anchor", ReceiptStatus::Stub),
+            receipt("anchor", ReceiptStatus::NoKey),
+        ],
+        history: None,
+    };
+    assert_eq!(
+        AnchorReceipts::of(&checked),
+        AnchorReceipts {
+            counted: 0,
+            presented: 1
+        }
+    );
+    let mut checked = checked;
+    checked
+        .receipts
+        .push(receipt("anchor", ReceiptStatus::Verified));
+    assert_eq!(
+        AnchorReceipts::of(&checked),
+        AnchorReceipts {
+            counted: 1,
+            presented: 2
+        }
     );
 }

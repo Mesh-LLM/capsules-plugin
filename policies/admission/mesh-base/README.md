@@ -1,7 +1,7 @@
 # The Mesh base admission pack
 
 `asg/mesh_admission_base/1.0.0`: the operator's allow and deny lists (#55) and the base policy's
-five rows (#64) as an admission pack, decided by capsule-engine's admission evaluator (#178).
+five rows (#64) and a witnessed-card row (#349) as an admission pack, decided by capsule-engine's admission evaluator (#178).
 `pack-source.yaml` is the source, in evidencebook-skills' admission pack profile v0
 (`docs/admission-pack-profile-v0.md` there). `pack-definition.json` is what it compiles to, and
 it is what the plugin embeds and loads (`crates/evidence-plugin/src/admission/base.rs`), pinned by

@@ -554,7 +554,7 @@ decision cites the pack, its definition digest and a salted commitment to your p
 (the profile holds your list in clear), and `doctor` shows the digest with your values. A profile
 that sets no `rate_cap` keeps the shipped caps.
 
-Each decision also records what the base policy's five rows (policy `base/1`) read about the peer,
+Each decision also records what the base policy's rows (policy `base/1`, plus a witnessed-card row) read about the peer,
 from its history card and this node's own book. The rows decide nothing: only your settings give a
 NO. They record:
 
@@ -565,14 +565,18 @@ NO. They record:
 - **disputes**: no referee has ruled against the peer (`contradicted`) in the last 30 days, counting
   only verdicts this node asked for or issued; `not_read` while this node holds no verdict about the
   peer at all;
-- **corroboration**: this node holds the peer's pushed half of at least one exchange.
+- **corroboration**: this node holds the peer's pushed half of at least one exchange;
+- **witnessed card**: the card carries a witness receipt on its latest checkpoint that this node
+  verified under a witness key you configured. The row records the card's label: `witnessed`,
+  `unknown_witness` (receipts came with the card, none verified) or `unwitnessed`. Only `witnessed`
+  passes, and no label changes a decision.
 
 A row that fails stays a record; to refuse such a peer, block it in mesh-llm's peer blocks. The thresholds
 are placeholders, fixed in this version.
 
 The lists and these rows are decided by capsule-engine's admission evaluator under the base pack
 the plugin ships, `asg/mesh_admission_base/1.0.0` (`policies/admission/mesh-base/`): your deny
-and allow lists are its only rows that can give NO, and the five rows are recorded. With
+and allow lists are its only rows that can give NO, and the six rows are recorded. With
 `CAPSULES_ADMISSION_DEFAULT=no` the allow row refuses a peer on neither list; otherwise no allow
 list refuses anyone. The decisions are the ones the lists gave before.
 
