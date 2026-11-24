@@ -307,7 +307,7 @@ const base64ToBytes = (text: string): Uint8Array | null => {
 type WitnessReport =
   | { status: 'not_run'; detail: string }
   | { status: 'fail'; detail: string }
-  | { status: 'pass'; detail: string; by: string; at: string | null }
+  | { status: 'pass'; detail: string; by: string; at: string }
 
 async function witnessReport(reply: Record<string, unknown>, link: Link, readerWitnesses: ReaderWitnesses | undefined): Promise<WitnessReport> {
   const notRun = (detail: string): WitnessReport => ({ status: 'not_run', detail })
@@ -347,7 +347,7 @@ async function witnessReport(reply: Record<string, unknown>, link: Link, readerW
         status: 'pass',
         by: report.witness ?? 'unnamed',
         at: new Date(report.witnessed_time * 1000).toISOString(),
-        detail: `A witness you accept (${report.witness ?? 'unnamed'}) holds the last checkpoint, registered at ${new Date(report.witnessed_time * 1000).toISOString()}.`
+        detail: `A witness you accept (${report.witness ?? 'unnamed'}) holds this checkpoint, registered at ${new Date(report.witnessed_time * 1000).toISOString()}.`
       }
     case 'FAIL':
       return { status: 'fail', detail: 'No witness receipt for this checkpoint verifies under a key you supplied.' }
@@ -623,7 +623,7 @@ export async function verifyHistoryReply(replyText: string, readerWitnesses?: Re
     detail: earlierFailed ? 'A witness receipt for an earlier checkpoint does not verify under a key you supplied.' : anchorReport.detail
   }
   const witnessSlot = (r: WitnessReport): WitnessSlot =>
-    r.status === 'pass' ? { state: 'passed', by: r.by, at: r.at! } : r.status === 'fail' ? { state: 'failed' } : { state: 'not_checked' }
+    r.status === 'pass' ? { state: 'passed', by: r.by, at: r.at } : r.status === 'fail' ? { state: 'failed' } : { state: 'not_checked' }
   return {
     kind: 'answered',
     verified: witnessCheck.status !== 'fail',

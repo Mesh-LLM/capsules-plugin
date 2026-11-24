@@ -56,6 +56,7 @@ describe('the History page, opened offline', () => {
     // No list: the receipts are not checked, and the page says so in the list, the chip and every badge.
     expect(text).toContain('Not checked here: A witness time-stamped these records')
     expect(text).toContain('Time stamps not checked here')
+    expect(text).toContain('A checkpoint taken shortly before this page was saved may show as not checked yet')
     const doc = dom.window.document
     const list = (key: string) => JSON.stringify({ witnesses: [{ name: 'my witness', keys: [key] }] })
     const apply = async (value: string) => {
@@ -86,6 +87,9 @@ describe('the History page, opened offline', () => {
     // The list, the chip and the badges all say it didn't verify, and the checkpoints are still drawn.
     expect(doc.querySelector('main')!.textContent).toContain("Time stamps didn't verify")
     expect(doc.querySelector('main')!.textContent).not.toContain('No checkpoints yet')
+    // The other checks still read as they did: the lock was checked, whatever the witness said.
+    expect(doc.querySelector('main')!.textContent).toContain('Locked as it happened.')
+    expect(doc.querySelector('main')!.textContent).not.toContain('did not check how these records were locked')
     expect(doc.querySelectorAll('.cvh-stamp[data-state="failed"]').length).toBeGreaterThan(0)
     expect(requested).toEqual([])
   })

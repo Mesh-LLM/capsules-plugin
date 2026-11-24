@@ -49,6 +49,9 @@ function cell(what: string, value: string) {
 const NOT_CHECKED = { state: 'not_checked' } as const
 
 export function historyViewInput(verdict: HistoryVerdict, context: HistoryPageContext) {
+  // A witness check that fails is drawn in its slots, never as a reason to hide the rows.
+  const onlyWitnessFailed = verdict.kind === 'answered' && !verdict.checks.some((c) => c.status === 'fail' && c.id !== 'witness_receipts')
+  const drawn = verdict.verified || onlyWitnessFailed
   const checks: { id: string; status: CheckStatus }[] = []
   for (const check of verdict.checks) {
     const id = CHECK_ID[check.id]
@@ -62,10 +65,8 @@ export function historyViewInput(verdict: HistoryVerdict, context: HistoryPageCo
     else if (check.status === 'fail') seen.status = 'fail'
   }
   // The chain check covers the consistency proofs it runs.
-  if (verdict.verified && !checks.some((c) => c.id === 'consistency')) checks.push({ id: 'consistency', status: 'pass' })
-  // A witness check that fails is drawn in its slots, never as a reason to hide the rows.
-  const onlyWitnessFailed = verdict.kind === 'answered' && !verdict.checks.some((c) => c.status === 'fail' && c.id !== 'witness_receipts')
-  const rows = verdict.verified || onlyWitnessFailed
+  if (drawn && !checks.some((c) => c.id === 'consistency')) checks.push({ id: 'consistency', status: 'pass' })
+  const rows = drawn
     ? verdict.checkpoints.map((c) => ({
         kind: 'checkpoint' as const,
         cut_at: c.time,
@@ -76,7 +77,7 @@ export function historyViewInput(verdict: HistoryVerdict, context: HistoryPageCo
         second_signature: NOT_CHECKED
       }))
     : []
-  const periods = verdict.verified || onlyWitnessFailed
+  const periods = drawn
     ? verdict.counts?.map((p) => ({
         from: p.from,
         to: p.to,

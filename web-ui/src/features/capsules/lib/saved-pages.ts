@@ -58,6 +58,7 @@ button{font:inherit;padding:.25rem .75rem}code{font-family:ui-monospace,monospac
 const WITNESS_FORM = `<details>
 <summary>Check the witness receipts with witnesses you accept</summary>
 <p class="muted">This page checks a witness receipt only under keys you give it here, never a key the saved answer names. Paste a list like <code>{"witnesses":[{"name":"my witness","keys":["302a300506032b6570032100…"]}]}</code> (each key as hex of its DER SubjectPublicKeyInfo).</p>
+<p class="muted">A checkpoint taken shortly before this page was saved may show as not checked yet: the witness registers each checkpoint shortly after it is taken.</p>
 <p><textarea id="witness-list" rows="4" style="width:100%" spellcheck="false"></textarea></p>
 <p><button id="witness-apply" type="button">Check with these witnesses</button></p>
 <p id="witness-note" class="muted"></p>
