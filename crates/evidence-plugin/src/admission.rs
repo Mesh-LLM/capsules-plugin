@@ -1,6 +1,6 @@
 //! Admission (loop step 4): before each attempt to a mesh peer, the node
 //! decides GO or NO from the operator's allow and deny lists and default
-//! (#55), and seals the decision with what the base policy's five rows read
+//! (#55), and seals the decision with what the base policy's rows read
 //! about that peer ([`base`], #64). The rows decide nothing: a NO only ever
 //! comes from the operator's config (Steven, 10-29).
 //!
@@ -44,7 +44,7 @@
 //!
 //! The lists and the rows are decided by capsule-engine's admission evaluator
 //! under the base pack this plugin ships ([`base::pack`], #178): the deny and
-//! allow lists are its two NO rows, and the five rows are `record` rows. Each
+//! allow lists are its two NO rows, and the six rows are `record` rows. Each
 //! sealed row also carries the evaluator's `effect`, and its `count` and
 //! `denominator` where it counts, and `reads` cites the pack as a
 //! `terms_pack` with `role: "base"`, beside the price rule's
@@ -636,6 +636,11 @@ impl Admission {
                         // and its count and denominator where it counts.
                         if let Some(decided) = rows.decision.rows.iter().find(|r| r.row == *row) {
                             sealed["effect"] = json!(decided.effect.as_str());
+                            // The witnessed_card row records what the card's log is
+                            // labelled, not only whether the label passed.
+                            if !decided.label.is_empty() {
+                                sealed["label"] = json!(decided.label);
+                            }
                             if let Some(count) = decided.count {
                                 sealed["count"] = json!(count);
                             }
@@ -820,6 +825,10 @@ mod tests {
                 artifact_digest: "c".repeat(64),
                 first_checkpoint_at: Some(now - chrono::Duration::days(30)),
                 key_id: key.to_string(),
+                receipts: base::AnchorReceipts {
+                    counted: 1,
+                    presented: 1,
+                },
                 derivation: base::CARD_FORM.to_string(),
             }),
             at,
@@ -859,6 +868,15 @@ mod tests {
                 .map(|row| (*row, "pass"))
                 .collect::<Vec<_>>()
         );
+        // The witnessed-card row seals the card's label with its result, and decides nothing.
+        let witnessed = block["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["row"] == "witnessed_card")
+            .unwrap();
+        assert_eq!(witnessed["label"], "witnessed");
+        assert_eq!(witnessed["effect"], "none");
         let salt = salt(capsules.signing_key());
         assert_eq!(block["reads"][1]["kind"], "history_card");
         assert_eq!(block["reads"][1]["derivation"], "history_card/2");
@@ -1144,7 +1162,7 @@ mod tests {
             );
             assert_eq!(
                 block["rows"].as_array().map(Vec::len),
-                Some(5),
+                Some(6),
                 "the peer is still named, so its rows are read"
             );
         }

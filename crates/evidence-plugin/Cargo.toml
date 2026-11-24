@@ -193,7 +193,7 @@ evidencebook = { version = "=0.0.24", features = ["deal", "shelf"] }
 # one. Its admission evaluator (`capsule_engine::admission`, capsule-engine#265
 # and #268) decides the base pack (#178). Not on crates.io: pinned by the
 # merge commit.
-capsule-engine = { git = "https://github.com/action-state-group/capsule-engine", rev = "c7701385b87b68c631803e5d0adeee4d617ff5d4" }
+capsule-engine = { git = "https://github.com/action-state-group/capsule-engine", rev = "b84d7d0f2d48f9acdf79880dc1e3fa059aba1355" }
 # Class 1 verification of a received half (capsule-emit main moved it here),
 # and, with `inference-history`, the Service History's derivation and checks
 # (`service_history`, evidencebook#322). 0.14.0 adds Evidence Bundle -03 History
