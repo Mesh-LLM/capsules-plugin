@@ -624,11 +624,14 @@ export async function verifyHistoryReply(replyText: string, readerWitnesses?: Re
   const reports = await Promise.all(links.map((l) => witnessReport(reply, l, readerWitnesses)))
   const anchorReport = reports[reports.length - 1]
   const earlierFailed = reports.slice(0, -1).some((r) => r.status === 'fail')
-  const witnessCheck: Check = {
-    id: 'witness_receipts',
-    status: earlierFailed ? 'fail' : anchorReport.status,
-    detail: earlierFailed ? 'A witness receipt for an earlier checkpoint does not verify under a key you supplied.' : anchorReport.detail
-  }
+  // The list, the chip and the badges read one result: "Checked" needs every checkpoint stamped, not only the
+  // last. A passing last checkpoint beside an earlier one that is not stamped is not "Checked" (#359).
+  const earlierOpen = reports.slice(0, -1).some((r) => r.status === 'not_run')
+  const witnessCheck: Check = earlierFailed
+    ? { id: 'witness_receipts', status: 'fail', detail: 'A witness receipt for an earlier checkpoint does not verify under a key you supplied.' }
+    : anchorReport.status === 'pass' && earlierOpen
+      ? { id: 'witness_receipts', status: 'not_run', detail: 'An earlier checkpoint has no witness receipt that verifies under a key you supplied, so not every checkpoint is shown as time-stamped.' }
+      : { id: 'witness_receipts', status: anchorReport.status, detail: anchorReport.detail }
   const witnessSlot = (r: WitnessReport): WitnessSlot =>
     r.status === 'pass'
       ? { state: 'passed', by: r.by, at: r.at }

@@ -49,22 +49,24 @@ function cell(what: string, value: string) {
 const NOT_CHECKED = { state: 'not_checked' } as const
 
 // The witness check's `values`, for the one case the list can name: the reader's witness list time-stamped every
-// checkpoint but the last, and the answer holds no registered receipt for that last one (none or stubs only).
-// Any other reason a slot reads "not checked" (no list, a receipt without a time, an algorithm this browser
-// cannot check) is not "not registered", so the line stays bare. `at` is the checkpoint's own signed cut time,
-// which the view requires to equal the row's.
+// checkpoint but one, and the answer holds no registered receipt for that one (none or stubs only), wherever it
+// sits. Any other reason a slot reads "not checked" (no list, a receipt without a time, an algorithm this browser
+// cannot check) is not "not registered", and two or more open checkpoints are not named, so the line stays bare.
+// `at` is the checkpoint's own signed cut time, which the view requires to equal the row's.
 // The row's slot, without the verifier's own `unregistered` note: the view takes only a state and what a pass says.
 function slotOf(slot: WitnessSlot | undefined) {
   if (!slot) return NOT_CHECKED
   return slot.state === 'not_checked' ? NOT_CHECKED : slot
 }
 
-function unregisteredLast(verdict: HistoryVerdict): { n: number; at: string } | undefined {
+function unregisteredOne(verdict: HistoryVerdict): { n: number; at: string } | undefined {
   const cps = verdict.checkpoints
-  const last = cps[cps.length - 1]
-  if (cps.length < 2 || last?.witness?.state !== 'not_checked' || last.witness.unregistered !== true) return undefined
-  if (!cps.slice(0, -1).every((c) => c.witness?.state === 'passed')) return undefined
-  return { n: cps.length, at: last.time }
+  if (cps.length < 2) return undefined
+  const open = cps.flatMap((c, i) => (c.witness?.state === 'passed' ? [] : [i]))
+  const [i] = open
+  const slot = i === undefined ? undefined : cps[i]?.witness
+  if (open.length !== 1 || slot?.state !== 'not_checked' || slot.unregistered !== true) return undefined
+  return { n: i! + 1, at: cps[i!]!.time }
 }
 
 export function historyViewInput(verdict: HistoryVerdict, context: HistoryPageContext) {
@@ -80,7 +82,7 @@ export function historyViewInput(verdict: HistoryVerdict, context: HistoryPageCo
     // A later failure of a check that passed before (a Service History's card
     // shape after its digest) wins.
     const seen = checks.find((c) => c.id === id)
-    const values = id === 'witness' && check.status === 'not_run' && drawn ? unregisteredLast(verdict) : undefined
+    const values = id === 'witness' && check.status === 'not_run' && drawn ? unregisteredOne(verdict) : undefined
     if (!seen) checks.push(values ? { id, status: check.status, values } : { id, status: check.status })
     else if (check.status === 'fail') seen.status = 'fail'
   }

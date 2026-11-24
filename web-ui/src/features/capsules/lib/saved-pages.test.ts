@@ -123,6 +123,33 @@ describe('the History page, opened offline', () => {
     )
   })
 
+  it('names a middle checkpoint the witness has not registered, and does not say Checked (#359)', async () => {
+    const reply = JSON.parse(
+      readFileSync(path.resolve(process.cwd(), '../crates/evidence-plugin/tests/fixtures/history_card_2_witnessed.json'), 'utf8')
+    ) as { witness_receipts: { checkpoint: string; witness: Record<string, unknown> }[] }
+    // The 10th receipt is for a middle checkpoint (the fixture holds 19, one per checkpoint, in checkpoint order).
+    const dropped = reply.witness_receipts[9]!.checkpoint
+    reply.witness_receipts = reply.witness_receipts.filter((r) => r.checkpoint !== dropped)
+    const { dom } = await open(historyPage(`${JSON.stringify(reply)}\n`, SAVED, NODE).html)
+    const doc = dom.window.document
+    const key = '302a300506032b6570032100d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da'
+    ;(doc.getElementById('witness-list') as HTMLTextAreaElement).value = JSON.stringify({ witnesses: [{ name: 'my witness', keys: [key] }] })
+    ;(doc.getElementById('witness-apply') as HTMLButtonElement).click()
+    await new Promise((r) => setTimeout(r, 300))
+    const main = doc.querySelector('main')!.textContent!
+    expect(main).toContain('Time-stamped: 18 of 19')
+    expect(main).not.toContain('Checked: A witness time-stamped these records')
+    const stamps = Array.from(doc.querySelectorAll('.cvh-stamp')).filter((e) => e.textContent!.startsWith('TIME-STAMPED'))
+    const unstamped = stamps.flatMap((e, i) => (e.getAttribute('data-state') === 'passed' ? [] : [i + 1]))
+    expect(unstamped).toHaveLength(1)
+    const rows = Array.from(doc.querySelectorAll('.cvh-row'))
+    const n = unstamped[0]!
+    const cut = rows[n - 1]!.querySelector('.cvh-row-title')!.textContent!.replace(/^Cut /, '')
+    expect(main).toContain(
+      `Not checked here: A witness time-stamped these records. Checkpoint ${n} (cut ${cut}) is not registered with the witness yet.`
+    )
+  })
+
   it('shows what this node shares, from the settings the node reported', async () => {
     const { text } = await open(historyPage(served, SAVED, NODE).html)
     expect(text).toContain('What this node shares')

@@ -106,13 +106,22 @@ describe('historyViewInput', () => {
       expect(text).toContain('A witness time-stamped these records. Checkpoint 3 (cut ')
     })
 
+    it('sends a middle checkpoint when it is the only one without a registered receipt', () => {
+      const open = { state: 'not_checked', unregistered: true } as const
+      const v = verdictOf([cp(1, stamped), cp(2, open), cp(3, stamped)])
+      expect(witnessCheck(v)).toEqual({ id: 'witness', status: 'not_run', values: { n: 2, at: '2026-11-03T02:00:00Z' } })
+      const text = historyViewHtml(historyViewInput(v, context))
+      expect(text).toContain('Time-stamped: 2 of 3')
+      expect(text).toContain('A witness time-stamped these records. Checkpoint 2 (cut ')
+    })
+
     it('sends nothing for a last checkpoint that is not checked for any other reason', () => {
       // No keys, a receipt without a time, an algorithm this browser cannot check: never "not registered".
       const v = verdictOf([cp(1, stamped), cp(2, { state: 'not_checked' })])
       expect(witnessCheck(v)).toEqual({ id: 'witness', status: 'not_run' })
     })
 
-    it('sends nothing when an earlier checkpoint is also open, or failed, or there is only one checkpoint', () => {
+    it('sends nothing when two checkpoints are open, one failed, or there is only one checkpoint', () => {
       const open = { state: 'not_checked', unregistered: true } as const
       expect(witnessCheck(verdictOf([cp(1, stamped), cp(2, open), cp(3, open)]))).toEqual({ id: 'witness', status: 'not_run' })
       expect(witnessCheck(verdictOf([cp(1, { state: 'failed' }), cp(2, open)]))).toEqual({ id: 'witness', status: 'not_run' })
