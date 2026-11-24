@@ -89,27 +89,31 @@ pub fn witness_urls() -> Vec<String> {
     config_from_env().witness_urls
 }
 
+/// Set once at start: this node stays on the flat ledger. Such a node
+/// delivers to witnesses inside the checkpoint-state lock (capsule-emit cannot
+/// move that delivery out), so an unreachable default witness would stall it;
+/// it gets no default witness and uses one only when its operator names it.
+/// Every reader of the witness setting goes through [`witness_urls_from`], so
+/// the saved, active and displayed lists agree.
+static FLAT_LEDGER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// The witness list from the setting's raw value: the default witness when it
-/// is unset, none when it is `off` or holds no URL. A URL with a user, password, query or fragment is not used
-/// (any of them can carry a credential, and the URL is kept in receipts and
-/// shown on the page); it is logged instead.
-/// The witness list a node starts with, given its ledger layout. The default
-/// witness applies to a store-backed node only: a node that stays on the flat
-/// ledger delivers to witnesses inside the checkpoint-state lock (capsule-emit
-/// cannot move that delivery out), so an unreachable default witness would
-/// stall it. Such a node uses a witness only when its operator names one.
-fn witness_urls_for_layout(raw: Option<&str>, flat: bool) -> Vec<String> {
-    let urls = witness_urls_from(raw);
-    if flat && raw.is_none_or(|r| r.trim().is_empty()) {
-        return Vec::new();
-    }
-    urls
+/// is unset (store-backed nodes only), none when it is `off` or holds no URL.
+/// A URL with a user, password, query or fragment is not used (any of them can
+/// carry a credential, and the URL is kept in receipts and shown on the
+/// page); it is logged instead.
+pub(crate) fn witness_urls_from(raw: Option<&str>) -> Vec<String> {
+    witness_urls_for(raw, FLAT_LEDGER.load(std::sync::atomic::Ordering::Relaxed))
 }
 
-pub(crate) fn witness_urls_from(raw: Option<&str>) -> Vec<String> {
+fn witness_urls_for(raw: Option<&str>, flat: bool) -> Vec<String> {
     // A blank value is unset, as `settings::var` reads it for every setting.
     let Some(raw) = raw.filter(|r| !r.trim().is_empty()) else {
-        return vec![DEFAULT_WITNESS_URL.to_string()];
+        return if flat {
+            Vec::new()
+        } else {
+            vec![DEFAULT_WITNESS_URL.to_string()]
+        };
     };
     if raw.trim().eq_ignore_ascii_case("off") {
         return Vec::new();
@@ -517,10 +521,13 @@ pub fn spawn(
     capsules: Arc<CapsuleState>,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) -> anyhow::Result<CheckpointHandle> {
-    let mut cfg = config_from_env();
-    let raw_witness = crate::settings::var(ENV_WITNESS_URLS).ok();
-    cfg.witness_urls = witness_urls_for_layout(raw_witness.as_deref(), capsules.stays_flat());
-    if capsules.stays_flat() && raw_witness.is_none() {
+    FLAT_LEDGER.store(capsules.stays_flat(), std::sync::atomic::Ordering::Relaxed);
+    let cfg = config_from_env();
+    if capsules.stays_flat()
+        && crate::settings::var(ENV_WITNESS_URLS)
+            .ok()
+            .is_none_or(|r| r.trim().is_empty())
+    {
         tracing::warn!(
             "this node stays on the flat ledger, which sends checkpoints to a witness while holding \
              the checkpoint lock, so the default witness is not used here; name a witness to use one"
@@ -708,9 +715,10 @@ async fn deliver_witnesses(
     )
     .await;
     match sent {
-        // Shutdown arrived mid-pass: the pass is abandoned (its thread ends
-        // with its request, and dropping the delivery frees the next pass);
-        // its rows stay due for the next start.
+        // Shutdown arrived mid-pass: the pass is abandoned. Its thread still
+        // owns the delivery until the send returns, so the "a pass is out"
+        // flag stays set and the final shutdown pass is skipped; the rows
+        // stay due for the next start.
         None => false,
         Some(Some(delivery)) => {
             task.state
@@ -890,14 +898,14 @@ mod tests {
     /// only when one is named.
     #[test]
     fn a_flat_ledger_node_has_no_default_witness() {
-        assert_eq!(witness_urls_for_layout(None, false), [DEFAULT_WITNESS_URL]);
-        assert!(witness_urls_for_layout(None, true).is_empty());
-        assert!(witness_urls_for_layout(Some("  "), true).is_empty());
+        assert_eq!(witness_urls_for(None, false), [DEFAULT_WITNESS_URL]);
+        assert!(witness_urls_for(None, true).is_empty());
+        assert!(witness_urls_for(Some("  "), true).is_empty());
         assert_eq!(
-            witness_urls_for_layout(Some("https://a.example"), true),
+            witness_urls_for(Some("https://a.example"), true),
             ["https://a.example"]
         );
-        assert!(witness_urls_for_layout(Some("off"), false).is_empty());
+        assert!(witness_urls_for(Some("off"), false).is_empty());
     }
 
     /// A witness send in flight never holds up a shutdown: the wait ends as

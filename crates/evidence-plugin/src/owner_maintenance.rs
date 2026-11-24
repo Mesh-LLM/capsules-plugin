@@ -758,9 +758,11 @@ fn record_at_completion_status(shown: Value, plugin_is_off: bool) -> Value {
 }
 
 fn witness_switch() -> Value {
+    // Unset: the default witness, or none on a node that stays flat.
+    let default = crate::checkpoint_cadence::witness_urls_from(None);
     let mut witness = switch(
         "CAPSULES_CHECKPOINT_WITNESS_URLS",
-        Some(crate::share_policy::DEFAULT_WITNESS_URL),
+        Some(default.first().map_or("off", String::as_str)),
     );
     if let Some(value) = witness["value"].as_str() {
         let shown: Vec<String> = value
