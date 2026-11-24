@@ -72,6 +72,9 @@ export type CheckStatus = 'pass' | 'fail' | 'not_run'
 
 export type Check = { id: VerifierCheckId; status: CheckStatus; detail: string }
 
+/** What a checkpoint's time-stamp slot shows, from that checkpoint's own witness receipts. */
+export type WitnessSlot = { state: 'passed'; by: string; at: string } | { state: 'failed' } | { state: 'not_checked' }
+
 export type HistoryVerdict = {
   /** `answered`: the node gave its card; `refused`: it signed a refusal;
    *  `unreadable`: the bytes are neither. */
@@ -80,7 +83,7 @@ export type HistoryVerdict = {
   verified: boolean
   checks: Check[]
   /** The checkpoints the card lists, when it was read. */
-  checkpoints: { size: number; time: string; anchor: string }[]
+  checkpoints: { size: number; time: string; anchor: string; witness?: WitnessSlot }[]
   /** The refusal's reason, for a refusal. */
   reason?: string
   /** The key every checkpoint was checked under: the one the reply names as
@@ -295,39 +298,39 @@ const base64ToBytes = (text: string): Uint8Array | null => {
   }
 }
 
-/** The witness receipts the reply carries for the anchor checkpoint, checked with
- *  `checkAnchorWitnessed` under the reader's own list. The leaf it is given is the
- *  entry the node binds a receipt to: SHA-256 of the checkpoint's record digest,
- *  recomputed here from the verified checkpoint, never read from the receipt's
- *  unsigned `entry_hash`; a receipt made for another entry cannot verify over it. Receipts on an earlier checkpoint do not count (evidencebook#209), a
- *  stub was never registered, and no keys or no receipt is `not_run`: never a pass. */
-async function checkWitnessReceipts(
-  reply: Record<string, unknown>,
-  anchor: Link,
-  readerWitnesses: ReaderWitnesses | undefined
-): Promise<Check> {
-  const notRun = (detail: string): Check => ({ id: 'witness_receipts', status: 'not_run', detail })
+/** What one checkpoint's witness receipts say, checked with `checkAnchorWitnessed` under the
+ *  reader's own list. The leaf it is given is the entry the node binds a receipt to: SHA-256 of
+ *  the checkpoint's record digest, recomputed here from the verified checkpoint, never read from
+ *  the receipt's unsigned `entry_hash`; a receipt made for another entry cannot verify over it.
+ *  A stub was never registered, and no keys or no receipt is `not_run`: never a pass. A receipt
+ *  counts only for the checkpoint it names (evidencebook#209). */
+type WitnessReport =
+  | { status: 'not_run'; detail: string }
+  | { status: 'fail'; detail: string }
+  | { status: 'pass'; detail: string; by: string; at: string | null }
+
+async function witnessReport(reply: Record<string, unknown>, link: Link, readerWitnesses: ReaderWitnesses | undefined): Promise<WitnessReport> {
+  const notRun = (detail: string): WitnessReport => ({ status: 'not_run', detail })
   const carried = Array.isArray(reply.witness_receipts) ? reply.witness_receipts : []
-  const forAnchor = carried.flatMap((item) => {
+  const forLink = carried.flatMap((item) => {
     const entry = object(item)
     const witness = object(entry?.witness)
-    return entry && witness && entry.checkpoint === anchor.digest ? [witness] : []
+    return entry && witness && entry.checkpoint === link.digest ? [witness] : []
   })
-  if (forAnchor.length === 0) return notRun('The answer holds no witness receipt for its last checkpoint, so none was checked.')
-  const registered = forAnchor.filter((w) => w.is_stub !== true)
-  if (registered.length === 0) return notRun('The only witness receipts for the last checkpoint are stubs: they were never registered with a witness.')
+  if (forLink.length === 0) return notRun('The answer holds no witness receipt for this checkpoint, so none was checked.')
+  const registered = forLink.filter((w) => w.is_stub !== true)
+  if (registered.length === 0) return notRun('The only witness receipts for this checkpoint are stubs: they were never registered with a witness.')
   if (!readerWitnesses || readerWitnesses.witnesses.length === 0) {
     return notRun('Witness receipts were not checked: no witness keys were supplied. Give this page the witnesses you accept.')
   }
-  const fail = (detail: string): Check => ({ id: 'witness_receipts', status: 'fail', detail })
   const record = await checkpointDigest({
-    log_id: anchor.logId,
-    mmr_size: Number(anchor.size),
-    root: anchor.root,
-    key_id: anchor.keyId,
-    timestamp: anchor.time,
-    prev_size: Number(anchor.previousSize),
-    prev_root: anchor.previousRoot
+    log_id: link.logId,
+    mmr_size: Number(link.size),
+    root: link.root,
+    key_id: link.keyId,
+    timestamp: link.time,
+    prev_size: Number(link.previousSize),
+    prev_root: link.previousRoot
   })
   const recordBytes = hexToBytes(record)
   const entryHex = recordBytes ? await sha256Hex(recordBytes) : null
@@ -338,13 +341,16 @@ async function checkWitnessReceipts(
   const report = await checkAnchorWitnessed(entryHex!, receipts, readerWitnesses)
   switch (report.status) {
     case 'PASS':
+      // A time-stamp with no time is not one a reader can be shown: the page's time slot needs it.
+      if (report.witnessed_time === null) return notRun('A witness you accept holds this checkpoint but its receipt states no registration time, so it is not shown as time-stamped.')
       return {
-        id: 'witness_receipts',
         status: 'pass',
-        detail: `A witness you accept (${report.witness ?? 'unnamed'}) holds the last checkpoint${report.witnessed_time !== null ? `, registered at ${new Date(report.witnessed_time * 1000).toISOString()}` : ''}.`
+        by: report.witness ?? 'unnamed',
+        at: new Date(report.witnessed_time * 1000).toISOString(),
+        detail: `A witness you accept (${report.witness ?? 'unnamed'}) holds the last checkpoint, registered at ${new Date(report.witnessed_time * 1000).toISOString()}.`
       }
     case 'FAIL':
-      return fail('No witness receipt for the last checkpoint verifies under a key you supplied.')
+      return { status: 'fail', detail: 'No witness receipt for this checkpoint verifies under a key you supplied.' }
     default:
       return notRun('The witness receipts could not be checked: this browser cannot verify them, or none of the keys you supplied is for the receipts’ algorithm.')
   }
@@ -604,12 +610,25 @@ export async function verifyHistoryReply(replyText: string, readerWitnesses?: Re
   if (artifact.evidence_stream !== last.logId) return fail('anchor', 'The answer names another log than its checkpoints.')
   checks.push({ id: 'anchor', status: 'pass', detail: 'The last checkpoint is the anchor the answer names, for the log it names.' })
 
-  const witnessCheck = await checkWitnessReceipts(reply, last, readerWitnesses)
+  // One verdict for the page: the check list, the chip and every checkpoint's badge read it. Each checkpoint
+  // is checked on its own receipts; the last one's report is the check's. A receipt that fails on an
+  // earlier checkpoint fails the check too, so the list never says Checked next to a badge that says it
+  // didn't verify.
+  const reports = await Promise.all(links.map((l) => witnessReport(reply, l, readerWitnesses)))
+  const anchorReport = reports[reports.length - 1]
+  const earlierFailed = reports.slice(0, -1).some((r) => r.status === 'fail')
+  const witnessCheck: Check = {
+    id: 'witness_receipts',
+    status: earlierFailed ? 'fail' : anchorReport.status,
+    detail: earlierFailed ? 'A witness receipt for an earlier checkpoint does not verify under a key you supplied.' : anchorReport.detail
+  }
+  const witnessSlot = (r: WitnessReport): WitnessSlot =>
+    r.status === 'pass' ? { state: 'passed', by: r.by, at: r.at! } : r.status === 'fail' ? { state: 'failed' } : { state: 'not_checked' }
   return {
     kind: 'answered',
     verified: witnessCheck.status !== 'fail',
     checks: [...checks, ...(counts ? [PERIOD_COUNTS_NOT_RUN] : []), witnessCheck, ...NOT_RUN.filter((c) => c.id !== 'witness_receipts')],
-    checkpoints: links.map((l) => ({ size: Number(l.size), time: l.time, anchor: l.digest })),
+    checkpoints: links.map((l, i) => ({ size: Number(l.size), time: l.time, anchor: l.digest, witness: witnessSlot(reports[i]) })),
     keyId: last.keyId,
     form: counts ? 'service_history' : 'history_card',
     ...(counts ? { counts } : {})

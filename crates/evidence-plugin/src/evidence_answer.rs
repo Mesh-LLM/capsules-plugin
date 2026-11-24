@@ -1898,6 +1898,9 @@ pub(crate) mod tests {
 
     pub(crate) const WITNESS: &str = "https://witness.example";
 
+    /// The registration time the minted receipts state (2026-11-24T12:00:00Z).
+    pub(crate) const WITNESS_REGISTERED_AT: u64 = 1_795_521_600;
+
     /// A real witness receipt for `entry` under `key`: a COSE_Sign1 (EdDSA)
     /// over the root of a one-leaf RFC 9162 tree, with its inclusion proof.
     pub(crate) fn mint_receipt(entry: &[u8; 32], key: &SigningKey) -> String {
@@ -1914,9 +1917,15 @@ pub(crate) mod tests {
             &mut proof,
         )
         .unwrap();
+        // The registration time a real witness states: the CWT claims header (15)
+        // with `iat` (6), the label the History page reads it from.
         let protected = HeaderBuilder::new()
             .algorithm(iana::Algorithm::EdDSA)
             .value(395, 1.into())
+            .value(
+                15,
+                Cbor::Map(vec![(6.into(), WITNESS_REGISTERED_AT.into())]),
+            )
             .build();
         let unprotected = HeaderBuilder::new()
             .value(

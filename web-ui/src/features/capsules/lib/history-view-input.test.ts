@@ -51,6 +51,35 @@ describe('historyViewInput', () => {
     expect(() => historyViewHtml(input)).not.toThrow()
   })
 
+  it('draws the checkpoints, with failed time-stamp slots, when only the witness check fails', () => {
+    const verdict: HistoryVerdict = {
+      kind: 'answered',
+      verified: false,
+      checks: [{ id: 'checkpoints', status: 'pass', detail: '' }, { id: 'witness_receipts', status: 'fail', detail: '' }, ...NOT_RUN.filter((c) => c.id !== 'witness_receipts')],
+      checkpoints: [{ size: 5, time: '2026-11-03T01:00:00Z', anchor: 'ab'.repeat(32), witness: { state: 'failed' } }],
+      keyId: 'c'.repeat(64)
+    }
+    const html = historyViewHtml(historyViewInput(verdict, context))
+    expect(html).toContain('Time stamps didn')
+    expect(html).not.toContain('No checkpoints yet')
+    // A failed signature check still hides them.
+    const bad: HistoryVerdict = { ...verdict, checks: [{ id: 'checkpoints', status: 'fail', detail: '' }] }
+    expect(historyViewInput(bad, context).rows).toEqual([])
+  })
+
+  it('draws a passed time-stamp slot as stamped, in the chip and on the row', () => {
+    const verdict: HistoryVerdict = {
+      kind: 'answered',
+      verified: true,
+      checks: [{ id: 'checkpoints', status: 'pass', detail: '' }, { id: 'witness_receipts', status: 'pass', detail: '' }],
+      checkpoints: [{ size: 5, time: '2026-11-03T01:00:00Z', anchor: 'ab'.repeat(32), witness: { state: 'passed', by: 'w', at: '2026-11-03T02:00:00Z' } }],
+      keyId: 'c'.repeat(64)
+    }
+    const html = historyViewHtml(historyViewInput(verdict, context))
+    expect(html).toContain('Time-stamped: all 1')
+    expect(html).not.toContain('Time stamps not checked here')
+  })
+
   it('keeps node-supplied text inside what the view accepts', () => {
     for (const reason of ['', 'x'.repeat(300)]) {
       const refusal: HistoryVerdict = { kind: 'refused', verified: false, checks: [{ id: 'refusal', status: 'not_run', detail: '' }], checkpoints: [], reason }
