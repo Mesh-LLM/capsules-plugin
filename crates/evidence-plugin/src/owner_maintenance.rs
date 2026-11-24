@@ -758,7 +758,10 @@ fn record_at_completion_status(shown: Value, plugin_is_off: bool) -> Value {
 }
 
 fn witness_switch() -> Value {
-    let mut witness = switch("CAPSULES_CHECKPOINT_WITNESS_URLS", None);
+    let mut witness = switch(
+        "CAPSULES_CHECKPOINT_WITNESS_URLS",
+        Some(crate::share_policy::DEFAULT_WITNESS_URL),
+    );
     if let Some(value) = witness["value"].as_str() {
         let shown: Vec<String> = value
             .split(',')

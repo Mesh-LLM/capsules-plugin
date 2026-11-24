@@ -82,7 +82,9 @@ impl Host {
             .env_remove("CAPSULES_SHARE_RECORD_AT_COMPLETION")
             .env_remove("CAPSULES_SHARE_ADJUDICATIONS")
             .env_remove("CAPSULES_ADJUDICATE_DIFFERING_TWINS")
-            .env_remove("CAPSULES_CHECKPOINT_WITNESS_URLS");
+            // The default witness is on unless named off: a quiet node
+            // names none.
+            .env("CAPSULES_CHECKPOINT_WITNESS_URLS", "off");
         for (k, v) in extra_env {
             cmd.env(k, v);
         }

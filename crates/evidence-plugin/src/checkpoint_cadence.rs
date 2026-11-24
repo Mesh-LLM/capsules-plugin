@@ -1,11 +1,11 @@
 //! The plugin's own checkpoint cadence: a tokio background task that runs
 //! `crate::producer::checkpoint::CheckpointState` over this node's ledger.
 //!
-//! **On by default, local-only.** The cadence task runs
-//! unless the operator opts OUT by setting [`ENV_ENABLE`] to `"off"` --
-//! "on by default" is local checkpointing only: [`ENV_WITNESS_URLS`] stays
-//! empty/unset by default, so no network call ever happens unless the
-//! operator also sets a witness URL. A standalone checkpointing process
+//! **On by default, witnessed by default.** The cadence task runs
+//! unless the operator opts OUT by setting [`ENV_ENABLE`] to `"off"`, and
+//! with [`ENV_WITNESS_URLS`] unset checkpoints are offered to Action State's
+//! hosted witness ([`DEFAULT_WITNESS_URL`], Steven's ruling of 2026-11-24).
+//! `off` there contacts no witness; naming other URLs replaces the default. A standalone checkpointing process
 //! must NEVER run against the same `ledger_dir` as this cadence: both would
 //! append lines to the same `checkpoints.jsonl` and race each other's chain.
 //! That is an operator choice this module cannot detect and refuse safely (a
@@ -42,6 +42,7 @@ use crate::producer::anchor::AnchorClient;
 use crate::producer::checkpoint::{
     CheckpointCadenceConfig, CheckpointRecord, CheckpointState, Coverage, PaddingSink,
 };
+use crate::share_policy::{DEFAULT_WITNESS_KEY, DEFAULT_WITNESS_URL};
 use ed25519_dalek::SigningKey;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
@@ -64,9 +65,9 @@ const ENV_INTERVAL_SECONDS: &str = "CAPSULES_CHECKPOINT_CADENCE_SECONDS";
 /// Entry-count cadence override. Defaults to 100 (upstream `capsule_emit`'s
 /// own default).
 const ENV_CADENCE_ENTRIES: &str = "CAPSULES_CHECKPOINT_CADENCE_ENTRIES";
-/// Comma-separated witness URLs to register checkpoints with. Anchoring is
-/// OPT-IN, always (this repo's posture) -- empty/unset means
-/// self-checkpointed only, no network.
+/// Comma-separated witness URLs to register checkpoints with. Unset means
+/// the default witness; `off` means none (self-checkpointed only, no
+/// network).
 const ENV_WITNESS_URLS: &str = "CAPSULES_CHECKPOINT_WITNESS_URLS";
 /// Each witness's public key, as the operator gives it: a JSON object from
 /// witness URL to its raw Ed25519 key in hex. A witness with no key here has
@@ -83,17 +84,23 @@ pub fn witness_configured() -> bool {
     !witness_urls().is_empty()
 }
 
-/// The witness URLs the operator named, in order: none by default.
+/// The witness URLs in force, in order: the operator's, else the default witness.
 pub fn witness_urls() -> Vec<String> {
     config_from_env().witness_urls
 }
 
-/// The witness list from the setting's raw value: none when it is unset or
-/// holds no URL. A URL with a user, password, query or fragment is not used
+/// The witness list from the setting's raw value: the default witness when it
+/// is unset, none when it is `off` or holds no URL. A URL with a user, password, query or fragment is not used
 /// (any of them can carry a credential, and the URL is kept in receipts and
 /// shown on the page); it is logged instead.
-fn witness_urls_from(raw: Option<&str>) -> Vec<String> {
-    raw.unwrap_or_default()
+pub(crate) fn witness_urls_from(raw: Option<&str>) -> Vec<String> {
+    let Some(raw) = raw else {
+        return vec![DEFAULT_WITNESS_URL.to_string()];
+    };
+    if raw.trim().eq_ignore_ascii_case("off") {
+        return Vec::new();
+    }
+    raw
         .split(',')
         .map(str::trim)
         .filter(|s| !s.is_empty())
@@ -173,6 +180,19 @@ fn witness_keys_from(raw: Option<&str>) -> std::collections::BTreeMap<String, St
 }
 
 fn witness_keys_checked(
+    raw: Option<&str>,
+) -> (std::collections::BTreeMap<String, String>, Vec<String>) {
+    let (mut keys, problems) = configured_witness_keys(raw);
+    // The default witness's key ships with its URL, unless the operator gave
+    // one for it: its receipts then check offline from the first checkpoint.
+    keys.entry(DEFAULT_WITNESS_URL.to_string())
+        .or_insert_with(|| DEFAULT_WITNESS_KEY.to_string());
+    (keys, problems)
+}
+
+/// The keys the operator gave (`CAPSULES_CHECKPOINT_WITNESS_KEYS`) and what is
+/// wrong with them, without the default witness's own.
+fn configured_witness_keys(
     raw: Option<&str>,
 ) -> (std::collections::BTreeMap<String, String>, Vec<String>) {
     let Some(raw) = raw.map(str::trim).filter(|r| !r.is_empty()) else {
@@ -680,12 +700,14 @@ fn report_checkpoint(
 mod tests {
     use super::*;
 
-    /// Nothing set means no witness at all, so nothing is ever registered
-    /// anywhere and no witness is contacted (`witness_status` contacts only a
-    /// named one, and registration walks the named ones only).
+    /// Nothing set means the default witness; `off` means none, so nothing is
+    /// registered anywhere and no witness is contacted (`witness_status`
+    /// contacts only a named one, and registration walks the named ones only).
     #[test]
-    fn unset_means_no_witness_and_no_outbound() {
-        assert!(witness_urls_from(None).is_empty());
+    fn unset_means_the_default_witness_and_off_means_no_outbound() {
+        assert_eq!(witness_urls_from(None), [DEFAULT_WITNESS_URL]);
+        assert!(witness_urls_from(Some("off")).is_empty());
+        assert!(witness_urls_from(Some(" OFF ")).is_empty());
         assert!(witness_urls_from(Some("")).is_empty());
         assert!(witness_urls_from(Some(" , ,")).is_empty());
         assert_eq!(
@@ -696,7 +718,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         crate::witness_status::refresh_witnesses(
             dir.path(),
-            &witness_urls_from(None),
+            &witness_urls_from(Some("off")),
             &Default::default(),
             None,
         );
@@ -721,10 +743,10 @@ mod tests {
     #[test]
     fn a_malformed_key_setting_is_a_problem_to_show() {
         let (keys, problems) = witness_keys_checked(Some("not json"));
-        assert!(keys.is_empty());
+        assert_eq!(keys.keys().collect::<Vec<_>>(), [DEFAULT_WITNESS_URL]);
         assert!(problems[0].contains("not a JSON object"));
         let (keys, problems) = witness_keys_checked(Some(r#"{"https://w.example": "short"}"#));
-        assert!(keys.is_empty());
+        assert!(!keys.contains_key("https://w.example"));
         assert!(problems[0].contains("w.example"));
         assert!(witness_keys_checked(None).1.is_empty());
     }
@@ -735,10 +757,28 @@ mod tests {
         let keys = witness_keys_from(Some(&format!(
             r#"{{"https://a.example": "{k}", "https://b.example": "short"}}"#
         )));
-        assert_eq!(keys.len(), 1);
+        assert_eq!(keys.len(), 2, "a.example and the default witness");
         assert_eq!(keys["https://a.example"], "ab".repeat(32));
-        assert!(witness_keys_from(Some("not json")).is_empty());
-        assert!(witness_keys_from(None).is_empty());
+        assert!(!keys.contains_key("https://b.example"));
+        assert_eq!(keys[DEFAULT_WITNESS_URL], DEFAULT_WITNESS_KEY);
+        assert_eq!(witness_keys_from(Some("not json")).len(), 1);
+    }
+
+    /// The default witness's key ships with its URL (the same value as
+    /// evidencebook's `DealDefaultWitnessKey`), so its receipts check offline;
+    /// a key the operator gives for it wins.
+    #[test]
+    fn the_default_witness_key_ships_with_its_url_unless_overridden() {
+        assert_eq!(
+            DEFAULT_WITNESS_KEY,
+            "39bb654c9dc0afe1c0edef0deffaa69099b8518836c9ba26e0491535840f96b5"
+        );
+        let keys = witness_keys_from(None);
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[DEFAULT_WITNESS_URL], DEFAULT_WITNESS_KEY);
+        let mine = "cd".repeat(32);
+        let keys = witness_keys_from(Some(&format!(r#"{{"{DEFAULT_WITNESS_URL}": "{mine}"}}"#)));
+        assert_eq!(keys[DEFAULT_WITNESS_URL], mine);
     }
 
     #[test]

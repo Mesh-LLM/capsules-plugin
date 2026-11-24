@@ -203,7 +203,7 @@ Details in [CHANGELOG.md](https://github.com/Mesh-LLM/capsules-plugin/blob/main/
   the peer as this plugin's request, which the host refuses unless you set `allow_peer_blocks =
   true` for this plugin. The plugin no longer calls the console's own route.
 - **Several witnesses.** **Witnesses** in the console is a list: each witness's URL and, if you have
-  it, its public key (still none by default, and no witness is contacted until you add one). The
+  it, its public key. With none set, the plugin offers checkpoints to Action State's hosted witness, whose key ships with it (run by Action State, so not independent of us; it sees checkpoint hashes only); enter `off` to contact no witness. The
   Evidence page shows what each witness holds, and counts a witness only once its receipt checks
   against the witness's key. A key you don't give is fetched from the witness once and kept, and
   the page says so. Every witness is contacted at exactly the URL you give, and no redirect is
@@ -229,7 +229,7 @@ Details in [CHANGELOG.md](https://github.com/Mesh-LLM/capsules-plugin/blob/main/
   [The log's id](#the-logs-id)).
 - **A served half is found by its digests** when the host forwarded no nonce. Both nodes need
   0.1.1 for this.
-- **The witness indicator** says "off" only when no witness is set.
+- **The witness indicator** says "off" only when you set the witness to `off`.
 
 Details in [CHANGELOG.md](https://github.com/Mesh-LLM/capsules-plugin/blob/main/CHANGELOG.md).
 
@@ -256,7 +256,7 @@ exchanges ended; the record itself goes only to the counterparty:
 | This node's Service History (`service_history/1`: exchanges served per model and week, a count under 5 withheld), when a node asks | a counterparty always; any other node only when on | **off** for any other node | `share_standard_history = "on"` |
 | The verdicts referees delivered to this node about its exchanges (`service_history/2`: per week and model hash, how many `corroborated`, `contradicted`, `inconclusive` and `not_comparable`; a count under 5 withheld; counted from this node's own log, never from a list it curates), when a node asks | a counterparty always; any other node only when on | **off** for any other node | `share_standard_history = "on"` (the same switch as `service_history/1`; `/2` is listed in the commitment beside it) |
 | Whether this node holds a given referee verdict (`verdict_held/1`, asked by the verdict's id: the record's digest and an inclusion proof, or a signed "not held", which says only that the node holds no record counting that verdict about itself; never the ruling or who asked), when a node asks | a counterparty always; any other node only when on | **off** for any other node | `share_standard_history = "on"` |
-| A signed checkpoint of the log | the witness services you name | **off**: none by default | add witnesses under **Witnesses** |
+| A signed checkpoint of the log | the witness services you name; with none named, Action State's hosted witness (checkpoint hashes only) | **on**: the hosted witness by default | enter `off` under **Witnesses** to contact none |
 
 The value this node is acting on is written to `sharing-effective.json` in
 its data directory (`share_record_at_completion`: `counterparty` or `off`,

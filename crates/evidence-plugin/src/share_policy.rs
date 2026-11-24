@@ -31,9 +31,18 @@ pub const ADJUDICATIONS_KEY: &str = "share_adjudications";
 pub const SETTLEMENT_RECEIPTS_KEY: &str = "share_settlement_receipts";
 pub const WITNESS_KEY: &str = "witness";
 
-/// Shown greyed in the Witnesses field as a suggestion. Not a default: the
-/// plugin contacts no witness until the user clicks Set (or types one).
-pub const SUGGESTED_WITNESS_URL: &str = "https://witness.agentactioncapsule.org";
+/// The witness a node offers its checkpoints to when the operator names none
+/// (Steven's ruling, 2026-11-24: witnessed by default, pointing at Action
+/// State's hosted witness). It is run by Action State, so it is not
+/// independent of us. `witness = "off"` (or `CAPSULES_CHECKPOINT_WITNESS_URLS=off`)
+/// turns it off; naming other witnesses replaces it. The same endpoint and
+/// key are `DealDefaultWitness` and `DealDefaultWitnessKey` in
+/// evidencebook's `capsulectl/internal/deal/deal_verify_names.go`.
+pub const DEFAULT_WITNESS_URL: &str = "https://witness.agentactioncapsule.org";
+/// The default witness's Ed25519 key in hex, so its receipts check offline
+/// from the first checkpoint instead of trusting the first answer.
+pub const DEFAULT_WITNESS_KEY: &str =
+    "39bb654c9dc0afe1c0edef0deffaa69099b8518836c9ba26e0491535840f96b5";
 /// The rest of Standard Service History (`service_history/1` and other
 /// derivations) to a requester that is not this node's counterparty.
 /// Checkpoints and `history_card/1` are stranger-safe and not gated by it.
@@ -498,15 +507,16 @@ pub fn share_policy_config_schema(plugin_id: &str) -> ManifestEntry {
                 ])),
             )
             .description(
-                "Witness services to offer this node's checkpoints to: each one's URL, and its public key if you have it. Empty is off (the default): there is no default witness, and the plugin contacts none until you add one. The Evidence page shows what each witness holds. Takes effect when mesh-llm is restarted.",
+                "Witness services to offer this node's checkpoints to: each one's URL, and its public key if you have it. Unset (or empty) means the default witness, run by Action State (not independent of us), which sees checkpoint hashes only; name other witnesses to replace it, or enter `off` to contact none. The Evidence page shows what each witness holds. Takes effect when mesh-llm is restarted.",
             )
                 .label("Witnesses")
                 // The console shows this greyed with a Set button (the generic
                 // `set-value` renderer); nothing is stored until Set is clicked,
-                // so there is still no default witness. The URL answers
+                // and an unset value means the default witness, applied in
+                // `checkpoint_cadence::witness_urls_from`. The URL answers
                 // `GET /anchor/authority-pubkey` with `pubkey_hex` and `key_id`,
                 // which is what `witness_status::fetch_key` reads.
-                .placeholder(SUGGESTED_WITNESS_URL)
+                .placeholder(DEFAULT_WITNESS_URL)
                 .renderer_id("set-value")
                 .category(RECORDS_CATEGORY_ID, RECORDS_CATEGORY_LABEL, RECORDS_CATEGORY_SUMMARY, 2)
                 .order(12),
@@ -1074,9 +1084,10 @@ mod tests {
     }
 
     #[test]
-    fn witness_has_no_default_url_and_is_not_required() {
-        // Design note S1: "witness: off | <url> # default: off" -- off IS
-        // the absence of a default, never a magic sentinel string.
+    fn witness_names_the_default_url_in_code_and_is_not_required() {
+        // Steven's ruling, 2026-11-24 (evidencebook#862) replaced design note
+        // S1's "default: off": an unset witness is DEFAULT_WITNESS_URL, `off`
+        // is the opt-out. The schema stores no default; the code applies it.
         let schema = as_config_schema(share_policy_config_schema("capsules"));
         let witness = schema
             .settings
@@ -1096,11 +1107,11 @@ mod tests {
             .map(|p| (p.key.as_str(), p.required))
             .collect();
         assert_eq!(props, [("endpoint", true), ("public_key", false)]);
-        // The suggestion is a hint, not a default: still nothing stored.
+        // The placeholder shows the default; nothing is stored until Set.
         let presentation = witness.presentation.as_ref().unwrap();
         assert_eq!(
             presentation.placeholder.as_deref(),
-            Some(SUGGESTED_WITNESS_URL)
+            Some(DEFAULT_WITNESS_URL)
         );
         assert_eq!(presentation.renderer_id.as_deref(), Some("set-value"));
         assert_eq!(witness.default_json, None);

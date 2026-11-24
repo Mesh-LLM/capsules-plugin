@@ -270,8 +270,9 @@ pub fn config_problem() -> Option<String> {
 }
 
 /// The console settings in force when mesh's config file did not parse and
-/// none ever did: every switch that reaches a peer is off, and no witness is
-/// named. A typo never shares more than the operator chose.
+/// none ever did: every switch that reaches a peer is off, and the witness is
+/// off too, which would otherwise be the default. A typo never shares more
+/// than the operator chose.
 fn narrowest() -> std::collections::BTreeMap<String, String> {
     [
         "share_record_at_completion",
@@ -283,6 +284,7 @@ fn narrowest() -> std::collections::BTreeMap<String, String> {
         "share_settlement_receipts",
         "adjudicate_differing_twins",
         crate::network_join::JOIN_NETWORK_KEY,
+        crate::share_policy::WITNESS_KEY,
     ]
     .into_iter()
     .map(|key| (key.to_string(), "off".to_string()))
@@ -579,6 +581,24 @@ mod tests {
         assert_eq!(console_key("HOME"), None);
     }
 
+    /// The console's `witness = "off"` reaches the cadence as the same `off`
+    /// the environment takes, while an empty list reads as unset (the
+    /// default witness), so `off` is the only opt-out.
+    #[test]
+    fn the_console_witness_off_is_the_opt_out_and_an_empty_list_is_not() {
+        let config = |value: &str| {
+            format!("[[plugin]]\nname = \"capsules\"\n[plugin.settings]\nwitness = {value}\n")
+        };
+        let off = settings_from_config(&config("\"off\"")).unwrap();
+        assert_eq!(off.get("witness").map(String::as_str), Some("off"));
+        assert!(crate::checkpoint_cadence::witness_urls_from(
+            off.get("witness").map(String::as_str)
+        )
+        .is_empty());
+        let empty = settings_from_config(&config("[]")).unwrap();
+        assert_eq!(empty.get("witness").map(String::as_str), Some(""));
+    }
+
     #[test]
     fn only_this_plugins_settings_are_read_from_the_config_file() {
         let raw = r#"
@@ -727,7 +747,11 @@ witness = [
         ] {
             assert_eq!(first.get(key).map(String::as_str), Some("off"), "{key}");
         }
-        assert!(!first.contains_key("witness"), "no witness named");
+        assert_eq!(
+            first.get("witness").map(String::as_str),
+            Some("off"),
+            "an unparsable config names no witness, not the default"
+        );
         assert!(problem.unwrap().contains("off until it parses"));
 
         let (fine, problem) = next_values(Some(&first), Ok(good.clone()));

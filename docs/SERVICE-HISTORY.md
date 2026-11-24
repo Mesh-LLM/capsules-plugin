@@ -145,7 +145,7 @@ verifier holding one says it did not check it.
 
 - Every count is the node's own statement.
 - Checkpoints are this log's own continuity. A witness receipt means that a later rewrite of the
-  log is detectable. With no witness named, the History says so.
+  log is detectable. With the witness set to `off`, the History says so.
 - The model is shown as what the provider states.
 - The coverage is every record of the stream up to the anchor, and completeness is not established,
   since the counts are not checked against records.
