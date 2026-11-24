@@ -9,7 +9,7 @@
 # It checks that:
 #   - without --with-receipts report.sh is given no --receipts, and
 #     `capsules deal-receipts` is never run (the report is built as before);
-#   - with it, a carried receipt and a policy-held deal reach report.sh in one
+#   - with it, a carried receipt, a policy-held deal and a not-closed deal reach report.sh in one
 #     JSON list, each as `capsules deal-receipts` printed it, keyed by the
 #     exchange capsule id, the held one with no bundle;
 #   - with it and no deal line, report.sh is given no file;
@@ -80,11 +80,13 @@ run() {
 
 held="$(printf '%064d' 1)"
 carried="$(printf '%064d' 2)"
-python3 - "$work/deal-receipts.out" "$held" "$carried" <<'EOF'
+open_deal="$(printf '%064d' 3)"
+python3 - "$work/deal-receipts.out" "$held" "$carried" "$open_deal" <<'EOF'
 import json, sys
 with open(sys.argv[1], "w") as f:
     f.write(json.dumps({"exchange_capsule_id": sys.argv[2], "held": True}) + "\n")
     f.write(json.dumps({"exchange_capsule_id": sys.argv[3], "receipt": json.dumps({"bundle": "text"})}) + "\n")
+    f.write(json.dumps({"exchange_capsule_id": sys.argv[4], "not_closed": True}) + "\n")
 EOF
 
 # 1. Off by default: nothing is asked of the node and report.sh gets no file.
@@ -96,13 +98,15 @@ grep -q -- '--receipts' "$work/report.argv" && fail "report.sh was given --recei
 # 2. Carried and held reach report.sh as printed.
 run --with-receipts || { cat "$work/run.log"; fail "the run with receipts did not seal a page"; }
 grep -qx -- '--receipts' "$work/report.argv" || fail "report.sh was not given --receipts"
-python3 - "$work/report.receipts" "$held" "$carried" <<'EOF' || fail "the receipts file is not what deal-receipts printed"
+python3 - "$work/report.receipts" "$held" "$carried" "$open_deal" <<'EOF' || fail "the receipts file is not what deal-receipts printed"
 import json, sys
 got = json.load(open(sys.argv[1]))
 want = [{"exchange_capsule_id": sys.argv[2], "held": True},
-        {"exchange_capsule_id": sys.argv[3], "receipt": json.dumps({"bundle": "text"})}]
+        {"exchange_capsule_id": sys.argv[3], "receipt": json.dumps({"bundle": "text"})},
+        {"exchange_capsule_id": sys.argv[4], "not_closed": True}]
 assert got == want, got
 assert "receipt" not in got[0], "the held deal carries a bundle"
+assert "receipt" not in got[2] and "held" not in got[2], "the open deal is neither"
 EOF
 
 # 3. No deal line: no file.

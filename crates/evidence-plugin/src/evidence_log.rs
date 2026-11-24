@@ -630,6 +630,16 @@ impl LedgerIndex {
         found
     }
 
+    /// Whether the deal of `exchange_capsule_id` has closed: its in-log report
+    /// is on the ledger (a deal capsule that never leaves this node is the
+    /// report, [`never_leaves`]). Metadata only: no payload is read.
+    pub fn deal_has_report(&self, exchange_capsule_id: &str) -> bool {
+        self.deal_capsules_of(exchange_capsule_id)
+            .into_iter()
+            .filter_map(|id| self.leaf_index_of(id))
+            .any(|i| self.leaves.get(i as usize).is_some_and(|l| l.never_leaves))
+    }
+
     /// The deal capsules linked to `exchange_capsule_id`, in log order.
     pub fn deal_capsules_of(&self, exchange_capsule_id: &str) -> Vec<&str> {
         let mut found: Vec<(u64, &str)> = self
