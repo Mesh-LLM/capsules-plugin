@@ -51,6 +51,18 @@ ul{padding-left:1.25rem}table{border-collapse:collapse;width:100%}td,th{border-b
 button{font:inherit;padding:.25rem .75rem}code{font-family:ui-monospace,monospace;font-size:.9em;overflow-wrap:anywhere}
 `
 
+// The reader's own witnesses: this page trusts no witness the saved bytes name,
+// so a reader who wants the node's witness receipts checked says which witnesses
+// they accept ({"witnesses": [{"name": ..., "keys": [hex DER SubjectPublicKeyInfo]}]}).
+// The list lives in this page's memory only: nothing stores it.
+const WITNESS_FORM = `<details>
+<summary>Check the witness receipts with witnesses you accept</summary>
+<p class="muted">This page checks a witness receipt only under keys you give it here, never a key the saved answer names. Paste a list like <code>{"witnesses":[{"name":"my witness","keys":["302a300506032b6570032100…"]}]}</code> (each key as hex of its DER SubjectPublicKeyInfo).</p>
+<p><textarea id="witness-list" rows="4" style="width:100%" spellcheck="false"></textarea></p>
+<p><button id="witness-apply" type="button">Check with these witnesses</button></p>
+<p id="witness-note" class="muted"></p>
+</details>`
+
 // The page's own script: reads the embedded bytes, checks them, and draws the
 // result with textContent only (nothing from the bundle is ever parsed as HTML).
 const RUNTIME = `
@@ -78,8 +90,17 @@ const RUNTIME = `
     else out.appendChild(el('p','bad','This page could not read its own note, so it shows nothing.'));
     return}
   var context=JSON.parse(document.getElementById('${CONTEXT_ELEMENT_ID}').textContent);
-  function draw(verdict){CapsulesSavedPage.renderHistoryView(CapsulesSavedPage.historyViewInput(verdict,context),out)}
-  CapsulesSavedPage.verifyHistoryReply(text).then(draw,function(){draw({kind:'unreadable',verified:false,checks:[{id:'readable',status:'fail',detail:''}],checkpoints:[]})});
+  var latest=0;
+  function draw(verdict){out.textContent='';CapsulesSavedPage.renderHistoryView(CapsulesSavedPage.historyViewInput(verdict,context),out)}
+  function run(readerWitnesses){var mine=++latest;CapsulesSavedPage.verifyHistoryReply(text,readerWitnesses).then(function(v){if(mine===latest)draw(v)},function(){if(mine===latest)draw({kind:'unreadable',verified:false,checks:[{id:'readable',status:'fail',detail:''}],checkpoints:[]})})}
+  run();
+  var apply=document.getElementById('witness-apply');
+  if(apply)apply.addEventListener('click',function(){
+    var note=document.getElementById('witness-note'),list;
+    try{list=CapsulesSavedPage.parseReaderWitnesses(JSON.parse(document.getElementById('witness-list').value))}catch(e){list=null}
+    if(!list){note.textContent='That is not a witness list, so it was not used. Nothing was checked with it.';return}
+    note.textContent='Checking with '+list.witnesses.length+' witness'+(list.witnesses.length===1?'':'es')+' you named. This page keeps them until you close it.';
+    run(list)});
 })();
 `
 
@@ -118,6 +139,7 @@ function shell({ title, kind, intro, bundleText, jsonName, inside, context }: Sh
 <main>
 ${kind === 'history' ? '' : `<h1>${escapeHtml(title)}</h1>\n<p class="muted">${escapeHtml(intro)}</p>`}
 <div id="result"></div>
+${kind === 'history' ? WITNESS_FORM : ''}
 <h2>${evidence ? 'The file inside' : 'The note inside'}</h2>
 <p class="muted">${escapeHtml(inside)}</p>
 <p><button id="save-json" type="button">${evidence ? 'Save the JSON' : 'Save the note'}</button> <code>${escapeHtml(jsonName)}</code></p>

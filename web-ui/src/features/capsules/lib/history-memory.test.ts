@@ -21,6 +21,17 @@ describe('the last verified history per peer, kept in this browser', () => {
     expect(historyNote(loadVerifiedHistories().get('peer-a')!)?.verified).toBe(true)
   })
 
+  it('keeps that a remembered history was a sample, and drops any other stored value', () => {
+    const sampled = { kind: 'verified', at: '2026-10-22T10:00:00Z', checkpoints: 12, witness: 'witnessed', sampled: true } as const
+    rememberVerifiedHistory(new Map(), 'peer-s', sampled)
+    expect(loadVerifiedHistories().get('peer-s')).toEqual(sampled)
+    window.localStorage.setItem(
+      HISTORY_MEMORY_KEY,
+      JSON.stringify({ odd: { ...sampled, sampled: 'yes' } })
+    )
+    expect(loadVerifiedHistories().get('odd')).not.toHaveProperty('sampled')
+  })
+
   it('an entry stored before the witness standing was kept reads back as "not recorded", never as witnessed', () => {
     window.localStorage.setItem(
       HISTORY_MEMORY_KEY,

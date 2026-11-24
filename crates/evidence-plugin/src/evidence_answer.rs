@@ -2145,6 +2145,67 @@ pub(crate) mod tests {
         );
     }
 
+    /// The witness key behind `history_card_2_witnessed.json`: seed `[21; 32]`.
+    const WITNESSED_FIXTURE_KEY_SEED: [u8; 32] = [21; 32];
+
+    /// The `history_card/2` of a 40-checkpoint log whose every checkpoint
+    /// carries a real receipt from [`WITNESS`], as the golden fixture the
+    /// History page's witness check reads
+    /// (`tests/fixtures/history_card_2_witnessed.json`; its witness key is the
+    /// public half of this seed, in `history-verify.test.ts`):
+    /// `CAPSULES_WRITE_ANSWER_FIXTURE=1` rewrites it.
+    #[test]
+    fn the_witnessed_history_card_2_reply_is_the_golden_fixture() {
+        let dir = tempfile::tempdir().unwrap();
+        let cps = crate::evidence_request_parity::long_ledger_dir(dir.path(), &key(), 40);
+        let witness = SigningKey::from_bytes(&WITNESSED_FIXTURE_KEY_SEED);
+        let path = dir.path().join("checkpoints.jsonl");
+        let lines: Vec<Value> = std::fs::read_to_string(&path)
+            .unwrap()
+            .lines()
+            .map(|l| {
+                let mut cp: Value = serde_json::from_str(l).unwrap();
+                let mut json_form = cp.clone();
+                json_form.as_object_mut().unwrap().remove("checkpoint_cose");
+                let record: cll::checkpoint::CheckpointRecord =
+                    serde_json::from_value(json_form).unwrap();
+                let entry: [u8; 32] = Sha256::digest(hex::decode(record.digest()).unwrap()).into();
+                cp["witnesses"] = json!([{
+                    "ts_url": WITNESS, "entry_hash": hex::encode(entry),
+                    "receipt_b64": mint_receipt(&entry, &witness),
+                    "leaf_index": 0, "tree_size": 1,
+                }]);
+                cp
+            })
+            .collect();
+        write_jsonl(&path, &lines);
+        let request = json!({
+            "subject": {"full_history": null},
+            "coverage": {"expected_pin": cps[39].anchor()},
+            "derivation": "history_card/2",
+        });
+        let bytes = serde_json::to_vec(&request).unwrap();
+        let Outcome::Answered { wire, .. } = ask_by_default(dir.path(), &bytes) else {
+            panic!("a stranger is answered history_card/2");
+        };
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/history_card_2_witnessed.json");
+        let text = serde_json::to_string_pretty(&wire).unwrap() + "\n";
+        if std::env::var_os("CAPSULES_WRITE_ANSWER_FIXTURE").is_some() {
+            std::fs::write(&fixture, &text).unwrap();
+        }
+        assert_eq!(
+            std::fs::read_to_string(&fixture).unwrap(),
+            text,
+            "the golden witnessed history_card/2 reply changed; CAPSULES_WRITE_ANSWER_FIXTURE=1 rewrites it"
+        );
+        // The key `history-verify.test.ts` hardcodes (as hex DER, after the Ed25519 prefix).
+        assert_eq!(
+            hex::encode(witness.verifying_key().to_bytes()),
+            "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da"
+        );
+    }
+
     /// Admission's card ask (`admission::base::CARD_FORM`, `history_card/2`)
     /// is answered to a stranger and reads as a card under the node's key,
     /// naming the form it answered, and so does the `/1` ask it falls back to

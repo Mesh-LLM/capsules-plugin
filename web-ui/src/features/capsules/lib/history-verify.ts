@@ -10,14 +10,21 @@
 // holds, the list starts the stream and each checkpoint extends the one
 // before, and the last one is the anchor the artifact names.
 //
+// The witness receipts the reply carries for the anchor checkpoint are checked
+// with agent-action-capsule's `checkAnchorWitnessed`, the check commerce's
+// History card runs, but only under witness keys the reader supplies: never a
+// key the reply or the page names (see `checkWitnessReceipts`). With no keys,
+// or no receipt, the check is not run, never passed.
+//
 // It does NOT check, and says so on the page, what only the node's own
-// checker runs: the witness receipts, the reply envelope's signature, and
-// the digest of the request it answers (cll has no browser verifier for
-// those). A page never calls those checks passed.
+// checker runs: the reply envelope's signature and the digest of the request
+// it answers (cll has no browser verifier for those). A page never calls those
+// checks passed.
 //
 // This file is bundled twice: into the Evidence page (tests) and, as an IIFE,
 // into every saved page (`saved-pages.ts`), so it imports only the cll
 // browser build and the DOM-free `cose.ts` (to read a checkpoint's key), and uses no DOM.
+import { checkAnchorWitnessed, checkpointDigest, type AnchorWitnessPolicy } from '@action-state-group/agent-action-capsule/witness'
 import { claimsKeysOutOfOrder, coseSign1KeyId, verifyCoseSign1 } from '@/features/capsules/lib/cose'
 import { checkpointMetadata, checkpointRejectionField, leafCount, verifyCheckpoint, verifyConsistency } from '@cll-browser'
 
@@ -129,9 +136,15 @@ function periodCounts(raw: unknown): PeriodCount[] {
   })
 }
 
+const WITNESS_NOT_RUN: Check = {
+  id: 'witness_receipts',
+  status: 'not_run',
+  detail: 'Witness receipts were not checked: an earlier check failed, no witness keys were supplied, or the answer holds no receipt to check.'
+}
+
 /** The checks this page cannot run, always listed, whatever else passed. */
 export const NOT_RUN: readonly Check[] = [
-  { id: 'witness_receipts', status: 'not_run', detail: 'Witness receipts were not checked: this page has no verifier for them.' },
+  WITNESS_NOT_RUN,
   {
     id: 'envelope_signature',
     status: 'not_run',
@@ -244,8 +257,101 @@ type Link = { cose: Uint8Array; digest: string; size: bigint; root: string; prev
 const object = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
 
-/** Check one reply, given as the exact text the node served. */
-export async function verifyHistoryReply(replyText: string): Promise<HistoryVerdict> {
+/** The reader's own witness list: the witnesses this reader accepts, each with
+ *  hex DER SubjectPublicKeyInfo keys (agent-action-capsule `AnchorWitnessPolicy`).
+ *  It is the reader's, never the reply's: nothing the reply carries adds a key. */
+export type ReaderWitnesses = AnchorWitnessPolicy
+
+// The two key shapes `checkAnchorWitnessed` reads (hex of a DER SubjectPublicKeyInfo): an Ed25519 key
+// (88 characters) and a P-256 key (182); it ignores any other string, so one is refused here instead.
+const ED25519_SPKI = /^302a300506032b6570032100[0-9a-f]{64}$/
+const P256_SPKI = /^3059301306072a8648ce3d020106082a8648ce3d03010703420004[0-9a-f]{128}$/
+
+/** The list `value` states, or `null` when it is not one: `{witnesses: [{name, keys}]}`
+ *  with a non-empty name and Ed25519 or P-256 DER keys in hex (any case). A list with any malformed entry is no list. */
+export function parseReaderWitnesses(value: unknown): ReaderWitnesses | null {
+  const list = object(value)
+  if (!list || Object.keys(list).length !== 1 || !Array.isArray(list.witnesses)) return null
+  const witnesses: { name: string; keys: string[] }[] = []
+  for (const row of list.witnesses as unknown[]) {
+    const entry = object(row)
+    if (!entry || Object.keys(entry).length !== 2) return null
+    const { name, keys } = entry
+    if (typeof name !== 'string' || name.trim() === '') return null
+    if (!Array.isArray(keys) || keys.length === 0 || !keys.every((k) => typeof k === 'string')) return null
+    const lowered = (keys as string[]).map((k) => k.trim().toLowerCase())
+    if (!lowered.every((k) => ED25519_SPKI.test(k) || P256_SPKI.test(k))) return null
+    witnesses.push({ name, keys: lowered })
+  }
+  return { witnesses }
+}
+
+const base64ToBytes = (text: string): Uint8Array | null => {
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) || text.length % 4 !== 0) return null
+  try {
+    return Uint8Array.from(atob(text), (c) => c.charCodeAt(0))
+  } catch {
+    return null
+  }
+}
+
+/** The witness receipts the reply carries for the anchor checkpoint, checked with
+ *  `checkAnchorWitnessed` under the reader's own list. The leaf it is given is the
+ *  entry the node binds a receipt to: SHA-256 of the checkpoint's record digest,
+ *  recomputed here from the verified checkpoint, never read from the receipt's
+ *  unsigned `entry_hash`; a receipt made for another entry cannot verify over it. Receipts on an earlier checkpoint do not count (evidencebook#209), a
+ *  stub was never registered, and no keys or no receipt is `not_run`: never a pass. */
+async function checkWitnessReceipts(
+  reply: Record<string, unknown>,
+  anchor: Link,
+  readerWitnesses: ReaderWitnesses | undefined
+): Promise<Check> {
+  const notRun = (detail: string): Check => ({ id: 'witness_receipts', status: 'not_run', detail })
+  const carried = Array.isArray(reply.witness_receipts) ? reply.witness_receipts : []
+  const forAnchor = carried.flatMap((item) => {
+    const entry = object(item)
+    const witness = object(entry?.witness)
+    return entry && witness && entry.checkpoint === anchor.digest ? [witness] : []
+  })
+  if (forAnchor.length === 0) return notRun('The answer holds no witness receipt for its last checkpoint, so none was checked.')
+  const registered = forAnchor.filter((w) => w.is_stub !== true)
+  if (registered.length === 0) return notRun('The only witness receipts for the last checkpoint are stubs: they were never registered with a witness.')
+  if (!readerWitnesses || readerWitnesses.witnesses.length === 0) {
+    return notRun('Witness receipts were not checked: no witness keys were supplied. Give this page the witnesses you accept.')
+  }
+  const fail = (detail: string): Check => ({ id: 'witness_receipts', status: 'fail', detail })
+  const record = await checkpointDigest({
+    log_id: anchor.logId,
+    mmr_size: Number(anchor.size),
+    root: anchor.root,
+    key_id: anchor.keyId,
+    timestamp: anchor.time,
+    prev_size: Number(anchor.previousSize),
+    prev_root: anchor.previousRoot
+  })
+  const recordBytes = hexToBytes(record)
+  const entryHex = recordBytes ? await sha256Hex(recordBytes) : null
+  // Every registered receipt goes to `checkAnchorWitnessed`: a failing receipt takes nothing from a passing one
+  // (as in commerce's History card). A receipt that does not read, or whose entry is another checkpoint's,
+  // cannot verify over this checkpoint's entry and is counted as failing there.
+  const receipts = registered.map((w) => (typeof w.receipt_b64 === 'string' ? base64ToBytes(w.receipt_b64) : null) ?? new Uint8Array())
+  const report = await checkAnchorWitnessed(entryHex!, receipts, readerWitnesses)
+  switch (report.status) {
+    case 'PASS':
+      return {
+        id: 'witness_receipts',
+        status: 'pass',
+        detail: `A witness you accept (${report.witness ?? 'unnamed'}) holds the last checkpoint${report.witnessed_time !== null ? `, registered at ${new Date(report.witnessed_time * 1000).toISOString()}` : ''}.`
+      }
+    case 'FAIL':
+      return fail('No witness receipt for the last checkpoint verifies under a key you supplied.')
+    default:
+      return notRun('The witness receipts could not be checked: this browser cannot verify them, or none of the keys you supplied is for the receipts’ algorithm.')
+  }
+}
+
+/** Check one reply, given as the exact text the node served, with the reader's own witness list, if any. */
+export async function verifyHistoryReply(replyText: string, readerWitnesses?: ReaderWitnesses): Promise<HistoryVerdict> {
   const unreadable = (detail: string): HistoryVerdict => ({
     kind: 'unreadable',
     verified: false,
@@ -498,10 +604,11 @@ export async function verifyHistoryReply(replyText: string): Promise<HistoryVerd
   if (artifact.evidence_stream !== last.logId) return fail('anchor', 'The answer names another log than its checkpoints.')
   checks.push({ id: 'anchor', status: 'pass', detail: 'The last checkpoint is the anchor the answer names, for the log it names.' })
 
+  const witnessCheck = await checkWitnessReceipts(reply, last, readerWitnesses)
   return {
     kind: 'answered',
-    verified: true,
-    checks: [...checks, ...(counts ? [PERIOD_COUNTS_NOT_RUN] : []), ...NOT_RUN],
+    verified: witnessCheck.status !== 'fail',
+    checks: [...checks, ...(counts ? [PERIOD_COUNTS_NOT_RUN] : []), witnessCheck, ...NOT_RUN.filter((c) => c.id !== 'witness_receipts')],
     checkpoints: links.map((l) => ({ size: Number(l.size), time: l.time, anchor: l.digest })),
     keyId: last.keyId,
     form: counts ? 'service_history' : 'history_card',

@@ -1,6 +1,7 @@
 // "Ask for their history": ask the other side of an exchange for its history
-// card (`history_card/1`), the list of its log's checkpoints with the proof
-// that each extends the one before. The plugin sends the request and checks
+// card (`history_card/2`, or `/1` from a node that serves only that): its log's
+// checkpoints, all of them in a `/1`, a sample in a `/2`, with the proof that
+// each extends the one before it listed. The plugin sends the request and checks
 // the reply under the key announced for that node (`evidenceRequestClient.ts`,
 // `evidence_answer::verify_response`); this module judges what came back the
 // same way `ask-for-record.ts` judges a record ask:
@@ -28,7 +29,7 @@ export type HistoryOutcome =
   /** The plugin checked their chain under their announced key. `checkpoints`
    *  is `null` when its verification didn't say how many; `witness` is
    *  whether a witness this node trusts vouches for that log. */
-  | { kind: 'verified'; at: string; checkpoints: number | null; witness: WitnessStanding }
+  | { kind: 'verified'; at: string; checkpoints: number | null; witness: WitnessStanding; sampled?: true }
   | { kind: 'refused'; at: string; reason: string }
   /** `plain`: the ask itself failed, and `detail` is a whole plain sentence
    *  saying so (`askFailureSentence`). */
@@ -64,7 +65,9 @@ export function judgeHistoryReply(reply: EvidenceAskReply, askedAt: string): His
         kind: 'verified',
         at: askedAt,
         checkpoints: verification.checkpoints ?? null,
-        witness: witnessStanding(verification.witnessed)
+        witness: witnessStanding(verification.witnessed),
+        // A `history_card/2` lists a sample of the log, so its count is not the log's size.
+        ...(reply.derivation === 'history_card/2' ? { sampled: true as const } : {})
       }
   }
 }
@@ -101,10 +104,13 @@ export function historyNote(
     case 'verified': {
       // An unknown count is said as unknown, never as zero.
       const n = outcome.checkpoints
-      const listed = n === null ? 'the checkpoints' : `${n} checkpoint${n === 1 ? '' : 's'}`
+      const sampled = outcome.sampled === true
+      const listed = n === null ? 'the checkpoints' : `${n} ${sampled ? 'sampled ' : ''}checkpoint${n === 1 ? '' : 's'}`
       const count = n === null ? '' : ` · ${listed}`
       const Listed = `${listed.charAt(0).toUpperCase()}${listed.slice(1)}`
-      const ofTheirLog = ' of their log, each signed with the key this node has for them and each extending the one before'
+      const ofTheirLog = sampled
+        ? ' of their log, each signed with the key this node has for them and joined to the next by a proof that it extends the one before'
+        : ' of their log, each signed with the key this node has for them and each extending the one before'
       const checkedLine = `checked ${formatExchangeTimestamp(outcome.at)}`
       const witness = outcome.witness
       // Short on the face; how it was checked behind the (i).

@@ -29,6 +29,23 @@ function expectNeverVerified(note: ReturnType<typeof historyNote>) {
   expect(all).not.toMatch(/checks out|verified/i)
 }
 
+describe('a history_card/2 ask', () => {
+  it('says its count is a sample, not the size of the log', () => {
+    const asked = { ...reply({}, { state: 'artifact', records: [], checkpoints: 12, witnessed: 1 }), derivation: 'history_card/2' } as EvidenceAskReply
+    const outcome = judgeHistoryReply(asked, ASKED_AT)
+    expect(outcome).toEqual({ kind: 'verified', at: ASKED_AT, checkpoints: 12, witness: 'witnessed', sampled: true })
+    const note = historyNote(outcome)
+    expect(note?.text).toContain('12 sampled checkpoints')
+    expect(note?.detail).toContain('joined to the next by a proof that it extends the one before')
+    expect(note?.detail).not.toContain('each extending the one before')
+  })
+
+  it('a history_card/1 answer keeps its own wording', () => {
+    const asked = { ...reply({}, { state: 'artifact', records: [], checkpoints: 3, witnessed: 1 }), derivation: 'history_card/1' } as EvidenceAskReply
+    expect(judgeHistoryReply(asked, ASKED_AT)).toEqual({ kind: 'verified', at: ASKED_AT, checkpoints: 3, witness: 'witnessed' })
+  })
+})
+
 describe('judgeHistoryReply', () => {
   it('a witnessed history card is verified, with its checkpoint count and the witness', () => {
     const outcome = judgeHistoryReply(reply({}, { state: 'artifact', records: [], checkpoints: 3, witnessed: 2 }), ASKED_AT)

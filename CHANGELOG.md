@@ -4,6 +4,8 @@
 
 ### Added
 
+- **A saved History page checks the witness receipts of the answer's last checkpoint, under witnesses the reader names (Mesh-LLM/capsules-plugin#349).** It uses agent-action-capsule's `checkAnchorWitnessed`, the check commerce's History card runs, over each receipt's entry (the checkpoint's record digest, as the node binds it). The reader pastes the witnesses they accept (hex DER keys) into the page; the list lives in the page's memory only, and nothing in the saved answer can add a witness. With no list, no receipt for the last checkpoint, or only stubs, the check reads "not checked", never passed; a receipt no supplied key verifies fails the page. The live Evidence page already shows the node's own check, which counts only the anchor's receipts under the keys the operator configured.
+
 - **The Integrity tab shows two-sided exchanges by week (Mesh-LLM/capsules-plugin#339).** Per UTC week, newest first: "N of M with both sides' records held (X matching, Y differing)", from this node's own records. Matching is what "Confirmed by the other side" counts and differing what "Disagreements" counts, so the weeks add up to those tiles; older weeks and exchanges with no time get their own lines. It is the Mesh-LLM checkpoint metric as one node sees it, never added up across nodes.
 
 - **A console setting for the report: Settlement report folder (`settlement_report_dir`), under Configuration › Plugins › Capsules › Reports (Mesh-LLM/capsules-plugin#339).** It is `CAPSULES_SETTLEMENT_REPORT_DIR`, read on each press. `scripts/settlement-report.sh` now records the capsulectl it ran in `book.json`, and the node checks the page with that one; `CAPSULES_CAPSULECTL` still overrides it. The console never names a program the plugin runs, and since the folder decides what runs, nothing in a folder, book or recorded capsulectl that another user can write is used.
@@ -21,6 +23,8 @@
 - **`scripts/settlement-report.sh` renders the sealed settlement report in the 9b wording pack, pinned by digest (Mesh-LLM/capsules-plugin#333, #96).** It passes evidencebook-skills' `wording/inference-deals-settlement-en.json` (evidencebook-skills#206, `329ba53d`, sha256 `db7065547fd7332dfb6c4d642f71bdad7b5e4d4afcb517f4aaeda755c623414c`) to `report.sh` by default, and refuses a checkout whose pack differs before it touches the book. `--wording` and `--wording-digest` together name another pack. Nothing else in the node changes.
 
 ### Fixed
+
+- **"Ask a peer for their history" asks `history_card/2`, and `/1` only when the peer refuses `/2` as an older build would (Mesh-LLM/capsules-plugin#349).** It asked `/1`, which a node past 0.1.x refuses to a non-counterparty. It re-asks once, only for `derivation_unsupported` or `policy_declined`, as admission does.
 
 - **Console settings reach a node started with `mesh-llm serve --config <path>` (Mesh-LLM/capsules-plugin#147).** The plugin now finds mesh-llm's config file the way mesh-llm does: the file the host's `--config` names, taken from the host's command line on Linux (a relative path against the host's starting directory, logged once), else a non-empty `MESH_LLM_CONFIG`, else `~/.mesh-llm/config.toml`. Before, `MESH_LLM_CONFIG` came first, an empty one counted as a path, and `--config` was only warned about. A node that kept different plugin settings in `~/.mesh-llm/config.toml` than in its `--config` file now uses the `--config` file's: compare the two before upgrading. A `--config` with no usable value, and other systems, keep the old behavior.
 

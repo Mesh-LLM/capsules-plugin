@@ -47,6 +47,9 @@ export type EvidenceAskReply =
       verification: EvidenceVerification
       requestDigest: string
       announcedKeyId: string | null
+      /** The card form a history ask was made in (`askForHistory`): a
+       *  `history_card/2` lists a sample of the log, not all of it. */
+      derivation?: string
       /** The `capsule_id`s of their records the plugin saved on this node from
        *  this reply (the tool's `held`): `[]` when it saved none (a store
        *  failure, a receiver refusal, or no single matching record), and
@@ -77,19 +80,20 @@ export function askByDigestsRequest(digests: ExchangeDigests): Record<string, un
   }
 }
 
-/** The registered derivation that lists the peer's checkpoints, each with
- *  the proof that it extends the one before (-00 registry,
- *  `evidence_artifact::build`). */
-export const HISTORY_CARD_DERIVATION = 'history_card/1'
+/** The card forms asked of a peer, newest first (the order `admission::base`
+ *  asks in, `CARD_FORM` then `OLDER_CARD_FORM`): `history_card/2` samples the log
+ *  (ER -03 §8.1.2), and a build before it was answered serves only
+ *  `history_card/1`, the whole list (-00 registry, `evidence_artifact::build`). */
+export const HISTORY_CARD_DERIVATIONS = ['history_card/2', 'history_card/1'] as const
 
-/** The -00 request for the peer's history card: its whole log, as the
- *  `history_card/1` derivation, under the freshest checkpoint it holds. */
-export function askForHistoryRequest(): Record<string, unknown> {
+/** The -00 request for the peer's history card, in `derivation`, over its
+ *  whole log, under the freshest checkpoint it holds. */
+export function askForHistoryRequest(derivation: string = HISTORY_CARD_DERIVATIONS[0]): Record<string, unknown> {
   return {
     profile: INTEROP_PROFILE,
     coverage: { min_freshness: 1 },
     subject: { full_history: null },
-    derivation: HISTORY_CARD_DERIVATION
+    derivation
   }
 }
 
@@ -180,10 +184,26 @@ export async function askForRecord(peerId: string, subject: AskSubject): Promise
   return noRecord && digests ? ask(peerId, askByDigestsRequest(digests)) : byNonce
 }
 
-/** Ask `peerId` for its history card. The reply is judged in
- *  `ask-for-history.ts`. */
-export function askForHistory(peerId: string): Promise<EvidenceAskReply> {
-  return ask(peerId, askForHistoryRequest())
+/** Whether a refusal is what a build gives a card form it does not serve:
+ *  `derivation_unsupported` to a counterparty, or the `policy_declined` its
+ *  gate gives everyone else for any derivation it does not offer strangers
+ *  (`admission::base::ask_older_card`). Any other answer is judged as it is. */
+function refusesThisForm(reply: EvidenceAskReply): boolean {
+  return (
+    reply.kind === 'answer' &&
+    reply.verification.state === 'refusal' &&
+    (reply.verification.reason === 'derivation_unsupported' || reply.verification.reason === 'policy_declined')
+  )
+}
+
+/** Ask `peerId` for its history card: `history_card/2`, then `history_card/1`
+ *  once if the peer refuses that form as an older build does. The reply is
+ *  judged in `ask-for-history.ts`; the last one asked is the one returned. */
+export async function askForHistory(peerId: string): Promise<EvidenceAskReply> {
+  const [newer, older] = HISTORY_CARD_DERIVATIONS
+  const first = await ask(peerId, askForHistoryRequest(newer))
+  const [reply, form] = refusesThisForm(first) ? [await ask(peerId, askForHistoryRequest(older)), older] : [first, newer]
+  return reply.kind === 'answer' ? { ...reply, derivation: form } : reply
 }
 
 async function ask(peerId: string, request: Record<string, unknown>): Promise<EvidenceAskReply> {

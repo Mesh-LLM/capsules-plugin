@@ -42,7 +42,8 @@ export function loadVerifiedHistories(): Map<string, VerifiedHistory> {
           kind: 'verified',
           at: entry.at,
           checkpoints: entry.checkpoints,
-          witness: storedStanding((entry as Record<string, unknown>).witness)
+          witness: storedStanding((entry as Record<string, unknown>).witness),
+          ...((entry as Record<string, unknown>).sampled === true ? { sampled: true as const } : {})
         })
     }
   } catch {

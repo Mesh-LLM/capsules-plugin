@@ -241,24 +241,31 @@ describe('askForRecord', () => {
 })
 
 describe('askForHistory', () => {
-  it('asks for the whole log as the history_card/1 derivation, and keeps the checkpoint count', async () => {
-    const fetchMock = stubRoutes(
-      {
-        answer: { profile: 'evidence-interop/0' },
-        request_digest: DIGEST,
-        verification: { state: 'artifact', anchor: 'x', records: [], checkpoints: 3 }
-      },
-      'ab'.repeat(32)
-    )
+  const request = (derivation: string) => ({
+    profile: 'evidence-interop/0',
+    coverage: { min_freshness: 1 },
+    subject: { full_history: null },
+    derivation
+  })
+  const artifact = { state: 'artifact', anchor: 'x', records: [], checkpoints: 3 }
+
+  it('asks for the whole log as history_card/2 first, and keeps the checkpoint count', async () => {
+    const fetchMock = stubRoutes({ answer: { profile: 'evidence-interop/0' }, request_digest: DIGEST, verification: artifact }, 'ab'.repeat(32))
     const reply = await askForHistory(PEER)
-    expect(sentRequests(fetchMock)).toEqual([
-      {
-        profile: 'evidence-interop/0',
-        coverage: { min_freshness: 1 },
-        subject: { full_history: null },
-        derivation: 'history_card/1'
-      }
-    ])
-    expect(reply).toMatchObject({ kind: 'answer', verification: { state: 'artifact', records: [], checkpoints: 3 } })
+    expect(sentRequests(fetchMock)).toEqual([request('history_card/2')])
+    expect(reply).toMatchObject({ kind: 'answer', derivation: 'history_card/2', verification: { state: 'artifact', records: [], checkpoints: 3 } })
+  })
+
+  it.each(['derivation_unsupported', 'policy_declined'])('asks history_card/1 once when the peer refuses /2 as %s', async (reason) => {
+    const fetchMock = stubRoutes({ answer: {}, request_digest: DIGEST, verification: { state: 'refusal', reason } }, 'ab'.repeat(32))
+    const reply = await askForHistory(PEER)
+    expect(sentRequests(fetchMock)).toEqual([request('history_card/2'), request('history_card/1')])
+    expect(reply).toMatchObject({ kind: 'answer', derivation: 'history_card/1', verification: { state: 'refusal', reason } })
+  })
+
+  it('does not ask again for any other refusal, or when /2 is answered', async () => {
+    const fetchMock = stubRoutes({ answer: {}, request_digest: DIGEST, verification: { state: 'refusal', reason: 'not_authorized' } }, 'ab'.repeat(32))
+    await askForHistory(PEER)
+    expect(sentRequests(fetchMock)).toEqual([request('history_card/2')])
   })
 })
