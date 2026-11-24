@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 # scripts/settlement-report.sh against evidencebook-skills' inference-deals
-# payer fixture, with a stand-in `capsules chain-lines`. Needs a capsulectl
-# that loads capsulectl-book and an evidencebook-skills checkout, so it runs
+# payer fixture, with a stand-in `capsules chain-lines`. It counts the book's
+# records through capsulectl's own `cll list`, so it holds on capsulectl and
+# capsulectl-book v0.1.0-rc49 (jsonl store) and v0.1.0-rc52 (shelf database).
+# Needs a capsulectl that loads capsulectl-book and an evidencebook-skills checkout, so it runs
 # only when both are named:
 #
 #   CAPSULECTL=PATH EVIDENCEBOOK_SKILLS=DIR scripts/settlement-report.test.sh
@@ -14,6 +16,8 @@
 #     again;
 #   - a run killed between a publish and its watermark resumes without
 #     publishing that record twice;
+#   - a pending record that is not in the book is dropped without a publish, and
+#     the resume check ends instead of paging forever;
 #   - a chain shorter than what was published, a node key other than the
 #     book's, and a second run while one holds the lock are refused, leaving
 #     the page as it was and no seed behind (a finished run leaves none either);
@@ -48,11 +52,26 @@ run() {
     --skills "$EVIDENCEBOOK_SKILLS" --capsules "$work/bin/capsules" --data-dir "$work/data" \
     --date 2026-11-01 --now 2026-11-02T00:00:00Z </dev/null >"$work/run.log" 2>&1
 }
-field() { python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))[sys.argv[2]]; print("" if v is None else v)' "$work/report/book.json" "$1"; }
-# How many times the book holds the record with this capsule id (capsulectl's
-# jsonl store; read only by this test).
-copies() { grep -o "urn:mesh-record:$1" "$work/report/book/book/records/records.jsonl" | wc -l | tr -d ' '; }
 id_at() { sed -n "$1p" "$fixture" | python3 -c 'import json,sys; print(json.load(sys.stdin)["capsule_id"])'; }
+field() { python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))[sys.argv[2]]; print("" if v is None else v)' "$work/report/book.json" "$1"; }
+# How many records the book holds, counted through capsulectl's own list (its
+# storage layout differs between releases: rc49 a jsonl file, rc52 a shelf
+# database), without a get per record, which is too slow.
+held() {
+  python3 - "$CAPSULECTL" settlement <<'EOF4'
+import json, subprocess, sys
+ctl, profile = sys.argv[1], sys.argv[2]
+after, n = 0, 0
+while True:
+    page = json.loads(subprocess.run([ctl, "cll", "list", "--profile", profile, "--after", str(after), "--limit", "1000"],
+                                     check=True, capture_output=True, text=True).stdout)
+    if not page["entries"]:
+        break
+    n += sum(1 for e in page["entries"] if e.get("record_type") == "own_capsule")
+    after = max(e["sequence"] for e in page["entries"])
+print(n)
+EOF4
+}
 
 # Part of the chain first.
 head -n 10 "$fixture" >"$work/chain.jsonl"
@@ -66,7 +85,6 @@ run || { cat "$work/run.log"; fail "the first run did not seal a page"; }
 # A run killed after publishing record 11 but before moving the watermark.
 export XDG_CONFIG_HOME="$work/report/config"
 export CAPSULECTL_PLUGIN_ROOTS=${CAPSULECTL_PLUGIN_ROOTS:-$(dirname "$CAPSULECTL")}
-eleventh=$(id_at 11)
 sed -n 11p "$fixture" | python3 -c '
 import json, sys
 c = json.load(sys.stdin)
@@ -74,6 +92,7 @@ json.dump({"spec_version": "capsule-seal-request/v1",
            "capsule": {"ActionID": "urn:mesh-record:" + c["capsule_id"], "ActionType": "fyi", "Operator": sys.argv[1],
                        "Developer": "capsules-plugin/settlement-report", "Timestamp": c["timestamp"]},
            "payload": c}, open(sys.argv[2], "w"), sort_keys=True)' "$(field node_key)" "$work/eleventh.json"
+eleventh=$(id_at 11)
 python3 - "$work/report/book.json" "$eleventh" <<'EOF'
 import json, sys
 book = json.load(open(sys.argv[1]))
@@ -95,14 +114,33 @@ rm -f "$work/report/node.seed"
 # The rest of the chain, and a padding line after it.
 { cat "$fixture"; echo '{"padding":"0000"}'; } >"$work/chain.jsonl"
 run || { cat "$work/run.log"; fail "the run after a cut-short one did not seal"; }
-[ "$(copies "$eleventh")" = 1 ] || fail "the record published before the cut was published again"
-[ "$(copies "$(id_at 12)")" = 1 ] || fail "a record added since the last run was not published once"
+# Ten records were held, the cut-short run added the eleventh, and the fixture
+# has no padding record, so each of its records is held exactly once only if
+# the eleventh was not published again and the rest were published once.
+[ "$(held)" = "$total" ] || fail "the book does not hold each record once (the record published before the cut was published again, or one added since was not published)"
 [ "$(field published_lines)" = $((total + 1)) ] || fail "the padding line did not move the watermark"
 [ -z "$(field pending)" ] || fail "the pending marker was left behind"
 
 run || { cat "$work/run.log"; fail "a run with nothing new did not seal"; }
 grep -q '"page": *"match"' "$work/report/settlement.json" || fail "the note does not record a match"
-[ "$(copies "$(id_at 1)")" = 1 ] || fail "a run with nothing new published a record again"
+[ "$(held)" = "$total" ] || fail "a run with nothing new published a record again"
+
+# A pending record that is not in the book (a run killed before its publish
+# landed): the resume check looks through the whole book, finds nothing, drops
+# the marker and publishes nothing; it must end, not page forever.
+python3 - "$work/report/book.json" <<'EOF5'
+import json, sys
+book = json.load(open(sys.argv[1]))
+book["pending"] = {"line": book["published_lines"], "capsule_id": "0" * 64}
+json.dump(book, open(sys.argv[1], "w"))
+EOF5
+held_absent=$(held)
+timeout 600 "$here/settlement-report.sh" --report-dir "$work/report" --capsulectl "$CAPSULECTL" \
+  --skills "$EVIDENCEBOOK_SKILLS" --capsules "$work/bin/capsules" --data-dir "$work/data" \
+  --date 2026-11-01 --now 2026-11-02T00:00:00Z </dev/null >"$work/run.log" 2>&1 \
+  || { cat "$work/run.log"; fail "a run with a pending record absent from the book did not finish"; }
+[ -z "$(field pending)" ] || fail "an absent pending record's marker was left behind"
+[ "$held_absent" = "$(held)" ] || fail "an absent pending record changed what the book holds"
 
 # The page as a person sees it: its visible text, in headless Chrome.
 CHROME=${CHROME:-}
@@ -157,10 +195,10 @@ grep -q "not this node's" "$work/run.log" || fail "the foreign key's refusal doe
 # A wording pack other than the pinned one is refused before the book is touched.
 cp "$pack" "$work/other-pack.json"
 printf ' ' >>"$work/other-pack.json"
-lines_before=$(wc -l <"$work/report/book/book/records/records.jsonl")
+held_before=$(held)
 if run --wording "$work/other-pack.json" --wording-digest "$(shasum -a 256 "$pack" | cut -d' ' -f1)"; then fail "a pack whose bytes are not the digest's was accepted"; fi
 grep -q "not the expected" "$work/run.log" || fail "the wrong pack's refusal does not say why"
-[ "$lines_before" = "$(wc -l <"$work/report/book/book/records/records.jsonl")" ] || fail "a refused pack still wrote to the book"
+[ "$held_before" = "$(held)" ] || fail "a refused pack still wrote to the book"
 
 [ "$before" = "$(shasum -a 256 "$work/report/settlement.html")" ] || fail "a refused run changed the page"
 [ ! -e "$work/report/node.seed" ] || fail "a refused run left the book's seed behind"
