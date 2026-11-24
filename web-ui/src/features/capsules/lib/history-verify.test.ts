@@ -392,6 +392,40 @@ describe('the witness receipts check', () => {
     expect(witnessCheck(v).status).toBe('fail')
   })
 
+  it('gives every checkpoint its own time-stamp slot from the same verdict the list shows', async () => {
+    const v = await verifyHistoryReply(JSON.stringify(witnessed), readerList(WITNESS_KEY))
+    expect(witnessCheck(v).status).toBe('pass')
+    expect(v.checkpoints.length).toBeGreaterThan(1)
+    for (const c of v.checkpoints) expect(c.witness).toEqual({ state: 'passed', by: 'the witness', at: '2026-11-24T12:00:00.000Z' })
+    const none = await verifyHistoryReply(JSON.stringify(witnessed))
+    for (const c of none.checkpoints) expect(c.witness).toEqual({ state: 'not_checked' })
+    const wrong = await verifyHistoryReply(JSON.stringify(witnessed), readerList(otherKey))
+    expect(witnessCheck(wrong).status).toBe('fail')
+    for (const c of wrong.checkpoints) expect(c.witness).toEqual({ state: 'failed' })
+  })
+
+  it('shows a checkpoint whose receipt is not registered yet as not checked, and the others as stamped', async () => {
+    const reply = structuredClone(witnessed)
+    const anchor = (reply.anchor as { digest: string }).digest
+    reply.witness_receipts = receiptsOf(reply).filter((r) => r.checkpoint !== anchor)
+    const v = await verifyHistoryReply(JSON.stringify(reply), readerList(WITNESS_KEY))
+    expect(witnessCheck(v).status).toBe('not_run')
+    expect(v.checkpoints[v.checkpoints.length - 1].witness).toEqual({ state: 'not_checked' })
+    expect(v.checkpoints.slice(0, -1).every((c) => c.witness?.state === 'passed')).toBe(true)
+  })
+
+  it('fails the check, and that checkpoint alone, when an earlier checkpoint’s receipt does not verify', async () => {
+    const reply = structuredClone(witnessed)
+    const anchor = (reply.anchor as { digest: string }).digest
+    const first = receiptsOf(reply).find((r) => r.checkpoint !== anchor)!
+    first.witness.receipt_b64 = 'AAAA'
+    const v = await verifyHistoryReply(JSON.stringify(reply), readerList(WITNESS_KEY))
+    expect(witnessCheck(v).status).toBe('fail')
+    expect(v.verified).toBe(false)
+    expect(v.checkpoints.filter((c) => c.witness?.state === 'failed')).toHaveLength(1)
+    expect(v.checkpoints[v.checkpoints.length - 1].witness?.state).toBe('passed')
+  })
+
   it('does not trust the receipt’s own entry_hash label', async () => {
     const reply = structuredClone(witnessed)
     const anchor = (reply.anchor as { digest: string }).digest
