@@ -408,7 +408,10 @@ never sends it to a peer. The operator's "Ask again" is the same switch.
 hosted witness, `https://witness.agentactioncapsule.org`, whose key ships with the plugin.
 It is run by Action State, so it is not independent of us, and it sees checkpoint hashes,
 sizes and times (never content). Set `witness = "off"` (or `CAPSULES_CHECKPOINT_WITNESS_URLS=off`)
-to contact no witness at all, or name other witnesses to replace it. Each is an
+to contact no witness at all, or name other witnesses to replace it. A node that stays on the
+flat ledger (upgraded from 0.1.8 or earlier with an owner maintenance record) gets no default
+witness, because it delivers to witnesses inside the checkpoint lock; it uses a witness only when
+you name one. Each is an
 `endpoint` (the witness's URL) and, if you have it, its `public_key` (its
 Ed25519 key in hex, as its operator publishes it): the same endpoint-and-key
 pair capsule-cli takes.

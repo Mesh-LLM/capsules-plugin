@@ -1798,6 +1798,12 @@ impl CapsuleState {
         self.stores.as_ref()
     }
 
+    /// Whether this node stays on the flat ledger (no chain stores): its
+    /// checkpoint state registers from `checkpoints.jsonl`.
+    pub fn stays_flat(&self) -> bool {
+        self.stores.is_none()
+    }
+
     /// The checkpoint state of this node's chain, in its layout: in the
     /// chain log beside the entries (`chain_store::load_checkpoint_state`),
     /// or the flat `checkpoints.jsonl` and `mmr_nodes.dat` on a node that

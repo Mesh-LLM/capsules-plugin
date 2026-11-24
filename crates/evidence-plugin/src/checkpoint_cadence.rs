@@ -81,7 +81,7 @@ const ENV_PAD_BUCKET: &str = "CAPSULES_CHECKPOINT_PAD_BUCKET";
 /// Whether a witness URL is configured: checkpoints are offered to a witness.
 /// The same setting [`spawn`] registers checkpoints with.
 pub fn witness_configured() -> bool {
-    !witness_urls().is_empty()
+    !active_witness_urls().0.is_empty()
 }
 
 /// The witness URLs in force, in order: the operator's, else the default witness.
@@ -93,6 +93,19 @@ pub fn witness_urls() -> Vec<String> {
 /// is unset, none when it is `off` or holds no URL. A URL with a user, password, query or fragment is not used
 /// (any of them can carry a credential, and the URL is kept in receipts and
 /// shown on the page); it is logged instead.
+/// The witness list a node starts with, given its ledger layout. The default
+/// witness applies to a store-backed node only: a node that stays on the flat
+/// ledger delivers to witnesses inside the checkpoint-state lock (capsule-emit
+/// cannot move that delivery out), so an unreachable default witness would
+/// stall it. Such a node uses a witness only when its operator names one.
+fn witness_urls_for_layout(raw: Option<&str>, flat: bool) -> Vec<String> {
+    let urls = witness_urls_from(raw);
+    if flat && raw.is_none_or(|r| r.trim().is_empty()) {
+        return Vec::new();
+    }
+    urls
+}
+
 pub(crate) fn witness_urls_from(raw: Option<&str>) -> Vec<String> {
     // A blank value is unset, as `settings::var` reads it for every setting.
     let Some(raw) = raw.filter(|r| !r.trim().is_empty()) else {
@@ -504,7 +517,15 @@ pub fn spawn(
     capsules: Arc<CapsuleState>,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) -> anyhow::Result<CheckpointHandle> {
-    let cfg = config_from_env();
+    let mut cfg = config_from_env();
+    let raw_witness = crate::settings::var(ENV_WITNESS_URLS).ok();
+    cfg.witness_urls = witness_urls_for_layout(raw_witness.as_deref(), capsules.stays_flat());
+    if capsules.stays_flat() && raw_witness.is_none() {
+        tracing::warn!(
+            "this node stays on the flat ledger, which sends checkpoints to a witness while holding \
+             the checkpoint lock, so the default witness is not used here; name a witness to use one"
+        );
+    }
     let witness_urls = cfg.witness_urls.clone();
     let _ = ACTIVE_WITNESSES.set(witness_urls.clone());
     let _ = ACTIVE_KEYS.set(witness_keys_checked(
@@ -567,7 +588,9 @@ pub fn spawn(
         };
 
         run("startup reconnect", |s, k, a| s.reconnect(k, a));
-        deliver_witnesses(&task).await;
+        // A shutdown that arrives while a witness is being sent to is never
+        // queued behind that send: `stopping` skips the loop to the flush.
+        let mut stopping = !deliver_witnesses(&task, &mut shutdown).await;
 
         let mut ticker = tokio::time::interval(interval);
         // The next Service History period boundary to checkpoint at. Kept
@@ -579,10 +602,16 @@ pub fn spawn(
         ticker.tick().await;
 
         loop {
+            if stopping {
+                break;
+            }
             tokio::select! {
                 _ = ticker.tick() => {
                     run("tick", |s, k, a| s.tick(k, a));
-                    deliver_witnesses(&task).await;
+                    if !deliver_witnesses(&task, &mut shutdown).await {
+                        stopping = true;
+                        continue;
+                    }
                     // The other ledger files' checkpoints, each cut when its
                     // file has grown (`ledger_checkpoints`).
                     {
@@ -603,10 +632,17 @@ pub fn spawn(
                         let (dir, urls) = (keys_dir.clone(), witness_urls.clone());
                         let configured = active_witness_keys();
                         let log_id = log_id_for_witnesses.clone();
-                        let _ = off_runtime(move || {
-                            crate::witness_status::refresh_witnesses(&dir, &urls, &configured, Some(&log_id))
-                        })
+                        let refreshed = until_shutdown(
+                            &mut shutdown,
+                            off_runtime(move || {
+                                crate::witness_status::refresh_witnesses(&dir, &urls, &configured, Some(&log_id))
+                            }),
+                        )
                         .await;
+                        if refreshed.is_none() {
+                            stopping = true;
+                            continue;
+                        }
                     }
                 }
                 // A checkpoint at each Service History period boundary, cut
@@ -622,8 +658,11 @@ pub fn spawn(
                     if let Some(cp) = report_checkpoint(result, "period boundary") {
                         task.latest_head.set(cp);
                     }
-                    deliver_witnesses(&task).await;
                     boundary = crate::service_history::next_boundary_after(unix_now());
+                    if !deliver_witnesses(&task, &mut shutdown).await {
+                        stopping = true;
+                        continue;
+                    }
                 }
                 _ = shutdown.changed() => {
                     if *shutdown.borrow() {
@@ -648,28 +687,56 @@ pub fn spawn(
 /// and to record the outcome: the sends run on a blocking thread in between,
 /// so serving never waits on a witness. Nothing happens when no witness is
 /// named, nothing is queued, or another pass is out.
-async fn deliver_witnesses(task: &CheckpointHandle) {
+async fn deliver_witnesses(
+    task: &CheckpointHandle,
+    shutdown: &mut tokio::sync::watch::Receiver<bool>,
+) -> bool {
     let taken = task
         .state
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .take_witness_delivery();
     let Some(mut delivery) = taken else {
-        return;
+        return !*shutdown.borrow();
     };
-    let finished = off_runtime(move || {
-        delivery.run();
-        delivery
-    })
+    let sent = until_shutdown(
+        shutdown,
+        off_runtime(move || {
+            delivery.run();
+            delivery
+        }),
+    )
     .await;
-    match finished {
-        Some(delivery) => {
+    match sent {
+        // Shutdown arrived mid-pass: the pass is abandoned (its thread ends
+        // with its request, and dropping the delivery frees the next pass);
+        // its rows stay due for the next start.
+        None => false,
+        Some(Some(delivery)) => {
             task.state
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .finish_witness_delivery(delivery);
+            true
         }
-        None => tracing::warn!("a witness delivery did not complete"),
+        Some(None) => {
+            tracing::warn!("a witness delivery did not complete");
+            true
+        }
+    }
+}
+
+/// Await `work`, or return `None` as soon as shutdown is requested.
+async fn until_shutdown<T>(
+    shutdown: &mut tokio::sync::watch::Receiver<bool>,
+    work: impl std::future::Future<Output = T>,
+) -> Option<T> {
+    if *shutdown.borrow() {
+        return None;
+    }
+    tokio::select! {
+        out = work => Some(out),
+        _ = shutdown.wait_for(|stop| *stop) => None,
     }
 }
 
@@ -816,6 +883,42 @@ mod tests {
             0,
             "nothing contacted, nothing written"
         );
+    }
+
+    /// The default witness is for store-backed nodes only: a flat-ledger node
+    /// delivers to a witness under the checkpoint lock, so it uses a witness
+    /// only when one is named.
+    #[test]
+    fn a_flat_ledger_node_has_no_default_witness() {
+        assert_eq!(witness_urls_for_layout(None, false), [DEFAULT_WITNESS_URL]);
+        assert!(witness_urls_for_layout(None, true).is_empty());
+        assert!(witness_urls_for_layout(Some("  "), true).is_empty());
+        assert_eq!(
+            witness_urls_for_layout(Some("https://a.example"), true),
+            ["https://a.example"]
+        );
+        assert!(witness_urls_for_layout(Some("off"), false).is_empty());
+    }
+
+    /// A witness send in flight never holds up a shutdown: the wait ends as
+    /// soon as shutdown is requested (or if it already was), and otherwise
+    /// returns the work's result.
+    #[tokio::test]
+    async fn work_is_abandoned_the_moment_shutdown_is_requested() {
+        let (stop, mut shutdown) = tokio::sync::watch::channel(false);
+        assert_eq!(until_shutdown(&mut shutdown, async { 7 }).await, Some(7));
+        let waiting = tokio::spawn(async move {
+            until_shutdown(&mut shutdown, std::future::pending::<()>()).await
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        stop.send(true).unwrap();
+        let ended = tokio::time::timeout(Duration::from_secs(5), waiting)
+            .await
+            .expect("shutdown ends the wait at once")
+            .unwrap();
+        assert_eq!(ended, None);
+        let mut already = stop.subscribe();
+        assert_eq!(until_shutdown(&mut already, async { 1 }).await, None);
     }
 
     #[test]
