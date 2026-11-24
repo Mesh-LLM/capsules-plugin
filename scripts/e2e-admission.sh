@@ -182,7 +182,7 @@ echo "first decision: $first"
 echo "$first" | jq -e '.verdict == "GO" and .source == "default"
   and .reads[1].kind == "history_card" and .reads[1].derivation == "history_card/1"
   and (.reads[1].commitment.digest | test("^[0-9a-f]{64}$"))
-  and (.rows | length) == 5
+  and (.rows | length) == 6
   and (.rows[0] | {row, result}) == {"row": "identity", "result": "pass"}
   and (.rows[1] | {row, result}) == {"row": "key_age", "result": "fail"}
   and (has("limit") | not)' > /dev/null \
@@ -227,7 +227,7 @@ code=$(chat "$REQUESTER_API" 3)
 third=$(decisions | sed -n "$((before + 1))p")
 echo "third decision: $third"
 echo "$third" | jq -e '.verdict == "NO" and .source == "deny_list"
-  and (.rows | length) == 5 and .reads[1].kind == "history_card"
+  and (.rows | length) == 6 and .reads[1].kind == "history_card"
   and (.rows[4] | {row, result}) == {"row": "corroboration", "result": "pass"}' > /dev/null \
   || { echo "the third decision is not a deny-list NO with its rows" >&2; exit 1; }
 

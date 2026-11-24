@@ -525,10 +525,7 @@ fn the_packs_rows_are_base_1s_with_its_thresholds() {
     let ids: Vec<&str> = rows.iter().map(|r| r["id"].as_str().unwrap()).collect();
     let mut expected = vec!["deny_list", "allow_list"];
     expected.extend(ROWS);
-    assert_eq!(
-        ids, expected,
-        "the lists first, then the five rows in order"
-    );
+    assert_eq!(ids, expected, "the lists first, then the six rows in order");
     let row = |id: &str| rows.iter().find(|r| r["id"] == id).unwrap();
     for id in ["deny_list", "allow_list"] {
         assert_eq!(row(id)["on_fail"], "NO");

@@ -45,8 +45,8 @@
 //! The lists and the rows are decided by capsule-engine's admission evaluator
 //! under the base pack this plugin ships ([`base::pack`], #178): the deny and
 //! allow lists are its two NO rows, and the six rows are `record` rows. Each
-//! sealed row also carries the evaluator's `effect`, and its `count` and
-//! `denominator` where it counts, and `reads` cites the pack as a
+//! sealed row also carries the evaluator's `effect`, its `label` where it gives
+//! one (`witnessed_card`), and its `count` and `denominator` where it counts, and `reads` cites the pack as a
 //! `terms_pack` with `role: "base"`, beside the price rule's
 //! (`role: "price"`).
 
