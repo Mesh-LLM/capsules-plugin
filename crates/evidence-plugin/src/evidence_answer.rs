@@ -2146,13 +2146,13 @@ pub(crate) mod tests {
     }
 
     /// The witness key behind `history_card_2_witnessed.json`: seed `[21; 32]`.
-    pub(crate) const WITNESSED_FIXTURE_KEY_SEED: [u8; 32] = [21; 32];
+    const WITNESSED_FIXTURE_KEY_SEED: [u8; 32] = [21; 32];
 
     /// The `history_card/2` of a 40-checkpoint log whose every checkpoint
     /// carries a real receipt from [`WITNESS`], as the golden fixture the
     /// History page's witness check reads
     /// (`tests/fixtures/history_card_2_witnessed.json`; its witness key is the
-    /// public half of seed 21 repeated, in `history-verify.test.ts`):
+    /// public half of this seed, in `history-verify.test.ts`):
     /// `CAPSULES_WRITE_ANSWER_FIXTURE=1` rewrites it.
     #[test]
     fn the_witnessed_history_card_2_reply_is_the_golden_fixture() {
@@ -2199,8 +2199,11 @@ pub(crate) mod tests {
             text,
             "the golden witnessed history_card/2 reply changed; CAPSULES_WRITE_ANSWER_FIXTURE=1 rewrites it"
         );
-        let key = hex::encode(witness.verifying_key().to_bytes());
-        println!("witness public key: {key}");
+        // The key `history-verify.test.ts` hardcodes (as hex DER, after the Ed25519 prefix).
+        assert_eq!(
+            hex::encode(witness.verifying_key().to_bytes()),
+            "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da"
+        );
     }
 
     /// Admission's card ask (`admission::base::CARD_FORM`, `history_card/2`)

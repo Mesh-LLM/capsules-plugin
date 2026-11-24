@@ -253,14 +253,14 @@ describe('askForHistory', () => {
     const fetchMock = stubRoutes({ answer: { profile: 'evidence-interop/0' }, request_digest: DIGEST, verification: artifact }, 'ab'.repeat(32))
     const reply = await askForHistory(PEER)
     expect(sentRequests(fetchMock)).toEqual([request('history_card/2')])
-    expect(reply).toMatchObject({ kind: 'answer', verification: { state: 'artifact', records: [], checkpoints: 3 } })
+    expect(reply).toMatchObject({ kind: 'answer', derivation: 'history_card/2', verification: { state: 'artifact', records: [], checkpoints: 3 } })
   })
 
   it.each(['derivation_unsupported', 'policy_declined'])('asks history_card/1 once when the peer refuses /2 as %s', async (reason) => {
     const fetchMock = stubRoutes({ answer: {}, request_digest: DIGEST, verification: { state: 'refusal', reason } }, 'ab'.repeat(32))
     const reply = await askForHistory(PEER)
     expect(sentRequests(fetchMock)).toEqual([request('history_card/2'), request('history_card/1')])
-    expect(reply).toMatchObject({ kind: 'answer', verification: { state: 'refusal', reason } })
+    expect(reply).toMatchObject({ kind: 'answer', derivation: 'history_card/1', verification: { state: 'refusal', reason } })
   })
 
   it('does not ask again for any other refusal, or when /2 is answered', async () => {

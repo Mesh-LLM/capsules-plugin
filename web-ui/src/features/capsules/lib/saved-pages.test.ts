@@ -47,7 +47,7 @@ describe('the History page, opened offline', () => {
     expect((await savedBytes(dom)).equals(Buffer.from(served, 'utf8'))).toBe(true)
   })
 
-  it('checks the witness receipts only under witnesses the reader pastes,', async () => {
+  it('checks the witness receipts only under witnesses the reader pastes', async () => {
     const witnessed = readFileSync(
       path.resolve(process.cwd(), '../crates/evidence-plugin/tests/fixtures/history_card_2_witnessed.json'),
       'utf8'

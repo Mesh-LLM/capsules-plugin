@@ -90,8 +90,9 @@ const RUNTIME = `
     else out.appendChild(el('p','bad','This page could not read its own note, so it shows nothing.'));
     return}
   var context=JSON.parse(document.getElementById('${CONTEXT_ELEMENT_ID}').textContent);
+  var latest=0;
   function draw(verdict){out.textContent='';CapsulesSavedPage.renderHistoryView(CapsulesSavedPage.historyViewInput(verdict,context),out)}
-  function run(readerWitnesses){CapsulesSavedPage.verifyHistoryReply(text,readerWitnesses).then(draw,function(){draw({kind:'unreadable',verified:false,checks:[{id:'readable',status:'fail',detail:''}],checkpoints:[]})})}
+  function run(readerWitnesses){var mine=++latest;CapsulesSavedPage.verifyHistoryReply(text,readerWitnesses).then(function(v){if(mine===latest)draw(v)},function(){if(mine===latest)draw({kind:'unreadable',verified:false,checks:[{id:'readable',status:'fail',detail:''}],checkpoints:[]})})}
   run();
   var apply=document.getElementById('witness-apply');
   if(apply)apply.addEventListener('click',function(){

@@ -381,13 +381,37 @@ describe('the witness receipts check', () => {
     expect(witnessCheck(v).status).toBe('fail')
   })
 
-  it('fails a receipt whose entry is not the one the anchor checkpoint states', async () => {
+  it('fails a receipt minted for another checkpoint, whatever label it carries', async () => {
     const reply = structuredClone(witnessed)
     const anchor = (reply.anchor as { digest: string }).digest
-    const mine = receiptsOf(reply).find((r) => r.checkpoint === anchor)!
-    mine.witness.entry_hash = '0'.repeat(64)
+    const all = receiptsOf(reply)
+    const mine = all.find((r) => r.checkpoint === anchor)!
+    const other = all.find((r) => r.checkpoint !== anchor)!
+    reply.witness_receipts = [{ checkpoint: anchor, witness: { ...other.witness, entry_hash: mine.witness.entry_hash } }]
     const v = await verifyHistoryReply(JSON.stringify(reply), readerList(WITNESS_KEY))
     expect(witnessCheck(v).status).toBe('fail')
+  })
+
+  it('does not trust the receipt’s own entry_hash label', async () => {
+    const reply = structuredClone(witnessed)
+    const anchor = (reply.anchor as { digest: string }).digest
+    receiptsOf(reply).find((r) => r.checkpoint === anchor)!.witness.entry_hash = '0'.repeat(64)
+    const v = await verifyHistoryReply(JSON.stringify(reply), readerList(WITNESS_KEY))
+    expect(witnessCheck(v).status).toBe('pass')
+  })
+
+  it('passes when one receipt verifies, though another is garbled or for another entry', async () => {
+    const reply = structuredClone(witnessed)
+    const anchor = (reply.anchor as { digest: string }).digest
+    const good = receiptsOf(reply).find((r) => r.checkpoint === anchor)!
+    reply.witness_receipts = [
+      ...receiptsOf(reply),
+      { checkpoint: anchor, witness: { ...good.witness, receipt_b64: 'AAAA' } },
+      { checkpoint: anchor, witness: { ...good.witness, entry_hash: '0'.repeat(64), receipt_b64: '!' } }
+    ]
+    const v = await verifyHistoryReply(JSON.stringify(reply), readerList(WITNESS_KEY))
+    expect(witnessCheck(v).status).toBe('pass')
+    expect(v.verified).toBe(true)
   })
 
   it('counts only the anchor checkpoint’s receipts', async () => {
@@ -417,6 +441,9 @@ describe('the witness receipts check', () => {
     expect(parseReaderWitnesses(readerList(WITNESS_KEY))).toEqual(readerList(WITNESS_KEY))
     expect(parseReaderWitnesses({ witnesses: [{ name: '', keys: [WITNESS_KEY] }] })).toBeNull()
     expect(parseReaderWitnesses({ witnesses: [{ name: 'w', keys: ['zz'] }] })).toBeNull()
+    // Hex that is not one of the two key shapes `checkAnchorWitnessed` reads is no key; case does not matter.
+    expect(parseReaderWitnesses({ witnesses: [{ name: 'w', keys: [WITNESS_KEY.slice(0, -2)] }] })).toBeNull()
+    expect(parseReaderWitnesses(readerList(WITNESS_KEY.toUpperCase()))).toEqual(readerList(WITNESS_KEY))
     expect(parseReaderWitnesses({ witnesses: [{ name: 'w', keys: [WITNESS_KEY], extra: 1 }] })).toBeNull()
     expect(parseReaderWitnesses({ witnesses: [], extra: 1 })).toBeNull()
     expect(parseReaderWitnesses([])).toBeNull()

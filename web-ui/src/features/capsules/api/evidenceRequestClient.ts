@@ -47,6 +47,9 @@ export type EvidenceAskReply =
       verification: EvidenceVerification
       requestDigest: string
       announcedKeyId: string | null
+      /** The card form a history ask was made in (`askForHistory`): a
+       *  `history_card/2` lists a sample of the log, not all of it. */
+      derivation?: string
       /** The `capsule_id`s of their records the plugin saved on this node from
        *  this reply (the tool's `held`): `[]` when it saved none (a store
        *  failure, a receiver refusal, or no single matching record), and
@@ -199,7 +202,8 @@ function refusesThisForm(reply: EvidenceAskReply): boolean {
 export async function askForHistory(peerId: string): Promise<EvidenceAskReply> {
   const [newer, older] = HISTORY_CARD_DERIVATIONS
   const first = await ask(peerId, askForHistoryRequest(newer))
-  return refusesThisForm(first) ? ask(peerId, askForHistoryRequest(older)) : first
+  const [reply, form] = refusesThisForm(first) ? [await ask(peerId, askForHistoryRequest(older)), older] : [first, newer]
+  return reply.kind === 'answer' ? { ...reply, derivation: form } : reply
 }
 
 async function ask(peerId: string, request: Record<string, unknown>): Promise<EvidenceAskReply> {

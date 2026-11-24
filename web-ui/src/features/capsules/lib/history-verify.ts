@@ -139,7 +139,7 @@ function periodCounts(raw: unknown): PeriodCount[] {
 const WITNESS_NOT_RUN: Check = {
   id: 'witness_receipts',
   status: 'not_run',
-  detail: 'Witness receipts were not checked: no witness keys were supplied, or the answer holds no receipt to check.'
+  detail: 'Witness receipts were not checked: an earlier check failed, no witness keys were supplied, or the answer holds no receipt to check.'
 }
 
 /** The checks this page cannot run, always listed, whatever else passed. */
@@ -262,10 +262,13 @@ const object = (value: unknown): Record<string, unknown> | null =>
  *  It is the reader's, never the reply's: nothing the reply carries adds a key. */
 export type ReaderWitnesses = AnchorWitnessPolicy
 
-const HEX_DER = /^(?:[0-9a-f]{2})+$/
+// The two key shapes `checkAnchorWitnessed` reads (hex of a DER SubjectPublicKeyInfo): an Ed25519 key
+// (88 characters) and a P-256 key (182); it ignores any other string, so one is refused here instead.
+const ED25519_SPKI = /^302a300506032b6570032100[0-9a-f]{64}$/
+const P256_SPKI = /^3059301306072a8648ce3d020106082a8648ce3d03010703420004[0-9a-f]{128}$/
 
 /** The list `value` states, or `null` when it is not one: `{witnesses: [{name, keys}]}`
- *  with a non-empty name and hex DER keys. A list with any malformed entry is no list. */
+ *  with a non-empty name and Ed25519 or P-256 DER keys in hex (any case). A list with any malformed entry is no list. */
 export function parseReaderWitnesses(value: unknown): ReaderWitnesses | null {
   const list = object(value)
   if (!list || Object.keys(list).length !== 1 || !Array.isArray(list.witnesses)) return null
@@ -275,8 +278,10 @@ export function parseReaderWitnesses(value: unknown): ReaderWitnesses | null {
     if (!entry || Object.keys(entry).length !== 2) return null
     const { name, keys } = entry
     if (typeof name !== 'string' || name.trim() === '') return null
-    if (!Array.isArray(keys) || keys.length === 0 || !keys.every((k) => typeof k === 'string' && HEX_DER.test(k))) return null
-    witnesses.push({ name, keys: [...(keys as string[])] })
+    if (!Array.isArray(keys) || keys.length === 0 || !keys.every((k) => typeof k === 'string')) return null
+    const lowered = (keys as string[]).map((k) => k.trim().toLowerCase())
+    if (!lowered.every((k) => ED25519_SPKI.test(k) || P256_SPKI.test(k))) return null
+    witnesses.push({ name, keys: lowered })
   }
   return { witnesses }
 }
@@ -291,10 +296,10 @@ const base64ToBytes = (text: string): Uint8Array | null => {
 }
 
 /** The witness receipts the reply carries for the anchor checkpoint, checked with
- *  `checkAnchorWitnessed` under the reader's own list. A receipt is bound to the
- *  checkpoint the way the node binds it: its `entry_hash` is SHA-256 of the
- *  checkpoint's record digest, and that entry is the leaf `checkAnchorWitnessed`
- *  is given. Receipts on an earlier checkpoint do not count (evidencebook#209), a
+ *  `checkAnchorWitnessed` under the reader's own list. The leaf it is given is the
+ *  entry the node binds a receipt to: SHA-256 of the checkpoint's record digest,
+ *  recomputed here from the verified checkpoint, never read from the receipt's
+ *  unsigned `entry_hash`; a receipt made for another entry cannot verify over it. Receipts on an earlier checkpoint do not count (evidencebook#209), a
  *  stub was never registered, and no keys or no receipt is `not_run`: never a pass. */
 async function checkWitnessReceipts(
   reply: Record<string, unknown>,
@@ -326,13 +331,10 @@ async function checkWitnessReceipts(
   })
   const recordBytes = hexToBytes(record)
   const entryHex = recordBytes ? await sha256Hex(recordBytes) : null
-  const receipts: Uint8Array[] = []
-  for (const w of registered) {
-    const bytes = typeof w.receipt_b64 === 'string' ? base64ToBytes(w.receipt_b64) : null
-    if (!bytes || bytes.length === 0) return fail('A witness receipt in the answer is not readable.')
-    if (w.entry_hash !== entryHex) return fail('A witness receipt is not for the last checkpoint: its entry is not the one that checkpoint states.')
-    receipts.push(bytes)
-  }
+  // Every registered receipt goes to `checkAnchorWitnessed`: a failing receipt takes nothing from a passing one
+  // (as in commerce's History card). A receipt that does not read, or whose entry is another checkpoint's,
+  // cannot verify over this checkpoint's entry and is counted as failing there.
+  const receipts = registered.map((w) => (typeof w.receipt_b64 === 'string' ? base64ToBytes(w.receipt_b64) : null) ?? new Uint8Array())
   const report = await checkAnchorWitnessed(entryHex!, receipts, readerWitnesses)
   switch (report.status) {
     case 'PASS':
@@ -342,9 +344,9 @@ async function checkWitnessReceipts(
         detail: `A witness you accept (${report.witness ?? 'unnamed'}) holds the last checkpoint${report.witnessed_time !== null ? `, registered at ${new Date(report.witnessed_time * 1000).toISOString()}` : ''}.`
       }
     case 'FAIL':
-      return fail('A witness receipt for the last checkpoint does not verify under any key you supplied.')
+      return fail('No witness receipt for the last checkpoint verifies under a key you supplied.')
     default:
-      return notRun('The witness receipts could not be checked under the keys you supplied (none of them is for a receipt’s algorithm).')
+      return notRun('The witness receipts could not be checked: this browser cannot verify them, or none of the keys you supplied is for the receipts’ algorithm.')
   }
 }
 
