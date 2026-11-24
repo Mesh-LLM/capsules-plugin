@@ -47,6 +47,8 @@ impl Harness {
         let mut cmd = Command::new(PLUGIN_BIN);
         cmd.env("MESH_LLM_PLUGIN_ENDPOINT", &socket_path)
             .env("MESH_LLM_PLUGIN_TRANSPORT", "unix")
+            // No test contacts the hosted witness the plugin defaults to.
+            .env("CAPSULES_CHECKPOINT_WITNESS_URLS", "off")
             // An isolated data dir per run: never the operator's own.
             .env(
                 "CAPSULES_DATA_DIR",
@@ -285,6 +287,8 @@ async fn a_second_process_on_the_same_data_dir_refuses_and_the_dir_frees_on_exit
         Command::new(PLUGIN_BIN)
             .env("MESH_LLM_PLUGIN_ENDPOINT", dir.join("no-host.sock"))
             .env("MESH_LLM_PLUGIN_TRANSPORT", "unix")
+            // No test contacts the hosted witness the plugin defaults to.
+            .env("CAPSULES_CHECKPOINT_WITNESS_URLS", "off")
             .env("CAPSULES_DATA_DIR", &dir_env)
             .env("CAPSULES_BLOCKED_MODELS", "blocked-test-model")
             .output(),

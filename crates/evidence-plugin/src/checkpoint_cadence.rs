@@ -1,11 +1,11 @@
 //! The plugin's own checkpoint cadence: a tokio background task that runs
 //! `crate::producer::checkpoint::CheckpointState` over this node's ledger.
 //!
-//! **On by default, local-only.** The cadence task runs
-//! unless the operator opts OUT by setting [`ENV_ENABLE`] to `"off"` --
-//! "on by default" is local checkpointing only: [`ENV_WITNESS_URLS`] stays
-//! empty/unset by default, so no network call ever happens unless the
-//! operator also sets a witness URL. A standalone checkpointing process
+//! **On by default, witnessed by default.** The cadence task runs
+//! unless the operator opts OUT by setting [`ENV_ENABLE`] to `"off"`, and
+//! with [`ENV_WITNESS_URLS`] unset checkpoints are offered to Action State's
+//! hosted witness ([`DEFAULT_WITNESS_URL`], Steven's ruling of 2026-11-24).
+//! `off` there contacts no witness; naming other URLs replaces the default. A standalone checkpointing process
 //! must NEVER run against the same `ledger_dir` as this cadence: both would
 //! append lines to the same `checkpoints.jsonl` and race each other's chain.
 //! That is an operator choice this module cannot detect and refuse safely (a
@@ -42,6 +42,7 @@ use crate::producer::anchor::AnchorClient;
 use crate::producer::checkpoint::{
     CheckpointCadenceConfig, CheckpointRecord, CheckpointState, Coverage, PaddingSink,
 };
+use crate::share_policy::{DEFAULT_WITNESS_KEY, DEFAULT_WITNESS_URL};
 use ed25519_dalek::SigningKey;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
@@ -64,9 +65,9 @@ const ENV_INTERVAL_SECONDS: &str = "CAPSULES_CHECKPOINT_CADENCE_SECONDS";
 /// Entry-count cadence override. Defaults to 100 (upstream `capsule_emit`'s
 /// own default).
 const ENV_CADENCE_ENTRIES: &str = "CAPSULES_CHECKPOINT_CADENCE_ENTRIES";
-/// Comma-separated witness URLs to register checkpoints with. Anchoring is
-/// OPT-IN, always (this repo's posture) -- empty/unset means
-/// self-checkpointed only, no network.
+/// Comma-separated witness URLs to register checkpoints with. Unset means
+/// the default witness; `off` means none (self-checkpointed only, no
+/// network).
 const ENV_WITNESS_URLS: &str = "CAPSULES_CHECKPOINT_WITNESS_URLS";
 /// Each witness's public key, as the operator gives it: a JSON object from
 /// witness URL to its raw Ed25519 key in hex. A witness with no key here has
@@ -80,20 +81,44 @@ const ENV_PAD_BUCKET: &str = "CAPSULES_CHECKPOINT_PAD_BUCKET";
 /// Whether a witness URL is configured: checkpoints are offered to a witness.
 /// The same setting [`spawn`] registers checkpoints with.
 pub fn witness_configured() -> bool {
-    !witness_urls().is_empty()
+    !active_witness_urls().0.is_empty()
 }
 
-/// The witness URLs the operator named, in order: none by default.
+/// The witness URLs in force, in order: the operator's, else the default witness.
 pub fn witness_urls() -> Vec<String> {
     config_from_env().witness_urls
 }
 
-/// The witness list from the setting's raw value: none when it is unset or
-/// holds no URL. A URL with a user, password, query or fragment is not used
-/// (any of them can carry a credential, and the URL is kept in receipts and
-/// shown on the page); it is logged instead.
-fn witness_urls_from(raw: Option<&str>) -> Vec<String> {
-    raw.unwrap_or_default()
+/// Set once at start: this node stays on the flat ledger. Such a node
+/// delivers to witnesses inside the checkpoint-state lock (capsule-emit cannot
+/// move that delivery out), so an unreachable default witness would stall it;
+/// it gets no default witness and uses one only when its operator names it.
+/// Every reader of the witness setting goes through [`witness_urls_from`], so
+/// the saved, active and displayed lists agree.
+static FLAT_LEDGER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The witness list from the setting's raw value: the default witness when it
+/// is unset (store-backed nodes only), none when it is `off` or holds no URL.
+/// A URL with a user, password, query or fragment is not used (any of them can
+/// carry a credential, and the URL is kept in receipts and shown on the
+/// page); it is logged instead.
+pub(crate) fn witness_urls_from(raw: Option<&str>) -> Vec<String> {
+    witness_urls_for(raw, FLAT_LEDGER.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+fn witness_urls_for(raw: Option<&str>, flat: bool) -> Vec<String> {
+    // A blank value is unset, as `settings::var` reads it for every setting.
+    let Some(raw) = raw.filter(|r| !r.trim().is_empty()) else {
+        return if flat {
+            Vec::new()
+        } else {
+            vec![DEFAULT_WITNESS_URL.to_string()]
+        };
+    };
+    if raw.trim().eq_ignore_ascii_case("off") {
+        return Vec::new();
+    }
+    raw
         .split(',')
         .map(str::trim)
         .filter(|s| !s.is_empty())
@@ -173,6 +198,19 @@ fn witness_keys_from(raw: Option<&str>) -> std::collections::BTreeMap<String, St
 }
 
 fn witness_keys_checked(
+    raw: Option<&str>,
+) -> (std::collections::BTreeMap<String, String>, Vec<String>) {
+    let (mut keys, problems) = configured_witness_keys(raw);
+    // The default witness's key ships with its URL, unless the operator gave
+    // one for it: its receipts then check offline from the first checkpoint.
+    keys.entry(DEFAULT_WITNESS_URL.to_string())
+        .or_insert_with(|| DEFAULT_WITNESS_KEY.to_string());
+    (keys, problems)
+}
+
+/// The keys the operator gave (`CAPSULES_CHECKPOINT_WITNESS_KEYS`) and what is
+/// wrong with them, without the default witness's own.
+fn configured_witness_keys(
     raw: Option<&str>,
 ) -> (std::collections::BTreeMap<String, String>, Vec<String>) {
     let Some(raw) = raw.map(str::trim).filter(|r| !r.is_empty()) else {
@@ -483,7 +521,18 @@ pub fn spawn(
     capsules: Arc<CapsuleState>,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) -> anyhow::Result<CheckpointHandle> {
+    FLAT_LEDGER.store(capsules.stays_flat(), std::sync::atomic::Ordering::Relaxed);
     let cfg = config_from_env();
+    if capsules.stays_flat()
+        && crate::settings::var(ENV_WITNESS_URLS)
+            .ok()
+            .is_none_or(|r| r.trim().is_empty())
+    {
+        tracing::warn!(
+            "this node stays on the flat ledger, which sends checkpoints to a witness while holding \
+             the checkpoint lock, so the default witness is not used here; name a witness to use one"
+        );
+    }
     let witness_urls = cfg.witness_urls.clone();
     let _ = ACTIVE_WITNESSES.set(witness_urls.clone());
     let _ = ACTIVE_KEYS.set(witness_keys_checked(
@@ -510,6 +559,11 @@ pub fn spawn(
         }
     }
     state.set_padding_sink(Box::new(LedgerPadder(capsules.clone())));
+    // Witness delivery is a network round trip (up to the witness client's
+    // request timeout per send): the cadence runs it outside the state lock
+    // (`deliver_witnesses`), so an unreachable witness never stalls a push
+    // checkpoint or anything else that waits on that lock (capsule-emit#472).
+    state.set_inline_witness_delivery(false);
     tracing::info!(
         leaves_indexed_this_load = report.leaves_indexed_this_load,
         leaf_count = state.leaf_count(),
@@ -541,6 +595,9 @@ pub fn spawn(
         };
 
         run("startup reconnect", |s, k, a| s.reconnect(k, a));
+        // A shutdown that arrives while a witness is being sent to is never
+        // queued behind that send: `stopping` skips the loop to the flush.
+        let mut stopping = !deliver_witnesses(&task, &mut shutdown).await;
 
         let mut ticker = tokio::time::interval(interval);
         // The next Service History period boundary to checkpoint at. Kept
@@ -552,9 +609,16 @@ pub fn spawn(
         ticker.tick().await;
 
         loop {
+            if stopping {
+                break;
+            }
             tokio::select! {
                 _ = ticker.tick() => {
                     run("tick", |s, k, a| s.tick(k, a));
+                    if !deliver_witnesses(&task, &mut shutdown).await {
+                        stopping = true;
+                        continue;
+                    }
                     // The other ledger files' checkpoints, each cut when its
                     // file has grown (`ledger_checkpoints`).
                     {
@@ -575,10 +639,17 @@ pub fn spawn(
                         let (dir, urls) = (keys_dir.clone(), witness_urls.clone());
                         let configured = active_witness_keys();
                         let log_id = log_id_for_witnesses.clone();
-                        let _ = tokio::task::spawn_blocking(move || {
-                            crate::witness_status::refresh_witnesses(&dir, &urls, &configured, Some(&log_id))
-                        })
+                        let refreshed = until_shutdown(
+                            &mut shutdown,
+                            off_runtime(move || {
+                                crate::witness_status::refresh_witnesses(&dir, &urls, &configured, Some(&log_id))
+                            }),
+                        )
                         .await;
+                        if refreshed.is_none() {
+                            stopping = true;
+                            continue;
+                        }
                     }
                 }
                 // A checkpoint at each Service History period boundary, cut
@@ -595,6 +666,10 @@ pub fn spawn(
                         task.latest_head.set(cp);
                     }
                     boundary = crate::service_history::next_boundary_after(unix_now());
+                    if !deliver_witnesses(&task, &mut shutdown).await {
+                        stopping = true;
+                        continue;
+                    }
                 }
                 _ = shutdown.changed() => {
                     if *shutdown.borrow() {
@@ -605,10 +680,119 @@ pub fn spawn(
         }
 
         run("shutdown flush", |s, k, a| s.checkpoint_on_shutdown(k, a));
+        // `checkpoint_on_shutdown` delivers nothing with inline delivery off.
+        // One last pass, but never held up by a witness that does not answer:
+        // an abandoned pass leaves its rows due, and the next start sends them.
+        deliver_witnesses_at_shutdown(&task, SHUTDOWN_WITNESS_WAIT).await;
         tracing::info!("checkpoint cadence task stopped");
     });
 
     Ok(handle)
+}
+
+/// One witness delivery pass, with the state lock held only to take the rows
+/// and to record the outcome: the sends run on a blocking thread in between,
+/// so serving never waits on a witness. Nothing happens when no witness is
+/// named, nothing is queued, or another pass is out.
+async fn deliver_witnesses(
+    task: &CheckpointHandle,
+    shutdown: &mut tokio::sync::watch::Receiver<bool>,
+) -> bool {
+    let taken = task
+        .state
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .take_witness_delivery();
+    let Some(mut delivery) = taken else {
+        return !*shutdown.borrow();
+    };
+    let sent = until_shutdown(
+        shutdown,
+        off_runtime(move || {
+            delivery.run();
+            delivery
+        }),
+    )
+    .await;
+    match sent {
+        // Shutdown arrived mid-pass: the pass is abandoned. Its thread still
+        // owns the delivery until the send returns, so the "a pass is out"
+        // flag stays set and the final shutdown pass is skipped; the rows
+        // stay due for the next start.
+        None => false,
+        Some(Some(delivery)) => {
+            task.state
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .finish_witness_delivery(delivery);
+            true
+        }
+        Some(None) => {
+            tracing::warn!("a witness delivery did not complete");
+            true
+        }
+    }
+}
+
+/// Await `work`, or return `None` as soon as shutdown is requested.
+async fn until_shutdown<T>(
+    shutdown: &mut tokio::sync::watch::Receiver<bool>,
+    work: impl std::future::Future<Output = T>,
+) -> Option<T> {
+    if *shutdown.borrow() {
+        return None;
+    }
+    tokio::select! {
+        out = work => Some(out),
+        _ = shutdown.wait_for(|stop| *stop) => None,
+    }
+}
+
+/// Run blocking work on its own thread and await its result. Not
+/// `spawn_blocking`: the runtime waits for blocking-pool tasks when it shuts
+/// down, so a witness that never answers (up to its request timeout) would
+/// keep the plugin from exiting; a detached thread dies with the process.
+async fn off_runtime<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+    let (done, finished) = tokio::sync::oneshot::channel();
+    std::thread::spawn(move || {
+        let _ = done.send(work());
+    });
+    finished.await.ok()
+}
+
+/// How long the plugin's exit waits for the last witness delivery.
+const SHUTDOWN_WITNESS_WAIT: Duration = Duration::from_secs(3);
+
+/// The last delivery pass at shutdown, on a detached thread and bounded by
+/// `limit`: a witness that never answers must not keep the plugin from
+/// exiting (the host's own exit deadline is shorter than a witness
+/// request's). A pass that does not finish is dropped, which leaves the rows
+/// due for the next start.
+async fn deliver_witnesses_at_shutdown(task: &CheckpointHandle, limit: Duration) {
+    let taken = task
+        .state
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .take_witness_delivery();
+    let Some(mut delivery) = taken else {
+        return;
+    };
+    let (done, finished) = tokio::sync::oneshot::channel();
+    std::thread::spawn(move || {
+        delivery.run();
+        let _ = done.send(delivery);
+    });
+    match tokio::time::timeout(limit, finished).await {
+        Ok(Ok(delivery)) => {
+            task.state
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .finish_witness_delivery(delivery);
+        }
+        _ => tracing::warn!(
+            "a witness delivery was still running at shutdown; its rows stay due for the next start"
+        ),
+    }
 }
 
 /// The wall clock, in Unix seconds.
@@ -680,13 +864,15 @@ fn report_checkpoint(
 mod tests {
     use super::*;
 
-    /// Nothing set means no witness at all, so nothing is ever registered
-    /// anywhere and no witness is contacted (`witness_status` contacts only a
-    /// named one, and registration walks the named ones only).
+    /// Nothing set means the default witness; `off` means none, so nothing is
+    /// registered anywhere and no witness is contacted (`witness_status`
+    /// contacts only a named one, and registration walks the named ones only).
     #[test]
-    fn unset_means_no_witness_and_no_outbound() {
-        assert!(witness_urls_from(None).is_empty());
-        assert!(witness_urls_from(Some("")).is_empty());
+    fn unset_means_the_default_witness_and_off_means_no_outbound() {
+        assert_eq!(witness_urls_from(None), [DEFAULT_WITNESS_URL]);
+        assert!(witness_urls_from(Some("off")).is_empty());
+        assert!(witness_urls_from(Some(" OFF ")).is_empty());
+        assert_eq!(witness_urls_from(Some("  ")), [DEFAULT_WITNESS_URL]);
         assert!(witness_urls_from(Some(" , ,")).is_empty());
         assert_eq!(
             witness_urls_from(Some("https://a.example, https://b.example")),
@@ -696,7 +882,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         crate::witness_status::refresh_witnesses(
             dir.path(),
-            &witness_urls_from(None),
+            &witness_urls_from(Some("off")),
             &Default::default(),
             None,
         );
@@ -705,6 +891,42 @@ mod tests {
             0,
             "nothing contacted, nothing written"
         );
+    }
+
+    /// The default witness is for store-backed nodes only: a flat-ledger node
+    /// delivers to a witness under the checkpoint lock, so it uses a witness
+    /// only when one is named.
+    #[test]
+    fn a_flat_ledger_node_has_no_default_witness() {
+        assert_eq!(witness_urls_for(None, false), [DEFAULT_WITNESS_URL]);
+        assert!(witness_urls_for(None, true).is_empty());
+        assert!(witness_urls_for(Some("  "), true).is_empty());
+        assert_eq!(
+            witness_urls_for(Some("https://a.example"), true),
+            ["https://a.example"]
+        );
+        assert!(witness_urls_for(Some("off"), false).is_empty());
+    }
+
+    /// A witness send in flight never holds up a shutdown: the wait ends as
+    /// soon as shutdown is requested (or if it already was), and otherwise
+    /// returns the work's result.
+    #[tokio::test]
+    async fn work_is_abandoned_the_moment_shutdown_is_requested() {
+        let (stop, mut shutdown) = tokio::sync::watch::channel(false);
+        assert_eq!(until_shutdown(&mut shutdown, async { 7 }).await, Some(7));
+        let waiting = tokio::spawn(async move {
+            until_shutdown(&mut shutdown, std::future::pending::<()>()).await
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        stop.send(true).unwrap();
+        let ended = tokio::time::timeout(Duration::from_secs(5), waiting)
+            .await
+            .expect("shutdown ends the wait at once")
+            .unwrap();
+        assert_eq!(ended, None);
+        let mut already = stop.subscribe();
+        assert_eq!(until_shutdown(&mut already, async { 1 }).await, None);
     }
 
     #[test]
@@ -721,10 +943,10 @@ mod tests {
     #[test]
     fn a_malformed_key_setting_is_a_problem_to_show() {
         let (keys, problems) = witness_keys_checked(Some("not json"));
-        assert!(keys.is_empty());
+        assert_eq!(keys.keys().collect::<Vec<_>>(), [DEFAULT_WITNESS_URL]);
         assert!(problems[0].contains("not a JSON object"));
         let (keys, problems) = witness_keys_checked(Some(r#"{"https://w.example": "short"}"#));
-        assert!(keys.is_empty());
+        assert!(!keys.contains_key("https://w.example"));
         assert!(problems[0].contains("w.example"));
         assert!(witness_keys_checked(None).1.is_empty());
     }
@@ -735,10 +957,28 @@ mod tests {
         let keys = witness_keys_from(Some(&format!(
             r#"{{"https://a.example": "{k}", "https://b.example": "short"}}"#
         )));
-        assert_eq!(keys.len(), 1);
+        assert_eq!(keys.len(), 2, "a.example and the default witness");
         assert_eq!(keys["https://a.example"], "ab".repeat(32));
-        assert!(witness_keys_from(Some("not json")).is_empty());
-        assert!(witness_keys_from(None).is_empty());
+        assert!(!keys.contains_key("https://b.example"));
+        assert_eq!(keys[DEFAULT_WITNESS_URL], DEFAULT_WITNESS_KEY);
+        assert_eq!(witness_keys_from(Some("not json")).len(), 1);
+    }
+
+    /// The default witness's key ships with its URL (the same value as
+    /// evidencebook's `DealDefaultWitnessKey`), so its receipts check offline;
+    /// a key the operator gives for it wins.
+    #[test]
+    fn the_default_witness_key_ships_with_its_url_unless_overridden() {
+        assert_eq!(
+            DEFAULT_WITNESS_KEY,
+            "39bb654c9dc0afe1c0edef0deffaa69099b8518836c9ba26e0491535840f96b5"
+        );
+        let keys = witness_keys_from(None);
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[DEFAULT_WITNESS_URL], DEFAULT_WITNESS_KEY);
+        let mine = "cd".repeat(32);
+        let keys = witness_keys_from(Some(&format!(r#"{{"{DEFAULT_WITNESS_URL}": "{mine}"}}"#)));
+        assert_eq!(keys[DEFAULT_WITNESS_URL], mine);
     }
 
     #[test]

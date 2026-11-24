@@ -323,7 +323,7 @@
         "apply_mode": "static_on_load",
         "restart_scope": "none",
         "visibility": "user",
-        "description": "Witness services to offer this node's checkpoints to: each one's URL, and its public key if you have it. Empty is off (the default): there is no default witness, and the plugin contacts none until you add one. The Evidence page shows what each witness holds. Takes effect when mesh-llm is restarted.",
+        "description": "Witness services to offer this node's checkpoints to: each one's URL, and its public key if you have it. Unset (or empty) means the default witness, run by Action State (not independent of us), which sees checkpoint hashes, sizes and times, never content; name other witnesses to replace it, or enter `off` to contact none. The Evidence page shows what each witness holds. Takes effect when mesh-llm is restarted.",
         "presentation": {
           "label": "Witnesses",
           "category_id": "records",

@@ -14,7 +14,7 @@ share_exchange_corroboration: on | off                             # default: on
 advertise_evidence_requests: on | off                              # default: off
 share_adjudications:         deliver_to_subjects | off             # default: deliver_to_subjects
 share_settlement_receipts:   on | off                              # default: off
-witness:                     [] | [{endpoint, public_key?}, ...]   # default: [] (off)
+witness:                     off | [{endpoint, public_key?}, ...]  # default: Action State's hosted witness
 ```
 
 With these defaults a node sends a peer two things on its own: its sealed
@@ -54,7 +54,7 @@ console: `CAPSULES_SHARE_RECORD_AT_COMPLETION`,
 `CAPSULES_SHARE_EXCHANGE_CORROBORATION`,
 `CAPSULES_ADVERTISE_EVIDENCE_REQUESTS`, `CAPSULES_SHARE_ADJUDICATIONS`,
 `CAPSULES_SHARE_SETTLEMENT_RECEIPTS` and
-`CAPSULES_CHECKPOINT_WITNESS_URLS` (a comma list of witness URLs) with
+`CAPSULES_CHECKPOINT_WITNESS_URLS` (a comma list of witness URLs, or `off`) with
 `CAPSULES_CHECKPOINT_WITNESS_KEYS` (a JSON object from witness URL to its key
 in hex). An unset value means the default; an unknown value means `off` for the
 switches that reach a peer.
@@ -404,11 +404,18 @@ never sends it to a peer. The operator's "Ask again" is the same switch.
 
 ## Witness
 
-`witness` is a list of witnesses, empty for off (the default). Each is an
+`witness` is a list of witnesses. Unset (or an empty list) is the default: Action State's
+hosted witness, `https://witness.agentactioncapsule.org`, whose key ships with the plugin.
+It is run by Action State, so it is not independent of us, and it sees checkpoint hashes,
+sizes and times (never content). Set `witness = "off"` (or `CAPSULES_CHECKPOINT_WITNESS_URLS=off`)
+to contact no witness at all, or name other witnesses to replace it. A node that stays on the
+flat ledger (upgraded from 0.1.8 or earlier with an owner maintenance record, or a start whose
+import from the flat layout ran out of time and finishes on a later start) gets no default
+witness, because it delivers to witnesses inside the checkpoint lock; it uses a witness only when
+you name one. Each is an
 `endpoint` (the witness's URL) and, if you have it, its `public_key` (its
 Ed25519 key in hex, as its operator publishes it): the same endpoint-and-key
-pair capsule-cli takes. There is no default witness: with the list empty the
-plugin contacts no witness at all.
+pair capsule-cli takes.
 
 Each checkpoint is offered to every witness on the list. A witness that
 accepts it returns a receipt, and the Evidence page lists every witness by

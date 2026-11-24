@@ -49,6 +49,11 @@ struct Harness {
 
 impl Harness {
     async fn spawn(node_id: &str) -> Self {
+        Self::spawn_with_witness(node_id, "off").await
+    }
+
+    /// As [`Self::spawn`], with the witness setting the node starts under.
+    async fn spawn_with_witness(node_id: &str, witness: &str) -> Self {
         let socket_path = std::env::temp_dir().join(format!("commitment-interop-{}.sock", nonce()));
         let _ = std::fs::remove_file(&socket_path);
         let listener = UnixListener::bind(&socket_path).expect("bind fake-host socket");
@@ -57,6 +62,8 @@ impl Harness {
         let mut cmd = Command::new(PLUGIN_BIN);
         cmd.env("MESH_LLM_PLUGIN_ENDPOINT", &socket_path)
             .env("MESH_LLM_PLUGIN_TRANSPORT", "unix")
+            // No test contacts the hosted witness the plugin defaults to.
+            .env("CAPSULES_CHECKPOINT_WITNESS_URLS", witness)
             .env("CAPSULES_BLOCKED_MODELS", "blocked-test-model")
             .env("CAPSULES_DATA_DIR", &data_dir)
             .env("CAPSULES_SELF_PEER_ID", node_id)
@@ -308,10 +315,33 @@ async fn relay_to(peer: LocalStream) -> std::path::PathBuf {
 
 #[tokio::test]
 async fn a_second_node_fetches_the_commitment_and_a_refusal_names_its_policy_digest() {
-    let mut a = Harness::spawn(NODE_A).await;
+    commitment_is_fetched_and_a_refusal_names_the_digest("off").await;
+}
+
+/// A witness that accepts a connection and never answers (the hosted witness
+/// down, or a node offline behind a black hole) must not delay serving: the
+/// plugin delivers to a witness outside the checkpoint-state lock, so the
+/// commitment is still fetched within its 3 s window (capsule-emit#472).
+#[tokio::test]
+async fn an_unresponsive_witness_does_not_stall_serving() {
+    let silent = std::net::TcpListener::bind("127.0.0.1:0").expect("bind a silent witness");
+    let url = format!("http://{}", silent.local_addr().unwrap());
+    let held = std::thread::spawn(move || {
+        // Accept every connection and hold it open without a byte of reply.
+        let mut open = Vec::new();
+        for stream in silent.incoming().flatten() {
+            open.push(stream);
+        }
+    });
+    commitment_is_fetched_and_a_refusal_names_the_digest(&url).await;
+    drop(held);
+}
+
+async fn commitment_is_fetched_and_a_refusal_names_the_digest(witness: &str) {
+    let mut a = Harness::spawn_with_witness(NODE_A, witness).await;
     let manifest = a.initialize().await;
     a.seal_and_checkpoint(&manifest).await;
-    let mut b = Harness::spawn(NODE_B).await;
+    let mut b = Harness::spawn_with_witness(NODE_B, witness).await;
     b.initialize().await;
 
     // A's own pair, as the operator would publish it.

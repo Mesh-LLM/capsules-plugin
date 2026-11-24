@@ -6124,8 +6124,20 @@ mod tests {
         assert_eq!(card["witnesses"][0]["checked"], json!(false));
         assert_eq!(card["witnessed_checkpoint_count"], json!(0));
         assert!(card.get("latest_witnessed").is_none());
-        // No witness is configured in this test, so it reads as removed.
-        assert_eq!(card["witness_status"][0]["state"], json!("removed"));
+        // Only the default witness is configured in this test, so the other
+        // one, which holds a receipt, reads as removed.
+        let status = card["witness_status"].as_array().unwrap();
+        let state_of = |name: &str| {
+            status
+                .iter()
+                .find(|w| w["name"] == json!(name))
+                .map(|w| w["state"].clone())
+        };
+        assert_eq!(state_of("witness.example"), Some(json!("removed")));
+        assert_eq!(
+            state_of("witness.agentactioncapsule.org"),
+            Some(json!("pending"))
+        );
         assert_eq!(
             build_pane_a(&[], card)["card"]["checkpoint_count"],
             json!(2)

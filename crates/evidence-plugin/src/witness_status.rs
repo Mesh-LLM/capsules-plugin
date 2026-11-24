@@ -2,8 +2,9 @@
 //! receipts check.
 //!
 //! The operator names witnesses in one setting, a list (the console's
-//! `witness`, or a comma list in `CAPSULES_CHECKPOINT_WITNESS_URLS`). There
-//! is no default witness, and the plugin contacts none until one is named.
+//! `witness`, or a comma list in `CAPSULES_CHECKPOINT_WITNESS_URLS`). Unset,
+//! the default is Action State's hosted witness
+//! (`share_policy::DEFAULT_WITNESS_URL`); `off` contacts none.
 //!
 //! A witness that accepts a checkpoint returns a receipt, which the
 //! checkpoint cadence stores on the checkpoint's line in `checkpoints.jsonl`.

@@ -133,11 +133,11 @@ Standards this builds on: **RFC 8785** (JCS canonical JSON), **RFC 9052/9053** (
   outside it, and it cannot show different histories to different parties without the
   disagreement being detectable.
 - **Mechanism:** the checkpoint is `POST`ed (`application/cll-checkpoint+cbor`) to a
-  **SCITT Transparency Service** (RFC 9943) that the operator named. There is **no
-  default witness**: with none named, no checkpoint is registered anywhere and no
-  witness is contacted. Any service that implements the protocol can be named;
-  `witness.agentactioncapsule.org` is one public instance an operator may choose, like
-  any other. The service returns a **COSE Receipt** (RFC 9942) whose inclusion
+  **SCITT Transparency Service** (RFC 9943). With none named, the plugin
+  offers checkpoints to Action State's hosted witness,
+  `witness.agentactioncapsule.org`, which Action State runs, so it is not independent
+  of the node's operator when that is us; `witness = off` contacts no witness. Any
+  service that implements the protocol can be named instead. The service returns a **COSE Receipt** (RFC 9942) whose inclusion
   proof uses the **RFC 9162 SHA-256** verifiable data structure.
 - **How you check it:** verify the receipt offline with `scitt-cose` (RFC 9942 receipt,
   RFC 9162 SHA-256 inclusion) against the witness's public key — no access to the

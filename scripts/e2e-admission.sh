@@ -129,6 +129,10 @@ card_read() { perl -pe 's/\e\[[0-9;]*m//g' "$logs/requester.log" | grep 'admissi
 # the provider's half (the corroboration row).
 export CAPSULES_SHARE_RECORD_AT_COMPLETION=counterparty
 
+# No run contacts the hosted witness the plugin offers checkpoints to by
+# default; this run is about admission, not about a witness.
+export CAPSULES_CHECKPOINT_WITNESS_URLS=off
+
 # --- the provider: serves the model, and has a checkpoint to answer under ----
 NODE_ENV=(CAPSULES_CHECKPOINT_CADENCE_SECONDS=5)
 start_node provider "$PROVIDER_API" "$PROVIDER_CONSOLE" "" --gguf "$model" --model "$MODEL_NAME"
