@@ -120,6 +120,7 @@ impl Harness {
                 host_version: "commitment-interop-test".to_string(),
                 host_info_json: "{}".to_string(),
                 mesh_visibility: proto::MeshVisibility::Private as i32,
+                settings_json: String::new(),
             }))
             .await;
         let envelope = self.recv().await;
@@ -215,6 +216,7 @@ impl Harness {
             .send(Payload::RpcRequest(proto::RpcRequest {
                 method: "tools/call".to_string(),
                 params_json: json!({"name": name, "arguments": arguments}).to_string(),
+                invocation_id: None,
             }))
             .await;
         if let Some((channel, endpoint)) = mesh {

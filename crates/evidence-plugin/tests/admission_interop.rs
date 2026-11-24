@@ -108,6 +108,7 @@ impl Host {
                 host_version: "admission-interop".to_string(),
                 host_info_json: "{}".to_string(),
                 mesh_visibility: proto::MeshVisibility::Private as i32,
+                settings_json: String::new(),
             }))
             .await;
         match self.answer(id).await {
@@ -133,6 +134,7 @@ impl Host {
                 kind: proto::ServiceKind::OpenaiExchange as i32,
                 service_name: handler.to_string(),
                 input_json: event.to_string(),
+                invocation_id: None,
             }))
             .await;
         match self.answer(id).await {
