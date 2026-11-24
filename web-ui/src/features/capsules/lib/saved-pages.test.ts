@@ -128,7 +128,9 @@ describe('the History page, opened offline', () => {
       readFileSync(path.resolve(process.cwd(), '../crates/evidence-plugin/tests/fixtures/history_card_2_witnessed.json'), 'utf8')
     ) as { witness_receipts: { checkpoint: string; witness: Record<string, unknown> }[] }
     // The 10th receipt is for a middle checkpoint (the fixture holds 19, one per checkpoint, in checkpoint order).
-    const dropped = reply.witness_receipts[9]!.checkpoint
+    // Pick the dropped checkpoint by digest, as one that is neither the anchor (the last) nor the first.
+    const anchor = (reply as unknown as { anchor: { digest: string } }).anchor.digest
+    const dropped = reply.witness_receipts.filter((r) => r.checkpoint !== anchor)[9]!.checkpoint
     reply.witness_receipts = reply.witness_receipts.filter((r) => r.checkpoint !== dropped)
     const { dom } = await open(historyPage(`${JSON.stringify(reply)}\n`, SAVED, NODE).html)
     const doc = dom.window.document
@@ -144,6 +146,10 @@ describe('the History page, opened offline', () => {
     expect(unstamped).toHaveLength(1)
     const rows = Array.from(doc.querySelectorAll('.cvh-row'))
     const n = unstamped[0]!
+    // A middle one: not the first and not the last, so this is not #358's last-open case again.
+    expect(n).toBeGreaterThan(1)
+    expect(n).toBeLessThan(stamps.length)
+    expect(stamps[stamps.length - 1]!.getAttribute('data-state')).toBe('passed')
     const cut = rows[n - 1]!.querySelector('.cvh-row-title')!.textContent!.replace(/^Cut /, '')
     expect(main).toContain(
       `Not checked here: A witness time-stamped these records. Checkpoint ${n} (cut ${cut}) is not registered with the witness yet.`
