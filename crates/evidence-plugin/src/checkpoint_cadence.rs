@@ -531,6 +531,11 @@ pub fn spawn(
         }
     }
     state.set_padding_sink(Box::new(LedgerPadder(capsules.clone())));
+    // Witness delivery is a network round trip (up to the witness client's
+    // request timeout per send): the cadence runs it outside the state lock
+    // (`deliver_witnesses`), so an unreachable witness never stalls a push
+    // checkpoint or anything else that waits on that lock (capsule-emit#472).
+    state.set_inline_witness_delivery(false);
     tracing::info!(
         leaves_indexed_this_load = report.leaves_indexed_this_load,
         leaf_count = state.leaf_count(),
@@ -562,6 +567,7 @@ pub fn spawn(
         };
 
         run("startup reconnect", |s, k, a| s.reconnect(k, a));
+        deliver_witnesses(&task).await;
 
         let mut ticker = tokio::time::interval(interval);
         // The next Service History period boundary to checkpoint at. Kept
@@ -576,6 +582,7 @@ pub fn spawn(
             tokio::select! {
                 _ = ticker.tick() => {
                     run("tick", |s, k, a| s.tick(k, a));
+                    deliver_witnesses(&task).await;
                     // The other ledger files' checkpoints, each cut when its
                     // file has grown (`ledger_checkpoints`).
                     {
@@ -596,7 +603,7 @@ pub fn spawn(
                         let (dir, urls) = (keys_dir.clone(), witness_urls.clone());
                         let configured = active_witness_keys();
                         let log_id = log_id_for_witnesses.clone();
-                        let _ = tokio::task::spawn_blocking(move || {
+                        let _ = off_runtime(move || {
                             crate::witness_status::refresh_witnesses(&dir, &urls, &configured, Some(&log_id))
                         })
                         .await;
@@ -615,6 +622,7 @@ pub fn spawn(
                     if let Some(cp) = report_checkpoint(result, "period boundary") {
                         task.latest_head.set(cp);
                     }
+                    deliver_witnesses(&task).await;
                     boundary = crate::service_history::next_boundary_after(unix_now());
                 }
                 _ = shutdown.changed() => {
@@ -626,10 +634,90 @@ pub fn spawn(
         }
 
         run("shutdown flush", |s, k, a| s.checkpoint_on_shutdown(k, a));
+        // `checkpoint_on_shutdown` delivers nothing with inline delivery off.
+        // One last pass, but never held up by a witness that does not answer:
+        // an abandoned pass leaves its rows due, and the next start sends them.
+        deliver_witnesses_at_shutdown(&task, SHUTDOWN_WITNESS_WAIT).await;
         tracing::info!("checkpoint cadence task stopped");
     });
 
     Ok(handle)
+}
+
+/// One witness delivery pass, with the state lock held only to take the rows
+/// and to record the outcome: the sends run on a blocking thread in between,
+/// so serving never waits on a witness. Nothing happens when no witness is
+/// named, nothing is queued, or another pass is out.
+async fn deliver_witnesses(task: &CheckpointHandle) {
+    let taken = task
+        .state
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .take_witness_delivery();
+    let Some(mut delivery) = taken else {
+        return;
+    };
+    let finished = off_runtime(move || {
+        delivery.run();
+        delivery
+    })
+    .await;
+    match finished {
+        Some(delivery) => {
+            task.state
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .finish_witness_delivery(delivery);
+        }
+        None => tracing::warn!("a witness delivery did not complete"),
+    }
+}
+
+/// Run blocking work on its own thread and await its result. Not
+/// `spawn_blocking`: the runtime waits for blocking-pool tasks when it shuts
+/// down, so a witness that never answers (up to its request timeout) would
+/// keep the plugin from exiting; a detached thread dies with the process.
+async fn off_runtime<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+    let (done, finished) = tokio::sync::oneshot::channel();
+    std::thread::spawn(move || {
+        let _ = done.send(work());
+    });
+    finished.await.ok()
+}
+
+/// How long the plugin's exit waits for the last witness delivery.
+const SHUTDOWN_WITNESS_WAIT: Duration = Duration::from_secs(3);
+
+/// The last delivery pass at shutdown, on a detached thread and bounded by
+/// `limit`: a witness that never answers must not keep the plugin from
+/// exiting (the host's own exit deadline is shorter than a witness
+/// request's). A pass that does not finish is dropped, which leaves the rows
+/// due for the next start.
+async fn deliver_witnesses_at_shutdown(task: &CheckpointHandle, limit: Duration) {
+    let taken = task
+        .state
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .take_witness_delivery();
+    let Some(mut delivery) = taken else {
+        return;
+    };
+    let (done, finished) = tokio::sync::oneshot::channel();
+    std::thread::spawn(move || {
+        delivery.run();
+        let _ = done.send(delivery);
+    });
+    match tokio::time::timeout(limit, finished).await {
+        Ok(Ok(delivery)) => {
+            task.state
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .finish_witness_delivery(delivery);
+        }
+        _ => tracing::warn!(
+            "a witness delivery was still running at shutdown; its rows stay due for the next start"
+        ),
+    }
 }
 
 /// The wall clock, in Unix seconds.
