@@ -180,7 +180,7 @@ code=$(chat "$REQUESTER_API" 1)
 first=$(decisions | head -n 1)
 echo "first decision: $first"
 echo "$first" | jq -e '.verdict == "GO" and .source == "default"
-  and .reads[1].kind == "history_card" and .reads[1].derivation == "history_card/1"
+  and .reads[1].kind == "history_card" and .reads[1].derivation == "history_card/2"
   and (.reads[1].commitment.digest | test("^[0-9a-f]{64}$"))
   and (.rows | length) == 6
   and (.rows[0] | {row, result}) == {"row": "identity", "result": "pass"}
@@ -201,7 +201,7 @@ echo "$second" | jq -e '.verdict == "GO" and .source == "default"
 chain requester | jq -s -e --arg peer "$provider_id" '
   def entry: .model_attestation.compute_attestation.evidence_book_entry // empty;
   [.[] | select(entry | .record_type == "evidence_request" and .statement.responder_ref == $peer
-      and .statement.request.derivation == "history_card/1") | .capsule_id] as $asks
+      and .statement.request.derivation == "history_card/2") | .capsule_id] as $asks
   | ($asks | length) > 0
   and any(.[]; entry | select(.record_type == "evidence_response" and .statement.outcome == "artifact")
       | any(.links[]?; .type == "cites" and (.target as $t | $asks | index($t) != null)))' > /dev/null \
