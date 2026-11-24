@@ -203,6 +203,10 @@ echo "service history definition at ${E2E_PERIOD_S}s periods: $SERVICE_HISTORY"
 # node holds once the host names the other side.
 export CAPSULES_SHARE_RECORD_AT_COMPLETION=counterparty
 
+# No run contacts the hosted witness the plugin offers checkpoints to by
+# default; this run is about the two nodes, not about a witness.
+export CAPSULES_CHECKPOINT_WITNESS_URLS=off
+
 # --- the provider: serves the model -----------------------------------------
 # It cuts a checkpoint every 5 s once it has a record, so it has one to answer
 # a history card under.
