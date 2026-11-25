@@ -400,8 +400,9 @@ fn an_absence_member_is_observed_by_the_payer_with_its_window() {
     );
 }
 
-/// The composed digest is the core's: these vectors are the Go
-/// `bundle.ComposedDigest` of the same block (agent-action-capsule a8b6432).
+/// The composed digest is the core's: this is the Go
+/// `bundle.ComposedDigest` of the same block (agent-action-capsule a8b6432),
+/// the value the plugin's own digest gave before it called the crate's.
 #[test]
 fn the_composed_digest_matches_the_core() {
     let members = [json!({
@@ -411,10 +412,11 @@ fn the_composed_digest_matches_the_core() {
     })];
     let observers =
         [json!({"id": "a".repeat(64), "role": "party", "custody_domain": "a".repeat(64)})];
-    assert_eq!(
-        composed_digest(&members, &observers).unwrap(),
-        GO_COMPOSED_DIGEST
-    );
+    let block = json!({
+        "members": members, "observers": observers, "joins": [],
+        "composed_digest": PLACEHOLDER_DIGEST,
+    });
+    assert_eq!(composed_digest(&block).unwrap(), GO_COMPOSED_DIGEST);
 }
 
 const GO_COMPOSED_DIGEST: &str = "8ae1e9223712405140650cf8ed87c4446fd56df0cfcd3e098e7c2e61a4503eae";
@@ -540,11 +542,7 @@ fn a_verified_refusal_is_a_member_observed_by_the_peers_key() {
     assert_eq!(block["observers"], json!(want));
     assert_eq!(
         block["composed_digest"],
-        json!(composed_digest(
-            block["members"].as_array().unwrap(),
-            block["observers"].as_array().unwrap()
-        )
-        .unwrap())
+        json!(composed_digest(block).unwrap())
     );
     if let Some(out) = std::env::var_os("DEAL_COMPOSITION_REFUSAL_OUT") {
         std::fs::write(out, serde_json::to_vec_pretty(&bundle).unwrap()).unwrap();
