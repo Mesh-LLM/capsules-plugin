@@ -899,12 +899,10 @@ pub fn seal_citing_record(
         "n/a-received-half-citation",
         "received_half",
         received_half,
-        json!([{
-            "type": REFERENCE_TYPE_CAPSULE,
-            "digest_alg": REFERENCE_DIGEST_ALG,
-            "digest": prov.foreign_capsule_id,
-            "citation_purpose": CITATION_PURPOSE_COUNTERPARTY_HALF,
-        }]),
+        json!([capsule_reference(
+            prov.foreign_capsule_id,
+            CITATION_PURPOSE_COUNTERPARTY_HALF
+        )]),
         chain,
         signing_key,
     )
@@ -1544,12 +1542,7 @@ pub fn seal_owner_maintenance_record(
     if let Some(prior) = action.prior_history_head {
         body.insert(
             "references".into(),
-            json!([{
-                "type": REFERENCE_TYPE_CAPSULE,
-                "digest_alg": REFERENCE_DIGEST_ALG,
-                "digest": prior,
-                "citation_purpose": CITATION_PURPOSE_PRIOR_HISTORY,
-            }]),
+            json!([capsule_reference(prior, CITATION_PURPOSE_PRIOR_HISTORY)]),
         );
     }
 

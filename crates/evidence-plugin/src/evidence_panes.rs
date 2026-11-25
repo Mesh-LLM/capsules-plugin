@@ -223,30 +223,13 @@ pub(crate) fn attach_asked_of_you(pane_b: &mut Value, entries: &[Value]) {
     }
 }
 
-/// Inverts an MMR total-node count back to the LEAF count it covers.
-///
-/// An append-only Merkle Mountain Range over `L` leaves has a fixed total node
-/// count: `mmr_size == 2*L - popcount(L)` (each leaf contributes itself plus
-/// the internal nodes formed when perfect-binary-tree peaks merge; the merges
-/// saved are exactly the set bits of `L`). That relation is strictly increasing
-/// in `L`, so a node count uniquely determines its leaf count -- e.g. 15 -> 8,
-/// 11 -> 7, 4 -> 3, 1 -> 1. `None` for a node count that no leaf count produces
-/// (never a fabricated coverage figure). This is what turns the checkpoint's
-/// on-disk `mmr_size` (a NODE count) into the covered-LEAF count the chain strip
-/// caption reports -- distinct from `checkpoint_count`, which is merely the
-/// number of checkpoint LINES on disk.
+/// The LEAF count an MMR of `mmr_size` nodes covers (checkpointed-local-log's
+/// `leaf_count`): what turns the checkpoint's on-disk `mmr_size` (a NODE count)
+/// into the covered-leaf count the chain strip caption reports. `None` for a
+/// node count no leaf count produces, or one past the log's size cap: never a
+/// fabricated coverage figure.
 fn mmr_leaf_count(mmr_size: u64) -> Option<u64> {
-    if mmr_size == 0 {
-        return Some(0);
-    }
-    // From `mmr_size = 2*L - popcount(L)`, `L = (mmr_size + popcount(L)) / 2`,
-    // and `popcount(L) <= 64` for any u64 L. So L lies in
-    // `[mmr_size/2, mmr_size/2 + 32]` (dividing the +popcount(L) term by 2).
-    // Scan that small window rather than a full search; the relation is
-    // strictly increasing, so at most one L in the window matches.
-    let lo = mmr_size / 2;
-    let hi = mmr_size / 2 + 33;
-    (lo..=hi).find(|&l| l != 0 && 2 * l - u64::from(l.count_ones()) == mmr_size)
+    cll::mmr::leaf_count(mmr_size).ok()
 }
 
 /// Reads `<ledger_dir>/checkpoints.jsonl` (co-located with `capsules.jsonl`,
@@ -6186,8 +6169,8 @@ mod tests {
         assert!(card.get("latest_witnessed").is_none());
     }
 
-    /// `mmr_leaf_count` inverts an MMR total-node count back to its leaf count
-    /// via `mmr_size == 2*L - popcount(L)`. The task's worked example (node
+    /// `mmr_leaf_count` (the crate's `leaf_count`) inverts an MMR total-node
+    /// count back to its leaf count, `mmr_size == 2*L - popcount(L)`. The task's worked example (node
     /// count 15 -> 8 leaves) and the boundary/round-trip cases: every leaf count
     /// L maps to a node count that inverts back to exactly L, node count 0 is 0
     /// leaves, and a node count no MMR produces (e.g. 2) has no inverse.

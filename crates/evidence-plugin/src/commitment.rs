@@ -1157,9 +1157,7 @@ fn is_ed25519_spki(s: &str) -> bool {
         .is_ok_and(|der| der.len() == 44 && der.starts_with(&ED25519_SPKI_PREFIX))
 }
 
-fn is_hex64(s: &str) -> bool {
-    s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
-}
+use evidence_request::registry::is_digest as is_hex64;
 
 /// `PnD`, `PTnH`, `PTnM`, `PTnS` and their ordered combinations, with at
 /// least one part (loop's `DURATION`).

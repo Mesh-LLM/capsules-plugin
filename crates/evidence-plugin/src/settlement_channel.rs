@@ -341,9 +341,7 @@ fn check_combination(event: &PaymentLifecycleEvent) -> Result<(), SettlementEven
 }
 
 /// 32 bytes as 64 lowercase hex digits.
-pub(crate) fn is_lower_hex_32(s: &str) -> bool {
-    s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
-}
+pub(crate) use evidence_request::registry::is_digest as is_lower_hex_32;
 
 /// Build a checked event body the way the host does: blank `event_ref`,
 /// digest the JCS, fill it in. Shared by this module's tests and the

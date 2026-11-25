@@ -197,6 +197,4 @@ pub(crate) fn check_entries(
     Ok((records, leaves))
 }
 
-fn is_digest(s: &str) -> bool {
-    s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
-}
+use evidence_request::registry::is_digest;

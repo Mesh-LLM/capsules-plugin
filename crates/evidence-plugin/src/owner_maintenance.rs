@@ -395,12 +395,7 @@ fn count_records(ledger_dir: &Path) -> usize {
 // Stored text (the disclosure store)
 // ---------------------------------------------------------------------------
 
-fn is_capsule_id(stem: &str) -> bool {
-    stem.len() == 64
-        && stem
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-}
+use evidence_request::registry::is_digest as is_capsule_id;
 
 /// The capsule ids that have stored text, read off `<ledger>/disclosures/`.
 fn stored_text_ids(ledger_dir: &Path) -> Vec<String> {

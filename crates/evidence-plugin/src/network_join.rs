@@ -186,9 +186,7 @@ pub fn record(kind: &str, node_id: &str, key: &SigningKey, at: &str) -> Value {
     )
 }
 
-fn is_hex64(s: &str) -> bool {
-    s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
-}
+use evidence_request::registry::is_digest as is_hex64;
 
 fn parse_at(s: &str) -> Option<DateTime<Utc>> {
     let shaped = s.len() == 20

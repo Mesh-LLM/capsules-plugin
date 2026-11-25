@@ -33,8 +33,8 @@ use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
 use crate::producer::capsule::{
-    finish_seal, seal_body, seal_local_record, CapsuleInput, ChainLink, SealError,
-    CHAIN_RELATION_FOLLOWS, CITATION_PURPOSE_COUNTERPARTY_HALF, REFERENCE_DIGEST_ALG,
+    capsule_reference, finish_seal, seal_body, seal_local_record, CapsuleInput, ChainLink,
+    SealError, CHAIN_RELATION_FOLLOWS, CITATION_PURPOSE_COUNTERPARTY_HALF, REFERENCE_DIGEST_ALG,
     REFERENCE_TYPE_CAPSULE,
 };
 
@@ -661,12 +661,10 @@ pub fn seal_stage_record(
     let references = match (block.side, stage_record_id) {
         (Side::Stage, Some(_)) => return Err(block_err("a stage record cites nothing")),
         (Side::Stage, None) | (Side::Coordinator, None) => None,
-        (Side::Coordinator, Some(id)) if is_lower_hex(id, 64) => Some(json!([{
-            "type": REFERENCE_TYPE_CAPSULE,
-            "digest_alg": REFERENCE_DIGEST_ALG,
-            "digest": id,
-            "citation_purpose": CITATION_PURPOSE_COUNTERPARTY_HALF,
-        }])),
+        (Side::Coordinator, Some(id)) if is_lower_hex(id, 64) => Some(json!([capsule_reference(
+            id,
+            CITATION_PURPOSE_COUNTERPARTY_HALF
+        )])),
         (Side::Coordinator, Some(_)) => {
             return Err(block_err(
                 "the cited stage record id must be 64 lowercase hex",
@@ -1020,14 +1018,7 @@ impl SplitMainExtension {
         Value::Array(
             ordered
                 .iter()
-                .map(|(_, id)| {
-                    json!({
-                        "type": REFERENCE_TYPE_CAPSULE,
-                        "digest_alg": REFERENCE_DIGEST_ALG,
-                        "digest": id,
-                        "citation_purpose": CITATION_PURPOSE_SPLIT_STAGE,
-                    })
-                })
+                .map(|(_, id)| capsule_reference(id, CITATION_PURPOSE_SPLIT_STAGE))
                 .collect(),
         )
     }
