@@ -41,6 +41,18 @@ const HISTORY_STAPLE: &str =
 const STALE_HISTORY_CARD: &str =
     include_str!("../../../../vectors/goose-deal-half/stale-history-card-half.json");
 
+/// The current form (evidencebook#329): the halves of one deal from a
+/// scripted two-node run of evidencebook's Goose node, each carrying its
+/// deal book's `history_card` (`vectors/SOURCES.md`). The buyer's first half
+/// is one step whose baseline cites its admission; both final halves close
+/// citing the counterparty's checkpoint.
+const CUR_BUYER_FIRST: &str =
+    include_str!("../../../../vectors/goose-deal-half/current-buyer-half.json");
+const CUR_BUYER: &str =
+    include_str!("../../../../vectors/goose-deal-half/current-buyer-final-half.json");
+const CUR_SELLER: &str =
+    include_str!("../../../../vectors/goose-deal-half/current-seller-final-half.json");
+
 const NOW: &str = "2026-11-01T00:00:00Z";
 
 fn half(text: &str) -> Value {
@@ -94,7 +106,7 @@ fn bytes(value: &Value) -> Vec<u8> {
 
 #[test]
 fn both_halves_of_a_goose_deal_verify_under_the_admitted_keys() {
-    for (name, text) in [("goose-buyer", BUYER), ("goose-seller", SELLER)] {
+    for (name, text) in [("goose-buyer", CUR_BUYER), ("goose-seller", CUR_SELLER)] {
         let h = half(text);
         let verified = check(text.as_bytes(), &admitting(name, &h)).expect(name);
         assert_eq!(verified.deal_id, h["deal_id"]);
@@ -112,7 +124,7 @@ fn both_halves_of_a_goose_deal_verify_under_the_admitted_keys() {
         );
     }
     // Both halves are of the same deal, under different keys.
-    let (b, s) = (half(BUYER), half(SELLER));
+    let (b, s) = (half(CUR_BUYER), half(CUR_SELLER));
     assert_eq!(b["deal_id"], s["deal_id"]);
     assert_ne!(signing_key_of(&b), signing_key_of(&s));
 }
@@ -343,7 +355,7 @@ async fn a_verified_half_is_held_and_cited_once_however_often_it_is_handed_in() 
     let capsules = Arc::new(
         crate::capsule_emit::CapsuleState::open(dir.path(), "node-under-test").expect("open"),
     );
-    let s = half(SELLER);
+    let s = half(CUR_SELLER);
     let ids: Vec<Value> = s["steps"]
         .as_array()
         .unwrap()
@@ -352,7 +364,7 @@ async fn a_verified_half_is_held_and_cited_once_however_often_it_is_handed_in() 
         .collect();
     let configured = Some(admitting("goose-seller", &s));
 
-    let first = receive_and_cite(capsules.clone(), configured.clone(), SELLER.into())
+    let first = receive_and_cite(capsules.clone(), configured.clone(), CUR_SELLER.into())
         .await
         .unwrap();
     assert_eq!(first["ok"], true, "{first}");
@@ -360,7 +372,7 @@ async fn a_verified_half_is_held_and_cited_once_however_often_it_is_handed_in() 
     assert_eq!(first["received_from"], "goose-seller");
     assert_eq!(first["chain_stage"], "checked");
 
-    let again = receive_and_cite(capsules.clone(), configured, SELLER.into())
+    let again = receive_and_cite(capsules.clone(), configured, CUR_SELLER.into())
         .await
         .unwrap();
     assert_eq!(again["ok"], true, "{again}");
@@ -415,9 +427,10 @@ async fn a_refusal_is_a_reply_not_an_error() {
 
 #[test]
 fn a_one_step_half_verifies() {
-    let h = half(BUYER_FIRST);
+    let h = half(CUR_BUYER_FIRST);
     assert_eq!(h["steps"].as_array().unwrap().len(), 1);
-    let verified = check(BUYER_FIRST.as_bytes(), &admitting("goose-buyer", &h)).expect("one step");
+    let verified =
+        check(CUR_BUYER_FIRST.as_bytes(), &admitting("goose-buyer", &h)).expect("one step");
     assert_eq!(verified.capsules.len(), 1);
 }
 
@@ -465,22 +478,40 @@ fn a_step_the_record_push_store_would_not_take_as_a_record_is_refused() {
 fn a_serving_claim_the_store_refuses_is_refused_whole_before_anything_is_stored() {
     let h = half(SERVED_CLAIM);
     let keys = admitting("goose-buyer", &h);
-    // Every deal check accepts it: the claim is the only problem.
-    check(SERVED_CLAIM.as_bytes(), &keys).expect("the deal checks pass");
+    // Every deal check accepts it; it predates evidencebook#329, so it is
+    // refused for its missing card, after every other check, and nothing
+    // is written.
+    let r = refusal(SERVED_CLAIM.as_bytes(), &keys);
+    assert_eq!((r.reason, r.step), (REASON_REQUEST_MALFORMED, None));
+    assert!(r.detail.contains("evidencebook#329"), "{}", r.detail);
     let dir = tempfile::tempdir().unwrap();
     let key = SigningKey::from_bytes(&[7; 32]);
-    let r = receive_half(dir.path(), &key, Some(&keys), SERVED_CLAIM.as_bytes(), NOW)
+    receive_half(dir.path(), &key, Some(&keys), SERVED_CLAIM.as_bytes(), NOW)
         .unwrap()
         .expect_err("refused");
+    assert!(
+        std::fs::read_dir(dir.path()).unwrap().next().is_none(),
+        "nothing written"
+    );
+    // The claim step on its own: its steps are refused for their serving
+    // claim, at step 1, before anything is held.
+    let cur = half(CUR_BUYER_FIRST);
+    let mut verified =
+        check(CUR_BUYER_FIRST.as_bytes(), &admitting("goose-buyer", &cur)).expect("verifies");
+    verified.capsules = h["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["capsule"].clone())
+        .collect();
+    let r = refused_claim(dir.path(), &verified)
+        .unwrap()
+        .expect("the claim is refused");
     assert_eq!((r.reason, r.step), (REASON_RECORD_UNVERIFIED, Some(1)));
     assert!(
         r.detail.contains(receive::REASON_SERVED_BY_MISMATCH),
         "{}",
         r.detail
-    );
-    assert!(
-        std::fs::read_dir(dir.path()).unwrap().next().is_none(),
-        "nothing written"
     );
 }
 
@@ -490,14 +521,14 @@ async fn a_half_held_but_not_yet_cited_is_cited_when_handed_in_again() {
     let capsules = Arc::new(
         crate::capsule_emit::CapsuleState::open(dir.path(), "node-under-test").expect("open"),
     );
-    let s = half(SELLER);
+    let s = half(CUR_SELLER);
     let keys = admitting("goose-seller", &s);
     // As if the citing seals failed after the steps were held.
     receive_half(
         capsules.ledger_dir(),
         capsules.signing_key(),
         Some(&keys),
-        SELLER.as_bytes(),
+        CUR_SELLER.as_bytes(),
         NOW,
     )
     .unwrap()
@@ -512,7 +543,7 @@ async fn a_half_held_but_not_yet_cited_is_cited_when_handed_in_again() {
             .count()
     };
     assert_eq!(cited(&capsules), 0);
-    let reply = receive_and_cite(capsules.clone(), Some(keys), SELLER.into())
+    let reply = receive_and_cite(capsules.clone(), Some(keys), CUR_SELLER.into())
         .await
         .unwrap();
     assert_eq!(reply["ok"], true, "{reply}");
@@ -525,14 +556,18 @@ async fn a_half_held_but_not_yet_cited_is_cited_when_handed_in_again() {
 
 #[test]
 fn during_the_overlap_window_both_forms_verify() {
-    let current = half(SELLER);
-    let verified =
-        check(SELLER.as_bytes(), &admitting("goose-seller", &current)).expect("current form");
+    let current = half(CUR_BUYER_FIRST);
+    let verified = check(
+        CUR_BUYER_FIRST.as_bytes(),
+        &admitting("goose-buyer", &current),
+    )
+    .expect("current form");
     assert_eq!(verified.form, FORM_CURRENT);
     assert!(verified.counterparty_checkpoint_cites.is_empty());
 
-    let new = half(NEW_FORM);
-    let verified = check(NEW_FORM.as_bytes(), &admitting("goose-seller", &new)).expect("new form");
+    let new = half(CUR_SELLER);
+    let verified =
+        check(CUR_SELLER.as_bytes(), &admitting("goose-seller", &new)).expect("new form");
     assert_eq!(verified.form, FORM_CITES_COUNTERPARTY_CHECKPOINT);
     let links = new["steps"].as_array().unwrap().last().unwrap()["capsule"]
         ["evidence_record_header"]["links"]
@@ -546,22 +581,22 @@ fn during_the_overlap_window_both_forms_verify() {
 #[test]
 fn once_the_window_closes_only_the_new_form_verifies() {
     let own = own();
-    let closed = |text: &str| {
+    let closed = |text: &str, name: &str| {
         let h = half(text);
         verify(
             text.as_bytes(),
             &Keys {
-                configured: Some(&admitting("goose-seller", &h)),
+                configured: Some(&admitting(name, &h)),
                 own_key: &own,
                 accept_current_form: false,
             },
             NOW,
         )
     };
-    let r = closed(SELLER).expect_err("current form refused");
+    let r = closed(CUR_BUYER_FIRST, "goose-buyer").expect_err("current form refused");
     assert_eq!((r.reason, r.step), (REASON_RECORD_UNVERIFIED, None));
     assert_eq!(
-        closed(NEW_FORM).expect("new form").form,
+        closed(CUR_SELLER, "goose-seller").expect("new form").form,
         FORM_CITES_COUNTERPARTY_CHECKPOINT
     );
 }
@@ -572,11 +607,11 @@ async fn the_form_is_held_and_replied() {
     let capsules = Arc::new(
         crate::capsule_emit::CapsuleState::open(dir.path(), "node-under-test").expect("open"),
     );
-    let new = half(NEW_FORM);
+    let new = half(CUR_SELLER);
     let reply = receive_and_cite(
         capsules.clone(),
         Some(admitting("goose-seller", &new)),
-        NEW_FORM.into(),
+        CUR_SELLER.into(),
     )
     .await
     .unwrap();
@@ -640,9 +675,15 @@ fn a_step_header_cites_by_its_place_in_the_deal() {
 
 #[test]
 fn a_baseline_citing_its_admission_is_the_current_form() {
-    let h = half(ADMISSION_CITE);
+    let h = half(CUR_BUYER_FIRST);
+    let baseline_links = &h["steps"][0]["capsule"]["evidence_record_header"]["links"];
+    assert_eq!(
+        baseline_links.as_array().unwrap().len(),
+        1,
+        "cites its admission"
+    );
     let verified =
-        check(ADMISSION_CITE.as_bytes(), &admitting("goose-seller", &h)).expect("verifies");
+        check(CUR_BUYER_FIRST.as_bytes(), &admitting("goose-buyer", &h)).expect("verifies");
     assert_eq!(verified.form, FORM_CURRENT);
     assert!(verified.counterparty_checkpoint_cites.is_empty());
 }
@@ -688,11 +729,11 @@ fn a_half_the_profiles_chain_stage_refuses_is_refused() {
 #[test]
 fn honest_halves_pass_the_chain_stage() {
     for (name, text) in [
-        ("goose-buyer", BUYER),
-        ("goose-seller", SELLER),
-        ("goose-buyer", BUYER_FIRST),
-        ("goose-seller", NEW_FORM),
-        ("goose-seller", ADMISSION_CITE),
+        ("goose-buyer", CUR_BUYER),
+        ("goose-seller", CUR_SELLER),
+        ("goose-buyer", CUR_BUYER_FIRST),
+        ("goose-buyer", HISTORY_CARD),
+        ("goose-buyer", HISTORY_STAPLE),
     ] {
         let h = half(text);
         check(text.as_bytes(), &admitting(name, &h)).expect(name);
@@ -749,9 +790,52 @@ fn a_broken_staple_or_an_unknown_member_is_refused() {
     shape["history_card"]["extra"] = json!("x");
     let r = refusal(&bytes(&shape), &keys);
     assert_eq!(r.reason, REASON_RECORD_UNVERIFIED, "{}", r.detail);
+    assert!(r.detail.starts_with("the history card:"), "{}", r.detail);
 
     let mut unknown = h.clone();
     unknown["something_else"] = json!(1);
     let r = refusal(&bytes(&unknown), &keys);
     assert_eq!(r.reason, REASON_REQUEST_MALFORMED, "{}", r.detail);
+}
+
+/// A half from a Goose node before evidencebook#329 carries no book card:
+/// every older vector passes each other check and is refused for that
+/// alone, as the Goose node refuses it.
+#[test]
+fn a_half_without_its_book_card_is_refused() {
+    for (name, text) in [
+        ("goose-buyer", BUYER),
+        ("goose-seller", SELLER),
+        ("goose-buyer", BUYER_FIRST),
+        ("goose-seller", NEW_FORM),
+        ("goose-seller", ADMISSION_CITE),
+    ] {
+        let h = half(text);
+        assert!(h.get("history_card").is_none());
+        let r = refusal(text.as_bytes(), &admitting(name, &h));
+        assert_eq!(
+            (r.reason, r.step),
+            (REASON_REQUEST_MALFORMED, None),
+            "{name}"
+        );
+        assert!(r.detail.contains("evidencebook#329"), "{}", r.detail);
+    }
+}
+
+/// A standard card whose envelope does not verify under the steps' key is
+/// refused (#374).
+#[test]
+fn a_broken_history_staple_is_refused() {
+    let h = half(HISTORY_STAPLE);
+    let mut tampered = h.clone();
+    let reply = tampered["history_staple"]["reply"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let mut reply_json: Value = serde_json::from_str(&reply).unwrap();
+    reply_json["issued_at"] = json!("2026-11-01T10:00:01Z");
+    tampered["history_staple"]["reply"] = json!(reply_json.to_string());
+    let r = refusal(&bytes(&tampered), &admitting("goose-buyer", &h));
+    assert_eq!(r.reason, REASON_RECORD_UNVERIFIED, "{}", r.detail);
+    assert!(r.detail.starts_with("the history staple:"), "{}", r.detail);
 }
