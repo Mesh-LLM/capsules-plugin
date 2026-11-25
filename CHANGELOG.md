@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.24
+
 ### Added
 
 - **A saved History page's check list names the checkpoint the witness has not registered yet (Mesh-LLM/capsules-plugin#358; capsule-viewer#368).** When the reader's witness list time-stamped every checkpoint but the last, and the answer holds no registered receipt for that last one (none, or only stubs), the list's witness line reads "Not checked here: A witness time-stamped these records. Checkpoint N (cut <time>) is not registered with the witness yet.", so it agrees with the chip's "Time-stamped: N-1 of N" (Sherlock2's wording). Any other reason a last checkpoint is "not checked" (no list, a receipt without a registration time, an algorithm this browser cannot check) keeps the bare line, and so does a page with two or more unregistered checkpoints. Needs `@action-state-group/capsule-viewer` 0.24.0, which this release pins (it was 0.14.0): the History view also reads "As of {at}" where it read "Built {at}", says what a node's settings leave unstated ("This node's settings don't say ..."), and explains that checkpoint times are rounded to the minute.
