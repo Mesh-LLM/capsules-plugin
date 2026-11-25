@@ -264,9 +264,9 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "capsule-emit"
-version = "0.0.14"
+version = "0.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b932c6cad9f0ca2f06b4ca33160b847a5ebe1892c768985abfa934dae4067e95"
+checksum = "dccd748845e8b0822af37af0570488066a6694bbc01e0723e749fc90ec4b1e07"
 dependencies = [
  "agent-action-capsule 0.11.0",
  "anyhow",

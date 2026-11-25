@@ -1137,24 +1137,15 @@ pub fn seal_settlement_leg(
         provider: LOCAL_RECORD_PROVIDER,
         model_id: SETTLEMENT_LEG_MODEL_ID,
     };
-    let codes = capsule_emit_lib::settlement::structure_failures(&member);
-    if !codes.is_empty() {
-        return Err(capsule_emit_lib::settlement::SettlementError { codes }.into());
-    }
-    let mut top = Map::new();
-    top.insert(
-        capsule_emit_lib::settlement::SETTLEMENT_MEMBER.into(),
-        member,
-    );
-    Ok(capsule_emit_lib::capsule::seal_local_record_with_members(
+    capsule_emit_lib::settlement::seal_leg_with_blocks(
         &header,
         action_id,
+        member,
         blocks,
-        top,
         references,
         chain,
         signing_key,
-    )?)
+    )
 }
 
 /// A settlement leg is about a payment, not a model run.
@@ -1478,84 +1469,40 @@ pub fn seal_owner_maintenance_record(
         relation: CHAIN_RELATION_FOLLOWS.to_string(),
     });
     // The same seal path as every other record (Evidence Layer -00 §12.1):
-    // committed times truncated to the minute, and a fresh store nonce.
+    // the committed time truncated to the minute, named in the action id
+    // too, and a fresh store nonce (capsule-emit's).
     let timestamp = crate::producer::timestamp::utc_now_minute();
-
     let mut block = Map::new();
     block.insert("kind".into(), json!(action.kind));
     for (k, v) in &action.facts {
         block.entry(k.clone()).or_insert_with(|| v.clone());
     }
-
-    let mut body = Map::new();
-    body.insert("spec_version".into(), json!(SPEC_VERSION));
-    body.insert("format_version".into(), json!(FORMAT_VERSION));
-    body.insert("canonicalization_id".into(), json!(CANONICALIZATION_ID));
-    body.insert(
-        "action_id".into(),
-        json!(format!(
-            "mesh-poc/owner-maintenance/{}/{timestamp}",
-            action.kind
-        )),
-    );
-    body.insert("action_type".into(), json!("fyi"));
-    body.insert("operator".into(), json!("capsule-emit-mesh-poc-rust"));
-    body.insert("developer".into(), json!(LOCAL_RECORD_DEVELOPER));
-    body.insert("timestamp".into(), json!(timestamp));
-    body.insert("domain".into(), json!("action"));
-    body.insert("provenance".into(), json!("collector"));
-
-    let mut compute_attestation = Map::new();
-    compute_attestation.insert(OWNER_MAINTENANCE_BLOCK.into(), Value::Object(block));
-    compute_attestation.insert(STORE_NONCE_FIELD.into(), json!(fresh_store_nonce()));
-    body.insert(
-        "model_attestation".into(),
-        json!({
-            "model_id": "n/a-owner-maintenance",
-            "provider": "mesh-llm",
-            "compute_attestation": Value::Object(compute_attestation),
-        }),
-    );
-    body.insert(
-        "assurance".into(),
-        json!({
-            "attestation_mode": "self_attested",
-            "effect_mode": "not_applicable",
-            "ledger_mode": if chain.is_some() { "chained" } else { "standalone" },
-        }),
-    );
-    body.insert(
-        "disposition".into(),
-        json!({
-            "decision": "accept",
-            "approver": match action.disposer {
-                Disposer::Person => "human",
-                Disposer::Plugin => "policy",
-            },
-            "human_disposed": action.disposer == Disposer::Person,
-            "verdict_class": "executed",
-        }),
-    );
-    if let Some(chain) = &chain {
-        body.insert("chain".into(), chain.to_value());
-    }
-    if let Some(prior) = action.prior_history_head {
-        body.insert(
-            "references".into(),
-            json!([capsule_reference(prior, CITATION_PURPOSE_PRIOR_HISTORY)]),
-        );
-    }
-
-    let capsule_id = compute_capsule_id(&Value::Object(body.clone()))?;
-    let mut sealed = Map::new();
-    sealed.insert("capsule_id".into(), json!(capsule_id));
-    for (k, v) in body {
-        sealed.entry(k).or_insert(v);
-    }
-    let mut capsule = Value::Object(sealed);
-    attach_producer_envelope(&mut capsule, signing_key)
-        .expect("owner-maintenance record always carries a hex capsule_id");
-    Ok(capsule)
+    let mut blocks = Map::new();
+    blocks.insert(OWNER_MAINTENANCE_BLOCK.into(), Value::Object(block));
+    let header = LocalRecordHeader {
+        operator: LOCAL_RECORD_OPERATOR,
+        developer: LOCAL_RECORD_DEVELOPER,
+        provider: LOCAL_RECORD_PROVIDER,
+        model_id: "n/a-owner-maintenance",
+    };
+    let person = action.disposer == Disposer::Person;
+    emit::seal_local_record_with_options(
+        &header,
+        format!("mesh-poc/owner-maintenance/{}/{timestamp}", action.kind),
+        blocks,
+        Map::new(),
+        action
+            .prior_history_head
+            .map(|prior| json!([capsule_reference(prior, CITATION_PURPOSE_PRIOR_HISTORY)])),
+        chain,
+        &emit::LocalRecordOptions {
+            approver: Some(if person { "human" } else { "policy" }),
+            human_disposed: Some(person),
+            timestamp: Some(&timestamp),
+            ..emit::LocalRecordOptions::default()
+        },
+        signing_key,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1768,69 +1715,36 @@ pub fn seal_verdict_record(
     half_a_capsule_id: &str,
     signing_key: &ed25519_dalek::SigningKey,
 ) -> Result<Value, SealError> {
-    let timestamp = crate::producer::timestamp::utc_now_minute();
-    let mut body = Map::new();
-    body.insert("spec_version".into(), json!(SPEC_VERSION));
-    body.insert("format_version".into(), json!(FORMAT_VERSION));
-    body.insert("canonicalization_id".into(), json!(CANONICALIZATION_ID));
-    body.insert(
-        "action_id".into(),
-        json!(format!("mesh-poc/adjudicate/{half_a_capsule_id}")),
-    );
-    body.insert("action_type".into(), json!("decide"));
-    body.insert("operator".into(), json!(LOCAL_RECORD_OPERATOR));
-    body.insert("developer".into(), json!(LOCAL_RECORD_DEVELOPER));
-    body.insert("timestamp".into(), json!(timestamp));
-    body.insert("domain".into(), json!("action"));
-    body.insert("provenance".into(), json!("referee"));
-
-    let mut compute_attestation = Map::new();
-    compute_attestation.insert("epistemic_type".into(), json!(EPISTEMIC_TYPE_ADJUDICATION));
-    compute_attestation.insert(ADJUDICATION_BLOCK.into(), Value::Object(block));
-    compute_attestation.insert(STORE_NONCE_FIELD.into(), json!(fresh_store_nonce()));
-    body.insert(
-        "model_attestation".into(),
-        json!({
-            "model_id": "n/a-adjudication",
-            "provider": LOCAL_RECORD_PROVIDER,
-            "compute_attestation": Value::Object(compute_attestation),
-        }),
-    );
-    body.insert(
-        "assurance".into(),
-        json!({
-            "attestation_mode": "self_attested",
-            "effect_mode": "not_applicable",
-            "ledger_mode": "chained",
-        }),
-    );
-    body.insert(
-        "disposition".into(),
-        json!({
-            "decision": "accept",
-            "approver": "policy",
-            "human_disposed": false,
-            "verdict_class": "assessed",
-        }),
-    );
-    body.insert(
-        "chain".into(),
-        ChainLink {
+    let mut blocks = Map::new();
+    blocks.insert("epistemic_type".into(), json!(EPISTEMIC_TYPE_ADJUDICATION));
+    blocks.insert(ADJUDICATION_BLOCK.into(), Value::Object(block));
+    let header = LocalRecordHeader {
+        operator: LOCAL_RECORD_OPERATOR,
+        developer: LOCAL_RECORD_DEVELOPER,
+        provider: LOCAL_RECORD_PROVIDER,
+        model_id: "n/a-adjudication",
+    };
+    // This plugin's own vocabulary for a referee's record, passed through
+    // capsule-emit's generic options (its verdict_class and provenance are
+    // not registered values; a verifier reports them as informational).
+    emit::seal_local_record_with_options(
+        &header,
+        format!("mesh-poc/adjudicate/{half_a_capsule_id}"),
+        blocks,
+        Map::new(),
+        None,
+        Some(ChainLink {
             parent_capsule_id: half_a_capsule_id.to_string(),
             relation: CHAIN_RELATION_ADJUDICATES.to_string(),
-        }
-        .to_value(),
-    );
-    let capsule_id = compute_capsule_id(&Value::Object(body.clone()))?;
-    let mut sealed = Map::new();
-    sealed.insert("capsule_id".into(), json!(capsule_id));
-    for (k, v) in body {
-        sealed.entry(k).or_insert(v);
-    }
-    let mut capsule = Value::Object(sealed);
-    attach_producer_envelope(&mut capsule, signing_key)
-        .expect("a verdict record always carries a hex capsule_id");
-    Ok(capsule)
+        }),
+        &emit::LocalRecordOptions {
+            action_type: Some("decide"),
+            provenance: Some("referee"),
+            verdict_class: Some("assessed"),
+            ..emit::LocalRecordOptions::default()
+        },
+        signing_key,
+    )
 }
 
 /// A delivery of a verdict that its receiver refused, with a signed refusal.
@@ -1892,6 +1806,239 @@ pub fn seal_adjudication_ack_refused_record(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The two record builders before #368 row B11, kept as the reference:
+    // this plugin's own copy of capsule-emit's sealing steps, with the
+    // time and store nonce passed in.
+    fn old_seal_owner_maintenance_record(
+        action: &OwnerMaintenance,
+        chain_head: Option<&str>,
+        signing_key: &ed25519_dalek::SigningKey,
+        timestamp: &str,
+        nonce: &str,
+    ) -> Result<Value, SealError> {
+        let chain = chain_head.map(|parent| ChainLink {
+            parent_capsule_id: parent.to_string(),
+            relation: CHAIN_RELATION_FOLLOWS.to_string(),
+        });
+        // The same seal path as every other record (Evidence Layer -00 §12.1):
+        // committed times truncated to the minute, and a fresh store nonce.
+        let timestamp = timestamp.to_string();
+
+        let mut block = Map::new();
+        block.insert("kind".into(), json!(action.kind));
+        for (k, v) in &action.facts {
+            block.entry(k.clone()).or_insert_with(|| v.clone());
+        }
+
+        let mut body = Map::new();
+        body.insert("spec_version".into(), json!(SPEC_VERSION));
+        body.insert("format_version".into(), json!(FORMAT_VERSION));
+        body.insert("canonicalization_id".into(), json!(CANONICALIZATION_ID));
+        body.insert(
+            "action_id".into(),
+            json!(format!(
+                "mesh-poc/owner-maintenance/{}/{timestamp}",
+                action.kind
+            )),
+        );
+        body.insert("action_type".into(), json!("fyi"));
+        body.insert("operator".into(), json!("capsule-emit-mesh-poc-rust"));
+        body.insert("developer".into(), json!(LOCAL_RECORD_DEVELOPER));
+        body.insert("timestamp".into(), json!(timestamp));
+        body.insert("domain".into(), json!("action"));
+        body.insert("provenance".into(), json!("collector"));
+
+        let mut compute_attestation = Map::new();
+        compute_attestation.insert(OWNER_MAINTENANCE_BLOCK.into(), Value::Object(block));
+        compute_attestation.insert(STORE_NONCE_FIELD.into(), json!(nonce));
+        body.insert(
+            "model_attestation".into(),
+            json!({
+                "model_id": "n/a-owner-maintenance",
+                "provider": "mesh-llm",
+                "compute_attestation": Value::Object(compute_attestation),
+            }),
+        );
+        body.insert(
+            "assurance".into(),
+            json!({
+                "attestation_mode": "self_attested",
+                "effect_mode": "not_applicable",
+                "ledger_mode": if chain.is_some() { "chained" } else { "standalone" },
+            }),
+        );
+        body.insert(
+            "disposition".into(),
+            json!({
+                "decision": "accept",
+                "approver": match action.disposer {
+                    Disposer::Person => "human",
+                    Disposer::Plugin => "policy",
+                },
+                "human_disposed": action.disposer == Disposer::Person,
+                "verdict_class": "executed",
+            }),
+        );
+        if let Some(chain) = &chain {
+            body.insert("chain".into(), chain.to_value());
+        }
+        if let Some(prior) = action.prior_history_head {
+            body.insert(
+                "references".into(),
+                json!([{
+                    "type": REFERENCE_TYPE_CAPSULE,
+                    "digest_alg": REFERENCE_DIGEST_ALG,
+                    "digest": prior,
+                    "citation_purpose": CITATION_PURPOSE_PRIOR_HISTORY,
+                }]),
+            );
+        }
+
+        let capsule_id = compute_capsule_id(&Value::Object(body.clone()))?;
+        let mut sealed = Map::new();
+        sealed.insert("capsule_id".into(), json!(capsule_id));
+        for (k, v) in body {
+            sealed.entry(k).or_insert(v);
+        }
+        let mut capsule = Value::Object(sealed);
+        attach_producer_envelope(&mut capsule, signing_key)
+            .expect("owner-maintenance record always carries a hex capsule_id");
+        Ok(capsule)
+    }
+    fn old_seal_verdict_record(
+        block: Map<String, Value>,
+        half_a_capsule_id: &str,
+        signing_key: &ed25519_dalek::SigningKey,
+        timestamp: &str,
+        nonce: &str,
+    ) -> Result<Value, SealError> {
+        let timestamp = timestamp.to_string();
+        let mut body = Map::new();
+        body.insert("spec_version".into(), json!(SPEC_VERSION));
+        body.insert("format_version".into(), json!(FORMAT_VERSION));
+        body.insert("canonicalization_id".into(), json!(CANONICALIZATION_ID));
+        body.insert(
+            "action_id".into(),
+            json!(format!("mesh-poc/adjudicate/{half_a_capsule_id}")),
+        );
+        body.insert("action_type".into(), json!("decide"));
+        body.insert("operator".into(), json!(LOCAL_RECORD_OPERATOR));
+        body.insert("developer".into(), json!(LOCAL_RECORD_DEVELOPER));
+        body.insert("timestamp".into(), json!(timestamp));
+        body.insert("domain".into(), json!("action"));
+        body.insert("provenance".into(), json!("referee"));
+
+        let mut compute_attestation = Map::new();
+        compute_attestation.insert("epistemic_type".into(), json!(EPISTEMIC_TYPE_ADJUDICATION));
+        compute_attestation.insert(ADJUDICATION_BLOCK.into(), Value::Object(block));
+        compute_attestation.insert(STORE_NONCE_FIELD.into(), json!(nonce));
+        body.insert(
+            "model_attestation".into(),
+            json!({
+                "model_id": "n/a-adjudication",
+                "provider": LOCAL_RECORD_PROVIDER,
+                "compute_attestation": Value::Object(compute_attestation),
+            }),
+        );
+        body.insert(
+            "assurance".into(),
+            json!({
+                "attestation_mode": "self_attested",
+                "effect_mode": "not_applicable",
+                "ledger_mode": "chained",
+            }),
+        );
+        body.insert(
+            "disposition".into(),
+            json!({
+                "decision": "accept",
+                "approver": "policy",
+                "human_disposed": false,
+                "verdict_class": "assessed",
+            }),
+        );
+        body.insert(
+            "chain".into(),
+            ChainLink {
+                parent_capsule_id: half_a_capsule_id.to_string(),
+                relation: CHAIN_RELATION_ADJUDICATES.to_string(),
+            }
+            .to_value(),
+        );
+        let capsule_id = compute_capsule_id(&Value::Object(body.clone()))?;
+        let mut sealed = Map::new();
+        sealed.insert("capsule_id".into(), json!(capsule_id));
+        for (k, v) in body {
+            sealed.entry(k).or_insert(v);
+        }
+        let mut capsule = Value::Object(sealed);
+        attach_producer_envelope(&mut capsule, signing_key)
+            .expect("a verdict record always carries a hex capsule_id");
+        Ok(capsule)
+    }
+
+    /// Same input, same bytes (Sherlock2's condition 3 on B11): the
+    /// verdict and owner-maintenance records capsule-emit seals with this
+    /// plugin's options are, byte for byte, the records this plugin built
+    /// itself, given the same minute and store nonce (taken from the new
+    /// record, so capsule_id and signature are compared too).
+    #[test]
+    fn b11_records_are_the_bytes_the_old_builders_gave() {
+        let key = ed25519_dalek::SigningKey::from_bytes(&[11u8; 32]);
+        let nonce_of = |v: &Value| {
+            v["model_attestation"]["compute_attestation"][STORE_NONCE_FIELD]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        let mut block = Map::new();
+        block.insert("verdict".into(), json!("a_wins"));
+        let half = "a".repeat(64);
+        let new = seal_verdict_record(block.clone(), &half, &key).unwrap();
+        let old = old_seal_verdict_record(
+            block,
+            &half,
+            &key,
+            new["timestamp"].as_str().unwrap(),
+            &nonce_of(&new),
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_vec(&new).unwrap(),
+            serde_json::to_vec(&old).unwrap()
+        );
+        let prior = "c".repeat(64);
+        for (disposer, prior_head, head) in [
+            (Disposer::Person, Some(prior.as_str()), Some("b".repeat(64))),
+            // What `owner_maintenance::history_started` writes: a person's
+            // record citing the prior history, starting a new chain.
+            (Disposer::Person, Some(prior.as_str()), None),
+            (Disposer::Plugin, None, None),
+        ] {
+            let mut facts = Map::new();
+            facts.insert("count".into(), json!(3));
+            let action = OwnerMaintenance {
+                kind: "purge",
+                facts,
+                disposer,
+                prior_history_head: prior_head,
+            };
+            let new = seal_owner_maintenance_record(&action, head.as_deref(), &key).unwrap();
+            let old = old_seal_owner_maintenance_record(
+                &action,
+                head.as_deref(),
+                &key,
+                new["timestamp"].as_str().unwrap(),
+                &nonce_of(&new),
+            )
+            .unwrap();
+            assert_eq!(
+                serde_json::to_vec(&new).unwrap(),
+                serde_json::to_vec(&old).unwrap()
+            );
+        }
+    }
 
     #[test]
     fn a_verdict_record_writes_the_registered_confirms_and_reads_as_an_adjudication() {
