@@ -1009,9 +1009,9 @@ fn the_composition_record_never_leaves_the_node_by_any_answer_or_fetch() {
     .unwrap();
     assert!(flag);
     assert!(!served);
-    assert!(!crate::ledger_fetch_bridge::may_serve(
-        &record, &peer, "peers"
-    ));
+    assert!(
+        !crate::ledger_fetch_bridge::may_serve(&node.state, &id, &peer, None, "peers").unwrap()
+    );
     // It is not one of the deal's records: the receipt bundle is unchanged.
     let deal_ids = evidence_log::with_index(node.state.ledger_dir(), &node.key(), |index| {
         index.deal_capsules_of(&node.exchange).len()

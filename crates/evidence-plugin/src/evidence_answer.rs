@@ -1000,7 +1000,7 @@ pub(crate) fn may_serve_all(
 /// `counterparties` a citing record also goes to the holder of the key its
 /// cited half verified under (`Leaf::counterparty_key`), the other side of
 /// that exchange, whatever id it asks under (#172).
-fn may_serve_all_to(
+pub(crate) fn may_serve_all_to(
     index: &LedgerIndex,
     records: &[u64],
     principal: &[String],

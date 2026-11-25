@@ -189,26 +189,32 @@ async fn bridge_inbound_ledger_fetch_stream(
     )
     .await??;
 
-    let now = crate::evidence_answer::now_utc();
-    let announced = crate::peer_keys::announced::snapshot();
-    let configured = crate::settings::var(crate::peer_keys::ENV_PEER_KEYS).ok();
-    let own_key = hex::encode(capsules.public_key());
-    let door = Door {
-        now: &now,
-        keys: crate::requester_auth::Keys {
-            announced: &announced,
-            configured: configured.as_deref(),
-            own_key: Some(&own_key),
-        },
-        replay: crate::requester_auth::replay_cache(),
-        own_node: own_node.as_deref(),
-    };
-    let response = answer(
-        &capsules,
-        &request_bytes,
-        crate::share_policy::history_segments(),
-        &door,
-    );
+    // The answer reads the ledger and the shared index under its lock (the
+    // evidence-request responder holds that lock for a whole answer), so it
+    // runs off the async worker, as `mesh_evidence_bridge` does.
+    let response = tokio::task::spawn_blocking(move || {
+        let now = crate::evidence_answer::now_utc();
+        let announced = crate::peer_keys::announced::snapshot();
+        let configured = crate::settings::var(crate::peer_keys::ENV_PEER_KEYS).ok();
+        let own_key = hex::encode(capsules.public_key());
+        let door = Door {
+            now: &now,
+            keys: crate::requester_auth::Keys {
+                announced: &announced,
+                configured: configured.as_deref(),
+                own_key: Some(&own_key),
+            },
+            replay: crate::requester_auth::replay_cache(),
+            own_node: own_node.as_deref(),
+        };
+        answer(
+            &capsules,
+            &request_bytes,
+            crate::share_policy::history_segments(),
+            &door,
+        )
+    })
+    .await?;
 
     let response_bytes = serde_json::to_vec(&response)?;
     tokio::time::timeout(responder_timeout(), async {
@@ -219,22 +225,37 @@ async fn bridge_inbound_ledger_fetch_stream(
     Ok(())
 }
 
-/// Whether `record` goes to the asker under the node's `history_segments`
-/// switch. `off` serves nothing. A record that `never_leaves`
-/// (a local block, an ask, a deal's report, an owner-maintenance record)
-/// is never served. Under `peers` any other record goes to any
-/// proven node; otherwise a record goes only to the node it names as the other side
-/// of its exchange, so a record that names no other side is not served.
-/// `requester_id` is the node the request's signature proved ([`answer`]).
-pub(crate) fn may_serve(record: &Value, requester: &[String], history_segments: &str) -> bool {
-    if history_segments == "off" || crate::evidence_log::never_leaves(record) {
-        return false;
-    }
-    if history_segments == "peers" {
-        return !requester.is_empty();
-    }
-    crate::evidence_panes::full_counterparty_node_id(record)
-        .is_some_and(|other_side| requester.contains(&other_side))
+/// Whether the record `capsule_id` goes to the asker under the node's
+/// `history_segments` switch: the evidence-request responder's own rule
+/// (`evidence_answer::may_serve_all_to`) over the same index, so the two
+/// responders never decide a record differently (#371). `off` serves
+/// nothing; a record that never leaves (a local block, an ask, a deal's
+/// report, an owner-maintenance record) is never served; under `peers` any
+/// other record goes to any proven node; otherwise only to the other side
+/// of its exchange, by the node id it names or by the key its cited half
+/// verified under (#172). A record the index does not hold (past a line the
+/// index stopped at) is not served, as the evidence-request path does not
+/// serve it either. `requester` and `requester_key` are what the request's
+/// signature proved ([`answer`]).
+pub(crate) fn may_serve(
+    capsules: &CapsuleState,
+    capsule_id: &str,
+    requester: &[String],
+    requester_key: Option<&str>,
+    history_segments: &str,
+) -> std::io::Result<bool> {
+    let key_id = hex::encode(capsules.public_key());
+    crate::evidence_log::with_index(capsules.ledger_dir(), &key_id, |index| {
+        index.leaf_index_of(capsule_id).is_some_and(|leaf| {
+            crate::evidence_answer::may_serve_all_to(
+                index,
+                &[leaf],
+                requester,
+                requester_key,
+                history_segments,
+            )
+        })
+    })
 }
 
 /// What a request is checked against before the ledger is read.
@@ -313,20 +334,30 @@ fn answer(
     };
     // Every node the asker's key is bound to (D-34).
     let requester = principal.as_ref().map_or(&[][..], |p| &p.node_ids[..]);
+    let requester_key = principal.as_ref().map(|p| p.key_id.as_str());
 
     #[cfg(test)]
     LOOKUPS.with(|n| n.set(n.get() + 1));
     match capsules.lookup(&parsed.capsule_id) {
-        Ok(Some(entry)) if !may_serve(&entry.capsule, requester, history_segments) => {
-            LedgerFetchResponse::NotAuthorized {
+        Ok(Some(entry)) => match may_serve(
+            capsules,
+            &parsed.capsule_id,
+            requester,
+            requester_key,
+            history_segments,
+        ) {
+            Ok(true) => LedgerFetchResponse::Found {
+                capsule: entry.capsule,
+                signed_statement_b64: base64::engine::general_purpose::STANDARD
+                    .encode(&entry.signed_statement),
+                node_pub_key_pem: capsules.public_key_pem(),
+            },
+            Ok(false) => LedgerFetchResponse::NotAuthorized {
                 capsule_id: parsed.capsule_id,
-            }
-        }
-        Ok(Some(entry)) => LedgerFetchResponse::Found {
-            capsule: entry.capsule,
-            signed_statement_b64: base64::engine::general_purpose::STANDARD
-                .encode(&entry.signed_statement),
-            node_pub_key_pem: capsules.public_key_pem(),
+            },
+            Err(error) => LedgerFetchResponse::Error {
+                message: format!("ledger index unreadable: {error}"),
+            },
         },
         Ok(None)
             if capsules.ledger_dir().parent().is_some_and(|data_dir| {
@@ -639,20 +670,166 @@ mod tests {
         }
     }
 
-    /// A deal's report is the owner's own: no switch serves it to anyone,
-    /// where a step would go to the node on the other side under `peers`.
+    /// Seal a record citing a half this node accepted on `sender`'s key,
+    /// pushed under the id `pushed_under` (no `x-mesh-poc-v1` block, so it
+    /// names no other side by id).
+    fn seal_citing(state: &CapsuleState, sender: &str, pushed_under: &str) -> String {
+        let sender_key = hex::encode(asker_key(sender).verifying_key().to_bytes());
+        let foreign_id = "d".repeat(64);
+        let prov = crate::producer::capsule::ReceivedHalfProvenance {
+            foreign_capsule_id: &foreign_id,
+            received_from: pushed_under,
+            via: "push",
+            received_at: "2026-10-13T00:00:00Z",
+            signature_ok: true,
+            digest_match: None,
+            foreign_agent_input_digest: None,
+            foreign_agent_output_digest: None,
+            sender_key_id: Some(&sender_key),
+            accepted_via: Some(&crate::peer_keys::AcceptedVia::HostAnnounced),
+            controller_binding: None,
+            same_controller_as_receiver: None,
+            own_half_capsule_id: None,
+        };
+        state
+            .emit_citing_record(&prov)
+            .expect("seal citing record")
+            .expect("not cited before")
+            .capsule_id
+    }
+
+    /// The fetch and the evidence-request responder decide by one rule
+    /// (#371): under `counterparties` a citing record goes to the holder of
+    /// the key its half verified under, whatever id the push named (#172),
+    /// and to no one else. Before #371 the fetch read only the record's
+    /// `x-mesh-poc-v1` side and refused the key holder.
+    #[test]
+    fn a_citing_record_goes_to_the_holder_of_the_key_its_half_verified_under() {
+        let state = open_state("key-holder");
+        let id = seal_citing(&state, "node-b", "node-pushed-under");
+        assert!(is_found(&ask(
+            &state,
+            &id,
+            Some("node-b"),
+            "counterparties"
+        )));
+        for other in [ASKER, "node-pushed-under"] {
+            assert!(
+                is_refused(&ask(&state, &id, Some(other), "counterparties")),
+                "{other} holds no key the half verified under"
+            );
+        }
+        assert!(is_found(&ask(&state, &id, Some(ASKER), "peers")));
+    }
+
+    /// A deal's report is the owner's own keep copy: no switch serves it to
+    /// anyone, not to the deal's other side, not under `peers`.
     #[test]
     fn a_deal_report_is_served_under_no_switch() {
-        let report = json!({"capsule_id": "a".repeat(64), "action_id": "capsulectl-deal-report"});
-        let step = json!({"capsule_id": "b".repeat(64), "deal_id": "deal-0123456789abcdef"});
-        let asker = vec!["node-a".to_string()];
-        for switch in ["off", "peers", "counterparties"] {
-            assert!(!may_serve(&report, &asker, switch), "{switch}");
+        let state = open_state("deal-report");
+        let dealt = state
+            .emit_for_exchange(&crate::capsule_emit::tests::sample_exchange(ASKER))
+            .expect("seal the dealt exchange")
+            .capsule_id;
+        crate::deal_receipt::tests::seal_deal(&state, &dealt, true);
+        let key_id = hex::encode(state.public_key());
+        let records: Vec<String> =
+            crate::evidence_log::with_index(state.ledger_dir(), &key_id, |i| {
+                i.deal_capsules_of(&dealt)
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap();
+        let reports: Vec<&String> = records
+            .iter()
+            .filter(|id| {
+                let record = state.lookup(id).unwrap().unwrap().capsule;
+                crate::evidence_log::is_deal_report(&record)
+            })
+            .collect();
+        assert_eq!(reports.len(), 1, "a delivered deal has one report");
+        for asker in [ASKER, "node-b", "node-y"] {
+            for tier in ["off", "peers", "counterparties"] {
+                assert!(
+                    is_refused(&ask(&state, reports[0], Some(asker), tier)),
+                    "{asker} {tier}"
+                );
+            }
         }
+    }
+
+    /// For each record kind and switch, the fetch serves exactly what the
+    /// evidence-request rule over the same index serves (#371).
+    #[test]
+    fn the_fetch_and_the_evidence_request_rule_agree() {
+        let state = open_state("agree");
+        let exchange = seal_one(&state);
+        let no_side = seal_for(&state, None);
+        let citing = seal_citing(&state, "node-b", "node-pushed-under");
+        let block = state
+            .emit_local_routing_choice(
+                crate::producer::capsule::RoutingChoiceChange::Block,
+                ASKER,
+                None,
+                &[3u8; 32],
+                None,
+            )
+            .expect("seal block")
+            .capsule_id;
+        let dealt = state
+            .emit_for_exchange(&crate::capsule_emit::tests::sample_exchange(ASKER))
+            .expect("seal the dealt exchange")
+            .capsule_id;
+        crate::deal_receipt::tests::seal_deal(&state, &dealt, true);
+        let key_id = hex::encode(state.public_key());
+        let deal_records: Vec<String> =
+            crate::evidence_log::with_index(state.ledger_dir(), &key_id, |i| {
+                i.deal_capsules_of(&dealt)
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap();
+        assert!(!deal_records.is_empty(), "the deal sealed its records");
+        // A deal's step names its other side through the exchange it is
+        // about (the index's `deal_counterparty`), which the fetch's old
+        // copy of the rule did not read: the step now goes to that side.
         assert!(
-            may_serve(&step, &asker, "peers"),
-            "a step is a record like any other"
+            deal_records
+                .iter()
+                .any(|id| is_found(&ask(&state, id, Some(ASKER), "counterparties"))),
+            "a deal record goes to the deal's other side"
         );
+        let ids = [&exchange, &no_side, &citing, &block, &dealt]
+            .into_iter()
+            .cloned()
+            .chain(deal_records);
+        for id in ids {
+            let id = &id;
+            for asker in [ASKER, "node-b", "node-y"] {
+                let principal = vec![asker.to_string()];
+                let asker_key = hex::encode(asker_key(asker).verifying_key().to_bytes());
+                for tier in ["off", "peers", "counterparties"] {
+                    let rule = crate::evidence_log::with_index(state.ledger_dir(), &key_id, |i| {
+                        let leaf = i.leaf_index_of(id).expect("indexed");
+                        crate::evidence_answer::may_serve_all_to(
+                            i,
+                            &[leaf],
+                            &principal,
+                            Some(&asker_key),
+                            tier,
+                        )
+                    })
+                    .unwrap();
+                    let fetched = is_found(&ask(&state, id, Some(asker), tier));
+                    assert_eq!(fetched, rule, "{id} {asker} {tier}");
+                    if id == &block {
+                        assert!(!fetched, "a local block never leaves: {asker} {tier}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]
