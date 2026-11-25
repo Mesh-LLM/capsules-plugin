@@ -670,21 +670,8 @@ pub fn load_checkpoint_state(
 /// (`Ledger::read_line`): the record's capsule with `signature` (the producer
 /// envelope, hex) and `key_id` (its signer, hex) put back.
 pub fn line_of(record: &Record) -> io::Result<Vec<u8>> {
-    let mut parsed = crate::producer::jcs::decode_record(&record.capsule).map_err(other)?;
-    let envelope =
-        agent_action_capsule::envelope::verify(&record.capsule_id, &record.producer_envelope);
-    let object = parsed
-        .as_object_mut()
-        .ok_or_else(|| other("a stored record is not a JSON object"))?;
-    object.insert(
-        "signature".into(),
-        Value::String(hex::encode(&record.producer_envelope)),
-    );
-    object.insert(
-        "key_id".into(),
-        Value::String(hex::encode(&envelope.public_key)),
-    );
-    serde_json::to_vec(&parsed).map_err(other)
+    let line = capsule_emit_lib::ledger::record_line(record).map_err(other)?;
+    serde_json::to_vec(&line).map_err(other)
 }
 
 fn b64(text: &str) -> io::Result<Vec<u8>> {
