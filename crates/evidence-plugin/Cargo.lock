@@ -47,7 +47,7 @@ dependencies = [
  "base64 0.22.1",
  "checkpointed-local-log",
  "ed25519-dalek",
- "evidence-request 0.8.0",
+ "evidence-request 0.8.1",
  "hex",
  "p256",
  "serde",
@@ -746,7 +746,7 @@ dependencies = [
  "ciborium",
  "coset",
  "ed25519-dalek",
- "evidence-request 0.8.0",
+ "evidence-request 0.8.1",
  "evidencebook",
  "getrandom 0.2.17",
  "hex",
@@ -797,9 +797,9 @@ dependencies = [
 
 [[package]]
 name = "evidence-request"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6ab5fb305bed1e24915280e25bb3bd9f5e176e46d0e132b09f92d0e68fe6d84"
+checksum = "982b074de5c3c783a1a9385a0471d385c711f24854cb42f906ab64f34c8465f3"
 dependencies = [
  "base64 0.22.1",
  "checkpointed-local-log",
@@ -827,7 +827,7 @@ dependencies = [
  "checkpointed-local-log",
  "ciborium",
  "ed25519-dalek",
- "evidence-request 0.8.0",
+ "evidence-request 0.8.1",
  "hex",
  "hmac",
  "icu_casemap",

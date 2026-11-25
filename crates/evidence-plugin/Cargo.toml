@@ -172,7 +172,7 @@ rusqlite = { version = "0.40", features = ["bundled"] }
 # check of Checkpointed Local Log material (`cll`) and witness receipts
 # (`receipt`). The artifact is built by evidencebook (below).
 # Pinned exactly: a new release may change what verifies.
-evidence-request = { version = "=0.8.0", features = ["cll", "receipt", "acceptance"] }
+evidence-request = { version = "=0.8.1", features = ["cll", "receipt", "acceptance"] }
 # The "asked of you" log (`evidence_answer::log_received`) is evidencebook's
 # `received` (evidencebook#35), and a ledger line is read into its
 # `served_summary` facts (`evidence_log::leaf_facts`), whose model Service

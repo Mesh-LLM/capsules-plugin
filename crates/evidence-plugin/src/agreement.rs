@@ -247,7 +247,10 @@ pub fn profile_time(unix_seconds: i64) -> String {
         .unwrap_or_default()
 }
 
-/// The profile's time form (§5.2): `YYYY-MM-DDTHH:MM:SSZ`, a real instant.
+/// The profile's time form (§5.2): `YYYY-MM-DDTHH:MM:SSZ`, a real instant,
+/// for a receipt's `received_at`. evidence-request checks it inside
+/// `form_problems` but does not export it; its public
+/// `envelope::is_profile_time` refuses a leap second, which this accepts.
 fn is_profile_time(s: &str) -> bool {
     s.len() == 20
         && s.ends_with('Z')
@@ -400,24 +403,19 @@ pub fn check_proposal(message: &[u8], own_key: &str, now: i64) -> Result<Checked
         "session",
         "sig",
     ];
-    if r.len() != MEMBERS.len()
+    // evidence-request's form check (§11.1.2 and §11.1.3: the members'
+    // forms, the times, the session window), then what this plugin also
+    // requires: exactly these members, its profile, a proposal, and a
+    // session that names its policy and terms.
+    if !acceptance::form_problems(r).is_empty()
+        || r.len() != MEMBERS.len()
         || !MEMBERS.iter().all(|k| r.contains_key(*k))
         || text("profile") != Some(PROFILE)
         || text("state") != Some("proposed")
-        || !text("issued_at").is_some_and(is_profile_time)
-        || !text("proposer").is_some_and(evidence_request::registry::is_digest)
         || !r
             .get("session")
             .and_then(Value::as_object)
-            .is_some_and(|s| {
-                s.len() == 4
-                    && ["not_before", "not_after", "policy", "terms"]
-                        .iter()
-                        .all(|k| s.get(*k).is_some_and(Value::is_string))
-                    && ["not_before", "not_after"]
-                        .iter()
-                        .all(|k| s[*k].as_str().is_some_and(is_profile_time))
-            })
+            .is_some_and(|s| s.len() == 4 && s.contains_key("policy") && s.contains_key("terms"))
     {
         return Err(Refusal::Record("proposed"));
     }
