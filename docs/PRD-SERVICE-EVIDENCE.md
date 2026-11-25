@@ -123,7 +123,7 @@ network: payment legs record observations, they do not move money.
   not "unwitnessed by failure", and it is right for `witness = off`. For a
   default node before its first receipt, Steven's 2026-11-24 ruling is
   "witness named, no receipt yet"; a History cannot yet say a witness is
-  named, so the line follows once the standard can (agent-action-capsule#684,
+  named, so the line follows once the standard can (action-state-group/agent-action-capsule#684,
   capsules-plugin#363). On the requester side, 0.1.4 holds no witness keys, so "no receipt in an answer is
   counted as witnessed" (CHANGELOG 0.1.4). Witnessed means only that a later
   rewrite is detectable (Link 7).

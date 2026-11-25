@@ -149,8 +149,9 @@ verifier holding one says it did not check it.
   text (ISH §5.2). That is right for a node with the witness `off`. For a default node before its
   first receipt, Steven's ruling of 2026-11-24 is "witness named, no receipt yet"; a History cannot
   yet say that a witness is named, so the line keeps the standard's text until the standard can
-  (agent-action-capsule#684, capsules-plugin#363). This node's own views already say a witness is
-  on and holds no checkpoint yet.
+  (action-state-group/agent-action-capsule#684, capsules-plugin#363). On the node itself, the web
+  UI's witness setup step already reads "on · none holds one yet", and `doctor` says no receipt
+  that checks is held for the latest checkpoint, keeping "no witness is configured" for `off`.
 - The model is shown as what the provider states.
 - The coverage is every record of the stream up to the anchor, and completeness is not established,
   since the counts are not checked against records.
