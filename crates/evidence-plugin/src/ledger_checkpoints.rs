@@ -860,6 +860,19 @@ mod tests {
         );
         assert_eq!(new_cose, old_cose);
         assert!(old_cp.prev_size > 0, "the second cut extends the first");
+        // One leaf, then one more.
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), &lines(0..1));
+        let one = Tree::build(&dir.path().join(PROVENANCE), LeafRule::Sha256Line).unwrap();
+        let (new_cp, new_cose) = signed_cut(&one, log_id.clone(), 0, ts, &key()).unwrap();
+        let (old_cp, old_cose) = old_cut(&one, &log_id, None, ts, &key());
+        assert_eq!((&new_cp, &new_cose), (&old_cp, &old_cose));
+        write(dir.path(), &lines(1..2));
+        let two = Tree::build(&dir.path().join(PROVENANCE), LeafRule::Sha256Line).unwrap();
+        let (new_cp, new_cose) =
+            signed_cut(&two, log_id.clone(), old_cp.mmr_size, ts, &key()).unwrap();
+        let (old_cp, old_cose) = old_cut(&two, &log_id, Some(&old_cp), ts, &key());
+        assert_eq!((&new_cp, &new_cose), (&old_cp, &old_cose));
     }
 
     #[test]

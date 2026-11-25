@@ -154,6 +154,8 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 # checkpointed-local-log 0.6.0 and agent-action-capsule 0.11.0, the one CLL line
 # the shelf needs (evidencebook#254 §7.4), with capsule-emit-artifact 0.0.4.
 capsule-emit-lib = { package = "capsule-emit", version = "0.0.14" }
+# 0.6.1 adds `checkpoint::cut_checkpoint`, which `ledger_checkpoints` cuts with
+# (#368); same 0.6 line as capsule-emit.
 cll = { package = "checkpointed-local-log", version = "0.6.1", features = ["sqlite"] }
 # The chain's records: capsule-emit's artifact store (SQLite backend), the
 # layer its `Ledger` keeps each line in beside the CLL log, both on the node's
