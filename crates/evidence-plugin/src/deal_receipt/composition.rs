@@ -301,7 +301,14 @@ pub(crate) fn member(
             outcome,
         );
     }
-    let window = |name: &str| statement.pointer(&format!("/window/{name}")).cloned();
+    // A window is two times; anything else is no window (the composed
+    // block's absence body holds text there).
+    let window = |name: &str| {
+        statement
+            .pointer(&format!("/window/{name}"))
+            .filter(|v| v.is_string())
+            .cloned()
+    };
     let (Some(from), Some(to)) = (window("opened"), window("closed")) else {
         return Err(MemberRefusal::NoWindow(request_record.into()).into());
     };
