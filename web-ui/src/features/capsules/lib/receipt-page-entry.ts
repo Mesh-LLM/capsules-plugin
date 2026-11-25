@@ -4,8 +4,7 @@
 // with capsule-viewer's receipt export: the viewer's lines (the row's case,
 // the records tied, the runtime's line) and then the receipt itself, top line
 // first. Every word is the viewer's.
-import { VERIFICATION_BANNER_LINES } from '@aac-browser'
-import { receiptPageLines, renderReceipt, type ReceiptResult } from '@action-state-group/capsule-viewer/receipt'
+import { receiptPageLines, renderReceipt } from '@action-state-group/capsule-viewer/receipt'
 import { checkUnmoduledBundle, receiptLines } from '@/features/capsules/lib/receipt-view'
 
 export type ReceiptPageLines = {
@@ -21,13 +20,10 @@ export type ReceiptPageLines = {
  *  served half, until capsule-viewer#390) gets the row's own check and no
  *  drawing. */
 export async function receiptPage(bundleText: string, host: HTMLElement): Promise<ReceiptPageLines> {
-  let result: ReceiptResult
-  try {
-    result = await renderReceipt(bundleText, host)
-  } catch {
-    host.replaceChildren()
-    result = { kind: 'did_not_verify', line: VERIFICATION_BANNER_LINES.refused }
-  }
+  // The viewer reads an unreadable bundle as did_not_verify itself; anything
+  // it throws comes after the bundle verified (drawing it), so it is no
+  // verdict: the page's script says it could not check its receipt.
+  const result = await renderReceipt(bundleText, host)
   if (result.kind === 'no_module') {
     host.replaceChildren()
     const lines = receiptLines(await checkUnmoduledBundle(bundleText))

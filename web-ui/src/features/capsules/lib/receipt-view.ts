@@ -116,9 +116,11 @@ export async function checkReceiptBundle(bundleText: string): Promise<ReceiptVie
   let result: ReceiptResult
   try {
     result = await checkReceipt(bundleText)
-  } catch {
-    // Anything the check throws on is a bundle it could not read.
-    return { kind: 'did_not_verify', line: VERIFICATION_BANNER_LINES.refused, bundleText }
+  } catch (error) {
+    // The viewer reads an unreadable bundle as did_not_verify itself;
+    // anything it throws comes after the bundle verified, so it is no
+    // verdict on the bundle: the row says the receipt could not be loaded.
+    return { kind: 'error', message: error instanceof Error ? error.message : String(error) }
   }
   return viewOfResult(result, bundleText)
 }
