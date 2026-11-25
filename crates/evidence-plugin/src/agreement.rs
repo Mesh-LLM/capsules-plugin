@@ -1069,6 +1069,16 @@ mod tests {
             ("a session member too many", &|r: &mut Value| {
                 r["session"]["count"] = json!("2")
             }),
+            // Refused by evidence-request's form check (#368 step 8).
+            ("a transaction member too many", &|r: &mut Value| {
+                r["transaction"]["extra"] = json!("x")
+            }),
+            ("a window that ends before it starts", &|r: &mut Value| {
+                r["session"]["not_after"] = json!(profile_time(NOW - 60))
+            }),
+            ("a policy that is not a digest", &|r: &mut Value| {
+                r["session"]["policy"] = json!("not-a-digest")
+            }),
         ] {
             assert_eq!(
                 refused(
@@ -1079,6 +1089,13 @@ mod tests {
                 "{label}"
             );
         }
+        // A `sig` that is not an Ed25519 signature's form.
+        let bad_sig = tampered(&proposal, &|m| {
+            let mut r: Value = serde_json::from_str(m["proposed"].as_str().unwrap()).unwrap();
+            r["sig"] = json!("00");
+            m["proposed"] = json!(r.to_string());
+        });
+        assert_eq!(refused(&bad_sig, NOW), Some(Refusal::Record("proposed")));
     }
 
     #[test]

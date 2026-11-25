@@ -7,8 +7,7 @@
 
 use cll::mmr::{pos_to_leaf_index, root_from_peaks, verify_inclusion, Hash, InclusionProof};
 
-/// The longest inclusion or consistency path an MMR of profile size can
-/// have.
+/// The longest inclusion path an MMR of profile size can have.
 const MAX_PATH: usize = 64;
 
 /// The largest MMR node index read from a peer: the profile's integers.
