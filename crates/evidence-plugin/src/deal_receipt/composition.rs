@@ -208,51 +208,26 @@ fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
+/// SHA-256 of the JCS of `value`, hex (agent-action-capsule's `json_digest`).
 fn jcs_digest(value: &Value) -> Result<String, Error> {
-    jcs(value)
-        .map(|bytes| sha256_hex(&bytes))
+    agent_action_capsule::canonical::json_digest(value)
         .map_err(|e| Error::Failed(format!("no canonical form: {e}")))
 }
 
-/// The composed digest of a block (agent-disclosure-bundle-01, "The
-/// composed/v1 Extension"; the core's `ComposedDigest`): SHA-256 of the JCS
-/// of `{kind, members, observers, joins, not_requested}`, each reduced to
-/// its declared fields and sorted. Member bodies, `missing` and
-/// `composed_digest` are not in it. Only blocks this module builds are
-/// given: no join and no `not_requested` entry.
-pub(crate) fn composed_digest(members: &[Value], observers: &[Value]) -> Result<String, Error> {
-    let pick = |v: &Value, names: &[&str]| -> Value {
-        Value::Object(
-            names
-                .iter()
-                .map(|n| ((*n).to_string(), v.get(*n).cloned().unwrap_or(Value::Null)))
-                .collect(),
-        )
-    };
-    let id = |v: &Value| v["id"].as_str().unwrap_or_default().to_string();
-    let mut members: Vec<Value> = members
-        .iter()
-        .map(|m| {
-            pick(
-                m,
-                &["id", "observer", "request_digest", "outcome", "digest"],
-            )
-        })
-        .collect();
-    members.sort_by_key(id);
-    let mut observers: Vec<Value> = observers
-        .iter()
-        .map(|o| pick(o, &["id", "role", "custody_domain"]))
-        .collect();
-    observers.sort_by_key(id);
-    jcs_digest(&json!({
-        "kind": COMPOSED_KIND,
-        "members": members,
-        "observers": observers,
-        "joins": [],
-        "not_requested": [],
-    }))
+/// The composed digest of `block` (agent-disclosure-bundle-01, "The
+/// composed/v1 Extension"): agent-action-capsule's `composed_digest`, which
+/// checks the block and digests `{kind, members, observers, joins,
+/// not_requested}`, each reduced to its declared fields and sorted. The
+/// block's own `composed_digest` is not in it; the crate requires one to be
+/// present, so a block being built carries a placeholder until this fills it.
+fn composed_digest(block: &Value) -> Result<String, Error> {
+    agent_action_capsule::bundle::composed_digest(block)
+        .map_err(|e| Error::Failed(format!("the composed block: {e}")))
 }
+
+/// What a block being built carries as its `composed_digest` until
+/// [`composed_digest`] fills it.
+const PLACEHOLDER_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
 /// The member for the request recorded as `request_record`, from its
 /// recorded outcome, with its observer: this node (`own`) for an absence,
@@ -326,7 +301,14 @@ pub(crate) fn member(
             outcome,
         );
     }
-    let window = |name: &str| statement.pointer(&format!("/window/{name}")).cloned();
+    // A window is two times; anything else is no window (the composed
+    // block's absence body holds text there).
+    let window = |name: &str| {
+        statement
+            .pointer(&format!("/window/{name}"))
+            .filter(|v| v.is_string())
+            .cloned()
+    };
     let (Some(from), Some(to)) = (window("opened"), window("closed")) else {
         return Err(MemberRefusal::NoWindow(request_record.into()).into());
     };
@@ -543,13 +525,14 @@ pub(crate) fn block(
         .iter()
         .map(|k| json!({"id": k, "role": OBSERVER_ROLE, "custody_domain": k}))
         .collect();
-    let digest = composed_digest(&members, &observers)?;
-    Ok(json!({
+    let mut block = json!({
         "members": members,
         "observers": observers,
         "joins": [],
-        "composed_digest": digest,
-    }))
+        "composed_digest": PLACEHOLDER_DIGEST,
+    });
+    block["composed_digest"] = json!(composed_digest(&block)?);
+    Ok(block)
 }
 
 /// The provider's half, as the exchange record names it: the capsule id the
