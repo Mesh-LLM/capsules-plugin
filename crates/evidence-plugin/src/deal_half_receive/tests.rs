@@ -478,8 +478,8 @@ fn a_step_the_record_push_store_would_not_take_as_a_record_is_refused() {
 fn a_serving_claim_the_store_refuses_is_refused_whole_before_anything_is_stored() {
     let h = half(SERVED_CLAIM);
     let keys = admitting("goose-buyer", &h);
-    // Every deal check accepts it; it predates evidencebook#329, so it is
-    // refused for its missing card, after every other check, and nothing
+    // Every record, chain and checkpoint check accepts it; it predates
+    // evidencebook#329, so it is refused for its missing card, and nothing
     // is written.
     let r = refusal(SERVED_CLAIM.as_bytes(), &keys);
     assert_eq!((r.reason, r.step), (REASON_REQUEST_MALFORMED, None));
@@ -493,25 +493,29 @@ fn a_serving_claim_the_store_refuses_is_refused_whole_before_anything_is_stored(
         std::fs::read_dir(dir.path()).unwrap().next().is_none(),
         "nothing written"
     );
-    // The claim step on its own: its steps are refused for their serving
-    // claim, at step 1, before anything is held.
+    // The step after `verify`, with its steps in a verified half: refused for
+    // their serving claim, at step 1, and nothing is held.
     let cur = half(CUR_BUYER_FIRST);
-    let mut verified =
-        check(CUR_BUYER_FIRST.as_bytes(), &admitting("goose-buyer", &cur)).expect("verifies");
+    let cur_keys = admitting("goose-buyer", &cur);
+    let mut verified = check(CUR_BUYER_FIRST.as_bytes(), &cur_keys).expect("verifies");
     verified.capsules = h["steps"]
         .as_array()
         .unwrap()
         .iter()
         .map(|s| s["capsule"].clone())
         .collect();
-    let r = refused_claim(dir.path(), &verified)
+    let r = hold_verified(dir.path(), &key, Some(&cur_keys), verified, NOW)
         .unwrap()
-        .expect("the claim is refused");
+        .expect_err("the claim is refused");
     assert_eq!((r.reason, r.step), (REASON_RECORD_UNVERIFIED, Some(1)));
     assert!(
         r.detail.contains(receive::REASON_SERVED_BY_MISMATCH),
         "{}",
         r.detail
+    );
+    assert!(
+        std::fs::read_dir(dir.path()).unwrap().next().is_none(),
+        "nothing held"
     );
 }
 
@@ -682,6 +686,17 @@ fn a_baseline_citing_its_admission_is_the_current_form() {
         1,
         "cites its admission"
     );
+    // The scripted run's buyer admitted the seller before it opened the deal:
+    // the one cite is that admission record, not one of the half's steps.
+    let cited = baseline_links[0]["target"].as_str().unwrap();
+    assert!(
+        h["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|s| s["capsule"]["capsule_id"] != cited),
+        "the cite is not one of the half's steps"
+    );
     let verified =
         check(CUR_BUYER_FIRST.as_bytes(), &admitting("goose-buyer", &h)).expect("verifies");
     assert_eq!(verified.form, FORM_CURRENT);
@@ -799,8 +814,8 @@ fn a_broken_staple_or_an_unknown_member_is_refused() {
 }
 
 /// A half from a Goose node before evidencebook#329 carries no book card:
-/// every older vector passes each other check and is refused for that
-/// alone, as the Goose node refuses it.
+/// every older vector passes the record, chain and checkpoint checks and is
+/// refused for the missing card, as the Goose node refuses it.
 #[test]
 fn a_half_without_its_book_card_is_refused() {
     for (name, text) in [

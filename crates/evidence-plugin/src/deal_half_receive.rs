@@ -751,6 +751,19 @@ pub fn receive_half(
         Ok(verified) => verified,
         Err(refusal) => return Ok(Err(refusal)),
     };
+    hold_verified(ledger_dir, signing_key, configured, verified, now)
+}
+
+/// The step after [`verify`]: refuse a half whose serving claim the
+/// record-push store refuses (step 6), before anything is held, else hold
+/// it.
+fn hold_verified(
+    ledger_dir: &Path,
+    signing_key: &ed25519_dalek::SigningKey,
+    configured: Option<&str>,
+    verified: Verified,
+    now: &str,
+) -> std::io::Result<Result<Verified, Refused>> {
     if let Some(refusal) = refused_claim(ledger_dir, &verified)? {
         return Ok(Err(refusal));
     }
