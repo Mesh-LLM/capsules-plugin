@@ -246,8 +246,14 @@ export function receiptLabel(view: ReceiptView): string | null {
 
 /** The viewer's lines for a checked, cannot-check or did-not-verify view, and
  *  their tone; null for any other view. For a checked view the first line is
- *  "Receipt: <label>", the second the records tied, the third the runtime's. */
-export function receiptLines(view: ReceiptView): { tone: 'ok' | 'warn' | 'bad'; lines: string[] } | null {
+ *  "Receipt: <label>", the second the records tied, the third the runtime's.
+ *  The Exchanges row passes no carrier (the owner's words); a saved page
+ *  passes `carrier: 'page'`, so one side's own receipt reads "this node's
+ *  receipt only" (capsule-viewer#395). */
+export function receiptLines(
+  view: ReceiptView,
+  options?: { readonly carrier?: 'page' }
+): { tone: 'ok' | 'warn' | 'bad'; lines: string[] } | null {
   const result = resultOf(view)
-  return result ? receiptPageLines(result) : null
+  return result ? receiptPageLines(result, options) : null
 }

@@ -309,7 +309,7 @@ describe('the receipt page, opened offline', () => {
     expect(Buffer.from(embedded(html)).equals(Buffer.from(oneSided, 'utf8'))).toBe(true)
 
     const { dom, requested, text } = await open(html)
-    expect(dom.window.document.querySelector('#result p.warn')?.textContent).toBe('Receipt: your receipt only')
+    expect(dom.window.document.querySelector('#result p.warn')?.textContent).toBe("Receipt: this node's receipt only")
     expect(text).toMatch(/\d+ of \d+ records in the receipt are tied to a signed checkpoint\./)
     expect(text).not.toContain('stamped by both')
     expect(requested).toEqual([])
@@ -320,13 +320,21 @@ describe('the receipt page, opened offline', () => {
     const bundleText = JSON.stringify(meshPayerDeal)
     const { dom, requested, text } = await open(receiptPage({ kind: 'bundle', bundleText }, 'ex-5', SAVED).html)
     const doc = dom.window.document
-    expect(doc.querySelector('#result p.warn')?.textContent).toBe('Receipt: your receipt only')
+    expect(doc.querySelector('#result p.warn')?.textContent).toBe("Receipt: this node's receipt only")
     // The viewer's receipt is drawn under the lines, its L0 region first.
     const top = doc.querySelector('#result .receipt [data-region="L0"]')?.textContent ?? ''
     expect(top).toContain(
       "Checked in this browser by the page's verifier (agent-action-capsule): graph closure (verified), interval coverage (not checked), per record membership (verified)."
     )
     expect(text.split("Checked in this browser by the page's verifier").length - 1).toBe(1)
+    // A page for anyone: the viewer's "page" carrier, not the owner's copy
+    // (capsule-viewer#395, #396; Sherlock2 on #378).
+    expect(text).toContain(
+      "This node's own record of this exchange, saved as a page for anyone to check. It is not the other side's copy."
+    )
+    for (const owner of ['PRIVATE', 'Do not forward', 'Tell your agent', 'your receipt']) {
+      expect(text).not.toContain(owner)
+    }
     expect(text).not.toContain('did not re-check')
     // No signed field carries the Mesh payer deal's amount, so no Amount card (capsule-viewer#391).
     expect(top).not.toContain('NOT PRESENT')
@@ -340,7 +348,7 @@ describe('the receipt page, opened offline', () => {
 
   it('draws no viewer receipt for a bundle no receipt module draws, and keeps the row\'s lines', async () => {
     const { dom } = await open(receiptPage({ kind: 'bundle', bundleText: oneSided }, 'ex-6', SAVED).html)
-    expect(dom.window.document.querySelector('#result p.warn')?.textContent).toBe('Receipt: your receipt only')
+    expect(dom.window.document.querySelector('#result p.warn')?.textContent).toBe("Receipt: this node's receipt only")
     expect(dom.window.document.querySelector('#result [data-region]')).toBeNull()
   })
 
