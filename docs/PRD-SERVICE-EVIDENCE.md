@@ -119,10 +119,12 @@ network: payment legs record observations, they do not move money.
   witness set offers checkpoints to the default witness (run by Action State,
   not independent of us), so its history card carries receipts once that
   witness answers. The History's "witness receipts: no witness named" line is
-  the standard's text for any History with no receipt held (a default node
-  before its first receipt, or `witness = off`); it is not "unwitnessed by
-  failure". On the
-  requester side, 0.1.4 holds no witness keys, so "no receipt in an answer is
+  the standard's text for any History with no receipt held (ISH §5.2); it is
+  not "unwitnessed by failure", and it is right for `witness = off`. For a
+  default node before its first receipt, Steven's 2026-11-24 ruling is
+  "witness named, no receipt yet"; a History cannot yet say a witness is
+  named, so the line follows once the standard can (agent-action-capsule#684,
+  capsules-plugin#363). On the requester side, 0.1.4 holds no witness keys, so "no receipt in an answer is
   counted as witnessed" (CHANGELOG 0.1.4). Witnessed means only that a later
   rewrite is detectable (Link 7).
 - **R-5 Peer-confirmed halves.** An exchange is two-sided only when the other
