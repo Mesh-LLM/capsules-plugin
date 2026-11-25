@@ -14,7 +14,9 @@ describe.each([
 ])('%s config', (_n, config) => {
   it('uses the shared aliases', () => {
     expect(config.resolve?.alias).toBe(sharedAliases)
-    expect(Object.keys(sharedAliases)).toEqual(expect.arrayContaining(['@', '@cll-browser', '@aac-browser']))
+    expect(sharedAliases.map((a) => String(a.find))).toEqual(
+      expect.arrayContaining(['@', '@cll-browser', '@aac-browser', String(/^@action-state-group\/agent-action-capsule$/)])
+    )
   })
   it('has the capsules:inline-iife plugin', () => {
     expect(pluginNames(config)).toContain('capsules:inline-iife')

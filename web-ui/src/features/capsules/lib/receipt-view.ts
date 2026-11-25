@@ -1,13 +1,26 @@
 // The receipt on an Exchanges row: which of three cases a node's receipt
 // bundle is, read from what the agent-action-capsule runtime verified in this
 // browser. Nothing here is computed from the bundle beyond the runtime's own
-// results: no score, no amounts. Wording is the set Sherlock2 reviewed on
-// Mesh-LLM/capsules-plugin#96.
+// results: no score, no amounts.
+//
+// A deal receipt is checked by capsule-viewer's receipt export (capsule-viewer
+// #383, Mesh-LLM/capsules-plugin#376), and every receipt word on the row is
+// the viewer's own (its pack, which Sherlock2 passed on capsule-viewer#387).
+// A bundle no receipt module draws (the provider's served half: the viewer's
+// provider module is not in its TypeScript export yet, capsule-viewer#390)
+// keeps this file's own check, `checkUnmoduledBundle` with `composedFailed`
+// and `receiptCase`; #390's release removes that path.
 //
 // Producer-selected bundles (these receipts) read INCOMPLETE by design: the
 // log is not shown whole. The runtime renders them when the browser has
 // WebCrypto Ed25519 and refuses them, on purpose, when it does not; that
 // refusal is surfaced as "can't check here", never as a verdict.
+import {
+  checkReceipt,
+  receiptLabel as viewerReceiptLabel,
+  receiptPageLines,
+  type ReceiptResult
+} from '@action-state-group/capsule-viewer/receipt'
 import {
   Sha256UnavailableError,
   bundleVerified,
@@ -20,12 +33,7 @@ import {
 import type { PaneCRow } from '@/features/capsules/api/sidecarTypes'
 import type { ReceiptFetch, ReceiptRequest } from '@/features/capsules/api/receiptClient'
 
-export const RECEIPT_BOTH = 'stamped by both'
-export const RECEIPT_ONE_SIDED = 'your receipt only'
-export const RECEIPT_NONE = 'no record'
-export const RECEIPT_CANNOT_CHECK = "this browser can't check the receipt"
-export const RECEIPT_CANNOT_CHECK_POINTER =
-  'Open the bundle in the offline viewer (capsule-viewer) to check it; this page shows no verdict for it.'
+/** The row's lead-in for a refusal that can change; the route's own reason follows. */
 export const RECEIPT_NOT_YET = 'no receipt yet:'
 /** The route's refusals that mean there is no record at all
  *  (`deal_receipt::Refusal::NoDeal`, `provider_receipt::Refusal::NoExchange`).
@@ -35,13 +43,15 @@ export const NO_RECORD_REASONS: readonly string[] = [
   'this node holds no deal for that exchange',
   'this node holds no single served record for that exchange'
 ]
-export const RECEIPT_DID_NOT_VERIFY = 'the receipt did not verify: do not rely on it'
 
 /** The bundle, checked in this browser. `case` is only ever one of the two a
  *  verified bundle can be; "no record" is the route's refusal. */
 export type CheckedReceipt = {
   kind: 'checked'
   case: 'both' | 'one_sided'
+  /** The viewer's receipt module that draws it, or null for a bundle no
+   *  module draws (checked by `checkUnmoduledBundle`). */
+  module: string | null
   /** The runtime's own banner line for the state it reached. */
   runtimeLine: string
   /** Records in the bundle, and how many of them are tied to a log position. */
@@ -99,12 +109,46 @@ export function receiptCase(context: VerifiedBundleContext): 'both' | 'one_sided
   return artifacts.length === 2 && joined && corroborated ? 'both' : 'one_sided'
 }
 
-/** Check the bundle in `bundleText` (its JSON text, as served) with the
- *  runtime and place it in a case. The saved receipt page runs this same
- *  function on its embedded bytes (`receipt-page-verify.ts`). */
+/** Check the bundle in `bundleText` (its JSON text, as served) and place it
+ *  in a case: with the viewer's receipt check, or, for a bundle no receipt
+ *  module draws, with `checkUnmoduledBundle`. */
 export async function checkReceiptBundle(bundleText: string): Promise<ReceiptView> {
+  let result: ReceiptResult
   try {
-    return await checkReceiptBundleUnguarded(bundleText)
+    result = await checkReceipt(bundleText)
+  } catch {
+    // Anything the check throws on is a bundle it could not read.
+    return { kind: 'did_not_verify', line: VERIFICATION_BANNER_LINES.refused, bundleText }
+  }
+  return viewOfResult(result, bundleText)
+}
+
+/** The row's view of the viewer's result; `no_module` takes this file's own
+ *  check (the provider's served half, until capsule-viewer#390). */
+export async function viewOfResult(result: ReceiptResult, bundleText: string): Promise<ReceiptView> {
+  switch (result.kind) {
+    case 'checked':
+      return {
+        kind: 'checked',
+        case: result.both ? 'both' : 'one_sided',
+        module: result.module,
+        runtimeLine: result.runtimeLine,
+        records: { total: result.records.total, tied: result.records.tied }
+      }
+    case 'cannot_check':
+      return { kind: 'cannot_check', bundleText }
+    case 'did_not_verify':
+      return { kind: 'did_not_verify', line: result.line, bundleText }
+    case 'no_module':
+      return checkUnmoduledBundle(bundleText)
+  }
+}
+
+/** A bundle no receipt module draws, checked as the row checked every
+ *  receipt before the viewer's export (kept for capsule-viewer#390). */
+export async function checkUnmoduledBundle(bundleText: string): Promise<ReceiptView> {
+  try {
+    return await checkUnmoduledBundleUnguarded(bundleText)
   } catch {
     // Anything the runtime throws while reading the bundle, or text that is
     // not JSON, is a bundle it could not read.
@@ -112,7 +156,7 @@ export async function checkReceiptBundle(bundleText: string): Promise<ReceiptVie
   }
 }
 
-async function checkReceiptBundleUnguarded(bundleText: string): Promise<ReceiptView> {
+async function checkUnmoduledBundleUnguarded(bundleText: string): Promise<ReceiptView> {
   const bundle: unknown = JSON.parse(bundleText)
   let context: VerifiedBundleContext
   try {
@@ -139,6 +183,7 @@ async function checkReceiptBundleUnguarded(bundleText: string): Promise<ReceiptV
   return {
     kind: 'checked',
     case: receiptCase(context),
+    module: null,
     runtimeLine: banner.line,
     records: { total, tied: Math.max(0, total - banner.uncheckpointed) }
   }
@@ -172,10 +217,35 @@ export function receiptRequest(row: PaneCRow): ReceiptRequest | null {
   return null
 }
 
-/** The case's label for a view, or null where the view is not one of the
- *  three cases. */
+/** The viewer's result for a checked view, cannot-check or did-not-verify
+ *  view, so the row's words are the viewer's own. */
+function resultOf(view: ReceiptView): ReceiptResult | null {
+  if (view.kind === 'checked') {
+    return {
+      kind: 'checked',
+      module: view.module ?? '',
+      both: view.case === 'both',
+      runtimeLine: view.runtimeLine,
+      records: view.records
+    }
+  }
+  if (view.kind === 'cannot_check') return { kind: 'cannot_check' }
+  if (view.kind === 'did_not_verify') return { kind: 'did_not_verify', line: view.line }
+  return null
+}
+
+/** The case's label for a view (the viewer's words), or null where the view
+ *  is not one of the three cases. */
 export function receiptLabel(view: ReceiptView): string | null {
-  if (view.kind === 'no_record') return RECEIPT_NONE
+  if (view.kind === 'no_record') return viewerReceiptLabel({ kind: 'no_record' })
   if (view.kind !== 'checked') return null
-  return view.case === 'both' ? RECEIPT_BOTH : RECEIPT_ONE_SIDED
+  return viewerReceiptLabel(resultOf(view)!)
+}
+
+/** The viewer's lines for a checked, cannot-check or did-not-verify view, and
+ *  their tone; null for any other view. For a checked view the first line is
+ *  "Receipt: <label>", the second the records tied, the third the runtime's. */
+export function receiptLines(view: ReceiptView): { tone: 'ok' | 'warn' | 'bad'; lines: string[] } | null {
+  const result = resultOf(view)
+  return result ? receiptPageLines(result) : null
 }

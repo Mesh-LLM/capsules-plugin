@@ -65,6 +65,10 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/lib/test/setup.ts', './src/plugin-host/test-host-setup.ts'],
     css: true,
-    include: ['src/**/*.test.{ts,tsx}', 'dev/**/*.test.ts', 'vite-shared.test.ts']
+    include: ['src/**/*.test.{ts,tsx}', 'dev/**/*.test.ts', 'vite-shared.test.ts'],
+    // capsule-viewer goes through Vite, not Node, so its bare import of the
+    // runtime takes the shared alias: the tests run the browser runtime the
+    // page ships, not the package's node build.
+    server: { deps: { inline: ['@action-state-group/capsule-viewer'] } }
   }
 })
