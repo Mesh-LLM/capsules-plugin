@@ -187,8 +187,10 @@ evidence-request = { version = "=0.8.1", features = ["cll", "receipt", "acceptan
 # and evidence-request lines as above.
 # The node's shelf (`shelf`, evidencebook#254 §7): the chain is one host log
 # on it. 0.0.12 is the first release with it, on checkpointed-local-log 0.4.0.
-# Pinned exactly: the shelf's file is a cross-language contract.
-evidencebook = { version = "=0.0.24", features = ["deal", "shelf"] }
+# Pinned exactly: the shelf's file is a cross-language contract. Pinned to
+# evidencebook main at 27dd1172 (0.0.26 and `ask::request_sent_with_commitment`,
+# evidencebook#934) until the next release carries it; then back to a version.
+evidencebook = { git = "https://github.com/action-state-group/evidencebook", rev = "27dd1172a5ee1d6bce09a0557a20a28e25220bf8", version = "=0.0.26", features = ["deal", "shelf"] }
 # Admission's price rule (#105) is decided by capsule-engine's guard with its
 # asg/inference terms pack (capsule-engine#265, `rust/capsule-engine`), the
 # evaluator Muse's Go guard shares vectors with, so the plugin runs no second

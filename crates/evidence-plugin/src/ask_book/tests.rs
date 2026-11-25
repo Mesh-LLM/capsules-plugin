@@ -400,6 +400,102 @@ fn a_signed_refusal_is_checked_against_the_commitment_the_ask_recorded() {
 }
 
 #[test]
+fn the_ask_record_takes_the_books_shape_with_the_commitment_held() {
+    let (capsules, _dir) = state();
+    let commitment = json!({"digest": "c".repeat(64), "policy": {"stranger_safe": []}});
+    let sent = request(None);
+    let asked = record_request(&capsules, &sent, PEER, Some(commitment.clone()), ASKED_AT).unwrap();
+    let statement = &header_of(&capsules, &asked.record_id)["statement"];
+    assert_eq!(statement["request"], sent);
+    assert_eq!(statement["responder_ref"], PEER);
+    assert_eq!(statement["composed_elsewhere"], true);
+    assert_eq!(statement["commitment"], commitment);
+
+    // A commitment that is not a JSON object is refused, and nothing sealed.
+    let before = records(&capsules).len();
+    let refused = record_request(
+        &capsules,
+        &with_nonce(request(None), "n-2"),
+        PEER,
+        Some(json!(["not", "an", "object"])),
+        ASKED_AT,
+    );
+    assert!(matches!(refused, Err(AskError::Invalid(_))), "{refused:?}");
+    assert_eq!(records(&capsules).len(), before);
+}
+
+/// Request records sealed by this plugin before it called evidencebook's
+/// `request_sent_with_commitment` (Mesh-LLM/capsules-plugin main at
+/// 21923241, throwaway keys): no `composed_elsewhere`, and one with the
+/// `commitment` held beside the request. Frozen bytes, never rebuilt here.
+const OLD_SHAPE: &str = include_str!("../../../../vectors/ask-book/old-shape-request.json");
+const OLD_SHAPE_HELD: &str =
+    include_str!("../../../../vectors/ask-book/old-shape-request-with-commitment.json");
+
+/// `line`'s record as the ledger checks it on read (capsule-emit's
+/// `to_record`): its id recomputes, and its producer envelope verifies over
+/// that id under the `key_id` it names. Returns the record's id and entry.
+fn verified_old_record(line: &str) -> (String, Map<String, Value>) {
+    let mut record: Map<String, Value> = serde_json::from_str(line).unwrap();
+    let signature = record.remove("signature").unwrap();
+    let key_id = record.remove("key_id").unwrap();
+    let id = record["capsule_id"].as_str().unwrap().to_string();
+    assert_eq!(
+        agent_action_capsule::canonical::compute_capsule_id(&record).unwrap(),
+        id
+    );
+    let envelope = hex::decode(signature.as_str().unwrap()).unwrap();
+    let verified = agent_action_capsule::envelope::verify(&id, &envelope);
+    assert!(verified.ok, "{:?}", verified.findings);
+    assert_eq!(key_id, hex::encode(&verified.public_key));
+    let entry = entry_block(&Value::Object(record)).unwrap().clone();
+    (id, entry)
+}
+
+#[test]
+fn requests_sealed_in_the_old_shape_still_verify_and_read() {
+    let (capsules, _dir) = state();
+    let mut book = AskBook::open(&capsules, "2026-10-29T12:10:00Z");
+    let mut ids = Vec::new();
+    for line in [OLD_SHAPE, OLD_SHAPE_HELD] {
+        let (id, entry) = verified_old_record(line);
+        assert_eq!(entry["record_type"], "evidence_request");
+        assert!(entry["statement"].get("composed_elsewhere").is_none());
+        book.records.push((id.clone(), entry));
+        ids.push(id);
+    }
+    let held = book.header(&ids[1]).unwrap()["statement"].clone();
+    assert!(held["commitment"].is_object());
+
+    // A refusal is judged against the commitment the old record holds.
+    let check = crate::peer_commitments::policy_check(
+        held.get("commitment"),
+        &held["request"],
+        "no_such_subject",
+    );
+    assert_eq!(check["status"], "MISMATCH", "{check}");
+
+    // Their nonces stay used: the crate's scan reads the old records.
+    for nonce in ["n-1", "n-2"] {
+        let again = evidence_request::jcs::to_string(&with_nonce(request(None), nonce)).unwrap();
+        let refused = evidencebook::ask::request_sent_with_commitment(
+            &mut book,
+            again.as_bytes(),
+            PEER,
+            None,
+        );
+        assert!(
+            matches!(&refused, Err(AskError::Invalid(m)) if m.contains("nonce already used")),
+            "{nonce}: {refused:?}"
+        );
+    }
+
+    // And a window closes into an absence citing the old record.
+    let absent = evidencebook::ask::record_absence(&mut book, &ids[0], "2026-10-29T12:05:00Z", "");
+    assert!(absent.is_ok(), "{absent:?}");
+}
+
+#[test]
 fn an_artifact_carries_no_policy_check() {
     let (capsules, _dir) = state();
     let sent = request(None);

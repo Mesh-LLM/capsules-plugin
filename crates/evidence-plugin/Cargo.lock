@@ -22,15 +22,15 @@ dependencies = [
 
 [[package]]
 name = "agent-action-capsule"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e4ad5a4c1d7d2954570d78e7ffb2a7746a534a4dfbc6062d87cafac170a7dd6"
+checksum = "76c00b95000b446f500b7cdc1c413d1c098cef599e39c875fec0913b64f36b62"
 dependencies = [
  "base64 0.22.1",
  "checkpointed-local-log",
  "curve25519-dalek",
  "ed25519-dalek",
- "evidence-request 0.6.0",
+ "evidence-request",
  "hex",
  "p256",
  "serde",
@@ -47,7 +47,7 @@ dependencies = [
  "base64 0.22.1",
  "checkpointed-local-log",
  "ed25519-dalek",
- "evidence-request 0.8.1",
+ "evidence-request",
  "hex",
  "p256",
  "serde",
@@ -746,7 +746,7 @@ dependencies = [
  "ciborium",
  "coset",
  "ed25519-dalek",
- "evidence-request 0.8.1",
+ "evidence-request",
  "evidencebook",
  "getrandom 0.2.17",
  "hex",
@@ -780,23 +780,6 @@ dependencies = [
 
 [[package]]
 name = "evidence-request"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25d2b70d556157b58a625148451f7ccdfbad424df50f95448b6a7d55b0a2396f"
-dependencies = [
- "base64 0.22.1",
- "ciborium",
- "ed25519-dalek",
- "hex",
- "k256",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "evidence-request"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "982b074de5c3c783a1a9385a0471d385c711f24854cb42f906ab64f34c8465f3"
@@ -816,18 +799,17 @@ dependencies = [
 
 [[package]]
 name = "evidencebook"
-version = "0.0.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a75e11cc3b87e63ac172b71a903c702ed8da1298b3e6e4dab26bf253dd08f193"
+version = "0.0.26"
+source = "git+https://github.com/action-state-group/evidencebook?rev=27dd1172a5ee1d6bce09a0557a20a28e25220bf8#27dd1172a5ee1d6bce09a0557a20a28e25220bf8"
 dependencies = [
- "agent-action-capsule 0.12.0",
+ "agent-action-capsule 0.13.0",
  "base64 0.22.1",
  "boon",
  "capsule-emit-artifact",
  "checkpointed-local-log",
  "ciborium",
  "ed25519-dalek",
- "evidence-request 0.8.1",
+ "evidence-request",
  "hex",
  "hmac",
  "icu_casemap",
