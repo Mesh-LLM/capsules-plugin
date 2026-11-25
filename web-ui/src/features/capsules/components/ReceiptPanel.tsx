@@ -9,11 +9,9 @@ import type { PaneCRow } from '@/features/capsules/api/sidecarTypes'
 import { fetchReceipt } from '@/features/capsules/api/receiptClient'
 import { saveTextFile } from '@/features/capsules/lib/exchange-export'
 import {
-  RECEIPT_CANNOT_CHECK,
-  RECEIPT_CANNOT_CHECK_POINTER,
-  RECEIPT_DID_NOT_VERIFY,
   RECEIPT_NOT_YET,
   receiptLabel,
+  receiptLines,
   receiptRequest,
   receiptView,
   type ReceiptView
@@ -50,6 +48,9 @@ export function ReceiptPanel({ row }: { row: PaneCRow }) {
 
   const view = state.phase === 'done' ? state.view : null
   const label = view ? receiptLabel(view) : null
+  // The viewer's lines for the view (capsule-viewer's receipt words): for a
+  // checked receipt the label line is drawn apart, then the rest.
+  const lines = view ? receiptLines(view) : null
   return (
     <div
       aria-label="receipt"
@@ -77,8 +78,7 @@ export function ReceiptPanel({ row }: { row: PaneCRow }) {
         ) : null}
         {view?.kind === 'checked' ? (
           <span className="text-fg-dim">
-            {view.records.tied} of {view.records.total} records in the receipt are tied to a signed checkpoint.{' '}
-            {view.runtimeLine}
+            {lines?.lines.slice(1).join(' ')}
           </span>
         ) : null}
         {view?.kind === 'no_record' ? (
@@ -91,12 +91,12 @@ export function ReceiptPanel({ row }: { row: PaneCRow }) {
         ) : null}
         {view?.kind === 'cannot_check' ? (
           <span className="text-fg-dim" data-receipt-case="cannot-check">
-            {RECEIPT_CANNOT_CHECK}. {RECEIPT_CANNOT_CHECK_POINTER}
+            {lines?.lines.join(' ')}
           </span>
         ) : null}
         {view?.kind === 'did_not_verify' ? (
           <span className="text-fg-dim" data-receipt-case="did-not-verify">
-            {RECEIPT_DID_NOT_VERIFY}. {view.line}
+            {lines?.lines.join(' ')}
           </span>
         ) : null}
         {view?.kind === 'error' ? (

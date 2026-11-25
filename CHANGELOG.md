@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- **A saved receipt page draws a payer's deal receipt with capsule-viewer's receipt (Mesh-LLM/capsules-plugin#376; capsule-viewer#383, #387).** The page now shows the viewer's receipt under its lines, starting with the viewer's top line: who checked it and which checks ran. The Exchanges row checks a deal receipt with the same export (`@action-state-group/capsule-viewer/receipt`). Every receipt word on the row and on the page now comes from the viewer; the row's words are unchanged. The page is the node's own record saved for anyone to check, so it draws the viewer's shared copy (carrier "page", capsule-viewer#395): its banner says so, the owner's words (PRIVATE, do not forward) are gone, and one side's own receipt reads "Receipt: this node's receipt only" where the row says "your receipt only". No test-money line is shown: the plugin seals every deal on rail `lightning`, and the viewer says test money only when every rail is simulated. A bundle no viewer receipt module draws, which is the provider's served half, keeps the plugin's own check until capsule-viewer#390. Needs `@action-state-group/capsule-viewer` 0.27.0 and `@action-state-group/agent-action-capsule` 0.16.0, which the web UI now pins (they were 0.25.0 and 0.14.0). The web UI and every saved page check with one runtime, the browser build: the bare `@action-state-group/agent-action-capsule` import maps to it as `@aac-browser` does.
+
 ## 0.1.24
 
 ### Added

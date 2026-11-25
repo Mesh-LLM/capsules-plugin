@@ -11,16 +11,21 @@ const dirname = path.dirname(fileURLToPath(import.meta.url))
 const cllBrowser = path.resolve(dirname, 'node_modules/@action-state-group/cll/dist/browser.js')
 const aacBrowser = path.resolve(dirname, 'node_modules/@action-state-group/agent-action-capsule/dist/browser.js')
 
-export const sharedAliases = {
-  '@': path.resolve(dirname, './src'),
+export const sharedAliases = [
+  { find: '@', replacement: path.resolve(dirname, './src') },
   // The cll package's `browser` condition, named directly: the saved History
   // page bundles the same file (saved-pages.ts), and a test under node
   // must not pick the package's node build.
-  '@cll-browser': cllBrowser,
+  { find: '@cll-browser', replacement: cllBrowser },
   // The agent-action-capsule runtime's browser entry (its package `browser`
   // condition), named directly for the same reason.
-  '@aac-browser': aacBrowser
-}
+  { find: '@aac-browser', replacement: aacBrowser },
+  // capsule-viewer's receipt export imports the runtime by its bare name. Map
+  // that bare name (and only it: `/witness` and other subpaths resolve as
+  // usual) to the same browser entry, so the receipt check, the page's own
+  // code and the tests run one runtime, the one the page ships.
+  { find: /^@action-state-group\/agent-action-capsule$/, replacement: aacBrowser }
+]
 
 /**
  * `import code from './x.ts?iife'` is `x.ts` bundled on its own as one

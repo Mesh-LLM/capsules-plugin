@@ -10,6 +10,8 @@ import {
 } from '@/features/capsules/lib/saved-pages'
 import composedAgree from '@/features/capsules/lib/receipt-fixtures/composed-agree.bundle.json'
 import producerSelected from '@/features/capsules/lib/receipt-fixtures/producer-selected.bundle.json'
+// A payer's deal receipt as the plugin's own route cuts it (see ReceiptPanel.test.tsx).
+import meshPayerDeal from '@/features/capsules/lib/receipt-fixtures/mesh-payer-deal.bundle.json'
 import { embeddedBundle as embedded, openSavedPage as open, savedBytes } from '@/lib/test/open-saved-page'
 
 const fixture = JSON.parse(
@@ -307,11 +309,47 @@ describe('the receipt page, opened offline', () => {
     expect(Buffer.from(embedded(html)).equals(Buffer.from(oneSided, 'utf8'))).toBe(true)
 
     const { dom, requested, text } = await open(html)
-    expect(dom.window.document.querySelector('#result p.warn')?.textContent).toBe('Receipt: your receipt only')
+    expect(dom.window.document.querySelector('#result p.warn')?.textContent).toBe("Receipt: this node's receipt only")
     expect(text).toMatch(/\d+ of \d+ records in the receipt are tied to a signed checkpoint\./)
     expect(text).not.toContain('stamped by both')
     expect(requested).toEqual([])
     expect((await savedBytes(dom)).equals(Buffer.from(oneSided, 'utf8'))).toBe(true)
+  })
+
+  it('draws a payer\'s deal receipt with the viewer\'s receipt, its top line once and first (#376)', async () => {
+    const bundleText = JSON.stringify(meshPayerDeal)
+    const { dom, requested, text } = await open(receiptPage({ kind: 'bundle', bundleText }, 'ex-5', SAVED).html)
+    const doc = dom.window.document
+    expect(doc.querySelector('#result p.warn')?.textContent).toBe("Receipt: this node's receipt only")
+    // The viewer's receipt is drawn under the lines, its L0 region first.
+    const top = doc.querySelector('#result .receipt [data-region="L0"]')?.textContent ?? ''
+    expect(top).toContain(
+      "Checked in this browser by the page's verifier (agent-action-capsule): graph closure (verified), interval coverage (not checked), per record membership (verified)."
+    )
+    expect(text.split("Checked in this browser by the page's verifier").length - 1).toBe(1)
+    // A page for anyone: the viewer's "page" carrier, not the owner's copy
+    // (capsule-viewer#395, #396; Sherlock2 on #378).
+    expect(text).toContain(
+      "This node's own record of this exchange, saved as a page for anyone to check. It is not the other side's copy."
+    )
+    for (const owner of ['PRIVATE', 'Do not forward', 'Tell your agent', 'your receipt']) {
+      expect(text).not.toContain(owner)
+    }
+    expect(text).not.toContain('did not re-check')
+    // No signed field carries the Mesh payer deal's amount, so no Amount card (capsule-viewer#391).
+    expect(top).not.toContain('NOT PRESENT')
+    // The plugin seals every deal on rail `lightning` (deal_records.rs RAIL), so
+    // the viewer says no test money: it does only when every rail is simulated.
+    expect(text).not.toContain('Test money')
+    expect(doc.getElementById('cv-kit-css')).not.toBeNull()
+    expect(requested).toEqual([])
+    expect((await savedBytes(dom)).equals(Buffer.from(bundleText, 'utf8'))).toBe(true)
+  })
+
+  it('draws no viewer receipt for a bundle no receipt module draws, and keeps the row\'s lines', async () => {
+    const { dom } = await open(receiptPage({ kind: 'bundle', bundleText: oneSided }, 'ex-6', SAVED).html)
+    expect(dom.window.document.querySelector('#result p.warn')?.textContent).toBe("Receipt: this node's receipt only")
+    expect(dom.window.document.querySelector('#result [data-region]')).toBeNull()
   })
 
   it('says "stamped by both" only for two copies that agree', async () => {
@@ -326,6 +364,14 @@ describe('the receipt page, opened offline', () => {
     expect(text).toContain('the receipt did not verify: do not rely on it')
     expect(text).not.toContain('Receipt:')
     expect(text).not.toContain('tied to a signed checkpoint')
+  })
+
+  it('draws none of a deal receipt that does not check', async () => {
+    const tampered = JSON.parse(JSON.stringify(meshPayerDeal))
+    tampered.records[0].capsule_id = 'f'.repeat(64)
+    const { dom, text } = await open(receiptPage({ kind: 'bundle', bundleText: JSON.stringify(tampered) }, 'ex-7', SAVED).html)
+    expect(text).toContain('the receipt did not verify: do not rely on it')
+    expect(dom.window.document.querySelector('#result [data-region]')).toBeNull()
   })
 
   it('gives no verdict in a browser that cannot check Ed25519', async () => {

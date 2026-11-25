@@ -7,14 +7,14 @@
 // served (`#mesh-bundle`), so a verifier can take the bytes out unchanged: the
 // page's "Save the JSON" link does it, and so does reading the base64 by hand.
 // The page checks its own bundle when it opens, with the same code the tests
-// run (`history-page-entry.ts` or `receipt-page-verify.ts`, inlined), and shows
+// run (`history-page-entry.ts` or `receipt-page-entry.ts`, inlined), and shows
 // its content only from a bundle that checked. Whatever the page could not
 // check, it lists as not checked.
 import { historyViewStyles } from '@action-state-group/capsule-viewer/history-view'
 import type { HistorySharing } from '@/features/capsules/api/client'
 import type { HistoryPageContext } from '@/features/capsules/lib/history-view-input'
 import verifierSource from '@/features/capsules/lib/history-page-entry.ts?iife'
-import receiptVerifierSource from '@/features/capsules/lib/receipt-page-verify.ts?iife'
+import receiptVerifierSource from '@/features/capsules/lib/receipt-page-entry.ts?iife'
 
 /** The id of the script that holds the bundle, base64 of the served bytes. */
 export const BUNDLE_ELEMENT_ID = 'mesh-bundle'
@@ -49,6 +49,7 @@ main{max-width:46rem;margin:0 auto}h1{font-size:1.4rem;margin:0 0 .25rem}h2{font
 p,li{margin:.25rem 0}.muted{color:var(--muted)}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
 ul{padding-left:1.25rem}table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid var(--line);padding:.25rem .5rem;text-align:left}
 button{font:inherit;padding:.25rem .75rem}code{font-family:ui-monospace,monospace;font-size:.9em;overflow-wrap:anywhere}
+.receipt{margin:1rem 0}
 `
 
 // The reader's own witnesses: this page trusts no witness the saved bytes name,
@@ -78,8 +79,10 @@ const RUNTIME = `
     setTimeout(function(){URL.revokeObjectURL(url)},0)});
   var kind=document.body.getAttribute('data-kind');
   if(kind==='receipt'){
-    CapsulesSavedPage.receiptPageLines(text).then(function(r){
-      r.lines.forEach(function(line,i){out.appendChild(el('p',i===0?r.tone:'muted',line))})},
+    var receipt=el('div','receipt');
+    CapsulesSavedPage.receiptPage(text,receipt).then(function(r){
+      r.lines.forEach(function(line,i){out.appendChild(el('p',i===0?r.tone:'muted',line))});
+      if(receipt.childNodes.length)out.appendChild(receipt)},
       function(){out.appendChild(el('p','bad','This page could not check its receipt, so it shows none of it.'))});
     return}
   if(kind==='receipt-note'){

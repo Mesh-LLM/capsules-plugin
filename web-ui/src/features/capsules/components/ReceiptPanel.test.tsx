@@ -13,6 +13,10 @@ import { receiptPath } from '@/features/capsules/api/receiptClient'
 import { checkReceiptBundle, receiptCase, receiptRequest, receiptView } from '@/features/capsules/lib/receipt-view'
 import composedAgree from '@/features/capsules/lib/receipt-fixtures/composed-agree.bundle.json'
 import producerSelected from '@/features/capsules/lib/receipt-fixtures/producer-selected.bundle.json'
+// A payer's deal receipt as the plugin's own route cuts it: the bundle
+// `deal_receipt::tests::a_paid_exchange_gives_a_bundle_of_exactly_its_four_deal_records`
+// writes with DEAL_RECEIPT_BUNDLE_OUT set (Mesh-LLM/capsules-plugin#376).
+import meshPayerDeal from '@/features/capsules/lib/receipt-fixtures/mesh-payer-deal.bundle.json'
 
 const EXCHANGE_RECORD = 'ab'.repeat(32)
 
@@ -266,6 +270,31 @@ describe('ReceiptPanel states', () => {
 
   it('reads anything the runtime throws on as did-not-verify', async () => {
     expect((await checkReceiptBundle('null')).kind).toBe('did_not_verify')
+  })
+})
+
+describe('the receipt check (capsule-viewer\'s receipt export, #376)', () => {
+  it('checks a payer\'s deal receipt with the viewer\'s unilateral receipt module', async () => {
+    const view = await checkReceiptBundle(JSON.stringify(meshPayerDeal))
+    expect(view).toMatchObject({
+      kind: 'checked',
+      case: 'one_sided',
+      module: 'capsuleviewer.receipt.unilateral/v0',
+      records: { total: 4, tied: 4 }
+    })
+  })
+
+  it('keeps its own check for a bundle no receipt module draws (the provider half, capsule-viewer#390)', async () => {
+    const view = await checkReceiptBundle(JSON.stringify(producerSelected))
+    expect(view).toMatchObject({ kind: 'checked', case: 'one_sided', module: null, records: { total: 2, tied: 2 } })
+  })
+
+  it('shows the payer\'s deal receipt on the row in the viewer\'s words', async () => {
+    routeAnswers({ state: 'bundle', bundle: JSON.stringify(meshPayerDeal) })
+    render(<ReceiptPanel row={payerRow} />)
+    await check()
+    expect(await screen.findByText('Receipt: your receipt only')).toBeInTheDocument()
+    expect(screen.getByText(/4 of 4 records in the receipt are tied to a signed checkpoint\./)).toBeInTheDocument()
   })
 })
 

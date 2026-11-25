@@ -17,8 +17,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@action-state-group/agent-action-capsule": "0.14.0",
-    "@action-state-group/capsule-viewer": "0.25.0",
+    "@action-state-group/agent-action-capsule": "0.16.0",
+    "@action-state-group/capsule-viewer": "0.27.0",
     "@action-state-group/cll": "0.4.0",
     "@noble/curves": "1.9.7",
     "@radix-ui/react-dialog": "1.1.23",
