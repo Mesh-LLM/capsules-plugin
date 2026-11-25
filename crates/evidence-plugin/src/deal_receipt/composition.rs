@@ -274,7 +274,8 @@ pub(crate) fn member(
         return Err(MemberRefusal::NotTheHalf(request_record.into()).into());
     }
     // The digest of the bytes on the wire: the record holds the request as
-    // transmitted, which went as its JCS bytes (`ask_book::check_request`).
+    // transmitted, which went as its JCS bytes (`ask_book::record_request`
+    // seals those bytes through evidencebook).
     let request_digest = evidence_request::jcs::to_string(request)
         .map(|text| evidence_request::digest::request_digest(text.as_bytes()))
         .map_err(|e| Error::Failed(format!("request {request_record}: {e}")))?;

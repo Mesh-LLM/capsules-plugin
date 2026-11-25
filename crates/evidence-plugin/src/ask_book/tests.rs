@@ -148,6 +148,23 @@ fn a_nonce_is_never_used_twice() {
     fresh["nonce"] = json!("n-2");
     record_request(&capsules, &fresh, PEER, None, ASKED_AT).unwrap();
     assert_eq!(records(&capsules).len(), 2);
+
+    // An empty nonce is refused every time, nothing sealed: the crate reads
+    // it as none, so a second such ask could not be told apart.
+    for _ in 0..2 {
+        let empty = record_request(
+            &capsules,
+            &with_nonce(request(None), ""),
+            PEER,
+            None,
+            ASKED_AT,
+        );
+        assert!(
+            matches!(&empty, Err(AskError::Invalid(m)) if m.contains("nonce is empty")),
+            "{empty:?}"
+        );
+    }
+    assert_eq!(records(&capsules).len(), 2);
 }
 
 #[test]
@@ -397,6 +414,128 @@ fn a_signed_refusal_is_checked_against_the_commitment_the_ask_recorded() {
     let header = header_of(&capsules, &response.record_id);
     assert_eq!(header["statement"]["outcome"], "refusal");
     assert_eq!(header["statement"]["verification"], verification);
+}
+
+#[test]
+fn the_ask_record_takes_the_books_shape_with_the_commitment_held() {
+    let (capsules, _dir) = state();
+    let commitment = json!({"digest": "c".repeat(64), "policy": {"stranger_safe": []}});
+    let sent = request(None);
+    let asked = record_request(&capsules, &sent, PEER, Some(commitment.clone()), ASKED_AT).unwrap();
+    let statement = &header_of(&capsules, &asked.record_id)["statement"];
+    assert_eq!(statement["request"], sent);
+    assert_eq!(statement["responder_ref"], PEER);
+    assert_eq!(statement["composed_elsewhere"], true);
+    assert_eq!(statement["commitment"], commitment);
+
+    // A commitment that is not a JSON object is refused, and nothing sealed.
+    let before = records(&capsules).len();
+    let refused = record_request(
+        &capsules,
+        &with_nonce(request(None), "n-2"),
+        PEER,
+        Some(json!(["not", "an", "object"])),
+        ASKED_AT,
+    );
+    assert!(matches!(refused, Err(AskError::Invalid(_))), "{refused:?}");
+    assert_eq!(records(&capsules).len(), before);
+}
+
+/// Request records sealed by this plugin before it called evidencebook's
+/// `request_sent_with_commitment` (Mesh-LLM/capsules-plugin main at
+/// 21923241, throwaway keys): no `composed_elsewhere`, and one with the
+/// `commitment` held beside the request. Frozen bytes, never rebuilt here.
+const OLD_SHAPE: &str = include_str!("../../../../vectors/ask-book/old-shape-request.json");
+const OLD_SHAPE_HELD: &str =
+    include_str!("../../../../vectors/ask-book/old-shape-request-with-commitment.json");
+
+/// `line`'s record as the ledger checks it on read (capsule-emit's
+/// `to_record`): its id recomputes, and its producer envelope verifies over
+/// that id under the `key_id` it names. Returns the record's id and entry.
+fn verified_old_record(line: &str) -> (String, Map<String, Value>) {
+    let mut record: Map<String, Value> = serde_json::from_str(line).unwrap();
+    let signature = record.remove("signature").unwrap();
+    let key_id = record.remove("key_id").unwrap();
+    let id = record["capsule_id"].as_str().unwrap().to_string();
+    assert_eq!(
+        agent_action_capsule::canonical::compute_capsule_id(&record).unwrap(),
+        id
+    );
+    let envelope = hex::decode(signature.as_str().unwrap()).unwrap();
+    let verified = agent_action_capsule::envelope::verify(&id, &envelope);
+    assert!(verified.ok, "{:?}", verified.findings);
+    assert_eq!(key_id, hex::encode(&verified.public_key));
+    let entry = entry_block(&Value::Object(record)).unwrap().clone();
+    (id, entry)
+}
+
+#[test]
+fn requests_sealed_in_the_old_shape_still_verify_and_read() {
+    // Each frozen record verifies as a ledger line. Its book entry, byte for
+    // byte as frozen, is then sealed through this node's own ledger at its
+    // own commit time, so the reader and the functions below take it from
+    // the ledger as they take any record this book holds.
+    let (capsules, _dir) = state();
+    let mut ids = Vec::new();
+    for line in [OLD_SHAPE, OLD_SHAPE_HELD] {
+        let (_, frozen) = verified_old_record(line);
+        assert_eq!(frozen["record_type"], "evidence_request");
+        assert!(frozen["statement"].get("composed_elsewhere").is_none());
+        let committed_at = frozen["committed_at"].as_str().unwrap();
+        let sealed = AskBook::open(&capsules, committed_at)
+            .seal(&Entry {
+                record_type: record_types::REQUEST.into(),
+                epistemic_type: EpistemicType::ObservedEvent,
+                links: Vec::new(),
+                statement: frozen["statement"].clone(),
+            })
+            .unwrap();
+        assert_eq!(header_of(&capsules, &sealed.record_id), frozen);
+        ids.push(sealed.record_id);
+    }
+    assert!(header_of(&capsules, &ids[1])["statement"]["commitment"].is_object());
+
+    // Their nonces stay used: a new ask with either is refused, nothing sealed.
+    for nonce in ["n-1", "n-2"] {
+        let again = record_request(
+            &capsules,
+            &with_nonce(request(None), nonce),
+            PEER,
+            None,
+            ASKED_AT,
+        );
+        assert!(
+            matches!(&again, Err(AskError::Invalid(m)) if m.contains("nonce already used")),
+            "{nonce}: {again:?}"
+        );
+    }
+    assert_eq!(records(&capsules).len(), 2);
+
+    // A refusal is judged against the commitment the old record holds.
+    let held = header_of(&capsules, &ids[1])["statement"].clone();
+    let (_, verification) = record_response(
+        &capsules,
+        &ids[1],
+        &digest_of(&held["request"]),
+        &reply(&json!({"reason": "no_such_subject"})),
+        &json!({"state": "refusal", "reason": "no_such_subject"}),
+        "2026-10-29T12:00:02Z",
+    )
+    .unwrap();
+    assert_eq!(verification["policy_check"]["status"], "MISMATCH");
+
+    // And a window closes into an absence citing the old record.
+    let absent = record_absence(
+        &capsules,
+        &ids[0],
+        "2026-10-29T12:05:00Z",
+        "2026-10-29T12:10:00Z",
+    );
+    assert!(absent.is_ok(), "{absent:?}");
+    assert_eq!(
+        cites(&header_of(&capsules, &absent.unwrap().record_id)),
+        vec![ids[0].clone()]
+    );
 }
 
 #[test]

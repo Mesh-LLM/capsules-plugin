@@ -215,14 +215,21 @@ pub struct Asked {
 }
 
 /// Seal `request`, exactly as it will be transmitted to `responder`, as an
-/// `evidence_request` record (the statement `ask::request` seals:
-/// `request` and `responder_ref`, plus the `commitment` held for the
-/// responder, if any). `now` is whole-second RFC 3339 UTC.
+/// `evidence_request` record, through evidencebook's
+/// [`evidencebook::ask::request_sent_with_commitment`]: the statement holds
+/// `request` (its JCS, the bytes on the wire), `responder_ref`,
+/// `composed_elsewhere` (this node composed the request, not the book) and
+/// the `commitment` held for the responder, if any
+/// (`crate::peer_commitments::pinned`), which a refusal is later checked
+/// against. `now` is whole-second RFC 3339 UTC.
 ///
-/// Refused, with nothing sealed, as `ask::request` refuses: a request this
-/// node would not read as well formed, or one reusing a nonce an earlier
-/// request in this book carried (a response to that one could otherwise be
-/// replayed onto it). A request the book could not later resolve is never
+/// Refused, with nothing sealed, as the crate refuses: a request it would
+/// not read as well formed (profile §6.1 steps 1 to 5), or one reusing a
+/// nonce an earlier request in this book carried (a response to that one
+/// could otherwise be replayed onto it); and, before the crate is asked, a
+/// `deadline` that is not an RFC 3339 time, an empty `nonce` (which the
+/// crate would read as none, so its reuse could not be seen), or a
+/// commitment that is not a JSON object. A request the book could not later resolve is never
 /// recorded, so every recorded request reaches an outcome.
 pub fn record_request(
     capsules: &CapsuleState,
@@ -231,77 +238,40 @@ pub fn record_request(
     commitment: Option<Value>,
     now: &str,
 ) -> Result<Asked, AskError> {
-    let mut book = AskBook::open(capsules, now);
-    check_request(&book, request)?;
+    // The crate reads an empty nonce as none and skips its reuse scan, so an
+    // empty one would let two asks share a digest and an earlier reply
+    // answer the later ask. A request carries a real nonce or none.
+    if request.get("nonce").and_then(Value::as_str) == Some("") {
+        return Err(AskError::Invalid(
+            "the request's nonce is empty: send a fresh one, or none".into(),
+        ));
+    }
     let window_closes = window_closes(request.get("deadline").and_then(Value::as_str), now)
         .ok_or_else(|| {
             AskError::Invalid("the request's deadline is not an RFC 3339 time".into())
         })?;
-    let mut statement = Map::new();
-    statement.insert("request".into(), request.clone());
-    if !responder.is_empty() {
-        statement.insert("responder_ref".into(), json!(responder));
-    }
-    // The commitment held for the responder (`crate::peer_commitments`),
-    // which a refusal is later checked against.
-    if let Some(commitment) = commitment {
-        statement.insert("commitment".into(), commitment);
-    }
-    let sealed = book.seal(&Entry {
-        record_type: record_types::REQUEST.into(),
-        epistemic_type: EpistemicType::ObservedEvent,
-        links: Vec::new(),
-        statement: Value::Object(statement),
-    })?;
+    let commitment = match commitment {
+        None => None,
+        Some(Value::Object(held)) => Some(held),
+        Some(_) => {
+            return Err(AskError::Invalid(
+                "the commitment held for the responder is not a JSON object".into(),
+            ))
+        }
+    };
+    let octets = evidence_request::jcs::to_string(request)
+        .map_err(|e| AskError::Invalid(format!("request: {e}")))?;
+    let mut book = AskBook::open(capsules, now);
+    let sent = evidencebook::ask::request_sent_with_commitment(
+        &mut book,
+        octets.as_bytes(),
+        responder,
+        commitment,
+    )?;
     Ok(Asked {
-        record_id: sealed.record_id,
+        record_id: sent.record_id,
         window_closes,
     })
-}
-
-/// The checks `evidencebook::ask::request` makes before it records a
-/// request (its `parse_request` and nonce scan, which the crate keeps
-/// private): the reader the responder uses, a derivation that is a token
-/// `name/N` or a digest, and a nonce no earlier request here carried.
-fn check_request(book: &AskBook<'_>, request: &Value) -> Result<(), AskError> {
-    let bytes = evidence_request::jcs::to_string(request)
-        .map_err(|e| AskError::Invalid(format!("request: {e}")))?;
-    evidence_request::request::parse_json(bytes.as_bytes())
-        .map_err(|e| AskError::Invalid(format!("request: {e}")))?;
-    if let Some(derivation) = request.get("derivation").and_then(Value::as_str) {
-        if !derivation_is_well_formed(derivation) {
-            return Err(AskError::Invalid(format!(
-                "request: derivation {derivation:?} is neither a token name/N nor a digest"
-            )));
-        }
-    }
-    let Some(nonce) = request.get("nonce").and_then(Value::as_str) else {
-        return Ok(());
-    };
-    let reused = book.records.iter().any(|(_, h)| {
-        h.get("record_type") == Some(&json!(record_types::REQUEST))
-            && h.get("statement").and_then(|s| s.pointer("/request/nonce")) == Some(&json!(nonce))
-    });
-    if reused {
-        return Err(AskError::Invalid(format!(
-            "nonce {nonce:?} was already used by a request in this book"
-        )));
-    }
-    Ok(())
-}
-
-/// Go's `ValidDerivation` (profile §5.2), as `evidencebook::ask` checks it.
-fn derivation_is_well_formed(text: &str) -> bool {
-    let digest = evidence_request::registry::is_digest(text);
-    digest
-        || text.split_once('/').is_some_and(|(name, version)| {
-            !name.is_empty()
-                && name
-                    .bytes()
-                    .all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'_'))
-                && !version.is_empty()
-                && version.bytes().all(|b| b.is_ascii_digit())
-        })
 }
 
 /// When the waiting window of a request recorded at `committed_at` closes:
