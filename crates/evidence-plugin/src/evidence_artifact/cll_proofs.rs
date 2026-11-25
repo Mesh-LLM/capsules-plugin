@@ -5,13 +5,9 @@
 //! right]`, both in CBOR. Reading one never trusts its sizes or indices
 //! beyond the profile's integers.
 
-use cll::mmr::{
-    height_at, interior_hash, pos_to_leaf_index, root_from_peaks, verify_inclusion, Hash,
-    InclusionProof,
-};
+use cll::mmr::{pos_to_leaf_index, root_from_peaks, verify_inclusion, Hash, InclusionProof};
 
-/// The longest inclusion or consistency path an MMR of profile size can
-/// have.
+/// The longest inclusion path an MMR of profile size can have.
 const MAX_PATH: usize = 64;
 
 /// The largest MMR node index read from a peer: the profile's integers.
@@ -77,31 +73,11 @@ pub(crate) fn proves(proof: &[u8], leaf: u64, entry: &Hash, size: u64, peaks: &[
     verify_inclusion(&root_from_peaks(peaks), size, leaf, entry, &item)
 }
 
-/// MMR's `included_root`: the node at `index` with hash `node`, carried up
-/// its path, as the position it reaches and its hash. `None` when the path
-/// climbs past any MMR of profile size.
-fn included_root(mut index: u64, mut node: Hash, path: &[Hash]) -> Option<(u64, Hash)> {
-    for (height, sibling) in (height_at(index)..).zip(path) {
-        if index.checked_add(1)? > MAX_NODE_INDEX {
-            return None;
-        }
-        if height_at(index + 1) > height {
-            index += 1;
-            node = interior_hash(sibling, &node, index);
-        } else {
-            index = index.checked_add(2u64.checked_shl(height)?)?;
-            if index > MAX_NODE_INDEX {
-                return None;
-            }
-            node = interior_hash(&node, sibling, index);
-        }
-    }
-    Some((index, node))
-}
-
 /// Whether `proof` (a `cll-consistency-proof` item) proves that the MMR of
-/// `to` nodes with peaks `to_peaks` extends the one of `from` nodes with
-/// peaks `from_peaks` (profile §6.2.1 step 13).
+/// `to_size` nodes with peaks `to_peaks` extends the one of `from_size` nodes
+/// with peaks `from_peaks` (profile §6.2.1 step 13): evidence-request's
+/// `check_consistency_proof`, which reads the item as deterministic CBOR and
+/// requires the proof's own sizes to be these two.
 pub(super) fn consistent(
     from_size: u64,
     from_peaks: &[Hash],
@@ -109,41 +85,10 @@ pub(super) fn consistent(
     to_peaks: &[Hash],
     proof: &[u8],
 ) -> bool {
-    (|| -> Option<bool> {
-        let value: ciborium::Value = ciborium::from_reader(proof).ok()?;
-        let ciborium::Value::Array(items) = value else {
-            return None;
-        };
-        let [from, to, paths, right] = items.as_slice() else {
-            return None;
-        };
-        let from = u64::try_from(from.as_integer()?).ok()?;
-        let to = u64::try_from(to.as_integer()?).ok()?;
-        if from != from_size || to != to_size || from == 0 || from > to {
-            return Some(false);
-        }
-        let ciborium::Value::Array(paths) = paths else {
-            return None;
-        };
-        let peak_indices = cll::mmr::peaks(from).ok()?;
-        if paths.len() != peak_indices.len() || paths.len() != from_peaks.len() {
-            return Some(false);
-        }
-        let mut roots: Vec<Hash> = Vec::new();
-        for ((index, path), peak) in peak_indices.iter().zip(paths).zip(from_peaks) {
-            let path = hash_list(path)?;
-            if path.len() > MAX_PATH {
-                return Some(false);
-            }
-            let (_, root) = included_root(*index, *peak, &path)?;
-            if roots.last() != Some(&root) {
-                roots.push(root);
-            }
-        }
-        roots.extend(hash_list(right)?);
-        Some(roots == to_peaks)
-    })()
-    .unwrap_or(false)
+    evidence_request::cll_material::check_consistency_proof(
+        from_size, from_peaks, to_size, to_peaks, proof,
+    )
+    .is_ok()
 }
 
 fn hash_list(value: &ciborium::Value) -> Option<Vec<Hash>> {
@@ -208,11 +153,60 @@ mod tests {
         assert!(!proves(&proof(2), 2, &entries[2], size, &peak_hashes[..1]));
     }
 
-    /// `included_root` stays inside the profile's integers on a hostile
-    /// path, and an index that is not a leaf proves nothing.
+    /// A consistency proof is read as deterministic CBOR (evidence-request's
+    /// check): the proof between 3 and 7 leaves passes, and the same proof
+    /// with an integer in a longer form or a trailing octet is refused. The
+    /// plugin's own reader accepted both before #368 step 8.
+    #[test]
+    fn a_consistency_proof_is_read_as_deterministic_cbor() {
+        use cll::mmr::{
+            add_leaf, consistency_proof, node_count, peaks, MemoryNodeStore, NodeReader,
+        };
+        use evidence_request::cll_material::encode_consistency_proof;
+        let mut nodes = MemoryNodeStore::new();
+        for i in 0..7u8 {
+            add_leaf(&mut nodes, leaf_hash(&[i; 32])).unwrap();
+        }
+        let peaks_at = |size: u64| -> Vec<Hash> {
+            peaks(size)
+                .unwrap()
+                .iter()
+                .map(|&p| nodes.node(p))
+                .collect()
+        };
+        let (a, b) = (node_count(3), node_count(7));
+        let paths: Vec<Vec<Hash>> = consistency_proof(&nodes, a, b)
+            .unwrap()
+            .witness
+            .iter()
+            .map(|p| {
+                p.iter()
+                    .map(|h| hex::decode(h).unwrap().try_into().unwrap())
+                    .collect()
+            })
+            .collect();
+        let proof = encode_consistency_proof(a, b, &peaks_at(a), &paths, &peaks_at(b)).unwrap();
+        assert!(consistent(a, &peaks_at(a), b, &peaks_at(b), &proof));
+        assert!(!consistent(
+            a,
+            &peaks_at(a),
+            node_count(6),
+            &peaks_at(b),
+            &proof
+        ));
+        let mut trailing = proof.clone();
+        trailing.push(0);
+        assert!(!consistent(a, &peaks_at(a), b, &peaks_at(b), &trailing));
+        let mut long_form = proof.clone();
+        assert!(long_form[1] < 24, "a small size is one byte");
+        long_form.splice(1..2, [0x18, proof[1]]);
+        assert!(!consistent(a, &peaks_at(a), b, &peaks_at(b), &long_form));
+    }
+
+    /// An index that is not a leaf proves nothing, and no hostile item
+    /// panics.
     #[test]
     fn a_hostile_proof_is_refused_without_panicking() {
-        assert!(included_root(MAX_NODE_INDEX, [0; 32], &[[1; 32]; 64]).is_none());
         let entry = [3u8; 32];
         let mut proof = Vec::new();
         ciborium::into_writer(
