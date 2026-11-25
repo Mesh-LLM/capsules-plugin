@@ -10,15 +10,21 @@
 
 - **A received deal half is checked against the x-deal-v0 chain rules (Mesh-LLM/capsules-plugin#373, #370).** `receive_deal_half` now runs the profile's §6 chain stage with evidencebook's `deal::check_chain_values`, as the Goose node does. A half whose steps break a chain rule (for example a pay after a final close) is refused `record_unverified`, and nothing is stored; it was accepted before. The reply's `chain_stage` reads `"checked"` where it read `"not_checked"`.
 
-- **A Goose deal half's stapled cards are accepted and checked, and its book card is required (Mesh-LLM/capsules-plugin#375, #374).** Every half a Goose node has written since evidencebook#329 carries its deal book's `history_card/1`, and may carry `standard_history/1` as `history_staple`. The plugin refused all of them as `request_malformed`. Both cards are now checked with evidencebook's `staple::check_staple`. A card that fails is refused `record_unverified`. A half without `history_card` is refused `request_malformed`, as the Goose node refuses it. Any other extra member is still refused. The reply does not report the cards.
+- **A Goose deal half's stapled cards are accepted and checked, and its book card is required (Mesh-LLM/capsules-plugin#375, #374).** Every half a Goose node has written since evidencebook#329 carries its deal book's `history_card/1`, and may carry `standard_history/1` as `history_staple`. The plugin refused all of them as `request_malformed`. Both cards are now checked with evidencebook's `staple::check_staple`. The book card is checked in full. For the standard card, its envelope, the derivation, its members and its anchor are checked, but not the values of those members, which the Goose node's own check also reads. A card that fails is refused `record_unverified`. A half without `history_card` is refused `request_malformed`, as the Goose node refuses it. Any other extra member is still refused. The reply does not report the cards.
 
-- **A consistency proof is read as deterministic CBOR, and a deal proposal's form is evidence-request's (Mesh-LLM/capsules-plugin#381, #368).** The proof is now checked by evidence-request's `check_consistency_proof`, so a proof with a trailing octet or an integer in a longer than shortest form is refused, where the old reader accepted both. A proposal is now refused `proposed` when evidence-request's `form_problems` refuses its form. That covers four cases:
+- **A consistency proof is read as deterministic CBOR, and a deal proposal's form is evidence-request's (Mesh-LLM/capsules-plugin#381, #368).** The proof is now checked by evidence-request's `check_consistency_proof`, so a proof with a trailing octet or an integer in a longer than shortest form is refused, where the old reader accepted both. A proposal is now refused with "the record is not a valid proposed record" when evidence-request's `form_problems` refuses its form. That covers four cases:
   - a `transaction` that is not exactly `{scheme, id}`;
   - a `sig` that is not an Ed25519 signature's form;
   - a session whose `policy` or `terms` is not a digest (any string passed before);
   - a session whose `not_after` precedes `not_before`.
 
-  Some refusals now carry a different reason: a window that ends before it starts (was `Window`), an `acceptor` that is not a digest (was `Party`), a `policy` or `terms` that is not a digest (was `Document`), a `contract_ref` that is not text (was `Document("contract")`). The plugin's own proposals pass.
+  Some proposals refused before now get that error instead of their old one:
+  - a window that ends before it starts (was "the session window does not hold the present time, or is too long");
+  - an `acceptor` that is not a digest (was "the record names another party");
+  - a `policy` or `terms` that is not a digest (was "a document is missing or does not match its digest: policy" or "...: terms");
+  - a `contract_digest` that is not a digest, or a `contract_ref` that is not text (was "a document is missing or does not match its digest: contract").
+
+  The plugin's own proposals pass.
 
 - **Evidence-layer functions the plugin had copied now come from the crates that own them (Mesh-LLM/capsules-plugin#368: #379, #380, #382, #383).** These are digest checks, canonical JSON, the composed digest, the checkpoint cut, settlement legs, and the verdict and owner-maintenance records, with a byte-identity test for each where bytes are written. Nothing a peer sees changes.
 
