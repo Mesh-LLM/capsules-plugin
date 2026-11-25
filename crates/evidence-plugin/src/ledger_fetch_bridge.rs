@@ -189,26 +189,32 @@ async fn bridge_inbound_ledger_fetch_stream(
     )
     .await??;
 
-    let now = crate::evidence_answer::now_utc();
-    let announced = crate::peer_keys::announced::snapshot();
-    let configured = crate::settings::var(crate::peer_keys::ENV_PEER_KEYS).ok();
-    let own_key = hex::encode(capsules.public_key());
-    let door = Door {
-        now: &now,
-        keys: crate::requester_auth::Keys {
-            announced: &announced,
-            configured: configured.as_deref(),
-            own_key: Some(&own_key),
-        },
-        replay: crate::requester_auth::replay_cache(),
-        own_node: own_node.as_deref(),
-    };
-    let response = answer(
-        &capsules,
-        &request_bytes,
-        crate::share_policy::history_segments(),
-        &door,
-    );
+    // The answer reads the ledger and the shared index under its lock (the
+    // evidence-request responder holds that lock for a whole answer), so it
+    // runs off the async worker, as `mesh_evidence_bridge` does.
+    let response = tokio::task::spawn_blocking(move || {
+        let now = crate::evidence_answer::now_utc();
+        let announced = crate::peer_keys::announced::snapshot();
+        let configured = crate::settings::var(crate::peer_keys::ENV_PEER_KEYS).ok();
+        let own_key = hex::encode(capsules.public_key());
+        let door = Door {
+            now: &now,
+            keys: crate::requester_auth::Keys {
+                announced: &announced,
+                configured: configured.as_deref(),
+                own_key: Some(&own_key),
+            },
+            replay: crate::requester_auth::replay_cache(),
+            own_node: own_node.as_deref(),
+        };
+        answer(
+            &capsules,
+            &request_bytes,
+            crate::share_policy::history_segments(),
+            &door,
+        )
+    })
+    .await?;
 
     let response_bytes = serde_json::to_vec(&response)?;
     tokio::time::timeout(responder_timeout(), async {
@@ -716,6 +722,43 @@ mod tests {
         assert!(is_found(&ask(&state, &id, Some(ASKER), "peers")));
     }
 
+    /// A deal's report is the owner's own keep copy: no switch serves it to
+    /// anyone, not to the deal's other side, not under `peers`.
+    #[test]
+    fn a_deal_report_is_served_under_no_switch() {
+        let state = open_state("deal-report");
+        let dealt = state
+            .emit_for_exchange(&crate::capsule_emit::tests::sample_exchange(ASKER))
+            .expect("seal the dealt exchange")
+            .capsule_id;
+        crate::deal_receipt::tests::seal_deal(&state, &dealt, true);
+        let key_id = hex::encode(state.public_key());
+        let records: Vec<String> =
+            crate::evidence_log::with_index(state.ledger_dir(), &key_id, |i| {
+                i.deal_capsules_of(&dealt)
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap();
+        let reports: Vec<&String> = records
+            .iter()
+            .filter(|id| {
+                let record = state.lookup(id).unwrap().unwrap().capsule;
+                crate::evidence_log::is_deal_report(&record)
+            })
+            .collect();
+        assert_eq!(reports.len(), 1, "a delivered deal has one report");
+        for asker in [ASKER, "node-b", "node-y"] {
+            for tier in ["off", "peers", "counterparties"] {
+                assert!(
+                    is_refused(&ask(&state, reports[0], Some(asker), tier)),
+                    "{asker} {tier}"
+                );
+            }
+        }
+    }
+
     /// For each record kind and switch, the fetch serves exactly what the
     /// evidence-request rule over the same index serves (#371).
     #[test]
@@ -781,6 +824,9 @@ mod tests {
                     .unwrap();
                     let fetched = is_found(&ask(&state, id, Some(asker), tier));
                     assert_eq!(fetched, rule, "{id} {asker} {tier}");
+                    if id == &block {
+                        assert!(!fetched, "a local block never leaves: {asker} {tier}");
+                    }
                 }
             }
         }
