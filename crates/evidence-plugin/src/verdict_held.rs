@@ -21,6 +21,7 @@
 
 use cll::checkpoint::{CheckpointRecord, DecodedCheckpointCose};
 use cll::mmr::leaf_count;
+use evidence_request::registry::is_digest;
 use evidence_request::registry::{Reason, SubjectForm};
 use evidence_request::request::{Derivation, Request, Subject};
 use evidence_request::resolve::{self, Anchor};
@@ -196,5 +197,3 @@ pub(crate) fn check_entries(
     }
     Ok((records, leaves))
 }
-
-use evidence_request::registry::is_digest;

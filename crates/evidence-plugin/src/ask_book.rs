@@ -292,7 +292,7 @@ fn check_request(book: &AskBook<'_>, request: &Value) -> Result<(), AskError> {
 
 /// Go's `ValidDerivation` (profile §5.2), as `evidencebook::ask` checks it.
 fn derivation_is_well_formed(text: &str) -> bool {
-    let digest = text.len() == 64 && text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+    let digest = evidence_request::registry::is_digest(text);
     digest
         || text.split_once('/').is_some_and(|(name, version)| {
             !name.is_empty()

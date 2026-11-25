@@ -141,7 +141,7 @@ pub mod announced {
     }
 
     fn is_key(key: &str) -> bool {
-        key.len() == 64 && key.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+        evidence_request::registry::is_digest(key)
     }
 
     /// Fold one `GET /api/plugin-keys` answer into `known`: this node's own

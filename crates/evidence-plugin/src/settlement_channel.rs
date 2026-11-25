@@ -30,6 +30,7 @@
 
 use crate::producer::capsule::{SettlementObservation, SETTLEMENT_CHANNEL};
 use crate::producer::jcs;
+use evidence_request::registry::is_digest;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -304,7 +305,7 @@ fn check_combination(event: &PaymentLifecycleEvent) -> Result<(), SettlementEven
                 "a preimage is carried by a settlement event with a payment_hash only",
             );
         }
-        if !is_lower_hex_32(preimage) {
+        if !is_digest(preimage) {
             return impossible("a preimage is 64 lowercase hex");
         }
     }
@@ -339,9 +340,6 @@ fn check_combination(event: &PaymentLifecycleEvent) -> Result<(), SettlementEven
     }
     Ok(())
 }
-
-/// 32 bytes as 64 lowercase hex digits.
-pub(crate) use evidence_request::registry::is_digest as is_lower_hex_32;
 
 /// Build a checked event body the way the host does: blank `event_ref`,
 /// digest the JCS, fill it in. Shared by this module's tests and the

@@ -484,8 +484,8 @@ fn received_reply(held: &Value) -> Value {
 }
 
 /// A refusal signed by this node: Ed25519 over the RFC 8785 form of
-/// `{issued_at, reason, request_digest}` (ASCII strings, so sorted compact
-/// JSON), plus `refused_key_id` when the refusal names the refused half's
+/// `{issued_at, reason, request_digest}` (evidence-request's writer), plus
+/// `refused_key_id` when the refusal names the refused half's
 /// key (`signature_unverified`), `key_id` the raw public key.
 /// `policy_decline` also carries the fabric's `status`.
 fn refusal(
@@ -795,8 +795,10 @@ fn verify_bundle_inclusion(
     facts.insert(
         "inclusion_proof_digest".into(),
         json!(hex::encode(Sha256::digest(
+            // Typed integers below the MMR size cap and hex strings: RFC 8785
+            // always serializes them, as it does the refusal body.
             evidence_request::jcs::to_string(&held_proof)
-                .ok()?
+                .expect("a held proof serializes")
                 .as_bytes()
         ))),
     );

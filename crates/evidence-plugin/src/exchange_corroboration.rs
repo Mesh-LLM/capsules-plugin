@@ -32,6 +32,7 @@
 //! The run is split into pure steps ([`plan`], [`after_x`], [`finish`]) so
 //! the mesh glue only sends what they say to send.
 
+use evidence_request::registry::is_digest;
 use std::collections::BTreeSet;
 
 use cll::checkpoint::{CheckpointRecord, DecodedCheckpointCose};
@@ -831,8 +832,6 @@ async fn ask(
         Err(SendError::Malformed(e)) => Reply::Malformed(format!("not an answer: {e}")),
     }
 }
-
-use evidence_request::registry::is_digest;
 
 #[cfg(test)]
 mod tests;

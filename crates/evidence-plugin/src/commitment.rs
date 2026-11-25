@@ -42,6 +42,7 @@
 
 use base64::Engine as _;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use evidence_request::registry::is_digest;
 use evidence_request::registry::{SubjectForm, DERIVATION_HISTORY_CARD};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
@@ -1004,7 +1005,7 @@ fn shape_problems(doc: &Value) -> Vec<String> {
         }
         let text = |v: &Value| v.as_str().unwrap_or_default().to_string();
         for name in ["node_id", "key_id"] {
-            if !is_hex64(&text(&doc[name])) {
+            if !is_digest(&text(&doc[name])) {
                 problems.push(format!("{name} is not 64 lowercase hex"));
             }
         }
@@ -1012,11 +1013,11 @@ fn shape_problems(doc: &Value) -> Vec<String> {
             problems.extend(crate::nostr_announce::route_problems(route));
         }
         if doc.get(CONTROLLER_BINDING).is_some()
-            && !is_hex64(&text(&doc[CONTROLLER_BINDING]["digest"]))
+            && !is_digest(&text(&doc[CONTROLLER_BINDING]["digest"]))
         {
             problems.push("controller_binding.digest is not a sha256 (64 lowercase hex)".into());
         }
-        if !is_hex64(&text(&doc["lcap"]["policy_digest"])) {
+        if !is_digest(&text(&doc["lcap"]["policy_digest"])) {
             problems.push("lcap.policy_digest is not a sha256 (64 lowercase hex)".into());
         }
         let issued_at = text(&doc["issued_at"]);
@@ -1120,7 +1121,7 @@ fn card_problems(cards: &Value) -> Vec<String> {
                 "{name}.derivation must be history_card/1 or history_card/2"
             ));
         }
-        if map.contains_key("sha256") && !text("sha256").is_some_and(is_hex64) {
+        if map.contains_key("sha256") && !text("sha256").is_some_and(is_digest) {
             problems.push(format!("{name}.sha256 is not 64 lowercase hex"));
         }
         if let Some(key) = map.get("checkpoint_key") {
@@ -1156,8 +1157,6 @@ fn is_ed25519_spki(s: &str) -> bool {
         .decode(url.trim_end_matches('='))
         .is_ok_and(|der| der.len() == 44 && der.starts_with(&ED25519_SPKI_PREFIX))
 }
-
-use evidence_request::registry::is_digest as is_hex64;
 
 /// `PnD`, `PTnH`, `PTnM`, `PTnS` and their ordered combinations, with at
 /// least one part (loop's `DURATION`).

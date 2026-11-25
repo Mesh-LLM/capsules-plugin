@@ -49,6 +49,7 @@
 //! but it is never a record: it is not found by digest, correlation or
 //! exchange.
 
+use evidence_request::registry::is_digest;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, Read, Seek, SeekFrom};
@@ -995,8 +996,6 @@ impl Responder for LogView<'_> {
 fn trim_newline(line: &[u8]) -> &[u8] {
     line.strip_suffix(b"\n").unwrap_or(line)
 }
-
-use evidence_request::registry::is_digest;
 
 /// The correlation identifiers a record carries: every `nonce`,
 /// `client_nonce` and `exchange_id` in it, and its exchange binding. The

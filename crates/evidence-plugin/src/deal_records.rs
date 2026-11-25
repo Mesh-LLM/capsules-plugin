@@ -415,18 +415,14 @@ mod tests {
         }
     }
 
-    /// The reference checks over the built chains, settled and not: each
-    /// record passes x-deal-v0's record checks and the chain passes its §6
-    /// rules, with evidencebook's `deal::check` and `deal::check_chain` (the
-    /// ports of `check_profile.py`), so they run on every test run.
+    /// The built chains, settled and not, pass x-deal-v0's §6 chain rules,
+    /// with evidencebook's `deal::check_chain` (the port of
+    /// `check_profile.py`'s chain stage), on every test run. Each record
+    /// already passed the record checks when `deal::encode` built it.
     #[test]
     fn the_reference_checker_accepts_the_built_chains() {
         for settled in [true, false] {
             let built = chain(settled);
-            for e in &built {
-                evidencebook::deal::check(&e.payload, &[])
-                    .unwrap_or_else(|err| panic!("settled {settled}: {err}"));
-            }
             let records: Vec<&[u8]> = built.iter().map(|e| e.payload.as_slice()).collect();
             evidencebook::deal::check_chain(&records)
                 .unwrap_or_else(|err| panic!("settled {settled}: {err}"));

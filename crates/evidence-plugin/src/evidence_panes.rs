@@ -6170,10 +6170,11 @@ mod tests {
     }
 
     /// `mmr_leaf_count` (the crate's `leaf_count`) inverts an MMR total-node
-    /// count back to its leaf count, `mmr_size == 2*L - popcount(L)`. The task's worked example (node
-    /// count 15 -> 8 leaves) and the boundary/round-trip cases: every leaf count
-    /// L maps to a node count that inverts back to exactly L, node count 0 is 0
-    /// leaves, and a node count no MMR produces (e.g. 2) has no inverse.
+    /// count back to its leaf count, `mmr_size == 2*L - popcount(L)`. The
+    /// task's worked example (node count 15 -> 8 leaves) and the boundary and
+    /// round-trip cases: every leaf count L maps to a node count that inverts
+    /// back to exactly L, node count 0 is 0 leaves, and a node count no MMR
+    /// produces (e.g. 2) has no inverse.
     #[test]
     fn mmr_leaf_count_inverts_node_count_to_leaf_count() {
         // The task's worked example.
