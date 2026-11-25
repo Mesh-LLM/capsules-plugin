@@ -25,6 +25,11 @@ const NEW_FORM: &str =
 const ADMISSION_CITE: &str =
     include_str!("../../../../vectors/goose-deal-half/admission-cite-half.json");
 
+/// A buyer's half whose every record verifies but whose steps break the
+/// profile's chain rules (a pay after a final close), from evidencebook's
+/// Goose node (`vectors/SOURCES.md`).
+const CHAIN_BREAK: &str = include_str!("../../../../vectors/goose-deal-half/chain-break-half.json");
+
 const NOW: &str = "2026-11-01T00:00:00Z";
 
 fn half(text: &str) -> Value {
@@ -342,7 +347,7 @@ async fn a_verified_half_is_held_and_cited_once_however_often_it_is_handed_in() 
     assert_eq!(first["ok"], true, "{first}");
     assert_eq!(first["steps"], ids.len());
     assert_eq!(first["received_from"], "goose-seller");
-    assert_eq!(first["chain_stage"], "not_checked");
+    assert_eq!(first["chain_stage"], "checked");
 
     let again = receive_and_cite(capsules.clone(), configured, SELLER.into())
         .await
@@ -643,4 +648,42 @@ fn a_cite_of_the_halfs_own_step_is_not_a_counterparty_checkpoint() {
         Some(id.as_str())
     );
     assert_eq!(own_step_cite(&["c".repeat(64)], &[first]), None);
+}
+
+/// A half honestly signed whose steps break a chain rule of x-deal-v0 §6 (a
+/// pay after a final close) passes every record check and is refused at the
+/// chain stage, whole, as the Goose node refuses it (#370).
+#[test]
+fn a_half_the_profiles_chain_stage_refuses_is_refused() {
+    let h = half(CHAIN_BREAK);
+    let r = refusal(CHAIN_BREAK.as_bytes(), &admitting("goose-buyer", &h));
+    assert_eq!((r.reason, r.step), (REASON_RECORD_UNVERIFIED, None));
+    assert!(
+        r.detail
+            .starts_with("the half's steps are not a deal the profile allows:"),
+        "{}",
+        r.detail
+    );
+    assert!(
+        r.detail
+            .contains("seq position 4: record after a close whose outcome is final"),
+        "{}",
+        r.detail
+    );
+}
+
+/// Every half the Goose reference produced in an honest run passes the
+/// chain stage: a one-party half is a chain the §6 rules read (#370).
+#[test]
+fn honest_halves_pass_the_chain_stage() {
+    for (name, text) in [
+        ("goose-buyer", BUYER),
+        ("goose-seller", SELLER),
+        ("goose-buyer", BUYER_FIRST),
+        ("goose-seller", NEW_FORM),
+        ("goose-seller", ADMISSION_CITE),
+    ] {
+        let h = half(text);
+        check(text.as_bytes(), &admitting(name, &h)).expect(name);
+    }
 }
