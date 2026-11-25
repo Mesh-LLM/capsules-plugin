@@ -27,10 +27,9 @@
 use std::path::Path;
 use std::sync::{Mutex, PoisonError};
 
-use cll::checkpoint::{checkpoint_to_cose, try_sign_checkpoint_digest, CheckpointRecord};
+use cll::checkpoint::{try_sign_checkpoint_digest, CheckpointRecord};
 use cll::mmr::{
-    add_leaf, consistency_proof, leaf_count, leaf_hash, peaks, root_from_peaks, Hash,
-    MemoryNodeStore, NodeReader,
+    add_leaf, leaf_count, leaf_hash, peaks, root_from_peaks, Hash, MemoryNodeStore, NodeReader,
 };
 use cll::range_proof::{range_proof, verify_range, RangeProof};
 use ed25519_dalek::SigningKey;
@@ -63,8 +62,6 @@ pub const REPLY_VERSION: u64 = 1;
 pub const LEAF_CAPSULE_ID: &str = "capsule_id";
 /// A leaf's body digest is the SHA-256 of the line's bytes.
 pub const LEAF_SHA256_LINE: &str = "sha256-line";
-
-const CHECKPOINT_KIND: &str = "mmr_checkpoint";
 
 /// One writer of [`FILE_CHECKPOINTS`] per process: the route and the cadence
 /// tick both cut.
@@ -230,6 +227,32 @@ fn last_cut(
     Ok(last)
 }
 
+/// The checkpoint of `tree` at its size, extending the one at `prev_size`
+/// (0 for the first): checkpointed-local-log's `cut_checkpoint`, with the
+/// record signed over its digest, since this plugin keeps the JSON line.
+/// The caller has checked that `prev_size` still holds the previous root.
+fn signed_cut(
+    tree: &Tree,
+    log_id: String,
+    prev_size: u64,
+    timestamp: &str,
+    signer: &SigningKey,
+) -> Result<(CheckpointRecord, Vec<u8>), String> {
+    let cut = cll::checkpoint::cut_checkpoint(
+        &tree.nodes,
+        tree.size(),
+        prev_size,
+        &log_id,
+        timestamp,
+        signer,
+    )
+    .map_err(|e| e.to_string())?;
+    let mut cp = cut.record;
+    cp.signature = try_sign_checkpoint_digest(&cp, signer).map_err(|e| e.to_string())?;
+    let cose = cut.statement.map_err(|e| e.to_string())?;
+    Ok((cp, cose))
+}
+
 /// The latest checkpoint of `file` (one in [`CHECKPOINTED_FILES`]), cut now
 /// if the file has grown since the last one. `Ok(None)` while the file holds
 /// no complete line.
@@ -264,40 +287,14 @@ pub fn cut(
     if size == 0 {
         return Ok(None);
     }
-    let (prev_size, prev_root) = last
-        .as_ref()
-        .map_or((0, String::new()), |(p, _)| (p.mmr_size, p.root.clone()));
-    let mut cp = CheckpointRecord {
-        v: 1,
-        kind: CHECKPOINT_KIND.to_string(),
+    let prev_size = last.as_ref().map_or(0, |(p, _)| p.mmr_size);
+    let (cp, cose) = signed_cut(
+        &tree,
         log_id,
-        mmr_size: size,
-        root: tree.root(size)?,
         prev_size,
-        prev_root,
-        key_id: crate::commitment::key_id(signer),
-        timestamp: crate::producer::timestamp::utc_now_minute(),
-        signature: String::new(),
-        witnesses: Vec::new(),
-    };
-    cp.signature = try_sign_checkpoint_digest(&cp, signer).map_err(|e| e.to_string())?;
-    let (prev_peaks, consistency) = if prev_size > 0 {
-        (
-            Some(tree.peak_hashes(prev_size)?),
-            Some(consistency_proof(&tree.nodes, prev_size, size).map_err(|e| e.to_string())?),
-        )
-    } else {
-        (None, None)
-    };
-    let cose = checkpoint_to_cose(
-        &cp,
+        &crate::producer::timestamp::utc_now_minute(),
         signer,
-        &tree.peak_hashes(size)?,
-        prev_peaks.as_deref(),
-        consistency.as_ref(),
-        None,
-    )
-    .map_err(|e| e.to_string())?;
+    )?;
     let mut line = serde_json::to_value(&cp).map_err(|e| e.to_string())?;
     line["checkpoint_cose"] = Value::String(hex::encode(&cose));
     append_line(&ledger_dir.join(FILE_CHECKPOINTS), &line).map_err(|e| e.to_string())?;
@@ -784,6 +781,85 @@ mod tests {
 
     fn whole(dir: &Path) -> Value {
         reply(dir, LOG, &key(), PROVENANCE, None, None, None).unwrap()
+    }
+
+    /// The cut before #368 step 9, kept as the reference: the record and
+    /// statement this plugin built itself.
+    fn old_cut(
+        tree: &Tree,
+        log_id: &str,
+        prev: Option<&CheckpointRecord>,
+        timestamp: &str,
+        signer: &SigningKey,
+    ) -> (CheckpointRecord, Vec<u8>) {
+        use cll::checkpoint::checkpoint_to_cose;
+        use cll::mmr::consistency_proof;
+        let size = tree.size();
+        let (prev_size, prev_root) =
+            prev.map_or((0, String::new()), |p| (p.mmr_size, p.root.clone()));
+        let mut cp = CheckpointRecord {
+            v: 1,
+            kind: "mmr_checkpoint".to_string(),
+            log_id: log_id.to_string(),
+            mmr_size: size,
+            root: tree.root(size).unwrap(),
+            prev_size,
+            prev_root,
+            key_id: crate::commitment::key_id(signer),
+            timestamp: timestamp.to_string(),
+            signature: String::new(),
+            witnesses: Vec::new(),
+        };
+        cp.signature = try_sign_checkpoint_digest(&cp, signer).unwrap();
+        let (prev_peaks, consistency) = if prev_size > 0 {
+            (
+                Some(tree.peak_hashes(prev_size).unwrap()),
+                Some(consistency_proof(&tree.nodes, prev_size, size).unwrap()),
+            )
+        } else {
+            (None, None)
+        };
+        let cose = checkpoint_to_cose(
+            &cp,
+            signer,
+            &tree.peak_hashes(size).unwrap(),
+            prev_peaks.as_deref(),
+            consistency.as_ref(),
+            None,
+        )
+        .unwrap();
+        (cp, cose)
+    }
+
+    /// Same input, same bytes (Sherlock2's condition on the shared cut):
+    /// checkpointed-local-log's `cut_checkpoint` gives this plugin the
+    /// record (JSON line included) and COSE statement its own cut gave, for
+    /// a first checkpoint and for one extending it.
+    #[test]
+    fn the_shared_cut_gives_the_bytes_the_old_cut_gave() {
+        let dir = tempfile::tempdir().unwrap();
+        let ts = "2026-11-25T08:00:00Z";
+        let log_id = file_log_id(LOG, PROVENANCE);
+        write(dir.path(), &lines(0..3));
+        let first = Tree::build(&dir.path().join(PROVENANCE), LeafRule::Sha256Line).unwrap();
+        let (new_cp, new_cose) = signed_cut(&first, log_id.clone(), 0, ts, &key()).unwrap();
+        let (old_cp, old_cose) = old_cut(&first, &log_id, None, ts, &key());
+        assert_eq!(
+            serde_json::to_vec(&new_cp).unwrap(),
+            serde_json::to_vec(&old_cp).unwrap()
+        );
+        assert_eq!(new_cose, old_cose);
+        write(dir.path(), &lines(3..8));
+        let grown = Tree::build(&dir.path().join(PROVENANCE), LeafRule::Sha256Line).unwrap();
+        let (new_cp, new_cose) =
+            signed_cut(&grown, log_id.clone(), old_cp.mmr_size, ts, &key()).unwrap();
+        let (old_cp, old_cose) = old_cut(&grown, &log_id, Some(&old_cp), ts, &key());
+        assert_eq!(
+            serde_json::to_vec(&new_cp).unwrap(),
+            serde_json::to_vec(&old_cp).unwrap()
+        );
+        assert_eq!(new_cose, old_cose);
+        assert!(old_cp.prev_size > 0, "the second cut extends the first");
     }
 
     #[test]

@@ -349,9 +349,9 @@ dependencies = [
 
 [[package]]
 name = "checkpointed-local-log"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ccd2357134d905df3fef856ee2af68e9d80a802d7e280a58c83c60244ca9722"
+checksum = "bb58a60bb91be05b86bd784e9a4dfcaa4d09b43eabcc95c7257a1c0af3813c86"
 dependencies = [
  "base64 0.22.1",
  "coset",
