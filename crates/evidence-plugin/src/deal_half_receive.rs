@@ -39,18 +39,19 @@
 //!    [`OVERLAP_ACCEPTS_CURRENT_FORM`] for the two forms), commits its
 //!    payload, and the payload passes x-deal-v0's record checks (evidencebook
 //!    `deal::check`), else `record_unverified`.
-//! 4. The checkpoint statement's signature verifies under its own key, and
+//! 4. The steps, read in order, pass the profile's chain stage (x-deal-v0
+//!    §6, evidencebook `deal::check_chain_values`), else `record_unverified`
+//!    with no step; the reply says `"chain_stage": "checked"`.
+//! 5. The checkpoint statement's signature verifies under its own key, and
 //!    it commits exactly these steps (the MMR over their ids, in order), else
 //!    `checkpoint_unverified`.
-//! 5. No step makes a serving claim the record-push store refuses
+//! 6. No step makes a serving claim the record-push store refuses
 //!    (`record_push_receive::claims_verdict`, judged against this node's own
 //!    records), else `record_unverified`: checked before anything is stored,
 //!    so a half that store would refuse part-way is refused whole.
 //!
 //! These are the checks the Goose node itself runs on a counterparty's half
-//! (`verify_half`), except the profile's chain stage (x-deal-v0 §6), which
-//! only the Python reference checker implements; the reply says so
-//! (`"chain_stage": "not_checked"`).
+//! (`verify_half`), chain stage included.
 //!
 //! **What is kept.** Each step's Capsule is held exactly as the record-push
 //! receiver holds a pushed half (`received-capsules.jsonl` with its
@@ -348,6 +349,7 @@ pub fn verify(text: &[u8], keys: &Keys<'_>, now: &str) -> Result<Verified, Refus
     let mut cites: Vec<String> = Vec::new();
     let mut parent: Option<String> = None;
     let mut capsules = Vec::with_capacity(steps.len());
+    let mut payloads = Vec::with_capacity(steps.len());
     for (i, step) in steps.iter().enumerate() {
         let n = i + 1;
         let capsule = &step["capsule"];
@@ -442,7 +444,18 @@ pub fn verify(text: &[u8], keys: &Keys<'_>, now: &str) -> Result<Verified, Refus
             .map_err(|e| unverified(format!("the steps' MMR: {e}")))?;
         parent = Some(capsule_id.to_string());
         capsules.push(capsule.clone());
+        payloads.push(step["payload"].clone());
     }
+    // The profile's chain stage (x-deal-v0 §6), which the record checks
+    // leave out: evidencebook's port of the reference checker's, as the
+    // Goose node runs it on a counterparty's half (`verify_half`).
+    deal::check_chain_values(&payloads).map_err(|e| {
+        refused(
+            REASON_RECORD_UNVERIFIED,
+            None,
+            format!("the half's steps are not a deal the profile allows: {e}"),
+        )
+    })?;
 
     let cp_refused = |detail: String| refused(REASON_CHECKPOINT_UNVERIFIED, None, detail);
     let verified = cll::checkpoint::verify_checkpoint_cose_offline(&statement);
@@ -590,7 +603,7 @@ fn received_reply(verified: &Verified) -> Value {
         "steps": verified.capsules.len(),
         "form": verified.form,
         "counterparty_checkpoint_cites": verified.counterparty_checkpoint_cites,
-        "chain_stage": "not_checked",
+        "chain_stage": "checked",
     })
 }
 
