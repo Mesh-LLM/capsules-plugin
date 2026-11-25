@@ -57,6 +57,7 @@
 //! that names someone else's node only gets that node asked what it answers
 //! any stranger, under its own key. The reporter holds at most [`MAX_NODES`].
 
+use evidence_request::registry::is_digest;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -159,7 +160,7 @@ pub fn reporter_from(overridden: Option<&str>) -> Option<String> {
         Some(set) => set.to_ascii_lowercase(),
         None => pinned().0,
     };
-    (is_hex64(&id) && id.bytes().any(|b| b != b'0')).then_some(id)
+    (is_digest(&id) && id.bytes().any(|b| b != b'0')).then_some(id)
 }
 
 /// [`reporter_from`] this process's setting.
@@ -184,10 +185,6 @@ pub fn record(kind: &str, node_id: &str, key: &SigningKey, at: &str) -> Value {
         }),
         key,
     )
-}
-
-fn is_hex64(s: &str) -> bool {
-    s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 fn parse_at(s: &str) -> Option<DateTime<Utc>> {
@@ -241,7 +238,7 @@ pub fn problems(doc: &Value, now: DateTime<Utc>) -> Vec<String> {
         errs.push(format!("kind must be one of {KIND_JOIN}, {KIND_LEAVE}"));
     }
     for name in ["node_id", "key_id", "consent_sha256"] {
-        if !is_hex64(text(name)) {
+        if !is_digest(text(name)) {
             errs.push(format!("{name} is not 64 lowercase hex"));
         }
     }
@@ -678,7 +675,7 @@ fn known_key(registry: Option<&str>, node_id: &str) -> Result<Option<String>, St
     };
     match map.get(node_id) {
         None => Ok(None),
-        Some(Value::String(key)) if is_hex64(key) => Ok(Some(key.clone())),
+        Some(Value::String(key)) if is_digest(key) => Ok(Some(key.clone())),
         Some(_) => Err("the keys this node holds for node_id disagree".into()),
     }
 }

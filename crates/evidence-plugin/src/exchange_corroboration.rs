@@ -32,6 +32,7 @@
 //! The run is split into pure steps ([`plan`], [`after_x`], [`finish`]) so
 //! the mesh glue only sends what they say to send.
 
+use evidence_request::registry::is_digest;
 use std::collections::BTreeSet;
 
 use cll::checkpoint::{CheckpointRecord, DecodedCheckpointCose};
@@ -830,10 +831,6 @@ async fn ask(
         Err(SendError::NoAnswer(e)) => Reply::Nothing(format!("no answer by the deadline{e}")),
         Err(SendError::Malformed(e)) => Reply::Malformed(format!("not an answer: {e}")),
     }
-}
-
-fn is_digest(s: &str) -> bool {
-    s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 #[cfg(test)]

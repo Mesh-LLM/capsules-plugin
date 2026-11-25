@@ -49,6 +49,7 @@
 //! but it is never a record: it is not found by digest, correlation or
 //! exchange.
 
+use evidence_request::registry::is_digest;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, Read, Seek, SeekFrom};
@@ -968,17 +969,14 @@ impl Responder for LogView<'_> {
         true
     }
     fn anchors(&self) -> Vec<Anchor> {
-        self.index
-            .chain
-            .iter()
-            .filter_map(|cp| {
-                Some(Anchor {
-                    digest: cp.anchor_digest(),
-                    size: leaf_count(cp.record.mmr_size).ok()?,
-                    issued_at: cp.record.timestamp.clone(),
-                })
-            })
-            .collect()
+        // evidencebook's anchors over this view's stated checkpoints. It
+        // cannot fail here: the index keeps only checkpoints whose size it
+        // re-derived (`check_checkpoint`), and stops the chain at the first
+        // it cannot, so no anchor is ever dropped.
+        evidencebook::answer::anchors(self).unwrap_or_else(|e| {
+            tracing::warn!(%e, "evidence anchors unreadable");
+            Vec::new()
+        })
     }
     fn derivation_forms(&self, derivation: &Derivation) -> Option<Vec<SubjectForm>> {
         match derivation {
@@ -997,10 +995,6 @@ impl Responder for LogView<'_> {
 
 fn trim_newline(line: &[u8]) -> &[u8] {
     line.strip_suffix(b"\n").unwrap_or(line)
-}
-
-fn is_digest(s: &str) -> bool {
-    s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 /// The correlation identifiers a record carries: every `nonce`,

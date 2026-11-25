@@ -29,6 +29,7 @@
 
 use crate::capsule_emit::{CapsuleState, EmittedCapsule};
 use crate::producer::capsule::{Disposer, OwnerMaintenance, OWNER_MAINTENANCE_BLOCK};
+use evidence_request::registry::is_digest;
 use mesh_llm_plugin::{PluginError, PluginResult};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -395,13 +396,6 @@ fn count_records(ledger_dir: &Path) -> usize {
 // Stored text (the disclosure store)
 // ---------------------------------------------------------------------------
 
-fn is_capsule_id(stem: &str) -> bool {
-    stem.len() == 64
-        && stem
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-}
-
 /// The capsule ids that have stored text, read off `<ledger>/disclosures/`.
 fn stored_text_ids(ledger_dir: &Path) -> Vec<String> {
     let Ok(entries) = fs::read_dir(ledger_dir.join("disclosures")) else {
@@ -412,7 +406,7 @@ fn stored_text_ids(ledger_dir: &Path) -> Vec<String> {
         .filter_map(|e| {
             let name = e.file_name().into_string().ok()?;
             let stem = name.strip_suffix(".json")?;
-            is_capsule_id(stem).then(|| stem.to_string())
+            is_digest(stem).then(|| stem.to_string())
         })
         .collect();
     ids.sort();

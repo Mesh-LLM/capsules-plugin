@@ -484,8 +484,8 @@ fn received_reply(held: &Value) -> Value {
 }
 
 /// A refusal signed by this node: Ed25519 over the RFC 8785 form of
-/// `{issued_at, reason, request_digest}` (ASCII strings, so sorted compact
-/// JSON), plus `refused_key_id` when the refusal names the refused half's
+/// `{issued_at, reason, request_digest}` (evidence-request's writer), plus
+/// `refused_key_id` when the refusal names the refused half's
 /// key (`signature_unverified`), `key_id` the raw public key.
 /// `policy_decline` also carries the fabric's `status`.
 fn refusal(
@@ -500,7 +500,8 @@ fn refusal(
     if let Some(refused) = refused_key {
         body["refused_key_id"] = json!(refused);
     }
-    let signed = sorted_compact(&body);
+    // Only strings here, which RFC 8785 always serializes.
+    let signed = evidence_request::jcs::to_string(&body).expect("a body of strings serializes");
     let mut reply = json!({
         "request_digest": request_digest,
         "reason": reason,
@@ -515,23 +516,6 @@ fn refusal(
         reply["status"] = json!("WITHHELD");
     }
     reply
-}
-
-/// Compact JSON with every object's keys sorted: RFC 8785 for values that
-/// hold only ASCII strings, integers, and arrays and objects of them.
-fn sorted_compact(value: &Value) -> String {
-    fn sorted(value: &Value) -> Value {
-        match value {
-            Value::Object(map) => {
-                let ordered: BTreeMap<&String, Value> =
-                    map.iter().map(|(k, v)| (k, sorted(v))).collect();
-                Value::Object(ordered.into_iter().map(|(k, v)| (k.clone(), v)).collect())
-            }
-            Value::Array(items) => Value::Array(items.iter().map(sorted).collect()),
-            other => other.clone(),
-        }
-    }
-    sorted(value).to_string()
 }
 
 /// [`append`], unless the file would pass `limit` bytes: then the line is
@@ -811,7 +795,11 @@ fn verify_bundle_inclusion(
     facts.insert(
         "inclusion_proof_digest".into(),
         json!(hex::encode(Sha256::digest(
-            sorted_compact(&held_proof).as_bytes()
+            // Typed integers below the MMR size cap and hex strings: RFC 8785
+            // always serializes them, as it does the refusal body.
+            evidence_request::jcs::to_string(&held_proof)
+                .expect("a held proof serializes")
+                .as_bytes()
         ))),
     );
     facts.insert("checkpoint".into(), held_checkpoint);
@@ -1486,9 +1474,10 @@ mod tests {
         assert_eq!(reply["reason"], REASON_REQUEST_MALFORMED);
         assert!(reply.get("status").is_none(), "never a receipt");
         assert_eq!(reply["request_digest"], hex::encode(Sha256::digest(body)));
-        let signed = sorted_compact(&json!({
+        let signed = evidence_request::jcs::to_string(&json!({
             "issued_at": NOW, "reason": REASON_REQUEST_MALFORMED, "request_digest": reply["request_digest"],
-        }));
+        }))
+        .unwrap();
         let sig: [u8; 64] = hex::decode(reply["sig"].as_str().unwrap())
             .unwrap()
             .try_into()
@@ -1597,5 +1586,43 @@ mod tests {
             model_id_digest(&requested(&HF_ID.to_uppercase())).as_deref(),
             Some(&HF_ID["local-gguf/sha256-".len()..])
         );
+    }
+
+    /// The refusal's signed body and a held proof's digest are now RFC 8785
+    /// from the evidence-request crate, where this module had its own
+    /// sorted-keys compact writer. On every value those two carry (ASCII and
+    /// non-ASCII text, control characters, integers up to the MMR size cap,
+    /// arrays of hex) the bytes are the same as the old writer's, which this
+    /// test keeps as the reference (#368, plan step 3).
+    #[test]
+    fn the_signed_bytes_are_the_same_as_the_old_sorted_compact_writer() {
+        fn old(value: &Value) -> String {
+            fn sorted(value: &Value) -> Value {
+                match value {
+                    Value::Object(map) => {
+                        let ordered: BTreeMap<&String, Value> =
+                            map.iter().map(|(k, v)| (k, sorted(v))).collect();
+                        Value::Object(ordered.into_iter().map(|(k, v)| (k.clone(), v)).collect())
+                    }
+                    Value::Array(items) => Value::Array(items.iter().map(sorted).collect()),
+                    other => other.clone(),
+                }
+            }
+            sorted(value).to_string()
+        }
+        let cases = [
+            json!({"request_digest": "ab".repeat(32), "reason": "bundle_malformed",
+                   "issued_at": "2026-11-24T00:00:00Z", "refused_key_id": "cd".repeat(32)}),
+            json!({"reason": "r\u{e9}sum\u{e9} \u{1F600}", "issued_at": "tab\there\nline\u{1}"}),
+            json!({"v": 1, "kind": "mmr_inclusion", "size": (1u64 << 50) - 1, "leaf_index": 0,
+                   "witness": ["00".repeat(32), "ff".repeat(32)], "peaks_left": [], "peaks_right": ["aa".repeat(32)]}),
+        ];
+        for case in cases {
+            assert_eq!(
+                evidence_request::jcs::to_string(&case).unwrap(),
+                old(&case),
+                "{case}"
+            );
+        }
     }
 }

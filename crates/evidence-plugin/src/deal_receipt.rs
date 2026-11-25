@@ -426,11 +426,10 @@ pub(crate) fn bundle_answer(bundle: &Value) -> Value {
 /// The route's answer: `{"state": "bundle", "bundle": "<JSON text>"}`, or
 /// `{"state": "refused", "why": ...}` for a node state that has no bundle.
 pub fn answer(ledger_dir: &Path, node_key_id: &str, capsule_id: &Value) -> Result<Value, String> {
-    let Some(id) = capsule_id.as_str().filter(|s| {
-        s.len() == 64
-            && s.bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-    }) else {
+    let Some(id) = capsule_id
+        .as_str()
+        .filter(|s| evidence_request::registry::is_digest(s))
+    else {
         return Err("capsule_id must be 64 lowercase hex".into());
     };
     match bundle(ledger_dir, node_key_id, id) {

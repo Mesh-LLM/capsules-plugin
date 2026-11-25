@@ -415,38 +415,17 @@ mod tests {
         }
     }
 
-    /// `check_profile.py`'s chain stage over the built chain, when the
-    /// profile directory is given (`EVIDENCEBOOK_DEAL_PROFILE_DIR`, the
-    /// evidencebook checkout's `dealprofile/x-deal-v0`).
+    /// The built chains, settled and not, pass x-deal-v0's §6 chain rules,
+    /// with evidencebook's `deal::check_chain` (the port of
+    /// `check_profile.py`'s chain stage), on every test run. Each record
+    /// already passed the record checks when `deal::encode` built it.
     #[test]
     fn the_reference_checker_accepts_the_built_chains() {
-        let Some(profile) = std::env::var_os("EVIDENCEBOOK_DEAL_PROFILE_DIR") else {
-            eprintln!("EVIDENCEBOOK_DEAL_PROFILE_DIR not set; check_profile.py not run");
-            return;
-        };
-        let dir = tempfile::tempdir().unwrap();
-        let mut files = Vec::new();
         for settled in [true, false] {
-            let text: Vec<String> = chain(settled)
-                .iter()
-                .map(|e| String::from_utf8(e.payload.clone()).unwrap())
-                .collect();
-            let path = dir.path().join(format!("paid-{settled}.json"));
-            std::fs::write(&path, format!("[{}]", text.join(","))).unwrap();
-            files.push(path);
+            let built = chain(settled);
+            let records: Vec<&[u8]> = built.iter().map(|e| e.payload.as_slice()).collect();
+            evidencebook::deal::check_chain(&records)
+                .unwrap_or_else(|err| panic!("settled {settled}: {err}"));
         }
-        let out = std::process::Command::new("python3")
-            .arg("-I")
-            .arg(std::path::Path::new(&profile).join("check_profile.py"))
-            .args(&files)
-            .output()
-            .unwrap();
-        let text = format!(
-            "{}{}",
-            String::from_utf8_lossy(&out.stdout),
-            String::from_utf8_lossy(&out.stderr)
-        );
-        assert!(out.status.success(), "{text}");
-        assert!(!text.contains("FAIL"), "{text}");
     }
 }
