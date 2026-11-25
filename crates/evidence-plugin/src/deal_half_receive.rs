@@ -7,7 +7,12 @@
 //! channel the two parties use (evidencebook `python/examples/goose`), and
 //! this tool is where such a file enters a Mesh node. The half's shape is
 //! Goose's: `{"half": "goose-deal-half/1", "deal_id", "book_id", "steps":
-//! [{"capsule", "payload"}...], "checkpoint": {"key_id", "statement"}}`.
+//! [{"capsule", "payload"}...], "checkpoint": {"key_id", "statement"}}`,
+//! and, outside the signed steps, the deal book's stapled `history_card`
+//! (every half the Goose node has written since evidencebook#329) and the
+//! optional stapled standard card `history_staple`, each `{"request",
+//! "reply"}`. A half without `history_card`, as older Goose nodes wrote
+//! them, is still accepted.
 //! Like record-push, this is plugin-internal behaviour, not a standardized
 //! wire, and may change.
 //!
@@ -45,6 +50,9 @@
 //! 5. The checkpoint statement's signature verifies under its own key, and
 //!    it commits exactly these steps (the MMR over their ids, in order), else
 //!    `checkpoint_unverified`.
+//!    Then each stapled card it carries verifies with evidencebook's
+//!    `check_staple` under the steps' key, and the book card is as of this
+//!    checkpoint under the half's checkpoint key, else `record_unverified`.
 //! 6. No step makes a serving claim the record-push store refuses
 //!    (`record_push_receive::claims_verdict`, judged against this node's own
 //!    records), else `record_unverified`: checked before anything is stored,
@@ -163,6 +171,49 @@ pub struct Verified {
     pub counterparty_checkpoint_cites: Vec<String>,
 }
 
+/// The member that carries the deal book's own `history_card/1`, stapled
+/// (evidencebook#329): `{"request": <JSON text>, "reply": <JSON text>}`.
+pub const HISTORY_CARD_MEMBER: &str = "history_card";
+/// The member that carries the node's `standard_history/1`, stapled, when
+/// the counterparty asked for it and its user approved.
+pub const HISTORY_STAPLE_MEMBER: &str = "history_staple";
+
+/// A stapled card that passed: its anchor and the card.
+struct StapledCard {
+    anchor: String,
+    card: Value,
+}
+
+/// Check a stapled card member under `holder`, the key the half's steps are
+/// signed by: evidencebook's `check_staple` (the envelope verifies under the
+/// holder's key and answers its own request; a `history_card/1` card has its
+/// form), then the derivation is `derivation` and the card is as of the
+/// envelope's anchor. As the Goose node's `verify_history_staple`.
+fn stapled_card(doc: &Value, holder: &str, derivation: &str) -> Result<StapledCard, String> {
+    let (Some(request), Some(reply)) = (doc["request"].as_str(), doc["reply"].as_str()) else {
+        return Err("a staple is a request and a reply, both JSON text".into());
+    };
+    if !exact_members(doc, &["request", "reply"]) {
+        return Err("a staple is a request and a reply, both JSON text".into());
+    }
+    let checked = evidencebook::staple::check_staple(request.as_bytes(), reply.as_bytes(), holder)
+        .map_err(|e| e.to_string())?;
+    if checked.derivation != derivation {
+        return Err(format!(
+            "the staple carries another derivation than {derivation}"
+        ));
+    }
+    let card: Value =
+        serde_json::from_slice(&checked.artifact).map_err(|e| format!("the card: {e}"))?;
+    if card["anchor"] != checked.anchor.as_str() {
+        return Err("the stapled card is as of another anchor than the envelope".into());
+    }
+    Ok(StapledCard {
+        anchor: checked.anchor,
+        card,
+    })
+}
+
 /// The keys one call checks under.
 pub struct Keys<'a> {
     /// The raw `CAPSULES_PEER_KEYS` value: the only keys a half is checked
@@ -256,12 +307,19 @@ pub fn verify(text: &[u8], keys: &Keys<'_>, now: &str) -> Result<Verified, Refus
     let malformed = |detail: &str| refused(REASON_REQUEST_MALFORMED, None, detail);
     let half =
         crate::strict_json::parse(text).map_err(|_| malformed("the half is not strict JSON"))?;
-    if !exact_members(
-        &half,
-        &["half", "deal_id", "book_id", "steps", "checkpoint"],
-    ) {
+    let required = ["half", "deal_id", "book_id", "steps", "checkpoint"];
+    let members_ok = half.as_object().is_some_and(|m| {
+        required.iter().all(|k| m.contains_key(*k))
+            && m.keys().all(|k| {
+                required.contains(&k.as_str())
+                    || k == HISTORY_CARD_MEMBER
+                    || k == HISTORY_STAPLE_MEMBER
+            })
+    });
+    if !members_ok {
         return Err(malformed(
-            "a half has exactly the members half, deal_id, book_id, steps and checkpoint",
+            "a half has the members half, deal_id, book_id, steps and checkpoint, \
+             and may carry history_card and history_staple",
         ));
     }
     if half["half"] != HALF_FORMAT {
@@ -491,6 +549,48 @@ pub fn verify(text: &[u8], keys: &Keys<'_>, now: &str) -> Result<Verified, Refus
         return Err(cp_refused(
             "the checkpoint does not commit these steps".into(),
         ));
+    }
+
+    // The stapled cards, outside the signed steps: each presented by the
+    // steps' key, and the book's card as of this half's checkpoint under the
+    // half's checkpoint key, as the Goose node's `verify_half` checks them.
+    if let Some(doc) = half.get(HISTORY_STAPLE_MEMBER) {
+        stapled_card(
+            doc,
+            key_id,
+            evidencebook::staple::DERIVATION_STANDARD_HISTORY,
+        )
+        .map_err(|e| {
+            refused(
+                REASON_RECORD_UNVERIFIED,
+                None,
+                format!("the history staple: {e}"),
+            )
+        })?;
+    }
+    if let Some(doc) = half.get(HISTORY_CARD_MEMBER) {
+        let book_card = stapled_card(doc, key_id, evidencebook::answer::DERIVATION_HISTORY_CARD)
+            .map_err(|e| {
+                refused(
+                    REASON_RECORD_UNVERIFIED,
+                    None,
+                    format!("the history card: {e}"),
+                )
+            })?;
+        let as_of_half =
+            book_card.anchor == hex::encode(<sha2::Sha256 as sha2::Digest>::digest(&statement));
+        let under_key = book_card.card["history"][0]["checkpoint"]
+            .as_str()
+            .and_then(|h| hex::decode(h).ok())
+            .and_then(|b| cll::checkpoint::verify_checkpoint_cose_offline(&b).decoded)
+            .is_some_and(|cp| cp.key_id == checkpoint_key);
+        if !as_of_half || !under_key {
+            return Err(refused(
+                REASON_RECORD_UNVERIFIED,
+                None,
+                "the half's book card is not as of the half's checkpoint under the half's checkpoint key",
+            ));
+        }
     }
 
     // A cite of one of the half's own steps is not a counterparty

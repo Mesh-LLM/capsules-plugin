@@ -30,6 +30,17 @@ const ADMISSION_CITE: &str =
 /// Goose node (`vectors/SOURCES.md`).
 const CHAIN_BREAK: &str = include_str!("../../../../vectors/goose-deal-half/chain-break-half.json");
 
+/// A buyer's final half in the current form, carrying its deal book's
+/// `history_card` (evidencebook#329); the same half also carrying the
+/// standard card (`history_staple`); and the final half with the book card
+/// of the buyer's earlier one-step half (`vectors/SOURCES.md`).
+const HISTORY_CARD: &str =
+    include_str!("../../../../vectors/goose-deal-half/history-card-half.json");
+const HISTORY_STAPLE: &str =
+    include_str!("../../../../vectors/goose-deal-half/history-staple-half.json");
+const STALE_HISTORY_CARD: &str =
+    include_str!("../../../../vectors/goose-deal-half/stale-history-card-half.json");
+
 const NOW: &str = "2026-11-01T00:00:00Z";
 
 fn half(text: &str) -> Value {
@@ -686,4 +697,61 @@ fn honest_halves_pass_the_chain_stage() {
         let h = half(text);
         check(text.as_bytes(), &admitting(name, &h)).expect(name);
     }
+}
+
+/// A half from today's Goose node carries its deal book's card, and may
+/// carry the standard card: both verify under the half's own keys (#374).
+#[test]
+fn a_current_goose_half_with_its_cards_verifies() {
+    for text in [HISTORY_CARD, HISTORY_STAPLE] {
+        let h = half(text);
+        assert!(h.get("history_card").is_some());
+        check(text.as_bytes(), &admitting("goose-buyer", &h)).expect("verifies");
+    }
+    assert!(half(HISTORY_STAPLE).get("history_staple").is_some());
+}
+
+/// A book card that is not as of the half's own checkpoint is refused, as
+/// the Goose node refuses it (#374).
+#[test]
+fn a_book_card_of_another_checkpoint_is_refused() {
+    let h = half(STALE_HISTORY_CARD);
+    let r = refusal(STALE_HISTORY_CARD.as_bytes(), &admitting("goose-buyer", &h));
+    assert_eq!((r.reason, r.step), (REASON_RECORD_UNVERIFIED, None));
+    assert!(
+        r.detail.contains("not as of the half's checkpoint"),
+        "{}",
+        r.detail
+    );
+}
+
+/// A card whose envelope does not verify under the steps' key, a staple
+/// of another shape, and a member the half does not define are refused
+/// (#374).
+#[test]
+fn a_broken_staple_or_an_unknown_member_is_refused() {
+    let h = half(HISTORY_CARD);
+    let keys = admitting("goose-buyer", &h);
+    let mut tampered = h.clone();
+    let reply = tampered["history_card"]["reply"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let mut reply_json: Value = serde_json::from_str(&reply).unwrap();
+    // `issued_at` is a signed member of the envelope.
+    reply_json["issued_at"] = json!("2026-11-01T10:00:01Z");
+    tampered["history_card"]["reply"] = json!(reply_json.to_string());
+    let r = refusal(&bytes(&tampered), &keys);
+    assert_eq!(r.reason, REASON_RECORD_UNVERIFIED, "{}", r.detail);
+    assert!(r.detail.starts_with("the history card:"), "{}", r.detail);
+
+    let mut shape = h.clone();
+    shape["history_card"]["extra"] = json!("x");
+    let r = refusal(&bytes(&shape), &keys);
+    assert_eq!(r.reason, REASON_RECORD_UNVERIFIED, "{}", r.detail);
+
+    let mut unknown = h.clone();
+    unknown["something_else"] = json!(1);
+    let r = refusal(&bytes(&unknown), &keys);
+    assert_eq!(r.reason, REASON_REQUEST_MALFORMED, "{}", r.detail);
 }
