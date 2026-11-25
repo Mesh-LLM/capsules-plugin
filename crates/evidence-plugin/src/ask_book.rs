@@ -227,8 +227,9 @@ pub struct Asked {
 /// not read as well formed (profile §6.1 steps 1 to 5), or one reusing a
 /// nonce an earlier request in this book carried (a response to that one
 /// could otherwise be replayed onto it); and, before the crate is asked, a
-/// `deadline` that is not an RFC 3339 time or a commitment that is not a
-/// JSON object. A request the book could not later resolve is never
+/// `deadline` that is not an RFC 3339 time, an empty `nonce` (which the
+/// crate would read as none, so its reuse could not be seen), or a
+/// commitment that is not a JSON object. A request the book could not later resolve is never
 /// recorded, so every recorded request reaches an outcome.
 pub fn record_request(
     capsules: &CapsuleState,
@@ -237,6 +238,14 @@ pub fn record_request(
     commitment: Option<Value>,
     now: &str,
 ) -> Result<Asked, AskError> {
+    // The crate reads an empty nonce as none and skips its reuse scan, so an
+    // empty one would let two asks share a digest and an earlier reply
+    // answer the later ask. A request carries a real nonce or none.
+    if request.get("nonce").and_then(Value::as_str) == Some("") {
+        return Err(AskError::Invalid(
+            "the request's nonce is empty: send a fresh one, or none".into(),
+        ));
+    }
     let window_closes = window_closes(request.get("deadline").and_then(Value::as_str), now)
         .ok_or_else(|| {
             AskError::Invalid("the request's deadline is not an RFC 3339 time".into())

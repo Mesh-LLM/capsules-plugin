@@ -148,6 +148,23 @@ fn a_nonce_is_never_used_twice() {
     fresh["nonce"] = json!("n-2");
     record_request(&capsules, &fresh, PEER, None, ASKED_AT).unwrap();
     assert_eq!(records(&capsules).len(), 2);
+
+    // An empty nonce is refused every time, nothing sealed: the crate reads
+    // it as none, so a second such ask could not be told apart.
+    for _ in 0..2 {
+        let empty = record_request(
+            &capsules,
+            &with_nonce(request(None), ""),
+            PEER,
+            None,
+            ASKED_AT,
+        );
+        assert!(
+            matches!(&empty, Err(AskError::Invalid(m)) if m.contains("nonce is empty")),
+            "{empty:?}"
+        );
+    }
+    assert_eq!(records(&capsules).len(), 2);
 }
 
 #[test]
@@ -454,45 +471,71 @@ fn verified_old_record(line: &str) -> (String, Map<String, Value>) {
 
 #[test]
 fn requests_sealed_in_the_old_shape_still_verify_and_read() {
+    // Each frozen record verifies as a ledger line. Its book entry, byte for
+    // byte as frozen, is then sealed through this node's own ledger at its
+    // own commit time, so the reader and the functions below take it from
+    // the ledger as they take any record this book holds.
     let (capsules, _dir) = state();
-    let mut book = AskBook::open(&capsules, "2026-10-29T12:10:00Z");
     let mut ids = Vec::new();
     for line in [OLD_SHAPE, OLD_SHAPE_HELD] {
-        let (id, entry) = verified_old_record(line);
-        assert_eq!(entry["record_type"], "evidence_request");
-        assert!(entry["statement"].get("composed_elsewhere").is_none());
-        book.records.push((id.clone(), entry));
-        ids.push(id);
+        let (_, frozen) = verified_old_record(line);
+        assert_eq!(frozen["record_type"], "evidence_request");
+        assert!(frozen["statement"].get("composed_elsewhere").is_none());
+        let committed_at = frozen["committed_at"].as_str().unwrap();
+        let sealed = AskBook::open(&capsules, committed_at)
+            .seal(&Entry {
+                record_type: record_types::REQUEST.into(),
+                epistemic_type: EpistemicType::ObservedEvent,
+                links: Vec::new(),
+                statement: frozen["statement"].clone(),
+            })
+            .unwrap();
+        assert_eq!(header_of(&capsules, &sealed.record_id), frozen);
+        ids.push(sealed.record_id);
     }
-    let held = book.header(&ids[1]).unwrap()["statement"].clone();
-    assert!(held["commitment"].is_object());
+    assert!(header_of(&capsules, &ids[1])["statement"]["commitment"].is_object());
 
-    // A refusal is judged against the commitment the old record holds.
-    let check = crate::peer_commitments::policy_check(
-        held.get("commitment"),
-        &held["request"],
-        "no_such_subject",
-    );
-    assert_eq!(check["status"], "MISMATCH", "{check}");
-
-    // Their nonces stay used: the crate's scan reads the old records.
+    // Their nonces stay used: a new ask with either is refused, nothing sealed.
     for nonce in ["n-1", "n-2"] {
-        let again = evidence_request::jcs::to_string(&with_nonce(request(None), nonce)).unwrap();
-        let refused = evidencebook::ask::request_sent_with_commitment(
-            &mut book,
-            again.as_bytes(),
+        let again = record_request(
+            &capsules,
+            &with_nonce(request(None), nonce),
             PEER,
             None,
+            ASKED_AT,
         );
         assert!(
-            matches!(&refused, Err(AskError::Invalid(m)) if m.contains("nonce already used")),
-            "{nonce}: {refused:?}"
+            matches!(&again, Err(AskError::Invalid(m)) if m.contains("nonce already used")),
+            "{nonce}: {again:?}"
         );
     }
+    assert_eq!(records(&capsules).len(), 2);
+
+    // A refusal is judged against the commitment the old record holds.
+    let held = header_of(&capsules, &ids[1])["statement"].clone();
+    let (_, verification) = record_response(
+        &capsules,
+        &ids[1],
+        &digest_of(&held["request"]),
+        &reply(&json!({"reason": "no_such_subject"})),
+        &json!({"state": "refusal", "reason": "no_such_subject"}),
+        "2026-10-29T12:00:02Z",
+    )
+    .unwrap();
+    assert_eq!(verification["policy_check"]["status"], "MISMATCH");
 
     // And a window closes into an absence citing the old record.
-    let absent = evidencebook::ask::record_absence(&mut book, &ids[0], "2026-10-29T12:05:00Z", "");
+    let absent = record_absence(
+        &capsules,
+        &ids[0],
+        "2026-10-29T12:05:00Z",
+        "2026-10-29T12:10:00Z",
+    );
     assert!(absent.is_ok(), "{absent:?}");
+    assert_eq!(
+        cites(&header_of(&capsules, &absent.unwrap().record_id)),
+        vec![ids[0].clone()]
+    );
 }
 
 #[test]

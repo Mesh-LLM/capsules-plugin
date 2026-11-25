@@ -611,7 +611,7 @@ async fn send_once(
         _ => None,
     };
     // A recorded ask goes as its JCS bytes, so the record's digest is the
-    // wire digest (`check_request` has already written it so). Anything
+    // wire digest (`ask_book::record_request` sealed those bytes). Anything
     // else goes as before: an `adjudicate` request carries non-integer
     // numbers, which have no JCS form in `evidence_request::jcs`.
     let request_bytes = match &asked {
