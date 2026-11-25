@@ -664,7 +664,12 @@ fn a_half_the_profiles_chain_stage_refuses_is_refused() {
         "{}",
         r.detail
     );
-    assert!(r.detail.contains("seq position 4"), "{}", r.detail);
+    assert!(
+        r.detail
+            .contains("seq position 4: record after a close whose outcome is final"),
+        "{}",
+        r.detail
+    );
 }
 
 /// Every half the Goose reference produced in an honest run passes the
