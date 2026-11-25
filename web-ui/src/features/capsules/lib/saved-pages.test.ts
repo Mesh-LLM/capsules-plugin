@@ -324,9 +324,12 @@ describe('the receipt page, opened offline', () => {
     // The viewer's receipt is drawn under the lines, its L0 region first.
     const top = doc.querySelector('#result .receipt [data-region="L0"]')?.textContent ?? ''
     expect(top).toContain(
-      "Checked by the page's verifier (agent-action-capsule): graph closure (verified), interval coverage (not checked), per record membership (verified)."
+      "Checked in this browser by the page's verifier (agent-action-capsule): graph closure (verified), interval coverage (not checked), per record membership (verified)."
     )
-    expect(text.split("Checked by the page's verifier").length - 1).toBe(1)
+    expect(text.split("Checked in this browser by the page's verifier").length - 1).toBe(1)
+    expect(text).not.toContain('did not re-check')
+    // No signed field carries the Mesh payer deal's amount, so no Amount card (capsule-viewer#391).
+    expect(top).not.toContain('NOT PRESENT')
     // The plugin seals every deal on rail `lightning` (deal_records.rs RAIL), so
     // the viewer says no test money: it does only when every rail is simulated.
     expect(text).not.toContain('Test money')
