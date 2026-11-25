@@ -2011,6 +2011,9 @@ mod tests {
         let prior = "c".repeat(64);
         for (disposer, prior_head, head) in [
             (Disposer::Person, Some(prior.as_str()), Some("b".repeat(64))),
+            // What `owner_maintenance::history_started` writes: a person's
+            // record citing the prior history, starting a new chain.
+            (Disposer::Person, Some(prior.as_str()), None),
             (Disposer::Plugin, None, None),
         ] {
             let mut facts = Map::new();
