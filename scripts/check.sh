@@ -15,7 +15,7 @@
 #                 directories), and serde_json's nesting limit
 #   mutants K/N   shard K of N of both mutant tables (scripts/mutants.sh,
 #                 scripts/referee-mutants.sh); with no K/N, every shard of
-#                 MUTANT_JOBS (default 4) at once, each in its own target
+#                 MUTANT_JOBS (default 8) at once, each in its own target
 #                 directory cloned from the main one
 #   web-ui        typecheck, unit tests, the bundle build
 #   repo          no keys, vector checksums, the scanner's and the scripts'
@@ -73,7 +73,7 @@ step_mutant_shard() {
 # not wait on each other's cargo lock. Integration-test rows are all in shard
 # 1, so two of them never bind the same ports at once.
 step_mutants_local() {
-  local jobs=${MUTANT_JOBS:-4} k pids=() status=0 base=$crate/target/shards
+  local jobs=${MUTANT_JOBS:-8} k pids=() status=0 base=$crate/target/shards
   (cd "$crate" && cargo test --locked --bins --tests --no-run -q)
   rm -rf "$base"
   for k in $(seq 1 "$jobs"); do
@@ -187,11 +187,8 @@ fi
 # called on the left of `||` would run with errexit off).
 summary=()
 failed=0
-run() {
-  local name=$1 start=$SECONDS rc=0
-  echo "=== $name"
-  bash "$root/scripts/check.sh" "$name" || rc=$?
-  local took=$((SECONDS - start))
+record() {
+  local name=$1 took=$2 rc=$3
   if [ "$rc" = 0 ]; then
     summary+=("$(printf '%-8s %4ss  ok' "$name" "$took")")
   else
@@ -199,11 +196,33 @@ run() {
     failed=1
   fi
 }
+run() {
+  local name=$1 start=$SECONDS rc=0
+  echo "=== $name"
+  bash "$root/scripts/check.sh" "$name" || rc=$?
+  record "$name" $((SECONDS - start)) "$rc"
+}
 
 total_start=$SECONDS
-run repo
-run web-ui
+# repo and web-ui need no cargo, bind no port and write nothing the Rust
+# steps read, so they run beside the rust step; their output follows it.
+side=$(mktemp -d "${TMPDIR:-/tmp}/capsules-check.XXXXXX")
+side_pids=()
+for name in repo web-ui; do
+  ( start=$SECONDS rc=0
+    bash "$root/scripts/check.sh" "$name" > "$side/$name.log" 2>&1 || rc=$?
+    echo "$((SECONDS - start)) $rc" > "$side/$name.rc" ) &
+  side_pids+=($!)
+done
 run rust
+wait "${side_pids[@]}" || true
+for name in repo web-ui; do
+  echo "=== $name (beside rust)"
+  cat "$side/$name.log"
+  read -r took rc < "$side/$name.rc" || { took=- rc=1; }
+  record "$name" "$took" "$rc"
+done
+rm -rf "$side"
 run mutants
 run package
 case "${CHECK_E2E:-}" in

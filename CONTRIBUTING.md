@@ -33,7 +33,7 @@ skips it and says so. One step at a time, as a CI job runs it:
 
 ```bash
 scripts/check.sh rust          # fmt, clippy, unit tests (all threads), interop tests (one at a time)
-scripts/check.sh mutants       # every mutant, in MUTANT_JOBS parallel shards (default 4)
+scripts/check.sh mutants       # every mutant, in MUTANT_JOBS parallel shards (default 8)
 scripts/check.sh mutants 2/6   # one shard, as one CI job runs it
 scripts/check.sh web-ui        # typecheck, unit tests, bundle build
 scripts/check.sh repo          # no keys, vector checksums, scanner and script tests
