@@ -2,9 +2,17 @@
 # Tier 1: runs on every pull request and every push to main, in under ten
 # minutes. See CONTRIBUTING.md for what each tier covers.
 #
+# Each job runs a step of scripts/check.sh, the pre-push check, so a local
+# `scripts/check.sh` runs what these jobs run.
+#
 # Every action is pinned to a full commit SHA (the tag it was taken from is in
 # the trailing comment). The workflow token is read-only and no job here gets a
 # secret, so a pull request from a fork runs exactly what a same-repo one does.
+#
+# The Rust caches are restored on every run and saved only from a push to
+# main, so a pull request never evicts main's entries; a pull request whose
+# Cargo.lock changed starts from main's newest entry for the same job
+# (restore-keys) instead of cold.
 name: ci
 
 on:
@@ -21,8 +29,11 @@ defaults:
   run:
     shell: bash
 
+# A newer push to a pull request cancels its older run. Every other run (a
+# push to main, a manual run) has a group of its own, so each commit on main
+# gets a finished run: a shared group would keep only the newest pending one.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: true
 
 env:
@@ -30,6 +41,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # fmt, clippy and the tests on each platform a node runs on.
   rust:
     name: plugin (${{ matrix.name }})
     strategy:
@@ -43,14 +55,7 @@ jobs:
           - name: macos-arm64
             os: macos-15
     runs-on: ${{ matrix.os }}
-    # linux-x86_64 took 25 minutes on capsules-plugin#227, up from 21 before
-    # the shelf (#213); see capsules-plugin#226. The referee mutants rebuild
-    # the crate once each: ten of them run past 30 minutes on macos-15
-    # (#159's run 41170845628 was cut off at the tenth).
-    timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: crates/evidence-plugin
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -61,53 +66,64 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: clippy, rustfmt
 
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - id: cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             crates/evidence-plugin/target
-          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('crates/evidence-plugin/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ env.RUST_TOOLCHAIN }}-rust-${{ hashFiles('crates/evidence-plugin/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ env.RUST_TOOLCHAIN }}-rust-
 
-      - name: Format
-        run: cargo fmt --check
+      - name: fmt, clippy, tests, serde_json nesting limit
+        run: scripts/check.sh rust
 
-      - name: Clippy
-        run: cargo clippy --locked --all-targets -- -D warnings
+      - if: github.event_name == 'push' && steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/evidence-plugin/target
+          key: ${{ steps.cache.outputs.cache-primary-key }}
 
-      # The interop tests start the compiled plugin against a stand-in host over
-      # mesh-llm's real plugin wire protocol; they share ports and data
-      # directories, so they run one at a time. This includes the conformance
-      # vectors (tests/aac_canonical_vectors.rs, the split-stage cases).
-      - name: Tests
-        run: cargo test --locked -- --test-threads=1
+  # The mutants: each build with one deliberate fault must fail the tests its
+  # table names (gates/mutants.json, vectors/parity/referee/mutants.json).
+  # A mutant checks that the tests catch a fault in platform-independent
+  # logic, so it runs once, on Linux, spread over parallel shards; the shards
+  # of one size hold every row exactly once (scripts/mutant-shards.test.sh,
+  # in the checks job). The shard count is the matrix's size.
+  mutants:
+    name: mutants (${{ matrix.shard }}/${{ strategy.job-total }})
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      # The plugin's mutants (gates/mutants.json): each build with one
-      # deliberate fault must fail the tests the table names for it, and print
-      # what it says. Among them: a receiver built without its claim checks
-      # and a responder built without its sharing-policy gate must each FAIL
-      # their parity runner (vectors/parity/), and a build that serves a
-      # blocked model or a malformed body must fail the stand-in host tests.
-      - name: The tests catch each plugin mutant
-        run: bash ../../scripts/mutants.sh
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master @ 2026-09-12 (the action publishes no release tags)
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
 
-      # The referee's mutants (vectors/parity/referee/mutants.json): each build
-      # with one deliberate fault must fail the referee parity run on every
-      # case listed for it.
-      - name: Referee parity catches each implementation mutant
-        shell: bash
-        run: bash ../../scripts/referee-mutants.sh
+      # The plain test build's cache: each mutant rebuilds only the crate.
+      - id: cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/evidence-plugin/target
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ env.RUST_TOOLCHAIN }}-rust-${{ hashFiles('crates/evidence-plugin/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ env.RUST_TOOLCHAIN }}-rust-
 
-      # serde_json's `unbounded_depth` is for the parity runner's fixture
-      # reader only (a dev-dependency). It must never reach the plugin binary,
-      # where a pushed body is parsed under the default nesting limit.
-      - name: The plugin binary parses with serde_json's default nesting limit
-        shell: bash
-        run: |
-          if cargo tree --locked -e normal,features -i serde_json | grep -q unbounded_depth; then
-            echo "::error::serde_json/unbounded_depth is enabled outside the tests"
-            exit 1
-          fi
+      - name: This shard's mutants
+        run: scripts/check.sh mutants "${{ matrix.shard }}/${{ strategy.job-total }}"
 
   # A Windows node keeps its chain on the same shelf, on the plugin's own
   # lock (LockFileEx there), and moves an earlier release's flat ledger onto
@@ -118,7 +134,7 @@ jobs:
   rust-windows:
     name: plugin (windows-x86_64, chain store and lock)
     runs-on: windows-2025
-    timeout-minutes: 45
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: crates/evidence-plugin
@@ -131,16 +147,27 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - id: cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             crates/evidence-plugin/target
-          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('crates/evidence-plugin/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ env.RUST_TOOLCHAIN }}-windows-${{ hashFiles('crates/evidence-plugin/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ env.RUST_TOOLCHAIN }}-windows-
 
       - name: Chain store, import and lock tests
         run: 'cargo test --locked --bin capsules -- chain_store:: data_dir:: ask_book::'
+
+      - if: github.event_name == 'push' && steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/evidence-plugin/target
+          key: ${{ steps.cache.outputs.cache-primary-key }}
 
   web-ui:
     name: web UI (${{ matrix.name }})
@@ -155,10 +182,7 @@ jobs:
           - name: macos-arm64
             os: macos-15
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: web-ui
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -174,23 +198,12 @@ jobs:
           cache: pnpm
           cache-dependency-path: web-ui/pnpm-lock.yaml
 
-      - name: Install
-        run: pnpm install --frozen-lockfile
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Unit tests
-        run: pnpm test
-
-      - name: Build the bundle (one ES module under ../bundle)
-        run: |
-          pnpm build
-          test "$(ls ../bundle)" = "register-mesh-plugin-ui.js"
+      - name: Install, typecheck, unit tests, bundle build
+        run: scripts/check.sh web-ui
 
   # Repository checks that need no toolchain beyond the runner's own.
   checks:
-    name: no keys, vectors, neutrality scanner
+    name: no keys, vectors, scanner and script tests
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -198,32 +211,22 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: No private keys, tokens or excluded files in the tree
-        run: scripts/no-keys.sh
-
-      - name: Pinned vectors match their checksums
-        working-directory: vectors
-        run: sha256sum -c --quiet SHA256SUMS
-
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "24"
 
-      - name: Neutrality scanner self-test (the scan itself is neutrality.yml)
-        run: node scripts/neutrality-scan.mjs --self-test
+      # No private keys, tokens or excluded files in the tree; the pinned
+      # vectors match their checksums; the neutrality scanner's self-test
+      # and tests (the scan itself is neutrality.yml); the mutant shards.
+      - name: Repository checks
+        run: scripts/check.sh repo
 
-      # The test files are named: a bare directory argument is read as a
-      # module path by some Node versions (24 fails with "Cannot find module"),
-      # and as a directory to search by others.
-      - name: Neutrality scanner tests (never follows a symlink out of the tree)
-        run: node --test scripts/*.test.mjs
-
-  # The release packaging, end to end on a debug build, twice: the two archives
-  # must be byte-identical.
+  # The release packaging, end to end on a debug build, twice per archive
+  # format: the two archives must be byte-identical.
   package:
     name: package (reproducible)
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -233,13 +236,15 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - id: cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             crates/evidence-plugin/target
-          key: ${{ runner.os }}-${{ runner.arch }}-cargo-package-${{ hashFiles('crates/evidence-plugin/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ env.RUST_TOOLCHAIN }}-package-${{ hashFiles('crates/evidence-plugin/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ env.RUST_TOOLCHAIN }}-package-
 
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
@@ -251,30 +256,16 @@ jobs:
           cache: pnpm
           cache-dependency-path: web-ui/pnpm-lock.yaml
 
-      - name: Build
-        run: |
-          cargo build --locked --manifest-path crates/evidence-plugin/Cargo.toml --bin capsules
-          (cd web-ui && pnpm install --frozen-lockfile && pnpm build)
+      # Also: plugin.toml declares min_host_version, and
+      # settlement-report.sh --with-receipts hands report.sh the receipts.
+      - name: Build, package twice per format and compare
+        run: scripts/check.sh package
 
-      - name: plugin.toml declares min_host_version
-        run: scripts/plugin-toml.test.sh
-
-      - name: settlement-report.sh --with-receipts hands report.sh the node's receipts
-        run: scripts/settlement-report-receipts.test.sh
-
-      - name: Package twice and compare
-        env:
-          SOURCE_DATE_EPOCH: "0"
-        run: |
-          version=$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' plugin.toml)
-          bin=crates/evidence-plugin/target/debug/capsules
-          scripts/package.sh "$version" x86_64-unknown-linux-gnu "$bin" out-a
-          scripts/package.sh "$version" x86_64-unknown-linux-gnu "$bin" out-b
-          cmp out-a/*.tar.gz out-b/*.tar.gz
-          tar -tzf out-a/*.tar.gz | sort
-          # The Windows .zip path, with this build standing in for the
-          # Windows executable (only the archive format differs).
-          scripts/package.sh "$version" x86_64-pc-windows-msvc "$bin" zip-a
-          scripts/package.sh "$version" x86_64-pc-windows-msvc "$bin" zip-b
-          cmp zip-a/*.zip zip-b/*.zip
-          unzip -Z1 zip-a/*.zip
+      - if: github.event_name == 'push' && steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/evidence-plugin/target
+          key: ${{ steps.cache.outputs.cache-primary-key }}

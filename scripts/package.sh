@@ -17,7 +17,8 @@
 #                  binary cannot run here (packaging another platform's
 #                  build); by default the binary is run to print it.
 #
-# Needs GNU tar (`tar` on Linux, `gtar` elsewhere), gzip, jq and a sha256 tool,
+# Needs GNU tar and GNU touch (`tar` and `touch` on Linux, `gtar` and `gtouch`
+# elsewhere), gzip, jq and a sha256 tool,
 # and Info-ZIP's zip and unzip for the Windows .zip.
 # The archive is byte-for-byte deterministic for the same inputs: sorted
 # entries, owner 0, fixed modes, mtime SOURCE_DATE_EPOCH (or 0), gzip -n.
@@ -48,6 +49,9 @@ min_host=$("$root/scripts/check-plugin-toml.sh" "$root/plugin.toml") || fail "pl
   fail "bundle/ must hold exactly register-mesh-plugin-ui.js (run pnpm build in web-ui/)"
 
 if command -v gtar >/dev/null 2>&1; then tar=gtar; else tar=tar; fi
+# GNU touch too, for `-d @<epoch>` (the .zip path): `gtouch` where it is not
+# the system one (macOS: brew install coreutils).
+if command -v gtouch >/dev/null 2>&1; then touch=gtouch; else touch=touch; fi
 "$tar" --version 2>/dev/null | grep -q 'GNU tar' || fail "GNU tar is required"
 if command -v sha256sum >/dev/null 2>&1; then sha() { sha256sum "$1"; }; else sha() { shasum -a 256 "$1"; }; fi
 
@@ -85,7 +89,7 @@ if [ "$ext" = zip ]; then
   # raised to 1980-01-01.
   epoch=${SOURCE_DATE_EPOCH:-0}
   [ "$epoch" -ge 315532800 ] || epoch=315532800
-  find "$stage" -exec touch -h -d "@$epoch" {} +
+  find "$stage" -exec "$touch" -h -d "@$epoch" {} +
   zip_out=$(cd "$out" && pwd)/$(basename "$archive")
   rm -f "$zip_out"
   ( cd "$work" && find "$PLUGIN" -type f | LC_ALL=C sort |
