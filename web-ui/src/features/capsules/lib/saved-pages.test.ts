@@ -318,8 +318,15 @@ describe('the receipt page, opened offline', () => {
     expect(doc.querySelector('#result p.warn')?.textContent).toBe("Receipt: this node's receipt only")
     expect(text).toMatch(/\d+ of 3 records in the receipt are tied to a signed checkpoint\./)
     expect(text).not.toContain('stamped by both')
-    // The viewer's provider module draws it under the lines (capsule-viewer#390).
-    expect(doc.querySelector('#result .receipt')?.childElementCount).toBeGreaterThan(0)
+    // The viewer's provider module draws it under the lines (capsule-viewer#390):
+    // its own half, the amounts received and the time served, with no owner's title.
+    const drawn = doc.querySelector('#result .receipt [data-module="capsuleviewer.receipt.provider/v0"]')
+    expect(drawn?.querySelector('[data-provider="own-half"]')?.textContent).toContain(
+      "This is this node's own record of its half of the exchange."
+    )
+    expect(drawn?.textContent).toContain('1,990 msat')
+    expect(drawn?.textContent).toContain('2026-10-30T19:50:00 UTC')
+    expect(doc.querySelector('#result .receipt h1, #result .receipt h2')).toBeNull()
     // A page for anyone: no owner's words.
     for (const owner of ['PRIVATE', 'Do not forward', 'your receipt']) expect(text).not.toContain(owner)
     expect(requested).toEqual([])
