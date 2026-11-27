@@ -18,25 +18,35 @@ Thanks for helping. This file covers how changes are made and what CI checks.
 
 ## Building and testing locally
 
+Before every push, run the pre-push check from the repository root:
+
 ```bash
-# The plugin
-cd crates/evidence-plugin
-cargo fmt --check
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked -- --test-threads=1
-
-# The Evidence page
-cd web-ui
-pnpm install --frozen-lockfile
-pnpm typecheck && pnpm test && pnpm build   # writes ../bundle/register-mesh-plugin-ui.js
-
-# Repository checks
-scripts/no-keys.sh
-scripts/mutants.sh            # each plugin mutant fails its tests (slow)
-scripts/referee-mutants.sh    # each referee mutant fails its cases (slow)
-node --test scripts/*.test.mjs
-(cd vectors && shasum -a 256 -c SHA256SUMS)
+scripts/check.sh
 ```
+
+It runs every step the pull request's CI jobs run (the jobs call the same
+steps), times each, and prints a summary; it exits non-zero if any step
+failed. It always runs the two-node e2e (Tier 2 below), since the pull
+request's e2e job runs on a label as well as on the paths it selects;
+`CHECK_E2E=0` skips it and says so. The steps that share nothing run at the
+same time, so the whole check takes under ten minutes. One step at a time,
+as a CI job runs it:
+
+```bash
+scripts/check.sh rust          # fmt, clippy, unit tests (all threads), interop tests (one at a time)
+scripts/check.sh mutants       # every mutant, in MUTANT_JOBS parallel shards (default 8)
+scripts/check.sh mutants 2/6   # one shard, as one CI job runs it
+scripts/check.sh web-ui        # typecheck, unit tests, bundle build
+scripts/check.sh repo          # no keys, vector checksums, scanner and script tests
+scripts/check.sh package       # the reproducible package, .tar.gz and .zip
+scripts/check.sh e2e           # the two-node run (scripts/e2e.sh)
+```
+
+It needs the pinned Rust toolchain, pnpm and Node 24, python3, jq, GNU tar
+and GNU touch (`brew install gnu-tar coreutils` on macOS), zip and unzip; the
+e2e step also downloads the pinned mesh-llm release for the host (Linux
+x86_64 or macOS arm64) and the model, about 1 GB, into
+`~/.cache/capsules-plugin-e2e`, checked against their pinned SHA-256 every run.
 
 The interop tests run the compiled plugin against a stand-in host over
 mesh-llm's plugin wire protocol, and share ports and directories, so run them
@@ -56,17 +66,23 @@ make install MESH_LLM=/path/to/mesh-llm   # default: mesh-llm on PATH
 
 ### Tier 1: every pull request (target: under 10 minutes)
 
-On Linux x86_64, Linux arm64 and macOS arm64 (`.github/workflows/ci.yml`):
+Each job runs a step of `scripts/check.sh` (`.github/workflows/ci.yml`).
+
+On Linux x86_64, Linux arm64 and macOS arm64:
 
 - `cargo fmt --check`, `cargo clippy -D warnings` and `cargo test` for the
-  plugin, including the conformance vectors in `vectors/`.
-- The mutants: each build with one deliberate fault must fail the tests named
-  for it, in `gates/mutants.json` (`scripts/mutants.sh`) and
-  `vectors/parity/referee/mutants.json` (`scripts/referee-mutants.sh`); and
-  serde_json's `unbounded_depth` must not reach the plugin binary.
+  plugin, including the conformance vectors in `vectors/`; serde_json's
+  `unbounded_depth` must not reach the plugin binary.
 - The web UI: typecheck, unit tests, and the bundle build.
 
 Once, on Linux:
+
+- The mutants: each build with one deliberate fault must fail the tests named
+  for it, in `gates/mutants.json` (`scripts/mutants.sh`) and
+  `vectors/parity/referee/mutants.json` (`scripts/referee-mutants.sh`). A
+  mutant tests that the tests catch a fault in platform-independent logic, so
+  it runs on one platform, spread over parallel jobs (`--shard K/N`; every
+  row in exactly one shard, `scripts/mutant-shards.test.sh`).
 
 - `scripts/no-keys.sh`: no private key or token material in any tracked file,
   and no file that never belongs here (Python, demo or red-team material, key
@@ -155,11 +171,12 @@ in `crates/evidence-plugin/src/two_node_e2e.rs` run over what each node wrote:
   [docs/REAL-HOST-VERIFICATION.md](docs/REAL-HOST-VERIFICATION.md)) pass, and
   fail on a build that serves a blocked model.
 
-The mesh-llm release and the model are pinned by SHA-256 in the workflow and
-cached. It runs on its own, when the pull request is opened, pushed to, reopened or labelled, for a pull
+The run is `scripts/e2e.sh`, which `scripts/check.sh` also runs locally. The
+mesh-llm release and the model are pinned by SHA-256 in `scripts/e2e-inputs.env`
+and cached. It runs on its own, when the pull request is opened, pushed to, reopened or labelled, for a pull
 request that changes the plugin's source, tests or dependencies, anything under `web-ui/`,
-`policies/`, `loop/joins/` or `loop/reporter/`, `scripts/e2e-two-node.sh`, `derivations/` or the
-workflow (the `scope` job reads the changed paths); add the `run-e2e` label to run it on any
+`policies/`, `loop/joins/` or `loop/reporter/`, the run's scripts and pinned inputs, `derivations/` or the
+workflow (`scripts/e2e-scope.sh` reads the changed paths); add the `run-e2e` label to run it on any
 other pull request.
 
 ## Test vectors

@@ -5,9 +5,10 @@
 # change what a node serves or what the History page reads (the `scope` job
 # below). See CONTRIBUTING.md.
 #
-# The mesh-llm release and the model are pinned by SHA-256 below and checked
-# after every download and every cache restore, so a cache entry can never
-# stand in for a different file. Only this workflow's runner downloads them.
+# The run itself is scripts/e2e.sh, which scripts/check.sh also runs locally.
+# The mesh-llm release and the model are pinned by SHA-256 in
+# scripts/e2e-inputs.env and checked after every download and every cache
+# restore, so a cache entry can never stand in for a different file.
 #
 # Every action is pinned to a full commit SHA (the tag it was taken from is in
 # the trailing comment). The workflow token is read-only and no job here gets a
@@ -31,21 +32,15 @@ defaults:
   run:
     shell: bash
 
+# A newer push to a pull request cancels its older run; every other run has a
+# group of its own (see ci.yml).
 concurrency:
-  group: e2e-${{ github.ref }}
+  group: e2e-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: true
 
 env:
   RUST_TOOLCHAIN: "1.97.1"
   CARGO_TERM_COLOR: always
-  # mesh-llm v0.79.0, Linux x86_64, CPU build: the unmodified release.
-  MESH_LLM_VERSION: "0.79.0"
-  MESH_LLM_ASSET: mesh-llm-v0.79.0-x86_64-unknown-linux-gnu.tar.gz
-  MESH_LLM_SHA256: ff0da25ce17d582f270c97a5816dab829cee2d1ed7b3cfa57ecc9ed3121a3e3e
-  # Qwen2.5-0.5B-Instruct, Q4_K_M GGUF (491 MB), at a fixed repository revision.
-  MODEL_FILE: qwen2.5-0.5b-instruct-q4_k_m.gguf
-  MODEL_URL: https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/9217f5db79a29953eb74d5343926648285ec7e67/qwen2.5-0.5b-instruct-q4_k_m.gguf
-  MODEL_SHA256: 74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
 
 jobs:
   # Whether the two-node run is needed: always except on a pull request, where
@@ -53,9 +48,8 @@ jobs:
   # what a node serves or what the History page reads (the plugin's source,
   # tests and dependencies, the web UI and its dependencies, the policy files
   # and the join texts the binary embeds, the run's script, the definition
-  # documents, this workflow). The History page regression of #303 reached
-  # main because the job ran only on the label. Paths are read from git with
-  # the base branch passed as data, never into the script text.
+  # documents, this workflow): scripts/e2e-scope.sh. Paths are read from git
+  # with the base branch passed as data, never into the script text.
   scope:
     name: scope of the two-node run
     runs-on: ubuntu-24.04
@@ -79,12 +73,7 @@ jobs:
           if [ "$EVENT" != pull_request ] || [ "$LABELED" = true ]; then
             run=true
           else
-            # Read into a variable first: `grep -q` closing a pipe early would fail
-            # `git diff` with SIGPIPE under pipefail.
-            changed=$(git diff --name-only "origin/$BASE...HEAD")
-            if grep -Eq '^(crates/evidence-plugin/(src/|tests/|Cargo\.(toml|lock)$)|web-ui/|policies/|loop/(joins|reporter)/|scripts/e2e-two-node\.sh$|derivations/|\.github/workflows/e2e\.yml$)' <<< "$changed"; then
-              run=true
-            fi
+            run=$(scripts/e2e-scope.sh "origin/$BASE")
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
           echo "two-node run: $run"
@@ -95,7 +84,7 @@ jobs:
     # Nightly, by hand, or on a pull request the scope job selects.
     if: needs.scope.outputs.run == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -105,54 +94,41 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - id: cargo-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             crates/evidence-plugin/target
-          key: ${{ runner.os }}-${{ runner.arch }}-cargo-e2e-${{ hashFiles('crates/evidence-plugin/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ env.RUST_TOOLCHAIN }}-e2e-${{ hashFiles('crates/evidence-plugin/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ env.RUST_TOOLCHAIN }}-e2e-
 
-      # Keyed on the pinned digests: a new pin is a new entry.
-      - name: Restore the pinned mesh-llm release and model
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      # The pinned inputs (scripts/e2e-inputs.env), each cached under its own
+      # digest: a new mesh-llm pin keeps the model's entry, and the reverse.
+      - id: pins
+        run: |
+          . scripts/e2e-inputs.env
+          {
+            echo "mesh-file=$MESH_LLM_ASSET_LINUX_X86_64"
+            echo "mesh-sha=$MESH_LLM_SHA256_LINUX_X86_64"
+            echo "model-file=$MODEL_FILE"
+            echo "model-sha=$MODEL_SHA256"
+          } >> "$GITHUB_OUTPUT"
+
+      - id: mesh-cache
+        name: Restore the pinned mesh-llm release
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: ~/e2e-inputs
-          key: e2e-inputs-${{ env.MESH_LLM_SHA256 }}-${{ env.MODEL_SHA256 }}
+          path: ~/e2e-inputs/${{ steps.pins.outputs.mesh-file }}
+          key: e2e-mesh-llm-${{ steps.pins.outputs.mesh-sha }}
 
-      - name: Download what is missing, then check both digests
-        run: |
-          mkdir -p ~/e2e-inputs
-          cd ~/e2e-inputs
-          if [ ! -f "$MESH_LLM_ASSET" ]; then
-            curl -fsSL --retry 3 -o "$MESH_LLM_ASSET" \
-              "https://github.com/Mesh-LLM/mesh-llm/releases/download/v$MESH_LLM_VERSION/$MESH_LLM_ASSET"
-          fi
-          if [ ! -f "$MODEL_FILE" ]; then
-            curl -fsSL --retry 3 -o "$MODEL_FILE" "$MODEL_URL"
-          fi
-          printf '%s  %s\n%s  %s\n' \
-            "$MESH_LLM_SHA256" "$MESH_LLM_ASSET" \
-            "$MODEL_SHA256" "$MODEL_FILE" | sha256sum -c -
-          ls -l ~/e2e-inputs
-
-      - name: Unpack mesh-llm
-        run: |
-          mkdir -p ~/mesh-llm
-          tar -xzf ~/e2e-inputs/"$MESH_LLM_ASSET" -C ~/mesh-llm
-          # The archive holds one directory, mesh-bundle/: the binary and the
-          # native runtime it finds beside itself. Keep them together.
-          test -x ~/mesh-llm/mesh-bundle/mesh-llm
-          echo "MESH_LLM_BIN=$HOME/mesh-llm/mesh-bundle/mesh-llm" >> "$GITHUB_ENV"
-
-      - name: Build the plugin and the scenario checks
-        working-directory: crates/evidence-plugin
-        run: |
-          # test-period-policy: the Service History step runs two-minute
-          # periods instead of weekly ones. No release build enables it.
-          cargo build --locked --features test-period-policy --bin capsules
-          cargo test --locked --bin capsules --no-run
-          cargo test --locked --bin capsules --features test-period-policy --no-run
+      - id: model-cache
+        name: Restore the pinned model
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/e2e-inputs/${{ steps.pins.outputs.model-file }}
+          key: e2e-model-${{ steps.pins.outputs.model-sha }}
 
       # The script opens the History pages the nodes served with web-ui's
       # own test runner, so web-ui's dependencies are installed first.
@@ -170,54 +146,38 @@ jobs:
         working-directory: web-ui
         run: pnpm install --frozen-lockfile
 
-      - name: Two nodes, three exchanges, a third node corroborates, then the scenario checks
-        env:
-          E2E_OUT: ${{ runner.temp }}/e2e
-        run: |
-          scripts/e2e-two-node.sh "$MESH_LLM_BIN" \
-            crates/evidence-plugin/target/debug/capsules \
-            "$HOME/e2e-inputs/$MODEL_FILE" "$E2E_OUT"
+      # Downloads what the cache lacks and checks both digests; builds the
+      # plugin; two nodes, three exchanges, a third node corroborates, then
+      # the scenario checks; attacks B and D against a receiver built without
+      # its claim checks; the real-host tests and the blocked-model mutant
+      # through the real host.
+      - name: The two-node run (scripts/e2e.sh)
+        run: scripts/e2e.sh ~/e2e-inputs "$RUNNER_TEMP/e2e"
 
-      # The same checks over the same run, against a receiver built without
-      # its claim checks: attacks B and D must then FAIL, which shows they test
-      # the receiver and not only the data. The mutant must build first, so a
-      # compile error can never pass as "the mutant was caught".
-      - name: Attacks B and D catch a receiver that skips its claim checks
-        working-directory: crates/evidence-plugin
-        env:
-          E2E_REQUESTER_DIR: ${{ runner.temp }}/e2e/data/requester
-          E2E_PROVIDER_DIR: ${{ runner.temp }}/e2e/data/provider
-          E2E_EXCHANGES: "3"
-        run: |
-          cargo test --locked --bin capsules --features mutant-record-push-skips-claims --no-run
-          if out=$(cargo test --locked --bin capsules --features mutant-record-push-skips-claims \
-              -- --ignored --test-threads=1 two_node_e2e::attack_ 2>&1); then
-            echo "::error::the attack checks passed a receiver that skips the claim checks"
-            exit 1
-          fi
-          for attack in attack_b_ attack_d_; do
-            grep -q "two_node_e2e::${attack}[a-z_]* \.\.\. FAILED" <<<"$out" \
-              || { echo "$out"; echo "::error::the mutant was not caught by ${attack%_}"; exit 1; }
-          done
+      # Saved only from a run that is not a pull request's (nightly, by hand),
+      # so a pull request never evicts the default branch's entries; even
+      # from a failed run, since scripts/e2e.sh names a download only once
+      # its digest matches (a file it never fetched is skipped with a warning).
+      - if: always() && github.event_name != 'pull_request' && steps.mesh-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/e2e-inputs/${{ steps.pins.outputs.mesh-file }}
+          key: ${{ steps.mesh-cache.outputs.cache-primary-key }}
 
-      # The plugin under the real host (tests/host_runtime_e2e.rs, ignored
-      # unless MESH_LLM_HOST_BIN is set), then a build that serves a blocked
-      # model, which the real host's routing must not hide: the blocked-model
-      # case must FAIL. Last, because the mutant build replaces the executable
-      # the steps above ran.
-      - name: Real-host tests, and the blocked-model mutant through the real host
-        working-directory: crates/evidence-plugin
-        run: |
-          export MESH_LLM_HOST_BIN="$MESH_LLM_BIN"
-          cargo test --locked --test host_runtime_e2e -- --ignored --test-threads=1
-          cargo test --locked --test host_runtime_e2e --features mutant-blocked-model-served --no-run
-          if out=$(cargo test --locked --test host_runtime_e2e --features mutant-blocked-model-served \
-              -- --ignored --test-threads=1 denies_blocked_model_end_to_end_through_real_host 2>&1); then
-            echo "::error::the real-host tests passed a build that serves a blocked model"
-            exit 1
-          fi
-          grep -q "denies_blocked_model_end_to_end_through_real_host \.\.\. FAILED" <<<"$out" \
-            || { echo "$out"; echo "::error::the mutant failed, but not on the blocked-model case"; exit 1; }
+      - if: always() && github.event_name != 'pull_request' && steps.model-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/e2e-inputs/${{ steps.pins.outputs.model-file }}
+          key: ${{ steps.model-cache.outputs.cache-primary-key }}
+
+      - if: github.event_name != 'pull_request' && steps.cargo-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/evidence-plugin/target
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
 
       # The node logs only: never the data directories, which hold each
       # node's signing key.

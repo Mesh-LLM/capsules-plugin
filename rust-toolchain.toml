@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# The toolchain CI pins (RUST_TOOLCHAIN in .github/workflows/*.yml, checked
+# equal by scripts/check.sh repo), so a local clippy sees the same lints.
+[toolchain]
+channel = "1.97.1"
+components = ["clippy", "rustfmt"]
