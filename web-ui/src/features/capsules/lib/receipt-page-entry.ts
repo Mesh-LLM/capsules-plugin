@@ -9,7 +9,7 @@
 import { receiptPageLines, renderReceipt } from '@action-state-group/capsule-viewer/receipt'
 
 const PAGE = { carrier: 'page' } as const
-import { checkUnmoduledBundle, receiptLines } from '@/features/capsules/lib/receipt-view'
+import { receiptLines } from '@/features/capsules/lib/receipt-view'
 
 export type ReceiptPageLines = {
   /** The page's style for the first line: `ok` only for a receipt stamped by
@@ -20,9 +20,8 @@ export type ReceiptPageLines = {
 
 /** Check `bundleText` and draw the receipt into `host` (emptied unless the
  *  receipt checked and a receipt module draws it), once; give the lines the
- *  page shows above it. A bundle no receipt module draws (the provider's
- *  served half, until capsule-viewer#390) gets the row's own check and no
- *  drawing. */
+ *  page shows above it. A bundle that verified but that no receipt module
+ *  draws gets the row's not-drawn lines (Sherlock2 on #398) and no drawing. */
 export async function receiptPage(bundleText: string, host: HTMLElement): Promise<ReceiptPageLines> {
   // The viewer reads an unreadable bundle as did_not_verify itself; anything
   // it throws comes after the bundle verified (drawing it), so it is no
@@ -30,9 +29,8 @@ export async function receiptPage(bundleText: string, host: HTMLElement): Promis
   const result = await renderReceipt(bundleText, host, PAGE)
   if (result.kind === 'no_module') {
     host.replaceChildren()
-    const lines = receiptLines(await checkUnmoduledBundle(bundleText), PAGE)
-    // checkUnmoduledBundle gives only views receiptLines answers.
-    return lines ?? { tone: 'bad', lines: [] }
+    // receiptLines answers every not-drawn view.
+    return receiptLines({ kind: 'not_drawn', bundleText }, PAGE) ?? { tone: 'bad', lines: [] }
   }
   // Every result but no_module has lines.
   return receiptPageLines(result, PAGE) ?? { tone: 'bad', lines: [] }
