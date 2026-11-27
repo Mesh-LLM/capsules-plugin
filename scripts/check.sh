@@ -5,8 +5,7 @@
 # steps, so a local pass covers what the pull request's run checks, and a push
 # never waits on GitHub to find out.
 #
-#   scripts/check.sh             every step below, timed; e2e when the change
-#                                needs it (scripts/e2e-scope.sh)
+#   scripts/check.sh             every step below, timed
 #   scripts/check.sh STEP [ARG]  one step, as a CI job runs it
 #
 # Steps:
@@ -23,10 +22,10 @@
 #   package       the reproducible package, .tar.gz and .zip, each built twice
 #   e2e           scripts/e2e.sh: the two-node run with the pinned mesh-llm
 #
-# Environment: CHECK_E2E=1 runs the e2e step whatever the scope says, 0
-# skips it (reported as NOT RUN); CHECK_BASE names the ref the change is
-# measured against for the scope (default: main of the remote that points at
-# Mesh-LLM/capsules-plugin, fetched first).
+# Environment: CHECK_E2E=0 skips the e2e step (reported as NOT RUN): on a
+# host with no pinned mesh-llm release, say. It runs by default, whatever
+# the change: the pull request's e2e job may run on a label as well as on the
+# paths scripts/e2e-scope.sh selects, which a local run cannot know.
 #
 # Needs: rustup's pinned toolchain, pnpm and Node 24, python3, jq, GNU tar and
 # GNU touch (gtar, gtouch on macOS), zip and unzip; for e2e, curl and about
@@ -74,6 +73,9 @@ step_mutant_shard() {
 # 1, so two of them never bind the same ports at once.
 step_mutants_local() {
   local jobs=${MUTANT_JOBS:-8} k pids=() status=0 base=$crate/target/shards
+  case "$jobs" in
+    ''|*[!0-9]*|0*) echo "check: MUTANT_JOBS=$jobs: want a positive integer" >&2; return 2 ;;
+  esac
   (cd "$crate" && cargo test --locked --bins --tests --no-run -q)
   rm -rf "$base"
   for k in $(seq 1 "$jobs"); do
@@ -83,6 +85,10 @@ step_mutants_local() {
     else
       cp -R --reflink=auto "$crate/target/debug" "$base/$k/debug"
     fi
+  done
+  # The clones are made: the main target directory is free for other steps.
+  if [ -n "${CHECK_MUTANTS_CLONED:-}" ]; then touch "$CHECK_MUTANTS_CLONED"; fi
+  for k in $(seq 1 "$jobs"); do
     CARGO_TARGET_DIR=$base/$k step_mutant_shard "$k/$jobs" > "$base/$k.log" 2>&1 &
     pids+=($!)
   done
@@ -160,17 +166,6 @@ step_package() {
 
 step_e2e() { scripts/e2e.sh; }
 
-# The ref the change is measured against for the e2e scope: main of the
-# remote that points at this repository, fetched, unless CHECK_BASE names it.
-e2e_base() {
-  if [ -n "${CHECK_BASE:-}" ]; then echo "$CHECK_BASE"; return; fi
-  local remote
-  remote=$(git remote -v | awk '$2 ~ /github\.com[:\/]Mesh-LLM\/capsules-plugin(\.git)?$/ && $3 == "(fetch)" { print $1; exit }')
-  [ -n "$remote" ] || { echo "check: no remote points at Mesh-LLM/capsules-plugin; set CHECK_BASE" >&2; return 1; }
-  git fetch -q "$remote" main
-  echo "$remote/main"
-}
-
 if [ $# -gt 0 ]; then
   step=$1
   shift
@@ -204,41 +199,53 @@ run() {
 }
 
 total_start=$SECONDS
-# repo and web-ui need no cargo, bind no port and write nothing the Rust
-# steps read, so they run beside the rust step; their output follows it.
 side=$(mktemp -d "${TMPDIR:-/tmp}/capsules-check.XXXXXX")
 side_pids=()
-for name in repo web-ui; do
+# Start a step in the background, its output kept for collect.
+beside() {
+  local name=$1
   ( start=$SECONDS rc=0
     bash "$root/scripts/check.sh" "$name" > "$side/$name.log" 2>&1 || rc=$?
     echo "$((SECONDS - start)) $rc" > "$side/$name.rc" ) &
   side_pids+=($!)
-done
+}
+collect() {
+  local name took rc
+  for name in "$@"; do
+    echo "=== $name (in parallel)"
+    cat "$side/$name.log"
+    read -r took rc < "$side/$name.rc" || { took=- rc=1; }
+    record "$name" "$took" "$rc"
+  done
+}
+
+# repo and web-ui need no cargo, bind no port and write nothing the Rust
+# steps read, so they run beside the rust step.
+beside repo
+beside web-ui
 run rust
 wait "${side_pids[@]}" || true
-for name in repo web-ui; do
-  echo "=== $name (beside rust)"
-  cat "$side/$name.log"
-  read -r took rc < "$side/$name.rc" || { took=- rc=1; }
-  record "$name" "$took" "$rc"
-done
-rm -rf "$side"
-run mutants
+collect repo web-ui
+
+# The mutants build in their own target directories, cloned from the main
+# one, and their interop rows talk over Unix sockets in their own temporary
+# directories, so once the clones exist they run beside package and e2e
+# (which bind TCP ports 9401-9413 and rebuild the main target).
+side_pids=()
+export CHECK_MUTANTS_CLONED=$side/mutants.cloned
+beside mutants
+mutants_pid=${side_pids[0]}
+while [ ! -e "$CHECK_MUTANTS_CLONED" ] && kill -0 "$mutants_pid" 2>/dev/null; do sleep 1; done
+unset CHECK_MUTANTS_CLONED
 run package
-case "${CHECK_E2E:-}" in
-  1) run e2e ;;
-  0) summary+=("$(printf '%-8s %5s  NOT RUN (CHECK_E2E=0)' e2e -)") ;;
-  *)
-    if base=$(e2e_base) && [ "$(scripts/e2e-scope.sh "$base")" = true ]; then
-      run e2e
-    elif [ -n "${base:-}" ]; then
-      summary+=("$(printf '%-8s %5s  not needed (no change against %s that it covers)' e2e - "$base")")
-    else
-      summary+=("$(printf '%-8s %5s  FAILED (no base for the scope)' e2e -)")
-      failed=1
-    fi
-    ;;
-esac
+if [ "${CHECK_E2E:-1}" = 0 ]; then
+  summary+=("$(printf '%-8s %5s  NOT RUN (CHECK_E2E=0)' e2e -)")
+else
+  run e2e
+fi
+wait "$mutants_pid" || true
+collect mutants
+rm -rf "$side"
 
 echo
 echo "=== summary"

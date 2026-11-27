@@ -104,13 +104,31 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ env.RUST_TOOLCHAIN }}-e2e-${{ hashFiles('crates/evidence-plugin/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ env.RUST_TOOLCHAIN }}-e2e-
 
-      # Keyed on the pinned inputs: a new pin is a new entry.
-      - id: inputs-cache
-        name: Restore the pinned mesh-llm release and model
+      # The pinned inputs (scripts/e2e-inputs.env), each cached under its own
+      # digest: a new mesh-llm pin keeps the model's entry, and the reverse.
+      - id: pins
+        run: |
+          . scripts/e2e-inputs.env
+          {
+            echo "mesh-file=$MESH_LLM_ASSET_LINUX_X86_64"
+            echo "mesh-sha=$MESH_LLM_SHA256_LINUX_X86_64"
+            echo "model-file=$MODEL_FILE"
+            echo "model-sha=$MODEL_SHA256"
+          } >> "$GITHUB_OUTPUT"
+
+      - id: mesh-cache
+        name: Restore the pinned mesh-llm release
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: ~/e2e-inputs
-          key: e2e-inputs-${{ hashFiles('scripts/e2e-inputs.env') }}
+          path: ~/e2e-inputs/${{ steps.pins.outputs.mesh-file }}
+          key: e2e-mesh-llm-${{ steps.pins.outputs.mesh-sha }}
+
+      - id: model-cache
+        name: Restore the pinned model
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/e2e-inputs/${{ steps.pins.outputs.model-file }}
+          key: e2e-model-${{ steps.pins.outputs.model-sha }}
 
       # The script opens the History pages the nodes served with web-ui's
       # own test runner, so web-ui's dependencies are installed first.
@@ -137,12 +155,20 @@ jobs:
         run: scripts/e2e.sh ~/e2e-inputs "$RUNNER_TEMP/e2e"
 
       # Saved only from a run that is not a pull request's (nightly, by hand),
-      # so a pull request never evicts the default branch's entries.
-      - if: always() && github.event_name != 'pull_request' && steps.inputs-cache.outputs.cache-hit != 'true'
+      # so a pull request never evicts the default branch's entries; even
+      # from a failed run, since scripts/e2e.sh names a download only once
+      # its digest matches (a file it never fetched is skipped with a warning).
+      - if: always() && github.event_name != 'pull_request' && steps.mesh-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: ~/e2e-inputs
-          key: ${{ steps.inputs-cache.outputs.cache-primary-key }}
+          path: ~/e2e-inputs/${{ steps.pins.outputs.mesh-file }}
+          key: ${{ steps.mesh-cache.outputs.cache-primary-key }}
+
+      - if: always() && github.event_name != 'pull_request' && steps.model-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/e2e-inputs/${{ steps.pins.outputs.model-file }}
+          key: ${{ steps.model-cache.outputs.cache-primary-key }}
 
       - if: github.event_name != 'pull_request' && steps.cargo-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0

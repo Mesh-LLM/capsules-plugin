@@ -26,10 +26,11 @@ scripts/check.sh
 
 It runs every step the pull request's CI jobs run (the jobs call the same
 steps), times each, and prints a summary; it exits non-zero if any step
-failed. It runs the two-node e2e (Tier 2 below) when the change needs it, by
-the same rule as CI (`scripts/e2e-scope.sh`, against `main` of the remote that
-points at Mesh-LLM/capsules-plugin); `CHECK_E2E=1` forces it, `CHECK_E2E=0`
-skips it and says so. One step at a time, as a CI job runs it:
+failed. It always runs the two-node e2e (Tier 2 below), since the pull
+request's e2e job runs on a label as well as on the paths it selects;
+`CHECK_E2E=0` skips it and says so. The steps that share nothing run at the
+same time, so the whole check takes under ten minutes. One step at a time,
+as a CI job runs it:
 
 ```bash
 scripts/check.sh rust          # fmt, clippy, unit tests (all threads), interop tests (one at a time)

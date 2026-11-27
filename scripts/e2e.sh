@@ -7,9 +7,10 @@
 #   scripts/e2e.sh [INPUTS_DIR [OUT_DIR]]
 #
 # INPUTS_DIR (default $E2E_INPUTS, else ~/.cache/capsules-plugin-e2e) keeps the
-# pinned mesh-llm release for this host and the model (scripts/e2e-inputs.env);
-# what is missing is downloaded, and both are checked against their SHA-256
-# every run, so a cached file can never stand in for a different one.
+# pinned mesh-llm release for this host and the model (scripts/e2e-inputs.env).
+# Both are checked against their SHA-256 every run: a file that is missing or
+# does not match is downloaded again, and a download takes its final name only
+# once it matches, so a cache never keeps a wrong file.
 # OUT_DIR (default $E2E_OUT, else a new temporary directory) gets the node
 # logs (logs/) and their homes (nodes/, data/, holding each node's signing
 # key: never upload it). Needs web-ui's dependencies (`pnpm install`).
@@ -31,21 +32,23 @@ esac
 inputs=${1:-${E2E_INPUTS:-$HOME/.cache/capsules-plugin-e2e}}
 out=${2:-${E2E_OUT:-$(mktemp -d "${TMPDIR:-/tmp}/capsules-e2e.XXXXXX")}}
 mkdir -p "$inputs" "$out"
+inputs=$(cd "$inputs" && pwd) out=$(cd "$out" && pwd)
 echo "e2e: inputs $inputs, output $out"
 
 sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
 
-# Download what is missing, then check both digests.
-if [ ! -f "$inputs/$asset" ]; then
-  curl -fsSL --retry 3 -o "$inputs/$asset.part" \
-    "https://github.com/Mesh-LLM/mesh-llm/releases/download/v$MESH_LLM_VERSION/$asset"
-  mv "$inputs/$asset.part" "$inputs/$asset"
-fi
-if [ ! -f "$inputs/$MODEL_FILE" ]; then
-  curl -fsSL --retry 3 -o "$inputs/$MODEL_FILE.part" "$MODEL_URL"
-  mv "$inputs/$MODEL_FILE.part" "$inputs/$MODEL_FILE"
-fi
-(cd "$inputs" && printf '%s  %s\n%s  %s\n' "$sha" "$asset" "$MODEL_SHA256" "$MODEL_FILE" | sha256 -c -)
+matches() { [ -f "$1" ] && [ "$(sha256 "$1" | cut -d' ' -f1)" = "$2" ]; }
+# fetch FILE URL SHA256: keep FILE if it matches, else download and check it.
+fetch() {
+  local file=$inputs/$1
+  matches "$file" "$3" && return
+  rm -f "$file"
+  curl -fsSL --retry 3 -o "$file.part" "$2"
+  matches "$file.part" "$3" || { rm -f "$file.part"; echo "e2e: $2 does not match SHA-256 $3" >&2; exit 1; }
+  mv "$file.part" "$file"
+}
+fetch "$asset" "https://github.com/Mesh-LLM/mesh-llm/releases/download/v$MESH_LLM_VERSION/$asset" "$sha"
+fetch "$MODEL_FILE" "$MODEL_URL" "$MODEL_SHA256"
 
 # Unpack mesh-llm. The archive holds one directory, mesh-bundle/: the binary
 # and the native runtime it finds beside itself. Keep them together.
