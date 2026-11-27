@@ -7,6 +7,7 @@ import { SaveReceiptPage } from '@/features/capsules/components/SaveReceiptPage'
 import type { PaneCRow } from '@/features/capsules/api/sidecarTypes'
 import { NO_PAID_DEAL_WHY, UNNAMED_DEAL_WHY } from '@/features/capsules/lib/saved-pages'
 import producerSelected from '@/features/capsules/lib/receipt-fixtures/producer-selected.bundle.json'
+import meshProviderFailed from '@/features/capsules/lib/receipt-fixtures/mesh-provider-failed.bundle.json'
 import { embeddedBundle } from '@/lib/test/open-saved-page'
 
 const payerRow = {
@@ -57,6 +58,22 @@ describe('SaveReceiptPage', () => {
     expect(saved[0].name).toMatch(/^mesh-receipt-ex-1-\d{8}T\d{6}\.html$/)
     const html = await saved[0].blob.text()
     expect(Buffer.from(embeddedBundle(html)).toString('utf8')).toBe(served)
+  })
+
+  it('saves a FAILED provider row\'s bundle from the provider route, not "no receipt yet" (#399)', async () => {
+    const served = JSON.stringify(meshProviderFailed)
+    const fetchSpy = routeAnswers({ state: 'bundle', bundle: served })
+    const saved = capture()
+    const row = {
+      role_tag: 'FAILED',
+      mine: { state: 'ok', capsule_id: null },
+      provider_settlement: { observed_by: 'provider', state: 'settled', terms_digests: [], entries: [], exchange_ids: ['p-ex'] }
+    } as unknown as PaneCRow
+    render(<SaveReceiptPage exchangeKey="ex-9" row={row} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Save receipt page' }))
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(String(fetchSpy.mock.calls[0][0])).toContain('http/provider-receipt-bundle?exchange_id=p-ex')
+    expect(Buffer.from(embeddedBundle(await saved[0].blob.text())).toString('utf8')).toBe(served)
   })
 
   it('saves the "no record" page for a row with no paid deal, asking the node nothing', async () => {

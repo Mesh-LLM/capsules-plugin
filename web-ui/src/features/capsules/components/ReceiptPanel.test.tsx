@@ -22,6 +22,10 @@ import meshPayerDeal from '@/features/capsules/lib/receipt-fixtures/mesh-payer-d
 // payee legs, copied unchanged from capsule-viewer's
 // tests/testdata/receipt/mesh-provider-selected.bundle.json (capsule-viewer#390).
 import meshProviderSelected from '@/features/capsules/lib/receipt-fixtures/mesh-provider-selected.bundle.json'
+// A provider paid for an exchange that failed, as the same route cuts it: the
+// bundle `provider_receipt::tests::a_paid_failed_exchange_roots_its_bundle_at_the_failed_record`
+// writes with PROVIDER_FAILED_BUNDLE_OUT set (#399): its failed record and two payee legs.
+import meshProviderFailed from '@/features/capsules/lib/receipt-fixtures/mesh-provider-failed.bundle.json'
 
 const EXCHANGE_RECORD = 'ab'.repeat(32)
 
@@ -42,6 +46,8 @@ const providerRow = {
     exchange_ids: ['ex-1']
   }
 } as unknown as PaneCRow
+
+const failedProviderRow = { ...providerRow, role_tag: 'FAILED' } as unknown as PaneCRow
 
 /** Answer the receipt route with `body`, and remember the path asked. */
 function routeAnswers(body: unknown, ok = true, status = 200) {
@@ -89,6 +95,15 @@ describe('ReceiptPanel', () => {
   it('shows "your receipt only" for the provider receipt, asked by the host exchange id', async () => {
     const fetchSpy = routeAnswers({ state: 'bundle', bundle: JSON.stringify(meshProviderSelected) })
     render(<ReceiptPanel row={providerRow} />)
+    await check()
+    await screen.findByText('Receipt: your receipt only')
+    expect(screen.getByText(/of 3 records in the receipt are tied to a signed checkpoint/)).toBeInTheDocument()
+    expect(String(fetchSpy.mock.calls[0][0])).toContain('http/provider-receipt-bundle?exchange_id=ex-1')
+  })
+
+  it('checks a failed exchange\'s provider receipt on a FAILED row, asked by the host exchange id (#399)', async () => {
+    const fetchSpy = routeAnswers({ state: 'bundle', bundle: JSON.stringify(meshProviderFailed) })
+    render(<ReceiptPanel row={failedProviderRow} />)
     await check()
     await screen.findByText('Receipt: your receipt only')
     expect(screen.getByText(/of 3 records in the receipt are tied to a signed checkpoint/)).toBeInTheDocument()
@@ -310,6 +325,16 @@ describe('the receipt check (capsule-viewer\'s receipt export, #376)', () => {
     })
   })
 
+  it('checks a failed exchange\'s provider receipt with the viewer\'s provider module (#399, capsule-viewer#465)', async () => {
+    const view = await checkReceiptBundle(JSON.stringify(meshProviderFailed))
+    expect(view).toMatchObject({
+      kind: 'checked',
+      case: 'one_sided',
+      module: 'capsuleviewer.receipt.provider/v0',
+      records: { total: 3 }
+    })
+  })
+
   it('places a verified bundle no receipt module draws as not drawn, keeping its bytes', async () => {
     const bundleText = JSON.stringify(producerSelected)
     expect(await checkReceiptBundle(bundleText)).toEqual({ kind: 'not_drawn', bundleText })
@@ -328,6 +353,10 @@ describe('receiptRequest', () => {
   it('names the payer route by the exchange record and the provider route by the host exchange id', () => {
     expect(receiptRequest(payerRow)).toEqual({ side: 'payer', capsuleId: EXCHANGE_RECORD })
     expect(receiptRequest(providerRow)).toEqual({ side: 'provider', exchangeId: 'ex-1' })
+    // A provider paid for an exchange that failed asks the same route (#399);
+    // a payer's failed row has no provider book and asks nothing.
+    expect(receiptRequest(failedProviderRow)).toEqual({ side: 'provider', exchangeId: 'ex-1' })
+    expect(receiptRequest({ ...payerRow, role_tag: 'FAILED' } as unknown as PaneCRow)).toBeNull()
     expect(receiptPath({ side: 'provider', exchangeId: 'a b' })).toBe('http/provider-receipt-bundle?exchange_id=a%20b')
   })
 })

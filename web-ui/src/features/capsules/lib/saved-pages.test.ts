@@ -14,6 +14,8 @@ import producerSelected from '@/features/capsules/lib/receipt-fixtures/producer-
 import meshPayerDeal from '@/features/capsules/lib/receipt-fixtures/mesh-payer-deal.bundle.json'
 // A provider's own receipt as the plugin's own route cuts it (see ReceiptPanel.test.tsx).
 import meshProviderSelected from '@/features/capsules/lib/receipt-fixtures/mesh-provider-selected.bundle.json'
+// A provider paid for an exchange that failed, cut by the same route (#399).
+import meshProviderFailed from '@/features/capsules/lib/receipt-fixtures/mesh-provider-failed.bundle.json'
 import { NOT_DRAWN_LINES } from '@/features/capsules/lib/receipt-view'
 import { embeddedBundle as embedded, openSavedPage as open, savedBytes } from '@/lib/test/open-saved-page'
 
@@ -331,6 +333,25 @@ describe('the receipt page, opened offline', () => {
     for (const owner of ['PRIVATE', 'Do not forward', 'your receipt']) expect(text).not.toContain(owner)
     expect(requested).toEqual([])
     expect((await savedBytes(dom)).equals(Buffer.from(provider, 'utf8'))).toBe(true)
+  })
+
+  it('draws a failed exchange\'s provider receipt as failed with the viewer\'s module, carrying its bundle (#399)', async () => {
+    const failed = JSON.stringify(meshProviderFailed)
+    const { html } = receiptPage({ kind: 'bundle', bundleText: failed }, 'ex-9', SAVED)
+    expect(Buffer.from(embedded(html)).equals(Buffer.from(failed, 'utf8'))).toBe(true)
+
+    const { dom, requested, text } = await open(html)
+    const doc = dom.window.document
+    expect(doc.querySelector('#result p.warn')?.textContent).toBe("Receipt: this node's receipt only")
+    expect(text).toMatch(/\d+ of 3 records in the receipt are tied to a signed checkpoint\./)
+    // The viewer's provider module draws the failed record (capsule-viewer#465):
+    // not served, with the payment received listed.
+    const drawn = doc.querySelector('#result .receipt [data-module="capsuleviewer.receipt.provider/v0"]')
+    expect(drawn?.textContent).toContain('the exchange failed')
+    expect(drawn?.textContent).toContain('It was not served.')
+    expect(drawn?.textContent).toContain('1,990 msat')
+    expect(requested).toEqual([])
+    expect((await savedBytes(dom)).equals(Buffer.from(failed, 'utf8'))).toBe(true)
   })
 
   it('draws a payer\'s deal receipt with the viewer\'s receipt, its top line once and first (#376)', async () => {

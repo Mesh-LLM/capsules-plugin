@@ -1,12 +1,12 @@
 //! `GET provider-receipt-bundle`: the provider's own receipt for one paid
-//! exchange it served, as an Evidence Bundle that capsule-viewer renders
+//! exchange it served or that failed, as an Evidence Bundle that capsule-viewer renders
 //! (Mesh-LLM/capsules-plugin#134; Steven's ruling on #146: each side keeps its
 //! half, and the counterparty's receipt is what its half says: the model and
 //! what was paid, never the inference content).
 //!
 //! It is not a deal. The provider's half is the records it already seals: the
 //! exchange record it served (`x-mesh-poc-v1`, role `served`: the model, the
-//! digests) and its `payee_observed` settlement legs (what it received). The
+//! digests), or its record that the exchange failed (#399), and its `payee_observed` settlement legs (what it received). The
 //! typed seller deal the profile asks of a seller needs an offer, an
 //! acceptance and an authority this node does not make, so none is sealed.
 //!
@@ -153,24 +153,39 @@ fn legs_of(ledger_dir: &Path, exchange_id: &str) -> std::io::Result<Vec<String>>
     Ok(legs)
 }
 
-/// The single exchange record this node served for the host's `exchange_id`:
-/// a record with the mesh exchange block (`x-mesh-poc-v1`) that names that id
-/// as its own and is not marked as the requester's side. The lifecycle and
-/// settlement records the node seals for the same id are not it.
-fn served_record(index: &LedgerIndex, exchange_id: &str) -> Option<String> {
+/// The single record of the host's `exchange_id` that is this node's own
+/// half as its provider: a record with the mesh exchange block
+/// (`x-mesh-poc-v1`) that names that id as its own and is labelled `served`,
+/// or `failed` while the block keeps the provider's role (`served`, or none).
+/// A failed exchange leaves a record on each side and each side holds its
+/// half (Steven's u1578 E and F, evidencebook#205), so a provider paid for an
+/// exchange that failed roots its bundle there (#399). The lifecycle and
+/// settlement records the node seals for the same id are not it, nor is the
+/// requester's failed half or the summary of failures not sealed one by one
+/// (not one exchange).
+fn exchange_record(index: &LedgerIndex, exchange_id: &str) -> Option<String> {
     let view = index.view().ok()?;
-    let mut served = index.correlated(exchange_id).iter().filter_map(|&i| {
+    let mut own = index.correlated(exchange_id).iter().filter_map(|&i| {
         let record = view.record_at(i)?;
         let capsule: Value = serde_json::from_slice(&record.body).ok()?;
         let poc = capsule.pointer("/model_attestation/compute_attestation/x-mesh-poc-v1")?;
         let named = poc
             .pointer("/serving_provenance/exchange_id")
             .and_then(Value::as_str);
-        (named == Some(exchange_id) && crate::evidence_panes::label_role(&capsule) == "served")
-            .then_some(record.digest)
+        let provider_side = match crate::evidence_panes::label_role(&capsule) {
+            "served" => true,
+            "failed" => {
+                matches!(
+                    poc.get("role").and_then(Value::as_str),
+                    None | Some("served")
+                ) && poc.get("unsealed_failures").is_none()
+            }
+            _ => false,
+        };
+        (named == Some(exchange_id) && provider_side).then_some(record.digest)
     });
-    let first = served.next()?;
-    served.next().is_none().then_some(first)
+    let first = own.next()?;
+    own.next().is_none().then_some(first)
 }
 
 /// The provider's receipt bundle for the host's `exchange_id`.
@@ -186,7 +201,7 @@ pub fn bundle(ledger_dir: &Path, node_key_id: &str, exchange_id: &str) -> Result
         if legs.is_empty() {
             return Err(Refusal::NoPayment.into());
         }
-        let exchange = served_record(index, exchange_id).ok_or(Refusal::NoExchange)?;
+        let exchange = exchange_record(index, exchange_id).ok_or(Refusal::NoExchange)?;
         let mut ids = vec![exchange.clone()];
         ids.extend(legs);
         Ok(selected_bundle(
@@ -237,8 +252,8 @@ pub fn with_route(
         http::get("/provider-receipt-bundle")
             .binding_id("evidence_provider_receipt_bundle")
             .description(
-                "The provider's own receipt for one paid exchange it served: the model and what \
-                 it received, for the viewer to render. Cuts a signed checkpoint when none \
+                "The provider's own receipt for one paid exchange it served or that failed: the \
+                 model and what it received, for the viewer to render. Cuts a signed checkpoint when none \
                  covers the records yet.",
             )
             .input::<ProviderReceiptArgs>()
@@ -283,7 +298,7 @@ fn last_record(ledger_dir: &Path, node_key_id: &str, exchange: &Value) -> Option
     let noted = legs_of(ledger_dir, exchange_id).ok()?;
     evidence_log::with_index(ledger_dir, node_key_id, |index| {
         let mut ids = noted;
-        ids.extend(served_record(index, exchange_id));
+        ids.extend(exchange_record(index, exchange_id));
         ids.into_iter()
             .filter_map(|id| Some((index.leaf_index_of(&id)?, id)))
             .max()
@@ -399,29 +414,38 @@ mod tests {
         ));
     }
 
-    /// A provider's record of a request it refused has role `served` and
-    /// names the host's exchange id, but it is not an exchange the node
-    /// served: no receipt bundle roots at it (evidencebook#205).
-    #[test]
-    fn a_failed_record_is_not_the_served_record_a_receipt_roots_at() {
+    /// The provider's record that the host's exchange `exchange_id` failed,
+    /// or, with `unsealed`, the summary of failures not sealed one by one.
+    fn emit_failed(state: &CapsuleState, exchange_id: &str, unsealed: bool) -> String {
+        emit_failed_on(
+            state,
+            exchange_id,
+            unsealed,
+            crate::lifecycle_channel::DispatchPath::RawProxy,
+        )
+    }
+
+    /// The same on `path`: `RemoteMesh` is the requester's failed half (this
+    /// node routed the exchange to a peer, role `requested`).
+    fn emit_failed_on(
+        state: &CapsuleState,
+        exchange_id: &str,
+        unsealed: bool,
+        path: crate::lifecycle_channel::DispatchPath,
+    ) -> String {
         use crate::capsule_emit::{HostProvenance, ObservedHostExchange};
-        use crate::lifecycle_channel::DispatchPath;
-        use crate::producer::capsule::FailedExchange;
-        let (_a, dir) = dirs();
-        let (a, _) = (tempfile::tempdir().unwrap(), ());
-        two_nodes(a.path(), dir.path(), WALLET);
-        let state = CapsuleState::open(dir.path(), "provider-node").unwrap();
+        use crate::producer::capsule::{FailedExchange, UnsealedFailures};
         state
             .emit_for_observed_host_exchange(&ObservedHostExchange {
                 model: "m",
-                exchange_id: Some(HOST_EXCHANGE),
+                exchange_id: Some(exchange_id),
                 request_digest: None,
                 response_digest: None,
                 tool_calls_digest: None,
                 reasoning_digest: None,
                 usage: None,
                 host_provenance: HostProvenance::default(),
-                dispatch_path: DispatchPath::RawProxy,
+                dispatch_path: path,
                 nonce: None,
                 peer_capsule_id: None,
                 peer_capsule_id_provenance: None,
@@ -429,13 +453,127 @@ mod tests {
                 response_text_digest: None,
                 failure: Some(FailedExchange {
                     class: Some("upstream_error".into()),
-                    unsealed: None,
+                    unsealed: unsealed.then(|| UnsealedFailures {
+                        count: 3,
+                        window_start: "2026-11-27T00:00:00Z".into(),
+                        window_s: 60,
+                    }),
                 }),
             })
-            .unwrap();
+            .unwrap()
+            .capsule_id
+    }
+
+    /// A provider paid for an exchange that failed (the legs `two_nodes`
+    /// seals on node b) and its record that it failed.
+    fn failed_provider(dir: &Path) -> (CapsuleState, String) {
+        let (a, _) = (tempfile::tempdir().unwrap(), ());
+        two_nodes(a.path(), dir, WALLET);
+        let state = CapsuleState::open(dir, "provider-node").unwrap();
+        let failed = emit_failed(&state, HOST_EXCHANGE, false);
+        (state, failed)
+    }
+
+    /// A failed exchange leaves a record on each side and each side holds its
+    /// half (u1578 E and F, evidencebook#205): a provider paid for one gets a
+    /// bundle rooted at its failed record, with the legs it noted (#399).
+    #[test]
+    fn a_paid_failed_exchange_roots_its_bundle_at_the_failed_record() {
+        let (_a, dir) = dirs();
+        let (state, failed) = failed_provider(dir.path());
         cut(&state);
+        let bundle = bundle(state.ledger_dir(), &key(&state), HOST_EXCHANGE)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        assert_eq!(bundle["root"], json!(failed));
+        let records = bundle["records"].as_array().unwrap();
+        assert_eq!(records.len(), 3, "the failed record and two legs");
+        let root = records
+            .iter()
+            .find(|r| r["capsule_id"] == json!(failed))
+            .unwrap();
+        // What the viewer's provider module reads to draw it as failed
+        // (capsule-viewer#465): the provider's role, its serving provenance
+        // and the failed effect.
+        let poc = &root["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"];
+        assert_eq!(poc["role"], json!("served"));
+        assert_eq!(poc["outcome"], json!("failed"));
+        assert!(poc["serving_provenance"].is_object());
+        assert!(poc.get("unsealed_failures").is_none());
+        assert_eq!(root["effect"]["status"], json!("failed"));
+        assert!(records
+            .iter()
+            .filter(|r| r["capsule_id"] != json!(failed))
+            .all(|r| r["settlement"]["leg"] == json!("payee_observed")
+                && r["settlement"]["status"] == json!("settled")));
+        crate::deal_receipt::tests::assert_selection_only(&bundle);
+        if let Some(out) = std::env::var_os("PROVIDER_FAILED_BUNDLE_OUT") {
+            std::fs::write(out, serde_json::to_vec_pretty(&bundle).unwrap()).unwrap();
+        }
+    }
+
+    /// A failed exchange with no payment noted has no receipt from this route;
+    /// the summary of unsealed failures is not one exchange; the requester's
+    /// failed half is not the provider's; and a served and a failed record
+    /// under one id are not one exchange either.
+    #[test]
+    fn a_failed_record_without_a_payment_a_summary_a_requester_half_and_two_halves_are_refused() {
+        let (_a, dir) = dirs();
+        let (state, _) = failed_provider(dir.path());
+        emit_failed(&state, "unpaid", false);
+        cut(&state);
+        let ask = |id: &str| bundle(state.ledger_dir(), &key(&state), id);
         assert!(matches!(
-            bundle(state.ledger_dir(), &key(&state), HOST_EXCHANGE),
+            ask("unpaid"),
+            Err(Failure::Refused(Refusal::NoPayment))
+        ));
+
+        let (_b, summary_dir) = dirs();
+        let (a, _) = (tempfile::tempdir().unwrap(), ());
+        two_nodes(a.path(), summary_dir.path(), WALLET);
+        let summary = CapsuleState::open(summary_dir.path(), "provider-node").unwrap();
+        emit_failed(&summary, HOST_EXCHANGE, true);
+        cut(&summary);
+        assert!(matches!(
+            bundle(summary.ledger_dir(), &key(&summary), HOST_EXCHANGE),
+            Err(Failure::Refused(Refusal::NoExchange))
+        ));
+
+        // The requester's failed half is not the provider's, even with a
+        // payment noted for its id.
+        let (_d, asked_dir) = dirs();
+        let (a, _) = (tempfile::tempdir().unwrap(), ());
+        two_nodes(a.path(), asked_dir.path(), WALLET);
+        let asked = CapsuleState::open(asked_dir.path(), "provider-node").unwrap();
+        let requested = emit_failed_on(
+            &asked,
+            HOST_EXCHANGE,
+            false,
+            crate::lifecycle_channel::DispatchPath::RemoteMesh,
+        );
+        cut(&asked);
+        assert!(matches!(
+            bundle(asked.ledger_dir(), &key(&asked), HOST_EXCHANGE),
+            Err(Failure::Refused(Refusal::NoExchange))
+        ));
+        // Beside the provider's own failed record it is passed over, not
+        // counted as a second half.
+        let provider_half = emit_failed(&asked, HOST_EXCHANGE, false);
+        cut(&asked);
+        let rooted = bundle(asked.ledger_dir(), &key(&asked), HOST_EXCHANGE)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        assert_eq!(rooted["root"], json!(provider_half));
+        assert!(rooted["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["capsule_id"] != json!(requested)));
+
+        let (_c, both_dir) = dirs();
+        let (both, _) = provider(both_dir.path());
+        emit_failed(&both, HOST_EXCHANGE, false);
+        cut(&both);
+        assert!(matches!(
+            bundle(both.ledger_dir(), &key(&both), HOST_EXCHANGE),
             Err(Failure::Refused(Refusal::NoExchange))
         ));
     }

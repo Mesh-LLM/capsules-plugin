@@ -1,0 +1,345 @@
+{
+  "bundle_version": "2",
+  "bundle_kind": "evidence-bundle/v2",
+  "root": "400c28879be0b5877aff94469a3dee295d242c0f907c543abe9c86ccb253b632",
+  "records": [
+    {
+      "capsule_id": "bd7f26b64314584bf6419c1328ed9d14f920b08223d18bcf5817ba4c19fc5e72",
+      "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+      "format_version": "4",
+      "canonicalization_id": "jcs",
+      "action_id": "mesh/settlement/payee_observed",
+      "action_type": "fyi",
+      "operator": "capsule-emit-mesh-poc-rust",
+      "developer": "capsule-emit-mesh/0.1.24",
+      "timestamp": "2026-11-27T07:41:00Z",
+      "domain": "action",
+      "provenance": "collector",
+      "model_attestation": {
+        "model_id": "n/a-settlement-leg",
+        "provider": "mesh-llm",
+        "compute_attestation": {
+          "store_nonce": "9dfe4c67241739cec224150c64be0f426f9f254ebd3226e71e33ea336a7d5134"
+        }
+      },
+      "assurance": {
+        "attestation_mode": "self_attested",
+        "effect_mode": "not_applicable",
+        "ledger_mode": "standalone"
+      },
+      "disposition": {
+        "decision": "accept",
+        "approver": "policy",
+        "human_disposed": false,
+        "verdict_class": "executed"
+      },
+      "settlement": {
+        "version": "0",
+        "leg": "payee_observed",
+        "sealer_role": "payee",
+        "terms_ref": "c40de54b5a40905dfbd35eeee0dd0ecb7f616575df3130a180f1f3d9c896988e",
+        "received": {
+          "value": "995",
+          "assetCode": "BTC",
+          "assetScale": 11
+        },
+        "receive_fee": {
+          "value": "5",
+          "assetCode": "BTC",
+          "assetScale": 11
+        },
+        "payment_ref": {
+          "type": "ln.payment_hash",
+          "value": "8437d5a5e0c5aa3304c0e0d17288cd504593ca7e560e3691a30739f1725ee7c5"
+        },
+        "status": "settled",
+        "observed_at": "2026-11-27T07:41:00Z"
+      },
+      "signature": "d284584ca301270378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d696404582058c118cfa5c1e0d921fed759927d0244f0660ed3e737a720bdfee9be39e5a772a05820bd7f26b64314584bf6419c1328ed9d14f920b08223d18bcf5817ba4c19fc5e7258403c9517b2d818535bdec2d0a4ffaab147daa90642abfea69471cb4d791cf04e9d7124dcb2648b935dd0c361dfba0ca1c08f416263cd8890f7b073a6fd7dc59c03",
+      "key_id": "58c118cfa5c1e0d921fed759927d0244f0660ed3e737a720bdfee9be39e5a772"
+    },
+    {
+      "capsule_id": "46a2876aff8a15766eff66c7faa3e70e159ba1b9bbadee36d666a1f8c87824be",
+      "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+      "format_version": "4",
+      "canonicalization_id": "jcs",
+      "action_id": "mesh/settlement/payee_observed",
+      "action_type": "fyi",
+      "operator": "capsule-emit-mesh-poc-rust",
+      "developer": "capsule-emit-mesh/0.1.24",
+      "timestamp": "2026-11-27T07:41:00Z",
+      "domain": "action",
+      "provenance": "collector",
+      "model_attestation": {
+        "model_id": "n/a-settlement-leg",
+        "provider": "mesh-llm",
+        "compute_attestation": {
+          "store_nonce": "42432b41214f39ac5eac16e2a5fb41a00928bdf17e3e0ccdcad889ee424040f2"
+        }
+      },
+      "assurance": {
+        "attestation_mode": "self_attested",
+        "effect_mode": "not_applicable",
+        "ledger_mode": "chained"
+      },
+      "disposition": {
+        "decision": "accept",
+        "approver": "policy",
+        "human_disposed": false,
+        "verdict_class": "executed"
+      },
+      "chain": {
+        "parent_capsule_id": "bd7f26b64314584bf6419c1328ed9d14f920b08223d18bcf5817ba4c19fc5e72",
+        "relation": "follows"
+      },
+      "settlement": {
+        "version": "0",
+        "leg": "payee_observed",
+        "sealer_role": "payee",
+        "terms_ref": "b147d361f9687a2bcdf72f18f4d30ea51bd2e3f52129eb516e9f81f5b3a53e98",
+        "received": {
+          "value": "995",
+          "assetCode": "BTC",
+          "assetScale": 11
+        },
+        "receive_fee": {
+          "value": "5",
+          "assetCode": "BTC",
+          "assetScale": 11
+        },
+        "payment_ref": {
+          "type": "ln.payment_hash",
+          "value": "59c0c4d2859c994004ad65ce13831b9cdaf688828d6c9f08cdb06f1bda9f15dd"
+        },
+        "status": "settled",
+        "observed_at": "2026-11-27T07:41:00Z"
+      },
+      "signature": "d284584ca301270378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d696404582058c118cfa5c1e0d921fed759927d0244f0660ed3e737a720bdfee9be39e5a772a0582046a2876aff8a15766eff66c7faa3e70e159ba1b9bbadee36d666a1f8c87824be5840111b95a8797aea63692bdab5bdd7f62562b8bf9072020d12c4031f09c508ebd0fc3e9a03558f041dfaf0ff74a5937ad209ebe7ad79922074c786a902d3251c03",
+      "key_id": "58c118cfa5c1e0d921fed759927d0244f0660ed3e737a720bdfee9be39e5a772"
+    },
+    {
+      "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+      "format_version": "4",
+      "capsule_id": "400c28879be0b5877aff94469a3dee295d242c0f907c543abe9c86ccb253b632",
+      "canonicalization_id": "jcs",
+      "action_id": "mesh-poc/capsule-emit-mesh-host-failed/unknown-request:m",
+      "action_type": "fyi",
+      "operator": "capsule-emit-mesh-poc-rust",
+      "developer": "capsule-emit-mesh/0.1.24",
+      "timestamp": "2026-11-27T07:41:00Z",
+      "domain": "action",
+      "provenance": "collector",
+      "model_attestation": {
+        "model_id": "m",
+        "provider": "mesh-llm",
+        "compute_attestation": {
+          "agent_input_digest": "unknown-request:m",
+          "runtime": {
+            "name": "observer/capsule-emit-mesh",
+            "runtime_digest": "56e4a66cc279cffb5649a2daa3fda2895da1e2716fc131d294c463bf8fa85cf4",
+            "measurement_class": "os_measured",
+            "platform_integrity": {
+              "sip_enabled": true,
+              "source": {
+                "sip_enabled": "os_reported"
+              }
+            }
+          },
+          "attestation_refs": [],
+          "invocation": {
+            "requested_model_id": "m",
+            "resolved_model_id": "m",
+            "source": {
+              "requested_model_id": "self_reported",
+              "resolved_model_id": "self_reported"
+            }
+          },
+          "epistemic_type": "producer_claim",
+          "x-mesh-poc-v1": {
+            "client_nonce": "host-served-no-nonce",
+            "client_nonce_source": "host_served_observed",
+            "model_name_digest": "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+            "serving_provenance": {
+              "served_by_node_id": "unknown",
+              "dispatch_path": "raw_proxy",
+              "requesting_party": "unknown",
+              "exchange_id": "p-ex",
+              "quantization": "unknown",
+              "model": {
+                "architecture": null,
+                "context_length": null,
+                "parameter_size": null,
+                "layer_count": null,
+                "identity_hash": null,
+                "weights_digest": null,
+                "canonical_ref": null,
+                "revision": null
+              },
+              "hardware": {
+                "gpu": null,
+                "vram_bytes": null,
+                "device": null,
+                "is_soc": null
+              },
+              "usage": null,
+              "seq": 1,
+              "prev_seq": null,
+              "peer_capsule_id": null,
+              "peer_capsule_id_provenance": null
+            },
+            "role": "served",
+            "observation_point": null,
+            "generation_parameters": {},
+            "latency_ms": "0.000",
+            "evidence_refs": {
+              "statistical_fingerprint": {
+                "type": "statistical_fingerprint",
+                "digest": null,
+                "context": null
+              },
+              "tee_attestation": {
+                "type": "tee_attestation",
+                "measurement_class": null,
+                "digest": null,
+                "context": "no TEE quote measured (no TDX hardware on this host, or the producer leg has not run here); recorded absent, never fabricated"
+              },
+              "binary_attestation": {
+                "type": "binary_attestation",
+                "measurement_class": "os_measured",
+                "digest": "56e4a66cc279cffb5649a2daa3fda2895da1e2716fc131d294c463bf8fa85cf4",
+                "digest_alg": "sha256",
+                "binary_path": "capsules-7d3bb02ca9904a53",
+                "binary_size_bytes": 118257656,
+                "signature": "60e50d534bd713ef7916ff91540d6f8dd62cfa76d238f8a50cc4f93fd29d09e003ac2215236c9b19564ce1f0f72d4b83436c689c73e56e5f5b686a995cc17807",
+                "signature_algorithm": "ed25519",
+                "signer_key_id": "8aa69ca6d13c0fc0",
+                "measured_at": "2026-11-27T07:41:00Z",
+                "code_directory_hash": "1f74ba1bf644b962a3307f4b1f88f17c02f3395a",
+                "cdhash_source": "csops(CS_OPS_CDHASH)",
+                "kernel_valid": true,
+                "kernel_signed": true,
+                "platform_binary": false,
+                "ad_hoc_signature": true,
+                "signing_authority": "unknown_local_or_ad_hoc",
+                "sip_enabled": true,
+                "context": "os_measured: the KERNEL (AMFI) reported this process's code-directory hash (cdhash) at exec time via csops(2) CS_OPS_CDHASH — an independent measurer beneath the process, so a compromised process cannot repoint this hash at a decoy file the way self-measurement can; the signature also binds this cdhash to the self-measured digest, so tampering with either after signing breaks verification. Trustworthy only up to: SIP enabled, a NON-ROOT attacker (root can disable SIP / bypass AMFI), and this binary's signing strength — signing_authority=unknown_local_or_ad_hoc, ad-hoc signed (no Developer-ID / notarization / library validation). Does NOT prove hardware-rooted measurement: no TEE and no hardware register are involved, so this is NOT tee_measured. A root attacker with SIP disabled is the named residual, closed only by tee_measured (out of scope here)."
+              }
+            },
+            "outcome": "failed",
+            "failure_class": "upstream_error"
+          },
+          "store_nonce": "217c3ae44af8f27d6d3b15ec803d968eee96a24e206169b7cc4c2b0f2e76bd5f"
+        }
+      },
+      "effect": {
+        "status": "failed",
+        "type": "inference_completion",
+        "effect_attestation": "host_failed_observed"
+      },
+      "assurance": {
+        "attestation_mode": "self_attested",
+        "effect_mode": "dispatched_unconfirmed",
+        "ledger_mode": "chained"
+      },
+      "disposition": {
+        "decision": "accept",
+        "approver": "policy",
+        "human_disposed": false,
+        "verdict_class": "executed"
+      },
+      "chain": {
+        "parent_capsule_id": "46a2876aff8a15766eff66c7faa3e70e159ba1b9bbadee36d666a1f8c87824be",
+        "relation": "follows"
+      },
+      "signature": "d284584ca301270378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d696404582058c118cfa5c1e0d921fed759927d0244f0660ed3e737a720bdfee9be39e5a772a05820400c28879be0b5877aff94469a3dee295d242c0f907c543abe9c86ccb253b6325840ebb8fe5df88796b6db7383ef9851fe988f0c787b6eca33877077f6cfb892aafb5f108d442a1c7cfc76e6b568a3cb61c799ea3cc8539da10fc7a17979241d4504",
+      "key_id": "58c118cfa5c1e0d921fed759927d0244f0660ed3e737a720bdfee9be39e5a772"
+    }
+  ],
+  "completeness": {
+    "closure_depth": 0,
+    "records_mode": "complete",
+    "payloads_mode": "selected",
+    "suppressed_fields": [],
+    "missing": [],
+    "selection": "producer-selected"
+  },
+  "completeness_certificate": {
+    "log_id": "test-log",
+    "range_root": "aab2df6e71b66de674ada11a32d92ee1d3780794bb8ca07be36cfcd2e2b147f5",
+    "memberships": {
+      "bd7f26b64314584bf6419c1328ed9d14f920b08223d18bcf5817ba4c19fc5e72": {
+        "log_coordinates": {
+          "log_id": "test-log",
+          "seq": 1,
+          "leaf_index": 0
+        },
+        "inclusion_proof": {
+          "v": 1,
+          "kind": "inclusion",
+          "size": 4,
+          "leaf_index": 0,
+          "witness": [
+            "a4ff41e30db672d7bd7b94c653637c6156076540a45e05762286b7c3e2a95771"
+          ],
+          "peaks_left": [],
+          "peaks_right": [
+            "edacd6165ddb91362eb0b61a9a7f038bcc6fca74afbbcb3dc6a94f22ccfd545a"
+          ]
+        }
+      },
+      "46a2876aff8a15766eff66c7faa3e70e159ba1b9bbadee36d666a1f8c87824be": {
+        "log_coordinates": {
+          "log_id": "test-log",
+          "seq": 2,
+          "leaf_index": 1
+        },
+        "inclusion_proof": {
+          "v": 1,
+          "kind": "inclusion",
+          "size": 4,
+          "leaf_index": 1,
+          "witness": [
+            "f2822bf17a2ee2d8f548356ac5a439bf3d3d6fe6cd8a9f98dcf08c2525356e6f"
+          ],
+          "peaks_left": [],
+          "peaks_right": [
+            "edacd6165ddb91362eb0b61a9a7f038bcc6fca74afbbcb3dc6a94f22ccfd545a"
+          ]
+        }
+      },
+      "400c28879be0b5877aff94469a3dee295d242c0f907c543abe9c86ccb253b632": {
+        "log_coordinates": {
+          "log_id": "test-log",
+          "seq": 3,
+          "leaf_index": 2
+        },
+        "inclusion_proof": {
+          "v": 1,
+          "kind": "inclusion",
+          "size": 4,
+          "leaf_index": 2,
+          "witness": [],
+          "peaks_left": [
+            "3a92c7000028c5f866b8d79eaf7eb0755611e7619cc833b7421532200463f29d"
+          ],
+          "peaks_right": []
+        }
+      }
+    }
+  },
+  "checkpoint": {
+    "log_id": "test-log",
+    "mmr_size": 4,
+    "root": "aab2df6e71b66de674ada11a32d92ee1d3780794bb8ca07be36cfcd2e2b147f5",
+    "prev_size": 0,
+    "prev_root": "",
+    "key_id": "58c118cfa5c1e0d921fed759927d0244f0660ed3e737a720bdfee9be39e5a772",
+    "timestamp": "2026-11-27T07:41:00Z",
+    "cose": "0oRYXqQBJwN4H2FwcGxpY2F0aW9uL2NsbC1jaGVja3BvaW50K2Nib3IEWCBYwRjPpcHg2SH-11mSfQJE8GYO0-c3pyC9_um-OeWncg-iAWh0ZXN0LWxvZwJodGVzdC1sb2egWKymZGtpbmRuY2xsLWNoZWNrcG9pbnRobG9nX3NpemUEaWlzc3VlZF9hdHQyMDI2LTExLTI3VDA3OjQxOjAwWmlwcmV2X3NpemUAamNvbW1pdG1lbnRYRYJYIDqSxwAAKMX4ZrjXnq9-sHVWEedhnMgzt0IVMiAEY_KdWCDtrNYWXduRNi6wthqafwOLzG_KdK-7yz3GqU8izP1UWm9wcmV2X2NvbW1pdG1lbnRAWEDM24F7ydD68_84-wJGJlG_XgAFXKJNLKOh7JGa6VyqbZp4Hasx_IsbbYlFReBEkC4BzxW-bIZSML1C6TCNoo8G"
+  },
+  "extensions": {
+    "producer-key/v1": {
+      "public_key": "58c118cfa5c1e0d921fed759927d0244f0660ed3e737a720bdfee9be39e5a772"
+    }
+  }
+}
