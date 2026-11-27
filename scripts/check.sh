@@ -114,6 +114,17 @@ step_web_ui() (
 
 step_repo() {
   scripts/no-keys.sh
+  # The workflows pin the toolchain rust-toolchain.toml pins for local runs:
+  # a newer local compiler adds lints CI does not have, and the reverse.
+  local pinned wf
+  pinned=$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' rust-toolchain.toml)
+  [ -n "$pinned" ] || { echo "check: rust-toolchain.toml names no channel" >&2; return 1; }
+  for wf in .github/workflows/*.yml; do
+    if grep -q 'RUST_TOOLCHAIN:' "$wf" && ! grep -q "RUST_TOOLCHAIN: \"$pinned\"" "$wf"; then
+      echo "check: $wf pins a RUST_TOOLCHAIN other than rust-toolchain.toml's $pinned" >&2
+      return 1
+    fi
+  done
   (cd vectors && sha256 -c --quiet SHA256SUMS)
   node scripts/neutrality-scan.mjs --self-test
   # The test files are named: a bare directory argument is read as a module
