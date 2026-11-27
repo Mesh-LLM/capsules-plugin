@@ -13,8 +13,9 @@ import { receiptLines } from '@/features/capsules/lib/receipt-view'
 
 export type ReceiptPageLines = {
   /** The page's style for the first line: `ok` only for a receipt stamped by
-   *  both, `warn` for one side's own receipt, `bad` for one not checked. */
-  tone: 'ok' | 'warn' | 'bad'
+   *  both, `warn` for one side's own receipt, `bad` for one not checked,
+   *  `muted` for a verified bundle no receipt module draws. */
+  tone: 'ok' | 'warn' | 'bad' | 'muted'
   lines: string[]
 }
 

@@ -162,7 +162,8 @@ export function receiptLabel(view: ReceiptView): string | null {
 }
 
 /** The viewer's lines for a checked, cannot-check or did-not-verify view, and
- *  their tone; the not-drawn lines for a not-drawn view; null for any other
+ *  their tone; the not-drawn lines, in the neutral `muted` tone, for a
+ *  not-drawn view; null for any other
  *  view. For a checked view the first line is
  *  "Receipt: <label>", the second the records tied, the third the runtime's.
  *  The Exchanges row passes no carrier (the owner's words); a saved page
@@ -171,8 +172,9 @@ export function receiptLabel(view: ReceiptView): string | null {
 export function receiptLines(
   view: ReceiptView,
   options?: { readonly carrier?: 'page' }
-): { tone: 'ok' | 'warn' | 'bad'; lines: string[] } | null {
-  if (view.kind === 'not_drawn') return { tone: 'warn', lines: [...NOT_DRAWN_LINES] }
+): { tone: 'ok' | 'warn' | 'bad' | 'muted'; lines: string[] } | null {
+  // Neutral, not a case's tone: the bundle verified (Sherlock2 on #398).
+  if (view.kind === 'not_drawn') return { tone: 'muted', lines: [...NOT_DRAWN_LINES] }
   const result = resultOf(view)
   return result ? receiptPageLines(result, options) : null
 }

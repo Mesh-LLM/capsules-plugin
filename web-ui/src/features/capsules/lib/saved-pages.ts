@@ -5,7 +5,7 @@
 //
 // Each page embeds the bundle it shows as base64 of the exact bytes the node
 // served (`#mesh-bundle`), so a verifier can take the bytes out unchanged: the
-// page's "Save the JSON" link does it, and so does reading the base64 by hand.
+// page's "Save the JSON" link ("Save bundle" on a receipt page) does it, and so does reading the base64 by hand.
 // The page checks its own bundle when it opens, with the same code the tests
 // run (`history-page-entry.ts` or `receipt-page-entry.ts`, inlined), and shows
 // its content only from a bundle that checked. Whatever the page could not
@@ -146,7 +146,7 @@ ${kind === 'history' ? '' : `<h1>${escapeHtml(title)}</h1>\n<p class="muted">${e
 ${kind === 'history' ? WITNESS_FORM : ''}
 <h2>${evidence ? 'The file inside' : 'The note inside'}</h2>
 <p class="muted">${escapeHtml(inside)}</p>
-<p><button id="save-json" type="button">${evidence ? 'Save the JSON' : 'Save the note'}</button> <code>${escapeHtml(jsonName)}</code></p>
+<p><button id="save-json" type="button">${kind === 'receipt' ? 'Save bundle' : evidence ? 'Save the JSON' : 'Save the note'}</button> <code>${escapeHtml(jsonName)}</code></p>
 </main>
 <script type="application/octet-stream" id="${BUNDLE_ELEMENT_ID}" data-encoding="base64">${toBase64(bundleText)}</script>
 ${kind === 'history' ? `<script type="application/json" id="${CONTEXT_ELEMENT_ID}">${JSON.stringify(context).replace(/</g, '\\u003c')}</script>` : ''}

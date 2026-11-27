@@ -370,9 +370,11 @@ describe('the receipt page, opened offline', () => {
     const { dom, text } = await open(receiptPage({ kind: 'bundle', bundleText }, 'ex-6', SAVED).html)
     const lines = [...dom.window.document.querySelectorAll('#result p')].map((p) => p.textContent)
     expect(lines).toEqual([...NOT_DRAWN_LINES])
-    expect(dom.window.document.querySelector('#result p.warn')?.textContent).toBe(NOT_DRAWN_LINES[0])
+    expect(dom.window.document.querySelector('#result p.muted')?.textContent).toBe(NOT_DRAWN_LINES[0])
+    expect(dom.window.document.querySelector('#result .warn, #result .bad')).toBeNull()
     expect(dom.window.document.querySelector('#result .receipt')).toBeNull()
-    expect(text).not.toContain('Receipt:')
+    expect(text).not.toContain('Receipt:')    // The lines name the page's own button, as the row's do (Sherlock2 on #398).
+    expect(dom.window.document.getElementById('save-json')?.textContent).toBe('Save bundle')
   })
 
   it('shows none of a receipt that does not check', async () => {
