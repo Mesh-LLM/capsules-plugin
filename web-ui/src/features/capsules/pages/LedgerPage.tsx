@@ -149,7 +149,8 @@ import { useStatusQuery } from '@/features/network/api/use-status-query'
 import { useDataMode } from '@/lib/data-mode'
 import { HoverChip } from '@/features/capsules/components/HoverChip'
 import {
-  HERO_DESCRIPTION,
+  HERO_BY_ROLE,
+  pageRole,
   CONTINUITY_TOOLTIP,
   SAVE_EVIDENCE_FILE_TOOLTIP,
   SETUP_STEPS_LABEL,
@@ -425,12 +426,16 @@ function ExchangesSection({
   sampleData = false,
   requesterStartedDate,
   focusExchangeKey,
-  ledgerOrderIds = []
+  ledgerOrderIds = [],
+  ledgerLoaded = false
 }: {
   recordsById: Map<string, CapsuleRecord>
   /** This node's record ids in ledger order (padding left out), the order a
    *  checkpoint's coverage counts in. */
   ledgerOrderIds?: readonly string[]
+  /** The node's records have loaded (`recordsById` is the whole ledger), so
+   *  a record missing from it is missing, not still loading (#388). */
+  ledgerLoaded?: boolean
   nodePubKeyPem: string | null
   /** §3E -- "Get the other side’s record" and
    *  "Register a checkpoint" beside the headline both land on the Integrity
@@ -1090,6 +1095,9 @@ function ExchangesSection({
                         localRecord={
                           row.raw.mine.capsule_id ? (recordsById.get(row.raw.mine.capsule_id) ?? null) : null
                         }
+                        ownRecordMissing={
+                          ledgerLoaded && !!row.raw.mine.capsule_id && !recordsById.has(row.raw.mine.capsule_id)
+                        }
                         checkpointCovered={
                           row.raw.mine.capsule_id ? (checkpointCoverage.get(row.raw.mine.capsule_id) ?? null) : null
                         }
@@ -1692,13 +1700,18 @@ export function LedgerPageContent({ focusExchangeKey }: { focusExchangeKey?: str
   const paneACard = paneAStatusQuery.data?.card ?? null
   const paneARows = paneAStatusQuery.data?.rows ?? []
   // The three attack cards read the same queries as the hero line and Integrity tiles.
+  // #388: which side the rows show this node on; the header and the cards
+  // speak for that role. Before the rows load it reads as buying, as before.
+  const role = paneCHeroQuery.isSuccess ? pageRole(paneCHeroQuery.data.rows.map((row) => row.role_tag)) : null
+  const hero = HERO_BY_ROLE[role ?? 'buying']
   const attackCards =
     paneAStatusQuery.isSuccess && paneCHeroQuery.isSuccess
       ? buildAttackCards({
           records: paneAStatusQuery.data.rows.length,
           covered: coveredRecordCount(paneACard),
           witness: checkpointRegistration(paneACard).witnessState,
-          rows: paneCHeroQuery.data.rows
+          rows: paneCHeroQuery.data.rows,
+          role
         })
       : null
 
@@ -1706,7 +1719,7 @@ export function LedgerPageContent({ focusExchangeKey }: { focusExchangeKey?: str
     <TooltipProvider delayDuration={250} skipDelayDuration={120}>
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-[calc(var(--shell-normal)*2)]">
         <InfoBanner
-          description={HERO_DESCRIPTION}
+          description={hero.description}
           status={
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1">
@@ -1718,6 +1731,13 @@ export function LedgerPageContent({ focusExchangeKey }: { focusExchangeKey?: str
                   {EVIDENCE_SOURCE_LABEL[source]}
                 </StatusBadge>
               </span>
+              {role ? (
+                <span data-page-role={role}>
+                  <StatusBadge size="caption" tone="muted">
+                    {hero.label}
+                  </StatusBadge>
+                </span>
+              ) : null}
             </div>
           }
           title="Evidence"
@@ -1868,6 +1888,7 @@ export function LedgerPageContent({ focusExchangeKey }: { focusExchangeKey?: str
                     sampleData={source === 'sample'}
                     recordsById={recordsById}
                     ledgerOrderIds={ledgerOrder}
+                    ledgerLoaded={ledgerQuery.isSuccess}
                   />
                 )
               },

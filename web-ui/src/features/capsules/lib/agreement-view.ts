@@ -44,7 +44,9 @@ const FINDING_LABEL: Record<FindingKey, string> = {
 
 export type AgreementView = {
   coverageKey: CoverageKey | 'unrecognised'
-  label: string
+  /** `null` when the coverage pill is not drawn: a cap result on a row
+   *  served for pay (#388), where the cap is the payer's. */
+  label: string | null
   tooltip: string
   tone: Tone
   side: string
@@ -57,10 +59,20 @@ function msat(n: number): string {
   return `${n.toLocaleString('en-US')} msat`
 }
 
+/** The coverage results that are about the spend cap. */
+const CAP_COVERAGE: ReadonlySet<string> = new Set(['over_cap', 'cap_not_evaluable'])
+
 /** The strip for a row's `agreement`, or `null` when there is nothing to
  *  say. A paid exchange with no `agreement` says "no agreement", so nothing
- *  on a paid row reads as covered by default. */
-export function agreementView(agreement: AgreementCoverage | undefined, paid: boolean): AgreementView | null {
+ *  on a paid row reads as covered by default. On a row this node served for
+ *  pay (`servedForPay`), the spend cap is the payer's and means nothing to
+ *  the seller, so no cap pill is drawn: neither a cap result nor the spend
+ *  against the cap (#388). */
+export function agreementView(
+  agreement: AgreementCoverage | undefined,
+  paid: boolean,
+  servedForPay = false
+): AgreementView | null {
   if (!agreement) {
     if (!paid) return null
     return {
@@ -96,12 +108,14 @@ export function agreementView(agreement: AgreementCoverage | undefined, paid: bo
     agreement.count && agreement.count.max_exchanges !== null
       ? `exchange ${agreement.count.position} of ${agreement.count.max_exchanges}`
       : null
-  const spend = agreement.spend
-    ? `${agreement.spend.lower_bound ? 'at least ' : ''}${msat(agreement.spend.observed_msat)} of a ${msat(agreement.spend.spend_cap_msat)} cap`
-    : null
+  const spend =
+    agreement.spend && !servedForPay
+      ? `${agreement.spend.lower_bound ? 'at least ' : ''}${msat(agreement.spend.observed_msat)} of a ${msat(agreement.spend.spend_cap_msat)} cap`
+      : null
+  const capHidden = servedForPay && CAP_COVERAGE.has(agreement.coverage)
   return {
     coverageKey,
-    label: known ? COVERAGE_LABEL[coverageKey as CoverageKey] : agreement.coverage,
+    label: capHidden ? null : known ? COVERAGE_LABEL[coverageKey as CoverageKey] : agreement.coverage,
     tooltip: known
       ? AGREEMENT_COVERAGE_TOOLTIPS[coverageKey as CoverageKey]
       : 'An agreement coverage this page does not recognise, shown as recorded.',

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PaneCRow } from '@/features/capsules/api/sidecarTypes'
 import { buildAttackCards } from '@/features/capsules/lib/attack-cards'
+import { HERO_BY_ROLE, HERO_DESCRIPTION, pageRole } from '@/features/capsules/lib/tooltip-copy'
 
 function row(overrides: Record<string, unknown> = {}): PaneCRow {
   return {
@@ -102,5 +103,29 @@ describe('buildAttackCards', () => {
     expect(actionFor('off')).not.toBeNull()
     expect(actionFor('unknown')).not.toBeNull()
     for (const on of ['pending', 'earlier', 'latest'] as const) expect(actionFor(on)).toBeNull()
+  })
+})
+
+describe('the page speaks for its role (#388)', () => {
+  it('reads the role from the rows: all asked, all served, or both; none says nothing', () => {
+    expect(pageRole(['ASKED', 'ASKED'])).toBe('buying')
+    expect(pageRole(['SERVED'])).toBe('selling')
+    expect(pageRole(['SERVED', 'FAILED', 'ASKED'])).toBe('both')
+    expect(pageRole(['FAILED'])).toBeNull()
+    expect(pageRole([])).toBeNull()
+  })
+
+  it('each role has its own label and header line; buying keeps today\'s line', () => {
+    expect(HERO_BY_ROLE.buying.description).toBe(HERO_DESCRIPTION)
+    expect(HERO_BY_ROLE.selling.description).not.toMatch(/gave you|cheat you/)
+    expect(new Set(Object.values(HERO_BY_ROLE).map((h) => h.label)).size).toBe(3)
+  })
+
+  it('a node that only sells reads the swapped-model card from the seller\'s side; titles stay', () => {
+    const selling = buildAttackCards({ records: 1, covered: 1, witness: 'off', rows: [], role: 'selling' })
+    const buying = buildAttackCards({ records: 1, covered: 1, witness: 'off', rows: [], role: 'buying' })
+    expect(selling[2].summary).toMatch(/your answers came from the model you advertised/)
+    expect(buying[2].summary).toBe('A peer serves a cheaper model or quant than it advertised.')
+    expect(selling.map((card) => card.title)).toEqual(buying.map((card) => card.title))
   })
 })

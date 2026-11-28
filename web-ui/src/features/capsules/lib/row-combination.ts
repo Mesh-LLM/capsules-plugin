@@ -13,12 +13,20 @@ export type RowCombinationInput = {
    *  exchange: another node asked for it. */
   servedForPay?: boolean
   yoursHeld: boolean
+  /** The node's records have loaded and this row's own record isn't among
+   *  them, so it is missing, not still loading (#388). */
+  ownRecordMissing?: boolean
   marks: { content: EntryRowChipMark; sig: EntryRowChipMark; inclusion: EntryRowChipMark; registered: EntryRowChipMark }
   /** The door refused their record for naming another server or model. */
   refusedAtTheDoor: boolean
   /** The other side's node, short, when our record names one to ask. */
   askPeer?: string | null
 }
+
+/** #388: the records have loaded and this one isn't among them: why, and
+ *  what the operator can do. */
+export const OWN_RECORD_MISSING =
+  'Your record of this exchange isn’t among the records this node returned, so nothing about your side is checked here. Reload the page; if it stays, save the evidence file and check this node’s storage.'
 
 export const WITNESS_HOLDS_IT = ' A witness you don’t run also holds your checkpoint.'
 
@@ -30,12 +38,20 @@ export function rowCombinationText(input: RowCombinationInput): string {
   }
   const witnessed = marks.registered === '✓' ? WITNESS_HOLDS_IT : ''
   if (marks.content === '–' && marks.sig === '–') {
-    return 'Your record isn’t loaded on this page yet, so nothing about your side is checked here.'
+    return input.ownRecordMissing
+      ? OWN_RECORD_MISSING
+      : 'Your record isn’t loaded on this page yet, so nothing about your side is checked here.'
   }
   switch (state) {
     case 'closed':
+      // On a SERVED row this node served them: a Confirmed record is signed
+      // with the key the requesting node announced and names this node as its
+      // server (#412); transport is never checked, so never "sent" (Sherlock2's
+      // ruling, buzz 60d4b649).
       return marks.inclusion === '✓' || marks.inclusion === '◐'
-        ? `Both records agree and check out: yours is unchanged and signed, and theirs is signed, from the node that served you, with the same request, answer and model weights.${witnessed}`
+        ? input.roleTag === 'SERVED'
+          ? `Both records agree and check out: yours is unchanged and signed; the node you served signed its own record with the key it announced, and it names you as the node that served it, with the same request, answer and model weights.${witnessed}`
+          : `Both records agree and check out: yours is unchanged and signed, and theirs is signed, from the node that served you, with the same request, answer and model weights.${witnessed}`
         : `Confirmed by them; your record is newer than your last checkpoint and the next one will cover it.${witnessed}`
     case 'contradicted':
       return input.refusedAtTheDoor

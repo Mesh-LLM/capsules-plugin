@@ -31,9 +31,38 @@ export const OWNER_NOT_LINKED_PHRASE = 'not linked to an owner'
 /** p2 item 5: why an action is disabled -- said on hover, never a silent grey. */
 export const SAMPLE_DATA_UNAVAILABLE = 'Not available on sample data.'
 
+/** Which side of its exchanges this page's rows show this node on (#388):
+ *  every row asked (`buying`), every row served (`selling`), or both. */
+export type PageRole = 'buying' | 'selling' | 'both'
+
 /** The header's one line: 20 words, no icons (Steven's word budget, Sherlock2's wording). */
 export const HERO_DESCRIPTION =
   'Every answer a stranger gave you is sealed and signed. Three ways they could cheat you, and whether any did.'
+
+/** The header's line and role label for each role (#388; Sherlock2's wording,
+ *  buzz 55b231b4). Buying keeps the
+ *  line above. */
+export const HERO_BY_ROLE: Record<PageRole, { label: string; description: string }> = {
+  buying: { label: 'Buying', description: HERO_DESCRIPTION },
+  selling: {
+    label: 'Selling',
+    description:
+      'Every answer you gave a stranger is sealed and signed. Three ways a record of it could be wrong, and whether any is.'
+  },
+  both: {
+    label: 'Buying and selling',
+    description:
+      'Every answer you gave a stranger, or got from one, is sealed and signed. Three ways either side could cheat, and whether any did.'
+  }
+}
+
+/** The page's role from its rows' roles (`SERVED` / `ASKED`; a failed row
+ *  says neither). `null` when no row says. */
+export function pageRole(roleTags: readonly string[]): PageRole | null {
+  const served = roleTags.includes('SERVED')
+  const asked = roleTags.includes('ASKED')
+  return served && asked ? 'both' : served ? 'selling' : asked ? 'buying' : null
+}
 
 /** Peers table column headers. */
 export const PEER_COLUMN_TOOLTIPS = {
@@ -124,6 +153,18 @@ export const ROW_STATE_TOOLTIPS = {
     'Their record hasn’t arrived. It arrives on its own only if their node sends records (on by default, unless its operator turned it off); otherwise, ask for it on this row.'
 } as const
 
+/** On a SERVED row (this node served them) the two states that name the
+ *  provider say only what was checked: the record names this node as its
+ *  server and, once Confirmed, is signed with the key the requesting node
+ *  announced (#412); never who sent it (Sherlock2's rulings on #388, buzz
+ *  88dc84a8 and 60d4b649). Every other state reads the same for both roles. */
+export const ROW_STATE_TOOLTIPS_SERVED = {
+  closed:
+    'The node you served signed its own record of this exchange with the key it announced. It names you as the node that served it, checks out on this machine, and names the same request, answer and model weights as yours.',
+  open_not_held:
+    'Their record hasn’t arrived, or what arrived doesn’t name you as the node that served it. It arrives on its own only if their node sends records (on by default, unless its operator turned it off); otherwise, ask for it on this row.'
+} as const
+
 /** The per-property cells a CLOSED row shows, each with its own (i). */
 export const CLOSED_CELL_TOOLTIPS = {
   their_id: 'The id of their record; it’s a fingerprint of the record itself.',
@@ -177,6 +218,10 @@ export const WITNESS_CHIP_LINE = {
     `Not yet: this record is newer than the last checkpoint a witness you don’t run holds (${time}).`,
   none: 'Not yet: no witness you don’t run holds a checkpoint from this node.'
 } as const
+
+/** The "their record ✓" chip on a SERVED row (#388). */
+export const THEIRS_CONFIRMED_SERVED =
+  'Confirmed: the node you served signed a record, with the key it announced, naming you as the node that served it, with the same request, answer and model weights as yours.'
 
 /** The LOCAL badge's (i): a served exchange with no other side recorded. */
 export const LOCAL_ONLY_TOOLTIP =

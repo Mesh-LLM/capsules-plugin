@@ -7,8 +7,17 @@ import { HoverChip } from '@/features/capsules/components/HoverChip'
 import { agreementView } from '@/features/capsules/lib/agreement-view'
 import { AGREEMENT_SIDE_TOOLTIP, AGREEMENT_SPEND_TOOLTIP } from '@/features/capsules/lib/tooltip-copy'
 
-export function AgreementStrip({ agreement, paid }: { agreement: AgreementCoverage | undefined; paid: boolean }) {
-  const view = agreementView(agreement, paid)
+export function AgreementStrip({
+  agreement,
+  paid,
+  servedForPay = false
+}: {
+  agreement: AgreementCoverage | undefined
+  paid: boolean
+  /** This node served the exchange for pay: the payer's cap isn't shown. */
+  servedForPay?: boolean
+}) {
+  const view = agreementView(agreement, paid, servedForPay)
   if (!view) return null
   return (
     <div
@@ -17,13 +26,15 @@ export function AgreementStrip({ agreement, paid }: { agreement: AgreementCovera
       data-agreement-coverage={view.coverageKey}
       role="group"
     >
-      <HoverChip census={`agreement_coverage:${view.coverageKey}`} label={view.tooltip}>
-        <span>
-          <StatusBadge size="caption" tone={view.tone}>
-            {view.label}
-          </StatusBadge>
-        </span>
-      </HoverChip>
+      {view.label !== null ? (
+        <HoverChip census={`agreement_coverage:${view.coverageKey}`} label={view.tooltip}>
+          <span>
+            <StatusBadge size="caption" tone={view.tone}>
+              {view.label}
+            </StatusBadge>
+          </span>
+        </HoverChip>
+      ) : null}
       {view.finding ? (
         <HoverChip census={`agreement_finding:${view.finding.key}`} label={view.finding.tooltip}>
           <span>

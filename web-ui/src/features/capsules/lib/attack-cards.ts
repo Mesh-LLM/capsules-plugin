@@ -6,6 +6,7 @@ import type { PaneCRow } from '@/features/capsules/api/sidecarTypes'
 import { deriveRightCellState } from '@/features/capsules/lib/exchange-row-state'
 import { parseVerdict } from '@/features/capsules/lib/adjudication-view'
 import type { WitnessState } from '@/features/capsules/lib/integrity-view'
+import type { PageRole } from '@/features/capsules/lib/tooltip-copy'
 
 export type AttackTone = 'good' | 'warn' | 'bad' | 'muted'
 
@@ -28,6 +29,9 @@ export type AttackCardInputs = {
   covered: number | null
   witness: WitnessState
   rows: readonly PaneCRow[]
+  /** The page's role (#388): a node that only sells reads the swapped-model
+   *  card from the seller's side. */
+  role?: PageRole | null
 }
 
 function plural(n: number, one: string, many = `${one}s`): string {
@@ -64,7 +68,7 @@ function askedVerdicts(rows: readonly PaneCRow[]): ReadonlyMap<string, string | 
 }
 
 export function buildAttackCards(input: AttackCardInputs): readonly AttackCard[] {
-  const { records, covered, witness, rows } = input
+  const { records, covered, witness, rows, role = null } = input
   const states = rows.map((row) => deriveRightCellState(row).kind)
   // Rows with a counterparty by the page's own right-cell state: a half the door refused is one even though no record arrived.
   const withCounterparty = states.filter((kind) => kind !== 'open_not_asked').length
@@ -129,7 +133,10 @@ export function buildAttackCards(input: AttackCardInputs): readonly AttackCard[]
   const swapped: AttackCard = {
     id: 'swapped',
     title: 'Swapped the model',
-    summary: 'A peer serves a cheaper model or quant than it advertised.',
+    summary:
+      role === 'selling'
+        ? 'A buyer’s referee checks whether your answers came from the model you advertised.'
+        : 'A peer serves a cheaper model or quant than it advertised.',
     badge: checked === 0 ? 'not checked' : `${caught} caught · ${checked} checked`,
     tone: caught > 0 ? 'bad' : checked === 0 ? 'muted' : 'good',
     rows: [

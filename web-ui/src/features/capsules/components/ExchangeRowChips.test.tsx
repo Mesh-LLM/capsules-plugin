@@ -6,7 +6,7 @@ import type { RecomputedIdentity } from '@/features/capsules/lib/recompute-ident
 import { ExchangeRowChips } from '@/features/capsules/components/ExchangeRowChips'
 import { buildChecksRows, type ChecksRow } from '@/features/capsules/lib/security-checks-view'
 import { witnessCoverageLine, type WitnessCoverage } from '@/features/capsules/lib/integrity-view'
-import { ENTRY_CHIP_RESULT_TOOLTIPS } from '@/features/capsules/lib/tooltip-copy'
+import { ENTRY_CHIP_RESULT_TOOLTIPS, THEIRS_CONFIRMED_SERVED } from '@/features/capsules/lib/tooltip-copy'
 
 const NOT_RECOMPUTED: RecomputedIdentity = { idMatch: null, signatureOk: null }
 
@@ -35,10 +35,10 @@ function checks(state: Record<string, string>): ChecksRow[] {
   })) as ChecksRow[]
 }
 
-function renderChips(rows: ChecksRow[], witnessOff = false, witnessCoverage: WitnessCoverage | null = null) {
+function renderChips(rows: ChecksRow[], witnessOff = false, witnessCoverage: WitnessCoverage | null = null, served = false) {
   render(
     <TooltipProvider>
-      <ExchangeRowChips checks={rows} onChipActivate={vi.fn()} witnessCoverage={witnessCoverage} witnessOff={witnessOff} />
+      <ExchangeRowChips checks={rows} onChipActivate={vi.fn()} served={served} witnessCoverage={witnessCoverage} witnessOff={witnessOff} />
     </TooltipProvider>
   )
 }
@@ -79,6 +79,12 @@ describe('ExchangeRowChips -- one tooltip per result, not one per chip', () => {
     const detail = panel.find((r) => r.key === 'external_registration')?.yours?.detail
     expect(detail).toBe(witnessCoverageLine(covered))
     expect(chip).toHaveAccessibleDescription(detail!)
+  })
+
+  it('#388: on a SERVED row "their record ✓" says the record names you as its server', () => {
+    renderChips(checks({ outcome_corroboration: 'PASS' }), false, null, true)
+    expect(screen.getByLabelText('their record: jump to that check')).toHaveAccessibleDescription(THEIRS_CONFIRMED_SERVED)
+    expect(THEIRS_CONFIRMED_SERVED).toContain('signed a record, with the key it announced, naming you as the node that served it')
   })
 
   it('with the witness off, no "witnessed" chip: it could only ever read –', () => {

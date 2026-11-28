@@ -355,6 +355,51 @@ describe('judgeRow: the precedence of records, claims and asks', () => {
     }
   })
 
+  it('#388: on a SERVED row the other-provider reason says their record names another server; ASKED keeps its words', () => {
+    const ask = asks(asked(record('disagrees')), asked(record('other_provider'), T2))
+    const served = { ...paneRow(), role_tag: 'SERVED' } as PaneCRow
+    expect(judgeRow(served, ours() as never, null, ask).retryNote).toMatch(/it names another node as the one that served it\.$/)
+    expect(judgeRow(paneRow(), ours() as never, null, ask).retryNote).toMatch(/it isn’t from the node that served you\.$/)
+  })
+
+  it('#388: on a SERVED row, a record that names no server says only that it doesn’t name you, not "another node"', () => {
+    const unnamed: PeerRecomputeState = {
+      status: 'found',
+      ...VERIFIED,
+      peerRecord: fixtureHalfBody({ capsuleId: 't-unnamed-server', servedBy: '' }),
+      fetch: () => {}
+    }
+    const served = { ...paneRow(), role_tag: 'SERVED' } as PaneCRow
+    const retry = judgeRow(served, ours() as never, null, asks(asked(record('disagrees')), asked(unnamed, T2))).retryNote
+    expect(retry).toMatch(/it doesn’t name you as the node that served it\.$/)
+    expect(retry).not.toMatch(/another node/)
+  })
+
+  it('#388/#412: on a SERVED row, a record that names you but isn’t signed with the requester’s announced key says so', () => {
+    const base = paneRow()
+    const served = {
+      ...base,
+      role_tag: 'SERVED',
+      mine: { ...(base.mine as object), role: 'served', requester_key_id: 'ab'.repeat(32) }
+    } as unknown as PaneCRow
+    const judged = judgeRow(served, ours() as never, null, asks(asked(record('agrees'))))
+    // A record that isn't from them reaches no verdict: the row stays asked.
+    expect(judged.state.kind).toBe('open_asked')
+    expect(judged.askNote?.text).toMatch(/it isn’t signed with a key the node you served announced, so who made it is not checked\.$/)
+  })
+
+  it('#388: on a SERVED row, a record whose server is "unknown" is not "another node" either', () => {
+    const unknown: PeerRecomputeState = {
+      status: 'found',
+      ...VERIFIED,
+      peerRecord: fixtureHalfBody({ capsuleId: 't-unknown-server', servedBy: 'unknown' }),
+      fetch: () => {}
+    }
+    const served = { ...paneRow(), role_tag: 'SERVED' } as PaneCRow
+    const retry = judgeRow(served, ours() as never, null, asks(asked(record('disagrees')), asked(unknown, T2))).retryNote
+    expect(retry).toMatch(/it doesn’t name you as the node that served it\.$/)
+  })
+
   it('the record shown is the verdict’s record, so the panel and Compare compare it', () => {
     const contradicting = record('disagrees')
     const judged = judgeRow(paneRow({ pushed: record('agrees') }), ours() as never, null, asks(asked(contradicting)))
