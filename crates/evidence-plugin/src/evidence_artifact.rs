@@ -666,6 +666,13 @@ pub fn check_with(
             if !matches!(request.coverage, Coverage::ExpectedPin(_)) {
                 return fail("a Service History is answered only under an expected_pin");
             }
+            let def = crate::service_history::definition_for(env.derivation.as_ref())
+                .ok_or_else(|| CheckError::Answer("not a Service History".into()))?;
+            // `inference-service-history/1` is served under
+            // `evidence-interop/1` only (ISH, Interop profile revision).
+            if def.is_revision_1() && env.profile != evidence_request::envelope::PROFILE_V1 {
+                return fail("an inference-service-history/1 History is answered only under evidence-interop/1");
+            }
             if !env.verification.is_empty() {
                 return fail("a Service History carries no verification material");
             }
@@ -689,8 +696,7 @@ pub fn check_with(
                 .collect::<Result<_, CheckError>>()?;
             history = Some(
                 crate::service_history::check_artifact(
-                    crate::service_history::definition_for(env.derivation.as_ref())
-                        .ok_or_else(|| CheckError::Answer("not a Service History".into()))?,
+                    def,
                     &art,
                     &chain,
                     &served.digest,

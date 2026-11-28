@@ -1390,3 +1390,72 @@ fn a_key_minted_here_is_recorded_once_and_an_older_key_never_is() {
     assert!(!key_serves(capsules.ledger_dir(), capsules.signing_key()));
     assert!(!lists(&capsules));
 }
+
+/// A requester checks a History under the revision its definition names
+/// (ISH, Revisions): `/3` and `/4` only in an `evidence-interop/1` envelope
+/// (ISH, Interop profile revision), however correctly signed an
+/// `evidence-interop/0` one is, explicit or by an absent `profile`.
+#[test]
+fn a_revision_1_history_in_an_interop_0_envelope_is_not_evidence() {
+    let (art, _, anchor) = checked_parts();
+    let (vdir, cps) = node_with_verdicts();
+    let mut verdicts = history_request(&cps[3].anchor());
+    verdicts["derivation"] = json!(DEFINITION_DIGEST_VERDICTS);
+    let verdict_art = artifact_of(&answered(ask(vdir.path(), &verdicts)));
+    for (request, art) in [(history_request(&anchor), &art), (verdicts, &verdict_art)] {
+        // Under /1, as served, it checks.
+        let v = verified(&request, &resigned(&request, art, Vec::new()));
+        assert_eq!(v["state"], json!("artifact"), "{v}");
+        let mut v0 = request.clone();
+        v0["profile"] = json!("evidence-interop/0");
+        let mut bare = request.clone();
+        bare.as_object_mut().unwrap().remove("profile");
+        for asked in [v0, bare] {
+            let v = verified(&asked, &resigned(&asked, art, Vec::new()));
+            assert_eq!(v["state"], json!("not_evidence"), "{asked}: {v}");
+        }
+    }
+}
+
+/// A peer on an earlier release still serves `service_history/1` under
+/// `inference-service-history/0`, and this node still checks it through the
+/// requester's path, under `/0`'s rules: a total beside two models of 4
+/// withheld under the floor is published there, and the same table under
+/// `/3` fails `period_floor` (ISH §6.2 item 5, which `/0` does not have).
+#[test]
+fn a_legacy_history_from_an_older_peer_still_checks_under_its_own_rules() {
+    let (art, _, anchor) = checked_parts();
+    let mut legacy = art.clone();
+    legacy["derivation"] = json!(LEGACY_DIGEST_1);
+    let mut request = history_request(&anchor);
+    request["derivation"] = json!(LEGACY_DIGEST_1);
+    request.as_object_mut().unwrap().remove("profile");
+    let v = verified(&request, &resigned(&request, &legacy, Vec::new()));
+    assert_eq!(v["state"], json!("artifact"), "{v}");
+
+    // Week 1 as 4 and 4 with the total of 8 published.
+    let pinning = json!([
+        cell(Some("a"), Err("below_floor")),
+        cell(Some("b"), Err("below_floor")),
+        cell(None, Ok(8)),
+    ]);
+    periods(&mut legacy)[1]["cells"] = pinning.clone();
+    let v = verified(&request, &resigned(&request, &legacy, Vec::new()));
+    assert_eq!(v["state"], json!("artifact"), "/0 publishes it: {v}");
+    let mut current = art.clone();
+    periods(&mut current)[1]["cells"] = pinning;
+    let request = history_request(&anchor);
+    let v = verified(&request, &resigned(&request, &current, Vec::new()));
+    assert_eq!(v["state"], json!("not_evidence"), "/1 withholds it: {v}");
+
+    // `service_history/2` too: the verdict member under `/0`.
+    let (vdir, cps) = node_with_verdicts();
+    let mut verdicts = history_request(&cps[3].anchor());
+    verdicts["derivation"] = json!(DEFINITION_DIGEST_VERDICTS);
+    let mut legacy_2 = artifact_of(&answered(ask(vdir.path(), &verdicts)));
+    legacy_2["derivation"] = json!(LEGACY_DIGEST_2);
+    verdicts["derivation"] = json!(LEGACY_DIGEST_2);
+    verdicts["profile"] = json!("evidence-interop/0");
+    let v = verified(&verdicts, &resigned(&verdicts, &legacy_2, Vec::new()));
+    assert_eq!(v["state"], json!("artifact"), "{v}");
+}

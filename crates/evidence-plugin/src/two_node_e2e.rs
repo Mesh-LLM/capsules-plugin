@@ -1152,7 +1152,7 @@ fn the_history_page_route_served_each_nodes_own_answer() {
         .as_str()
         .expect("the Service History names its anchor");
     let service_request = serde_json::to_vec(&json!({
-        "profile": evidence_request::envelope::PROFILE,
+        "profile": evidence_request::envelope::PROFILE_V1,
         "subject": {"full_history": null},
         "coverage": {"expected_pin": pin},
         "derivation": crate::service_history::definition_digest(),
