@@ -13,6 +13,7 @@
 import { historyViewStyles } from '@action-state-group/capsule-viewer/history-view'
 import type { HistorySharing } from '@/features/capsules/api/client'
 import type { HistoryPageContext } from '@/features/capsules/lib/history-view-input'
+import { formatUtcTimestamp } from '@/features/capsules/lib/local-time'
 import verifierSource from '@/features/capsules/lib/history-page-entry.ts?iife'
 import receiptVerifierSource from '@/features/capsules/lib/receipt-page-entry.ts?iife'
 
@@ -210,7 +211,7 @@ export const UNNAMED_DEAL_WHY = 'this exchange was paid, but this node cannot ye
  *  note saying why there is none. */
 export function receiptPage(source: ReceiptSource, exchangeKey: string, savedAt: string): SavedPage {
   const name = `mesh-receipt-${exchangeKey.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 64)}-${stamp(savedAt)}`
-  const intro = `This node’s own receipt for exchange ${exchangeKey}. Saved ${savedAt}.`
+  const intro = `This node’s own receipt for exchange ${exchangeKey}. Saved ${formatUtcTimestamp(savedAt)}.`
   if (source.kind === 'bundle') {
     return {
       fileName: `${name}.html`,

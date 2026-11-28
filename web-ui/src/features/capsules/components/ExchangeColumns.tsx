@@ -10,6 +10,7 @@ import { DataTableColumnHeader } from '@/components/ui/data-table-column-header'
 import { StatusPill } from '@/components/ui/status-pill'
 import { ExchangeIdCell } from '@/features/capsules/components/ExchangeIdCell'
 import type { ExchangeLedgerRow } from '@/features/capsules/lib/exchange-ledger'
+import { formatExchangeTimestampFull } from '@/features/capsules/lib/local-time'
 
 export const EXCHANGE_COLUMN_LABELS = {
   time: 'Time',
@@ -19,12 +20,6 @@ export const EXCHANGE_COLUMN_LABELS = {
   confirmed: 'Confirmed',
   checks: 'Checks'
 } as const
-
-function formatExchangeTimestamp(timestamp: string | null): string {
-  if (!timestamp) return 'timestamp unavailable'
-  const match = timestamp.match(/T(\d{2}:\d{2}:\d{2})Z?/)
-  return match ? `${timestamp.slice(0, 10)} ${match[1]}Z` : timestamp
-}
 
 function roleLabel(roleTag: string): string {
   return roleTag === 'SERVED' ? 'Served' : roleTag === 'ASKED' ? 'Asked' : roleTag === 'FAILED' ? 'Failed' : roleTag
@@ -38,7 +33,7 @@ export function buildExchangeColumns(): ColumnDef<ExchangeLedgerRow>[] {
       header: ({ column }) => <DataTableColumnHeader column={column} title={EXCHANGE_COLUMN_LABELS.time} />,
       cell: ({ row }) => (
         <time className="font-mono tabular-nums text-fg-dim" dateTime={row.original.timestamp ?? undefined}>
-          {formatExchangeTimestamp(row.original.timestamp)}
+          {formatExchangeTimestampFull(row.original.timestamp)}
         </time>
       )
     },

@@ -4,6 +4,7 @@
 // bracket bigger than one row yet (that lands in a later batch).
 import type { ExchangeLedgerRow } from '@/features/capsules/lib/exchange-ledger'
 import type { RailSegment } from '@/features/capsules/lib/exchange-stream'
+import { localDateParts } from '@/features/capsules/lib/local-time'
 
 export const LEDGER_PAGE_SIZE = 50
 
@@ -189,12 +190,10 @@ export function pageBoundaryContinuity(
   return { continuesFromPreviousPage, continuesToNextPage }
 }
 
-const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const
-
+/** "27 Nov": the local calendar day, the same one the day headers use. */
 function formatShortDate(isoTimestamp: string): string | null {
-  const date = new Date(isoTimestamp)
-  if (Number.isNaN(date.getTime())) return null
-  return `${date.getUTCDate()} ${MONTH_ABBR[date.getUTCMonth()]}`
+  const parts = localDateParts(isoTimestamp)
+  return parts ? `${parts.day} ${parts.month}` : null
 }
 
 /**

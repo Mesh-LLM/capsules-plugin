@@ -7,6 +7,7 @@ import type { PaneBConfirmedSibling, PaneBRow, PaneCRow } from '@/features/capsu
 import { deriveRightCellState } from '@/features/capsules/lib/exchange-row-state'
 import type { PeerMeshStatus } from '@/features/capsules/lib/peer-mesh-status'
 import { parseVerdict } from '@/features/capsules/lib/adjudication-view'
+import { localDateParts } from '@/features/capsules/lib/local-time'
 import { peerSettlementText } from '@/features/capsules/lib/settlement-view'
 import { PEER_ATTENTION, PEER_COLUMN_TOOLTIPS } from '@/features/capsules/lib/tooltip-copy'
 
@@ -403,13 +404,10 @@ export function sortPeerRows<T>(rows: readonly T[], keyOf: (row: T) => readonly 
 // but unused" group).
 // ---------------------------------------------------------------------------
 
+/** The local calendar day, the same one the Exchanges day headers use. An
+ *  unparseable time shows its raw text instead of a date. */
 function periodDateParts(iso: string): { day: number; month: string; year: number } {
-  const parsed = new Date(iso)
-  return {
-    day: parsed.getUTCDate(),
-    month: parsed.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' }),
-    year: parsed.getUTCFullYear()
-  }
+  return localDateParts(iso) ?? { day: Number.NaN, month: iso, year: Number.NaN }
 }
 
 export function periodRangeText(firstSeen: string | null, lastSeen: string | null): string {

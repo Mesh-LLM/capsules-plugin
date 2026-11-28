@@ -1315,14 +1315,16 @@ describe('ExchangeStreamRow — the referee', () => {
 })
 
 describe('ExchangeStreamRow — row time', () => {
-  it('shows the exchange time in local time, never an ISO/UTC stamp', () => {
+  it('shows the exchange time in the viewer\'s zone, named, never an ISO stamp (#408)', () => {
     const { container } = render(
       <ExchangeStreamRow  {...toggleProps()} rail={NO_RAIL} row={makeRow('closed')} />
     )
     const time = container.querySelector('time')
     expect(time?.getAttribute('datetime')).toBe('2026-09-08T16:58:05Z')
     expect(time?.textContent).toBe(formatExchangeTimestamp('2026-09-08T16:58:05Z'))
-    expect(container.textContent).not.toMatch(/\d{4}-\d\d-\d\d[T ]\d\d:\d\d|\bUTC\b|\d\dZ\b/)
+    // Tests run in UTC (vite.config.ts), so the zone the row names is UTC.
+    expect(time?.textContent).toMatch(/\bUTC\b/)
+    expect(container.textContent).not.toMatch(/\d{4}-\d\d-\d\d[T ]\d\d:\d\d|\d\dZ\b/)
   })
 })
 
