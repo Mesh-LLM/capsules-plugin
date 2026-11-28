@@ -40,6 +40,15 @@ the coordinator's main record and the stage records it carried (on a requester, 
 runs the hand-off check itself (`verifySplit`) and draws the stage strip under the row. Rows
 without `split` render as before. No pane emits it yet.
 
+**Served exchanges (#412).** On a `panes/pane-c` row, and on each `confirmed_siblings` entry of a
+`panes/pane-b` row, a `mine` cell whose `role` is `served` carries `requester_key_id`: the key this
+node knows the requesting node signs with, or `null` when none is bound to it
+(`src/evidence_panes.rs` `attach_requester_keys`). The requester is the node this node's own record
+names (`requesting_party`, set by the host from the connection's authenticated node id), and the key
+is bound to it by the record-push door's rule (`src/peer_keys.rs` `key_bound_to`). The page counts
+the other side's record of a served exchange as from that node only when its signature holds under
+this key (`exchange-row-state.ts` `servedBinding`).
+
 **Payments.** This node's sealed payment-lifecycle records (`x-mesh-settlement-v1`, one per
 `payment.lifecycle.v1` event the plugin observed) are this node's own log entries: Pane A lists
 them as `kind: "settlement_observation"`, and they are never exchanges. Panes B and C read them

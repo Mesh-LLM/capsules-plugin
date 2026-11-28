@@ -9,6 +9,7 @@ import type { PaneCRow } from '@/features/capsules/api/sidecarTypes'
 import type { CapsuleRecord } from '@/features/capsules/api/types'
 import { isDigestShaped } from '@/features/capsules/lib/canonical'
 import { formatExchangeTimestamp } from '@/features/capsules/lib/local-time'
+import { producerSignatureVerifies } from '@/features/capsules/lib/producer-signature'
 import { CLOSED_CELL_TOOLTIPS, ROW_STATE_TOOLTIPS } from '@/features/capsules/lib/tooltip-copy'
 import type { PeerRecomputeState } from '@/features/capsules/lib/recompute-identity'
 
@@ -74,8 +75,9 @@ export function paneOutcomeState(row: PaneCRow): RightCellState | null {
  * present, disagreeing). Otherwise only a VERIFIED record gives a verdict:
  * its body produces its `capsule_id` and its signature holds under the key
  * this node has for the peer. CLOSED also needs both `effect` digests equal
- * to ours (§6.2/L-G) and the provider check (`providerMatches`,
- * provisional). CONTRADICTED: a verified provider record whose digests differ
+ * to ours (§6.2/L-G) and the check that it came from the other party
+ * (`providerMatches`, provisional, on a row this node asked; on a row it
+ * served, its signature under the requester's known key, #412). CONTRADICTED: a verified provider record whose digests differ
  * from ours, or that names other model weights than it served us under
  * (`modelSwapped`). A PUSHED record from a node that did not serve the
  * exchange is never CONTRADICTED (any peer can push). Anything else -- not
@@ -190,7 +192,8 @@ function modelSwapped(localRecord: CapsuleRecord | null | undefined, peerRecord:
 
 const SERVED_BY_PATH = ['model_attestation', 'compute_attestation', 'x-mesh-poc-v1', 'serving_provenance', 'served_by_node_id'] as const
 
-/** "Obtained from the provider": both halves name the same serving node.
+/** "Obtained from the provider" on a row this node ASKED: both halves name
+ *  the same serving node.
  *
  *  PROVISIONAL -- check (i). The rule is `received_from == served_by`, but the
  *  citing record's `received_from` is the plugin's endpoint id, not a mesh
@@ -208,6 +211,36 @@ function providerMatches(
   const ours = recordString(localRecord, SERVED_BY_PATH)
   const theirs = recordString(peerRecord, SERVED_BY_PATH)
   return !!ours && ours !== 'unknown' && ours === theirs
+}
+
+/** On a row this node SERVED, the key this node knows the requester signs
+ *  with: the plugin binds it to the node our own record names as requester
+ *  (`requesting_party`, from the connection's authenticated node id) by the
+ *  record-push door's rule (`peer_keys::key_bound_to`), on the `mine` cell.
+ *  `null` binding: the row is not a served one. */
+export type ServedBinding = { requesterKeyId: string | null }
+
+/** The binding THE gate needs for a row whose `mine` cell is this node's
+ *  served record, or `null` when this node did not serve the exchange. */
+export function servedBinding(mine: PaneCRow['mine'] | null | undefined): ServedBinding | null {
+  if (mine?.role !== 'served') return null
+  const key = mine.requester_key_id
+  return { requesterKeyId: typeof key === 'string' && key.length > 0 ? key.toLowerCase() : null }
+}
+
+/** On a SERVED row, the record is from the node this node served only when it
+ *  names this node as server AND its producer signature holds under the key
+ *  that requesting node is known by (#412). The signature is checked here,
+ *  whichever way the record arrived: a fetched record's own check uses the
+ *  key its sender's reply supplies, which proves nothing about who that is.
+ *  No requester key known: never from them. */
+function fromServedRequester(
+  localRecord: CapsuleRecord | null | undefined,
+  peerRecord: Record<string, unknown> | null,
+  served: ServedBinding
+): boolean {
+  if (!peerRecord || !served.requesterKeyId) return false
+  return providerMatches(localRecord, peerRecord) && producerSignatureVerifies(peerRecord, served.requesterKeyId)
 }
 
 /** The counterparty half the pane correlated from OUR citing record, as the
@@ -257,7 +290,9 @@ export type RecordSource = 'fetched' | 'pushed' | 'asked'
  *    exception: anyone can push, so it says nothing.
  *  - Otherwise only a verified record (`isVerifiedRecord`: id matches, and
  *    the signature holds under the key this node has for them) gives a
- *    verdict. CLOSED iff it came from the provider (`providerMatches`) and
+ *    verdict. CLOSED iff it came from the other party (`providerMatches` on
+ *    a row this node asked; on a row it served, `fromServedRequester`: its
+ *    signature holds under the requester's known key) and
  *    both digests equal ours; CONTRADICTED (`differs`) iff it came from the
  *    provider and its digests differ from ours, or it names other model
  *    weights (`modelSwapped`).
@@ -266,10 +301,13 @@ export type RecordSource = 'fetched' | 'pushed' | 'asked'
 export function recordVerdict(
   evidence: PeerRecomputeState,
   localRecord: CapsuleRecord | null | undefined,
-  source: RecordSource
+  source: RecordSource,
+  served: ServedBinding | null
 ): RecordVerdict {
   if (evidence.idMatch === null) return { kind: 'no_verdict', why: 'not_verified' }
-  const fromProvider = providerMatches(localRecord, evidence.peerRecord)
+  const fromProvider = served
+    ? fromServedRequester(localRecord, evidence.peerRecord, served)
+    : providerMatches(localRecord, evidence.peerRecord)
   if (source === 'pushed' && !fromProvider) return { kind: 'no_verdict', why: 'other_provider' }
   if (evidence.idMatch === false) return { kind: 'contradicted', why: 'altered' }
   if (!isVerifiedRecord(evidence)) return { kind: 'no_verdict', why: 'not_verified' }
@@ -285,9 +323,10 @@ export function recordVerdict(
 function counterpartyHalfState(
   evidence: PeerRecomputeState,
   localRecord: CapsuleRecord | null | undefined,
-  source: RecordSource
+  source: RecordSource,
+  served: ServedBinding | null
 ): RightCellStateKind {
-  const verdict = recordVerdict(evidence, localRecord, source)
+  const verdict = recordVerdict(evidence, localRecord, source, served)
   return verdict.kind === 'no_verdict' ? 'open_not_held' : verdict.kind
 }
 
@@ -300,16 +339,6 @@ function counterpartyHalfState(
  *  host's `capsule_id_is_digest_shaped` (openai-frontend). */
 export function capsuleIdIsDigestShaped(id: string | null | undefined): boolean {
   return typeof id === 'string' && /^[0-9a-f]{64}$/.test(id)
-}
-
-/** The right cell for a counterparty record this browser fetched, judged on
- *  its own by THE gate. For an ask this row sent to the node its own record
- *  names: the row's pane-side `theirs.state` doesn't apply to that reply. */
-export function stateFromFetchedHalf(
-  evidence: PeerRecomputeState,
-  localRecord: CapsuleRecord | null | undefined
-): RightCellState {
-  return { kind: counterpartyHalfState(evidence, localRecord, 'fetched'), date: null }
 }
 
 export function deriveRightCellState(
@@ -342,7 +371,10 @@ export function deriveRightCellState(
   const evidence = fetchedHalf ?? pushedHalfRecompute(row)
   if (evidence) {
     const ours = localRecord ?? (row.mine.record as CapsuleRecord | undefined) ?? null
-    return { kind: counterpartyHalfState(evidence, ours, fetchedHalf ? 'fetched' : 'pushed'), date: null }
+    return {
+      kind: counterpartyHalfState(evidence, ours, fetchedHalf ? 'fetched' : 'pushed', servedBinding(row.mine)),
+      date: null
+    }
   }
 
   // No confirmed fetch yet. A peer id is "known but not fetched" (fetchable)

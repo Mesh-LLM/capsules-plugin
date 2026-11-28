@@ -76,7 +76,7 @@ const failed = (at = T2): AskOutcome => ({ kind: 'no_reply', at, detail: 'HTTP 5
 
 function asks(...outcomes: AskOutcome[]): RowAsk | null {
   let ask: RowAsk | null = null
-  for (const outcome of outcomes) ask = settleRowAsk(ask, outcome, ours() as never)
+  for (const outcome of outcomes) ask = settleRowAsk(ask, outcome, ours() as never, null)
   return ask
 }
 

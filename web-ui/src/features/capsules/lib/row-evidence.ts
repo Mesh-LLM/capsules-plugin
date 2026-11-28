@@ -56,6 +56,7 @@ import {
   paneOutcomeState,
   pushedHalfRecompute,
   recordVerdict,
+  servedBinding,
   type RecordVerdict,
   type RightCellState
 } from '@/features/capsules/lib/exchange-row-state'
@@ -134,14 +135,15 @@ export function judgeRow(
   ask: RowAsk | null
 ): RowJudgement {
   const ours = localRecord ?? (row.mine.record as CapsuleRecord | undefined) ?? null
+  const served = servedBinding(row.mine)
 
   // 1. Candidates.
   const records: RecordCandidate[] = []
   if (fetched?.status === 'found') {
-    records.push({ source: 'fetched', evidence: fetched, verdict: recordVerdict(fetched, ours, 'fetched'), outcome: null })
+    records.push({ source: 'fetched', evidence: fetched, verdict: recordVerdict(fetched, ours, 'fetched', served), outcome: null })
   }
   const pushed = pushedHalfRecompute(row)
-  if (pushed) records.push({ source: 'pushed', evidence: pushed, verdict: recordVerdict(pushed, ours, 'pushed'), outcome: null })
+  if (pushed) records.push({ source: 'pushed', evidence: pushed, verdict: recordVerdict(pushed, ours, 'pushed', served), outcome: null })
   // Both the latest asked record and the kept verdict record: a later record
   // that reaches no verdict never hides an earlier one that did.
   const askedRecords = [ask?.latest.kind === 'record' ? ask.latest : null, ask?.record ?? null].filter(
@@ -151,7 +153,7 @@ export function judgeRow(
     records.push({
       source: 'asked',
       evidence: askedRecord.evidence,
-      verdict: recordVerdict(askedRecord.evidence, ours, 'asked'),
+      verdict: recordVerdict(askedRecord.evidence, ours, 'asked', served),
       outcome: askedRecord
     })
   }
@@ -207,7 +209,7 @@ export function judgeRow(
     // "Asked again" after an earlier answer that verified; else "Asked".
     const earlier = [ask.claim, ask.record].some((o) => o !== null && o !== latest)
     const asked = earlier ? 'Asked again' : 'Asked'
-    const latestVerdict = latest.kind === 'record' ? recordVerdict(latest.evidence, ours, 'asked') : null
+    const latestVerdict = latest.kind === 'record' ? recordVerdict(latest.evidence, ours, 'asked', served) : null
     if (shownAsk) {
       // An altered record is shown as Disagree: its note says so, never "not
       // verified" beside that badge.

@@ -95,7 +95,11 @@ import {
   paginateGroups,
   windowBannerHeadline
 } from '@/features/capsules/lib/exchange-pages'
-import { deriveRightCellState, LEDGER_STATE_FILTER_VALUES } from '@/features/capsules/lib/exchange-row-state'
+import {
+  deriveRightCellState,
+  LEDGER_STATE_FILTER_VALUES,
+  servedBinding
+} from '@/features/capsules/lib/exchange-row-state'
 import {
   exchangeRowsToCsv,
   integrityEvidenceBundle,
@@ -528,7 +532,8 @@ function ExchangesSection({
     const ours = (row.raw.mine.capsule_id ? recordsById.get(row.raw.mine.capsule_id) : undefined) ?? (row.raw.mine.record as CapsuleRecord | undefined) ?? null
     const settle = (outcome: AskOutcome) =>
       setAskOutcomes((previous) =>
-        new Map(previous).set(row.exchangeKey, settleRowAsk(previous.get(row.exchangeKey), outcome, ours))
+        new Map(previous).set(row.exchangeKey, settleRowAsk(previous.get(row.exchangeKey), outcome, ours, servedBinding(row.raw.mine))
+        )
       )
     settle({ kind: 'asking', at: askedAt })
     void askForRecord(target.peerId, target)

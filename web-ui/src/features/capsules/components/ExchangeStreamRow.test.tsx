@@ -58,7 +58,7 @@ const LOCAL_RECORD_WITH_DIGESTS: CapsuleRecord = (() => {
 
 /** Settles asks against the record every test row passes as ours. */
 const settleRowAsk = (previous: RowAsk | null, outcome: AskOutcome) =>
-  settleRowAskWith(previous, outcome, LOCAL_RECORD_WITH_DIGESTS)
+  settleRowAskWith(previous, outcome, LOCAL_RECORD_WITH_DIGESTS, null)
 
 // finding 1: `ExchangeStreamRow`
 // now derives its own right-cell state from `row.raw` + a live

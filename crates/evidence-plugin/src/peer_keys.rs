@@ -378,30 +378,7 @@ pub fn accepted_via(
         if key == own_key {
             return None;
         }
-        let peers = peers_for_key_in(registry.as_deref(), key);
-        if peers.is_empty() {
-            return None;
-        }
-        // A key a host announced is bound to the host's peers only: an
-        // operator label never adds a second name to it.
-        let hosted: Vec<String> = peers
-            .iter()
-            .filter(|p| announced.get(*p).map(String::as_str) == Some(key))
-            .cloned()
-            .collect();
-        Some(if hosted.is_empty() {
-            Accepted {
-                via: AcceptedVia::OperatorStopgap,
-                peers,
-                binding: None,
-            }
-        } else {
-            Accepted {
-                via: AcceptedVia::HostAnnounced,
-                peers: hosted,
-                binding: None,
-            }
-        })
+        direct_acceptance(registry.as_deref(), announced, key)
     };
     if key_id == own_key || binds_to_own(declaration, key_id, own_key, now) {
         return None;
@@ -427,6 +404,59 @@ pub fn accepted_via(
         peers: anchored.peers,
         binding: Some(applied),
     })
+}
+
+/// How `registry` (the merged one) binds `key` directly, with no carried
+/// declaration: to the host's peers when a host announced it (an operator
+/// label never adds a second name to such a key), else to the operator's
+/// names for it. `None` when no entry gives it.
+fn direct_acceptance(
+    registry: Option<&str>,
+    announced: &std::collections::BTreeMap<String, String>,
+    key: &str,
+) -> Option<Accepted> {
+    let peers = peers_for_key_in(registry, key);
+    if peers.is_empty() {
+        return None;
+    }
+    let hosted: Vec<String> = peers
+        .iter()
+        .filter(|p| announced.get(*p).map(String::as_str) == Some(key))
+        .cloned()
+        .collect();
+    Some(if hosted.is_empty() {
+        Accepted {
+            via: AcceptedVia::OperatorStopgap,
+            peers,
+            binding: None,
+        }
+    } else {
+        Accepted {
+            via: AcceptedVia::HostAnnounced,
+            peers: hosted,
+            binding: None,
+        }
+    })
+}
+
+/// The key this node knows `peer` signs with, bound by the same rule the
+/// record-push door accepts a key by ([`accepted_via`], without a carried
+/// declaration): the key the merged registry gives `peer`, only when that key
+/// is bound to `peer` (a key a host announced for another node is not
+/// `peer`'s however the operator labels it). `None` when no source gives one,
+/// the two sources disagree, or the key is bound elsewhere: never a guess.
+pub fn key_bound_to(
+    configured: Option<&str>,
+    announced: &std::collections::BTreeMap<String, String>,
+    peer: &str,
+) -> Option<String> {
+    let registry = merged(configured, announced);
+    let key = announced_key_in(registry.as_deref(), peer)?;
+    direct_acceptance(registry.as_deref(), announced, &key)?
+        .peers
+        .iter()
+        .any(|p| p == peer)
+        .then_some(key)
 }
 
 /// Whether `declaration` is a controller declaration that applies at `now`
@@ -503,6 +533,42 @@ mod tests {
             None,
             "not an object"
         );
+    }
+
+    /// #412: the key a node is known to sign with, by the door's rule.
+    #[test]
+    fn key_bound_to_gives_a_node_only_a_key_bound_to_it() {
+        let announced = |pairs: &[(&str, &str)]| -> std::collections::BTreeMap<String, String> {
+            pairs
+                .iter()
+                .map(|(p, k)| (p.to_string(), k.to_string()))
+                .collect()
+        };
+        let (a, b) = ("aa".repeat(32), "bb".repeat(32));
+        // Host-announced.
+        let host = announced(&[("node-b", &b)]);
+        assert_eq!(key_bound_to(None, &host, "node-b"), Some(b.clone()));
+        // Operator map alone (the stopgap).
+        let operator = format!(r#"{{"node-b": "{b}"}}"#);
+        assert_eq!(
+            key_bound_to(Some(&operator), &announced(&[]), "node-b"),
+            Some(b.clone())
+        );
+        // An operator label on a key a host announced for another node does
+        // not bind that key to the labelled node.
+        let label = format!(r#"{{"node-b": "{a}"}}"#);
+        let other = announced(&[("node-a", &a)]);
+        assert_eq!(key_bound_to(Some(&label), &other, "node-b"), None);
+        assert_eq!(
+            key_bound_to(Some(&label), &other, "node-a"),
+            Some(a.clone())
+        );
+        // The two sources disagree: no key.
+        assert_eq!(key_bound_to(Some(&label), &host, "node-b"), None);
+        // No announcement at all, an unknown node, or no node id.
+        assert_eq!(key_bound_to(None, &announced(&[]), "node-b"), None);
+        assert_eq!(key_bound_to(None, &host, "node-z"), None);
+        assert_eq!(key_bound_to(None, &host, ""), None);
     }
 
     /// D-34: a key is accepted by what it is, under any peer id, and the
