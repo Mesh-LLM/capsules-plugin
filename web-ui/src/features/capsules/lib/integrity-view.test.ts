@@ -17,7 +17,12 @@ import {
   RETENTION_FACT,
   witnessKeyProblems,
   witnessRestartNote,
-  witnessRows
+  witnessRows,
+  latestWitnessed,
+  witnessCoverageByRecord,
+  witnessCoverageLine,
+  ledgerOrderIds,
+  checkpointCoverageByRecord
 } from '@/features/capsules/lib/integrity-view'
 import { ownerLinked } from '@/features/capsules/lib/integrity-view'
 import { formatExchangeTimestamp } from '@/features/capsules/lib/local-time'
@@ -187,6 +192,70 @@ describe('checkpointRegistration — the witness state', () => {
     expect(state({ witness_configured: true })).toBe('pending')
     expect(state({})).toBe('unknown')
     expect(state({ witnesses: [{ checked: true }], witness_configured: false })).toBe('latest')
+  })
+})
+
+describe('witnessCoverageByRecord — each record against the latest checkpoint a witness holds (#411)', () => {
+  const at = '2026-11-28T02:00:00Z'
+  const ids = ['r1', 'r2', 'r3']
+  const witnessedCard = {
+    checkpoint_count: 2,
+    witnesses: [],
+    witnessed_checkpoint_count: 1,
+    witness_configured: true,
+    // Covers 2 records, counted by the node in records, not leaves.
+    latest_witnessed: { timestamp: at, mmr_size: 4, covered_leaf_count: 3, covered_record_count: 2, witnesses: [] }
+  }
+
+  it('records the witnessed checkpoint covers are covered; later ones are newer, with its time', () => {
+    const coverage = witnessCoverageByRecord(ids, witnessedCard)
+    expect(coverage.get('r1')).toEqual({ kind: 'covered', at })
+    expect(coverage.get('r2')).toEqual({ kind: 'covered', at })
+    expect(coverage.get('r3')).toEqual({ kind: 'newer', at })
+  })
+
+  it('compares records, never leaves: padding inside the checkpoint does not cover a later record', () => {
+    // 3 leaves (a record, a padding line, a record) but only 1 record before the cut.
+    const card = { ...witnessedCard, latest_witnessed: { ...witnessedCard.latest_witnessed, covered_record_count: 1 } }
+    expect(witnessCoverageByRecord(ids, card).get('r2')).toEqual({ kind: 'newer', at })
+  })
+
+  it('counts in ledger order, never pane A\'s grouping: exchange A, a settlement record, exchange B', () => {
+    // Ledger order A, S, B; pane A would list A, B, S. A checkpoint over two
+    // records covers A and S, so B is newer.
+    const order = ledgerOrderIds([{ capsule_id: 'A' }, { capsule_id: 'S' }, { capsule_id: 'B' }])
+    expect(order).toEqual(['A', 'S', 'B'])
+    const coverage = witnessCoverageByRecord(order, witnessedCard)
+    expect(coverage.get('S')).toEqual({ kind: 'covered', at })
+    expect(coverage.get('B')).toEqual({ kind: 'newer', at })
+    expect(checkpointCoverageByRecord(order, 2).get('B')).toBe(false)
+    // A record with no id keeps its place.
+    expect(ledgerOrderIds([{ capsule_id: null }, { capsule_id: 'B' }])).toEqual(['', 'B'])
+  })
+
+  it('no witness holds any checkpoint: every record says none', () => {
+    const card = { checkpoint_count: 2, witnesses: [], witnessed_checkpoint_count: 0, witness_configured: true }
+    expect(witnessCoverageByRecord(ids, card).get('r1')).toEqual({ kind: 'none' })
+    expect(witnessCoverageByRecord(ids, { checkpoint_count: 2, witnesses: [] }).get('r1')).toEqual({ kind: 'none' })
+  })
+
+  it('unknown stays unknown: witness off, no card, or a witnessed checkpoint with no reported coverage', () => {
+    expect(witnessCoverageByRecord(ids, { checkpoint_count: 2, witnesses: [], witness_configured: false }).size).toBe(0)
+    expect(witnessCoverageByRecord(ids, null).size).toBe(0)
+    const unreported = { ...witnessedCard, latest_witnessed: { timestamp: at, mmr_size: 4, witnesses: [] } }
+    expect(latestWitnessed(unreported)).toBeNull()
+    expect(witnessCoverageByRecord(ids, unreported).size).toBe(0)
+  })
+
+  it('each state reads as Sherlock2\'s line, the time in the viewer\'s zone, named', () => {
+    const time = formatExchangeTimestamp(at)
+    expect(witnessCoverageLine({ kind: 'covered', at })).toBe(
+      `Held by a witness you don’t run: a checkpoint from ${time} includes this record, by this node’s count. This page hasn’t checked with the witness itself.`
+    )
+    expect(witnessCoverageLine({ kind: 'newer', at })).toBe(
+      `Not yet: this record is newer than the last checkpoint a witness you don’t run holds (${time}).`
+    )
+    expect(witnessCoverageLine({ kind: 'none' })).toBe('Not yet: no witness you don’t run holds a checkpoint from this node.')
   })
 })
 

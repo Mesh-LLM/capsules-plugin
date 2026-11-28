@@ -301,6 +301,14 @@ fn read_checkpoint_card_with(
             "mmr_size": witnessed.get("mmr_size"),
             "witnesses": witnessed.get("witnesses"),
         });
+        // What the witnessed checkpoint covers, in leaves and in records, the
+        // same figures the latest checkpoint carries below: a row reads
+        // whether a witness holds a checkpoint covering it from these.
+        if let Some(leaves) = checkpoint_leaf_count(witnessed) {
+            card["latest_witnessed"]["covered_leaf_count"] = json!(leaves);
+            card["latest_witnessed"]["covered_record_count"] =
+                json!(records_among_first_leaves(ledger_dir, leaves));
+        }
     }
     if let Some(latest) = checkpoints.last() {
         if let Some(ts) = latest.get("timestamp").and_then(Value::as_str) {
@@ -322,15 +330,7 @@ fn read_checkpoint_card_with(
         // the MMR node count (`mmr_size`) via `mmr_leaf_count`. Left absent (never
         // a fabricated figure) when neither is available or the node count is not
         // a valid MMR size.
-        let carried_leaf = latest
-            .get("covered_leaf_count")
-            .or_else(|| latest.get("leaf_count"))
-            .and_then(Value::as_u64);
-        let derived_leaf = latest
-            .get("mmr_size")
-            .and_then(Value::as_u64)
-            .and_then(mmr_leaf_count);
-        if let Some(leaves) = carried_leaf.or(derived_leaf) {
+        if let Some(leaves) = checkpoint_leaf_count(latest) {
             // The leaf count stays the checkpoint's own fact (padding leaves
             // included: they are covered too). What it covers in RECORDS is
             // what the chain strip and "Your records" compare with the record
@@ -340,6 +340,22 @@ fn read_checkpoint_card_with(
         }
     }
     card
+}
+
+/// The leaves a checkpoint line covers: a leaf count it carries
+/// (`covered_leaf_count`/`leaf_count`), else its MMR node count (`mmr_size`)
+/// inverted by [`mmr_leaf_count`]; `None` when neither is a valid figure.
+fn checkpoint_leaf_count(checkpoint: &Value) -> Option<u64> {
+    let carried = checkpoint
+        .get("covered_leaf_count")
+        .or_else(|| checkpoint.get("leaf_count"))
+        .and_then(Value::as_u64);
+    carried.or_else(|| {
+        checkpoint
+            .get("mmr_size")
+            .and_then(Value::as_u64)
+            .and_then(mmr_leaf_count)
+    })
 }
 
 fn request_digest(record: &Value) -> Option<&str> {
@@ -6151,6 +6167,9 @@ mod tests {
         assert_eq!(card["witnesses"], json!([]), "the latest is not held");
         assert_eq!(card["witnessed_checkpoint_count"], json!(1));
         assert_eq!(card["latest_witnessed"]["mmr_size"], json!(3));
+        // An MMR of 3 nodes covers 2 leaves; no ledger here, so 0 records.
+        assert_eq!(card["latest_witnessed"]["covered_leaf_count"], json!(2));
+        assert_eq!(card["latest_witnessed"]["covered_record_count"], json!(0));
         assert_eq!(
             card["latest_witnessed"]["witnesses"][0]["ts_url"],
             json!(fixture::WITNESS)

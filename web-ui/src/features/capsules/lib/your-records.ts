@@ -16,6 +16,7 @@ import {
   exchangeTextStillHeldNotice
 } from '@/features/capsules/lib/tooltip-copy'
 import type { WitnessState } from '@/features/capsules/lib/integrity-view'
+import { formatExchangeTimestamp } from '@/features/capsules/lib/local-time'
 
 function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`
@@ -28,14 +29,21 @@ export type HeroCounts = {
   /** Where this node's checkpoints stand with a witness it doesn't run
    *  (`checkpointRegistration`). */
   witness: WitnessState
+  /** The latest witnessed checkpoint's time (`latestWitnessed`), as
+   *  recorded; `null` when none is reported. */
+  witnessedAt?: string | null
 }
 
-function witnessPhrase(state: WitnessState): string {
+function witnessPhrase(state: WitnessState, witnessedAt: string | null): string {
   switch (state) {
+    // Sherlock2's ruling on #411: up to the latest checkpoint a witness
+    // holds, by its time, so the header and each row's line agree.
     case 'latest':
-      return 'also held by a witness you don’t run'
     case 'earlier':
-      return 'held by a witness you don’t run up to an earlier checkpoint'
+      if (witnessedAt) return `also held by a witness you don’t run, up to ${formatExchangeTimestamp(witnessedAt)}`
+      return state === 'latest'
+        ? 'also held by a witness you don’t run'
+        : 'held by a witness you don’t run up to an earlier checkpoint'
     case 'pending':
       return 'no checkpoint held by a witness yet (witness on)'
     // Off is the default; the hero states the fact and doesn't comment on
@@ -54,7 +62,7 @@ export function heroStatusLine(counts: HeroCounts): string {
     plural(counts.records, 'record'),
     `${counts.confirmed} saved as confirmed`,
     plural(counts.disagreements, 'disagreement'),
-    witnessPhrase(counts.witness)
+    witnessPhrase(counts.witness, counts.witnessedAt ?? null)
   ].join(' · ')
 }
 

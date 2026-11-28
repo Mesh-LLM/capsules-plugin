@@ -112,6 +112,8 @@ import {
   coveredRecordCount,
   continuityFact,
   identityFact,
+  latestWitnessed,
+  ledgerOrderIds,
   ownerLinked,
   recordsStripBreakdown,
   recordsStripHeading,
@@ -120,6 +122,7 @@ import {
   witnessKeyProblems,
   witnessRestartNote,
   witnessRows,
+  witnessCoverageByRecord,
   type SetupStep
 } from '@/features/capsules/lib/integrity-view'
 import { HARNESS_PANE_A_PAYLOAD, HARNESS_PANE_C_PAYLOAD } from '@/features/capsules/lib/exchange-fixtures'
@@ -417,9 +420,13 @@ function ExchangesSection({
   onGoToIntegrity,
   sampleData = false,
   requesterStartedDate,
-  focusExchangeKey
+  focusExchangeKey,
+  ledgerOrderIds = []
 }: {
   recordsById: Map<string, CapsuleRecord>
+  /** This node's record ids in ledger order (padding left out), the order a
+   *  checkpoint's coverage counts in. */
+  ledgerOrderIds?: readonly string[]
   nodePubKeyPem: string | null
   /** §3E -- "Get the other side’s record" and
    *  "Register a checkpoint" beside the headline both land on the Integrity
@@ -458,14 +465,19 @@ function ExchangesSection({
   // Look finding 2: per-record checkpoint coverage from the SAME card figure
   // the Integrity chain strip shades, so a row's checks panel can never say
   // "no checkpoint covers this record" while Integrity says all are covered.
-  const checkpointCoverage = useMemo(() => {
-    const card = paneAQuery.data?.card ?? null
-    const covered = typeof card?.covered_leaf_count === 'number' ? card.covered_leaf_count : null
-    return checkpointCoverageByRecord(
-      (paneAQuery.data?.rows ?? []).map((r) => r.capsule_id),
-      covered
-    )
-  }, [paneAQuery.data])
+  // A checkpoint covers the first records in LEDGER order, so the ids come in
+  // that order (`ledgerOrderIds`), never pane A's, which groups records by
+  // kind; and they are compared with the RECORDS a checkpoint covers, never
+  // its leaf count, which counts padding too (`coveredRecordCount`).
+  const checkpointCoverage = useMemo(
+    () => checkpointCoverageByRecord(ledgerOrderIds, coveredRecordCount(paneAQuery.data?.card ?? null)),
+    [ledgerOrderIds, paneAQuery.data]
+  )
+  // #411: the same, for the latest checkpoint a witness holds.
+  const witnessCoverage = useMemo(
+    () => witnessCoverageByRecord(ledgerOrderIds, paneAQuery.data?.card ?? null),
+    [ledgerOrderIds, paneAQuery.data]
+  )
   // Same queryKey as PeersSection's own pane-c query (no `mode` suffix) --
   // that one calls the identical `fetchPaneCList()` in live mode and is
   // simply `enabled: false` in harness mode, so both share ONE cache entry
@@ -1076,6 +1088,9 @@ function ExchangesSection({
                         checkpointCovered={
                           row.raw.mine.capsule_id ? (checkpointCoverage.get(row.raw.mine.capsule_id) ?? null) : null
                         }
+                        witnessCoverage={
+                          row.raw.mine.capsule_id ? (witnessCoverage.get(row.raw.mine.capsule_id) ?? null) : null
+                        }
                         nodePubKeyPem={nodePubKeyPem}
                         askOutcome={askOutcomes.get(row.exchangeKey) ?? null}
                         onAskForRecord={harnessMode || sampleData ? undefined : handleAskForRecord}
@@ -1617,6 +1632,9 @@ export function LedgerPageContent({ focusExchangeKey }: { focusExchangeKey?: str
     retry: false
   })
 
+  // The node's records come in ledger order (`read_capsule_records`): the
+  // order checkpoint coverage counts in.
+  const ledgerOrder = useMemo(() => ledgerOrderIds(ledgerQuery.data?.records ?? []), [ledgerQuery.data])
   const recordsById = useMemo(() => {
     const map = new Map<string, CapsuleRecord>()
     for (const record of ledgerQuery.data?.records ?? []) {
@@ -1657,7 +1675,8 @@ export function LedgerPageContent({ focusExchangeKey }: { focusExchangeKey?: str
           confirmed: paneCHeroQuery.data.rows.filter((row) => deriveRightCellState(row).kind === 'closed').length,
           disagreements: paneCHeroQuery.data.rows.filter((row) => deriveRightCellState(row).kind === 'contradicted')
             .length,
-          witness: checkpointRegistration(paneAStatusQuery.data.card ?? null).witnessState
+          witness: checkpointRegistration(paneAStatusQuery.data.card ?? null).witnessState,
+          witnessedAt: latestWitnessed(paneAStatusQuery.data.card ?? null)?.at ?? null
         })
       : null
   const recordsStatus = useRecordsStatus({ sample: source === 'sample' })
@@ -1843,6 +1862,7 @@ export function LedgerPageContent({ focusExchangeKey }: { focusExchangeKey?: str
                     onGoToIntegrity={() => setActiveTab('integrity')}
                     sampleData={source === 'sample'}
                     recordsById={recordsById}
+                    ledgerOrderIds={ledgerOrder}
                   />
                 )
               },

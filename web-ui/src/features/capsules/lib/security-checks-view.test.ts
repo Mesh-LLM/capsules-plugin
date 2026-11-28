@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { SECOND_SIGNATURE_WORD } from '@/features/capsules/lib/banned-terms'
 import type { PaneCRow } from '@/features/capsules/api/sidecarTypes'
-import { checkpointCoverageByRecord } from '@/features/capsules/lib/integrity-view'
+import { checkpointCoverageByRecord, witnessCoverageLine, type WitnessCoverage } from '@/features/capsules/lib/integrity-view'
 import {
   NINE_PROPERTY_LABELS,
   WHAT_ACTUALLY_HAPPENED_GROUP,
@@ -117,6 +117,20 @@ describe('buildChecksRows — checkpoint-dependent properties resolve NOT_PRESEN
     const externalRegistration = rows.find((r) => r.key === 'external_registration')
     expect(externalRegistration?.yours?.label).toBe('not present')
     expect(externalRegistration?.yours?.detail).toBe('no receipt covers this record')
+  })
+
+  it('#411: external_registration reads the record\'s witness coverage, the same line its chip shows', () => {
+    const at = '2026-11-28T02:00:00Z'
+    const cell = (witnessCoverage: WitnessCoverage) =>
+      buildChecksRows(paneCRow({ properties: null }), NOT_RECOMPUTED, undefined, { witnessCoverage }).find(
+        (r) => r.key === 'external_registration'
+      )?.yours
+    expect(cell({ kind: 'covered', at })).toMatchObject({ state: 'NOT_CHECKED', detail: witnessCoverageLine({ kind: 'covered', at }) })
+    expect(cell({ kind: 'newer', at })).toMatchObject({ state: 'NOT_PRESENT', detail: witnessCoverageLine({ kind: 'newer', at }) })
+    expect(cell({ kind: 'none' })).toMatchObject({
+      state: 'NOT_PRESENT',
+      detail: 'Not yet: no witness you don’t run holds a checkpoint from this node.'
+    })
   })
 
   it('a property with no absence rule (task_binding) still defaults to not checked, unchanged', () => {

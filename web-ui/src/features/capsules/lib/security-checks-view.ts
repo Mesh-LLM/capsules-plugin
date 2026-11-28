@@ -23,6 +23,7 @@ import { NINE_PROPERTY_LABELS, PROPERTY_GROUP, RECOMPUTED_PROPERTIES } from '@/f
 import { labelForState } from '@/features/capsules/lib/assurance-tone'
 import { isDigestShaped } from '@/features/capsules/lib/canonical'
 import { OWNER_LINKED_PHRASE, OWNER_NOT_LINKED_PHRASE } from '@/features/capsules/lib/tooltip-copy'
+import { witnessCoverageLine, type WitnessCoverage } from '@/features/capsules/lib/integrity-view'
 
 function boolToWireState(value: boolean | null): string {
   return value === null ? 'NOT_CHECKED' : value ? 'PASS' : 'FAIL'
@@ -485,6 +486,14 @@ function checkpointCoverageCell(key: string, covered: boolean | null): { state: 
   return null
 }
 
+/** #411: the witnessed property from the record's witness coverage, the
+ *  same line its chip shows. Covered by the node's count is not a check made
+ *  here, so it reads not checked; `null` keeps the not-present default. */
+function witnessCoverageCell(coverage: WitnessCoverage | null): { state: string; text: string } | null {
+  if (!coverage) return null
+  return { state: coverage.kind === 'covered' ? 'NOT_CHECKED' : 'NOT_PRESENT', text: witnessCoverageLine(coverage) }
+}
+
 function absentDefaultFor(key: string): string {
   return CHECKPOINT_DEPENDENT.has(key) || key === 'external_registration' ? 'NOT_PRESENT' : 'NOT_CHECKED'
 }
@@ -571,6 +580,10 @@ export type ChecksContext = {
    *  absent = not reported. Used only where the pane carries no per-row
    *  checkpoint property. */
   checkpointCovered?: boolean | null
+  /** #411: where this record stands with a witness this node doesn't run
+   *  (`witnessCoverageByRecord`); `null` or absent = not known. Used only
+   *  where the pane carries no per-row `external_registration`. */
+  witnessCoverage?: WitnessCoverage | null
   /** p2 item 3: whether this node's key is linked to an owner, from the SAME
    *  `ownerLinked` derivation Integrity's step 2 reads; `null` = not known.
    *  Used only where the pane carries no `identity_authority` property. */
@@ -581,7 +594,7 @@ export function buildChecksRows(
   row: PaneCRow,
   identity: RecomputedIdentity,
   theirsRecompute?: PeerRecomputeState,
-  { gateKind, checkpointCovered = null, ownerLinked = null }: ChecksContext = {}
+  { gateKind, checkpointCovered = null, witnessCoverage = null, ownerLinked = null }: ChecksContext = {}
 ): ChecksRow[] {
   const gateOutcome = gateOutcomeCell(gateKind)
   const held = theirsHeld(row, theirsRecompute)
@@ -610,7 +623,11 @@ export function buildChecksRows(
       yoursState = boolToWireState(key === 'content_binding' ? identity.idMatch : identity.signatureOk)
     } else {
       const coverageCell =
-        CHECKPOINT_DEPENDENT.has(key) && !row.properties?.[key] ? checkpointCoverageCell(key, checkpointCovered) : null
+        CHECKPOINT_DEPENDENT.has(key) && !row.properties?.[key]
+          ? checkpointCoverageCell(key, checkpointCovered)
+          : key === 'external_registration' && !row.properties?.[key]
+            ? witnessCoverageCell(witnessCoverage)
+            : null
       yoursState =
         (key === 'outcome_corroboration' ? gateOutcome?.state : undefined) ??
         coverageCell?.state ??
@@ -632,7 +649,9 @@ export function buildChecksRows(
         ? gateOutcome.text
         : ((CHECKPOINT_DEPENDENT.has(key) && !row.properties?.[key]
             ? checkpointCoverageCell(key, checkpointCovered)?.text
-            : undefined) ?? (row.properties?.[key]?.text as string | undefined))
+            : key === 'external_registration' && !row.properties?.[key]
+              ? witnessCoverageCell(witnessCoverage)?.text
+              : undefined) ?? (row.properties?.[key]?.text as string | undefined))
     // The forbidden mutant: a property is only "recomputed" if the
     // recompute actually produced a value -- not merely because its key
     // is recomputable while the recompute hasn't run yet (idMatch/

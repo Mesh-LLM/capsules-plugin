@@ -23,6 +23,7 @@ import {
   CHAIN_STRIP_TOOLTIP,
   INTEGRITY_TILE_TOOLTIPS,
   OWNER_LINKED_PHRASE,
+  WITNESS_CHIP_LINE,
 } from '@/features/capsules/lib/tooltip-copy'
 
 /** `StatusPayload.owner` / `PeerInfo['owner']` verbatim (`lib/api/
@@ -320,6 +321,54 @@ export function coveredRecordCount(card: JsonRecord | null | undefined): number 
   return typeof covered === 'number' ? covered : null
 }
 
+/** Where one record stands with a witness this node doesn't run (#411):
+ *  `covered` -- the latest checkpoint a witness holds includes it, by this
+ *  node's count; `newer` -- a witness holds a checkpoint, but this record is
+ *  newer than it; `none` -- no witness holds any checkpoint from this node.
+ *  `at` is the witnessed checkpoint's time, as recorded. */
+export type WitnessCoverage = { kind: 'covered'; at: string } | { kind: 'newer'; at: string } | { kind: 'none' }
+
+/** The latest checkpoint a witness holds: its time and how many RECORDS it
+ *  covers (`latest_witnessed`), or null when no witness holds one or the
+ *  node did not report its coverage. */
+export function latestWitnessed(card: JsonRecord | null | undefined): { at: string; records: number } | null {
+  const witnessed = card?.latest_witnessed
+  if (!witnessed || typeof witnessed !== 'object') return null
+  const { timestamp, covered_record_count: records } = witnessed as JsonRecord
+  return typeof timestamp === 'string' && typeof records === 'number' ? { at: timestamp, records } : null
+}
+
+/** Each record's witness coverage, by ledger order, the way
+ *  `checkpointCoverageByRecord` reads local checkpoints. An empty map when it
+ *  can't be told: the witness is off (no witnessed chip is shown), the card
+ *  isn't loaded, or a witness holds a checkpoint whose coverage wasn't
+ *  reported. */
+export function witnessCoverageByRecord(
+  ledgerOrderIds: readonly string[],
+  card: JsonRecord | null | undefined
+): Map<string, WitnessCoverage> {
+  const coverage = new Map<string, WitnessCoverage>()
+  if (!card) return coverage
+  const state = checkpointRegistration(card).witnessState
+  if (state === 'pending' || state === 'unknown') {
+    ledgerOrderIds.forEach((id) => coverage.set(id, { kind: 'none' }))
+    return coverage
+  }
+  const witnessed = state === 'latest' || state === 'earlier' ? latestWitnessed(card) : null
+  if (!witnessed) return coverage
+  ledgerOrderIds.forEach((id, index) =>
+    coverage.set(id, { kind: index < witnessed.records ? 'covered' : 'newer', at: witnessed.at })
+  )
+  return coverage
+}
+
+/** The one line a record's witness coverage reads as, on its chip and in
+ *  its checks panel alike, the time in the viewer's zone, named. */
+export function witnessCoverageLine(coverage: WitnessCoverage): string {
+  if (coverage.kind === 'none') return WITNESS_CHIP_LINE.none
+  return WITNESS_CHIP_LINE[coverage.kind](formatExchangeTimestamp(coverage.at))
+}
+
 /** The strip's heading: how many records are sealed and how many checkpoints
  *  exist. A count the node did not report reads "not checked". */
 export function recordsStripHeading(sealedCount: number, checkpointCount: number | null): string {
@@ -396,6 +445,13 @@ export const RETENTION_FACT =
  *  says the same) -- stated once here instead of repeated on every row. */
 export const CAPTURE_BOUNDARY_FACT =
   'Capture boundary: the plugin at this node’s serving boundary. Rule: whatever passes through it is what gets sealed; nothing upstream or downstream of it is captured.'
+
+/** This node's record ids in LEDGER order, the order a checkpoint's coverage
+ *  counts in: the ledger route's records (padding left out), never pane A's
+ *  rows, which group records by kind. A record with no id keeps its place. */
+export function ledgerOrderIds(records: readonly { capsule_id?: string | null }[]): string[] {
+  return records.map((record) => record.capsule_id ?? '')
+}
 
 /** Look finding 2: which records the latest checkpoint covers. Chain leaves
  *  are the ledger's records in order, and the checkpoint covers the first
