@@ -2737,14 +2737,13 @@ fn mark_claims_refused(
     }
 }
 
-/// #412: on a cell for an exchange this node SERVED, the key this node knows
-/// the requester signs with, so the page counts a record of theirs as from
-/// the node it served only when that key signed it. The requester is our own
-/// record's `requesting_party`, which the host sets from the connection's
-/// authenticated node id (`capsule_emit.rs`), never the request; the key is
-/// bound to it as the record-push door binds keys
-/// ([`crate::peer_keys::key_bound_to`]). `requester_key_id` is null when no
-/// requester is named or no key is bound to it. Every `mine` cell whose role
+/// #412: on a cell for an exchange this node SERVED, the key the requester
+/// announced, so the page counts a record of theirs as from the node it
+/// served only when that key signed it. The requester is our own record's
+/// `requesting_party`, which the host sets from the connection's
+/// authenticated node id (`capsule_emit.rs`), never the request; its key is
+/// the one its host announced for it ([`crate::peer_keys::key_bound_to`]). `requester_key_id` is null when no
+/// requester is named or it announced no key. Every `mine` cell whose role
 /// is `served` gets the field: Pane C rows and Pane B `confirmed_siblings`,
 /// so both panes run the same gate on the same inputs.
 fn attach_requester_keys(

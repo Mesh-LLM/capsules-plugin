@@ -41,11 +41,12 @@ runs the hand-off check itself (`verifySplit`) and draws the stage strip under t
 without `split` render as before. No pane emits it yet.
 
 **Served exchanges (#412).** On a `panes/pane-c` row, and on each `confirmed_siblings` entry of a
-`panes/pane-b` row, a `mine` cell whose `role` is `served` carries `requester_key_id`: the key this
-node knows the requesting node signs with, or `null` when none is bound to it
+`panes/pane-b` row, a `mine` cell whose `role` is `served` carries `requester_key_id`: the key the requesting node announced
+through its host (`plugin_keys.v1`), or `null` when it announced none
 (`src/evidence_panes.rs` `attach_requester_keys`). The requester is the node this node's own record
-names (`requesting_party`, set by the host from the connection's authenticated node id), and the key
-is bound to it by the record-push door's rule (`src/peer_keys.rs` `key_bound_to`). The page counts
+names (`requesting_party`, set by the host from the connection's authenticated node id). An entry in
+the operator's `CAPSULES_PEER_KEYS` alone is not that node's announcement and gives no key
+(`src/peer_keys.rs` `key_bound_to`). The page counts
 the other side's record of a served exchange as from that node only when its signature holds under
 this key (`exchange-row-state.ts` `servedBinding`).
 

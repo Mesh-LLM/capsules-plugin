@@ -608,7 +608,7 @@ describe('producerSignatureVerifies', () => {
 })
 
 // #412: an asked record on a SERVED row is kept as a verdict only when the
-// requester's known key signed it, as the row itself judges it.
+// requester's announced key signed it, as the row itself judges it.
 describe('settleRowAsk — a SERVED row keeps only a record the requester signed (#412)', () => {
   const REQUESTER = ed25519.utils.randomSecretKey()
   const OTHER_NODE = ed25519.utils.randomSecretKey()

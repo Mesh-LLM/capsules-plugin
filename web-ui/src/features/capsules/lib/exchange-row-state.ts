@@ -77,7 +77,7 @@ export function paneOutcomeState(row: PaneCRow): RightCellState | null {
  * this node has for the peer. CLOSED also needs both `effect` digests equal
  * to ours (§6.2/L-G) and the check that it came from the other party
  * (`providerMatches`, provisional, on a row this node asked; on a row it
- * served, its signature under the requester's known key, #412). CONTRADICTED: a verified provider record whose digests differ
+ * served, its signature under the requester's announced key, #412). CONTRADICTED: a verified provider record whose digests differ
  * from ours, or that names other model weights than it served us under
  * (`modelSwapped`). A PUSHED record from a node that did not serve the
  * exchange is never CONTRADICTED (any peer can push). Anything else -- not
@@ -213,10 +213,10 @@ function providerMatches(
   return !!ours && ours !== 'unknown' && ours === theirs
 }
 
-/** On a row this node SERVED, the key this node knows the requester signs
- *  with: the plugin binds it to the node our own record names as requester
- *  (`requesting_party`, from the connection's authenticated node id) by the
- *  record-push door's rule (`peer_keys::key_bound_to`), on the `mine` cell.
+/** On a row this node SERVED, the key the requester announced: the plugin
+ *  reads it, for the node our own record names as requester
+ *  (`requesting_party`, from the connection's authenticated node id), from
+ *  the host's announcements (`peer_keys::key_bound_to`), on the `mine` cell.
  *  `null` binding: the row is not a served one. */
 export type ServedBinding = { requesterKeyId: string | null }
 
@@ -230,10 +230,10 @@ export function servedBinding(mine: PaneCRow['mine'] | null | undefined): Served
 
 /** On a SERVED row, the record is from the node this node served only when it
  *  names this node as server AND its producer signature holds under the key
- *  that requesting node is known by (#412). The signature is checked here,
+ *  that requesting node announced (#412). The signature is checked here,
  *  whichever way the record arrived: a fetched record's own check uses the
  *  key its sender's reply supplies, which proves nothing about who that is.
- *  No requester key known: never from them. */
+ *  No key announced: never from them. */
 function fromServedRequester(
   localRecord: CapsuleRecord | null | undefined,
   peerRecord: Record<string, unknown> | null,
@@ -292,7 +292,7 @@ export type RecordSource = 'fetched' | 'pushed' | 'asked'
  *    the signature holds under the key this node has for them) gives a
  *    verdict. CLOSED iff it came from the other party (`providerMatches` on
  *    a row this node asked; on a row it served, `fromServedRequester`: its
- *    signature holds under the requester's known key) and
+ *    signature holds under the requester's announced key) and
  *    both digests equal ours; CONTRADICTED (`differs`) iff it came from the
  *    provider and its digests differ from ours, or it names other model
  *    weights (`modelSwapped`).

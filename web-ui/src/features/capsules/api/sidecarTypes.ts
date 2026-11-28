@@ -498,10 +498,9 @@ export type PaneCRow = {
     /** The TDX quote in our own record, as the node checked it. */
     tee?: TeeFact
     /** On a cell for an exchange this node SERVED (`role === 'served'`): the
-     *  key this node knows the requester signs with, bound by the plugin to
-     *  the node our record names as requester
-     *  (`evidence_panes.rs::attach_requester_keys`). `null` when no key is
-     *  bound to it; absent on other cells. */
+     *  key the node our record names as requester announced through its host
+     *  (`evidence_panes.rs::attach_requester_keys`). `null` when it announced
+     *  none; absent on other cells. */
     requester_key_id?: string | null
   }
   theirs: {

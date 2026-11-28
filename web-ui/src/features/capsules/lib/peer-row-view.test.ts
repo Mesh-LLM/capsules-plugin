@@ -77,7 +77,7 @@ function confirmedSibling(
 
 // #412: Pane B runs the same gate on a sibling of an exchange this node
 // SERVED, so it counts the requester's record only when the requester's
-// known key signed it -- the same answer Pane C gives for that exchange.
+// announced key signed it -- the same answer Pane C gives for that exchange.
 describe('confirmedByOtherSide — a served exchange needs the requester’s signature (#412)', () => {
   const REQUESTER = ed25519.utils.randomSecretKey()
   const OTHER_NODE = ed25519.utils.randomSecretKey()

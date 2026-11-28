@@ -439,12 +439,14 @@ fn direct_acceptance(
     })
 }
 
-/// The key this node knows `peer` signs with, bound by the same rule the
-/// record-push door accepts a key by ([`accepted_via`], without a carried
-/// declaration): the key the merged registry gives `peer`, only when that key
-/// is bound to `peer` (a key a host announced for another node is not
-/// `peer`'s however the operator labels it). `None` when no source gives one,
-/// the two sources disagree, or the key is bound elsewhere: never a guess.
+/// The key `peer` announced for this plugin through the host
+/// (`plugin_keys.v1`), when the registry binds it to `peer` by the record-push
+/// door's own rule ([`accepted_via`]'s direct check): a host announcement,
+/// which `peer` signed with its own node key. The operator's map alone is a
+/// stopgap label, never `peer`'s own announcement, so it gives no key here.
+/// `None` when the host lists no key for `peer`, the operator's map gives
+/// `peer` a different one, or the key is bound to another node: never a
+/// guess.
 pub fn key_bound_to(
     configured: Option<&str>,
     announced: &std::collections::BTreeMap<String, String>,
@@ -452,10 +454,8 @@ pub fn key_bound_to(
 ) -> Option<String> {
     let registry = merged(configured, announced);
     let key = announced_key_in(registry.as_deref(), peer)?;
-    direct_acceptance(registry.as_deref(), announced, &key)?
-        .peers
-        .iter()
-        .any(|p| p == peer)
+    let accepted = direct_acceptance(registry.as_deref(), announced, &key)?;
+    (accepted.via == AcceptedVia::HostAnnounced && accepted.peers.iter().any(|p| p == peer))
         .then_some(key)
 }
 
@@ -535,7 +535,7 @@ mod tests {
         );
     }
 
-    /// #412: the key a node is known to sign with, by the door's rule.
+    /// #412: only a node's own host announcement gives its key.
     #[test]
     fn key_bound_to_gives_a_node_only_a_key_bound_to_it() {
         let announced = |pairs: &[(&str, &str)]| -> std::collections::BTreeMap<String, String> {
@@ -548,10 +548,15 @@ mod tests {
         // Host-announced.
         let host = announced(&[("node-b", &b)]);
         assert_eq!(key_bound_to(None, &host, "node-b"), Some(b.clone()));
-        // Operator map alone (the stopgap).
+        // The operator's map alone is a stopgap label, not node-b's own
+        // announcement; agreeing with the host's, it changes nothing.
         let operator = format!(r#"{{"node-b": "{b}"}}"#);
         assert_eq!(
             key_bound_to(Some(&operator), &announced(&[]), "node-b"),
+            None
+        );
+        assert_eq!(
+            key_bound_to(Some(&operator), &host, "node-b"),
             Some(b.clone())
         );
         // An operator label on a key a host announced for another node does
