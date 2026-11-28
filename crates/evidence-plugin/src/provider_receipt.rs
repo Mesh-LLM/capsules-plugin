@@ -1,5 +1,5 @@
 //! `GET provider-receipt-bundle`: the provider's own receipt for one paid
-//! exchange it served or that failed, as an Evidence Bundle that capsule-viewer renders
+//! exchange, served or failed, as an Evidence Bundle that capsule-viewer renders
 //! (Mesh-LLM/capsules-plugin#134; Steven's ruling on #146: each side keeps its
 //! half, and the counterparty's receipt is what its half says: the model and
 //! what was paid, never the inference content).
@@ -252,8 +252,8 @@ pub fn with_route(
         http::get("/provider-receipt-bundle")
             .binding_id("evidence_provider_receipt_bundle")
             .description(
-                "The provider's own receipt for one paid exchange it served or that failed: the \
-                 model and what it received, for the viewer to render. Cuts a signed checkpoint when none \
+                "The provider's own receipt for one paid exchange, served or failed: the model \
+                 and what it received, for the viewer to render. Cuts a signed checkpoint when none \
                  covers the records yet.",
             )
             .input::<ProviderReceiptArgs>()
