@@ -65,9 +65,13 @@ export function localDateParts(
   return { day, month: MONTH_ABBR[month - 1], year }
 }
 
-/** "2026-11-28T02:21:22 UTC": a saved page's time, which stays in UTC with
- *  the zone said (the same form capsule-viewer's saved receipt prints). */
+/** "Nov 28, 2026, 02:21 UTC": a saved page's time, which stays in UTC with
+ *  the zone said, to the minute, in capsule-viewer's R6 words form
+ *  (docs/design/receipt-presentation.md; Sherlock2's correction f55ef9b5:
+ *  never ":00", records keep the time to the minute). */
 export function formatUtcTimestamp(timestamp: string): string {
   const date = new Date(timestamp)
-  return Number.isNaN(date.getTime()) ? timestamp : `${date.toISOString().slice(0, 19)} UTC`
+  if (Number.isNaN(date.getTime())) return timestamp
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${MONTH_ABBR[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()}, ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())} UTC`
 }

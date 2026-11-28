@@ -40,8 +40,10 @@ describe('formatExchangeTimestampFull', () => {
 
 describe('formatUtcTimestamp', () => {
   it('prints a saved page\'s time in UTC with the zone said, whatever the input offset', () => {
-    expect(formatUtcTimestamp('2026-11-28T02:21:22Z')).toBe('2026-11-28T02:21:22 UTC')
-    expect(formatUtcTimestamp('2026-11-27T20:21:22-06:00')).toBe('2026-11-28T02:21:22 UTC')
+    // capsule-viewer's R6 words form, to the minute, never ":00" seconds.
+    expect(formatUtcTimestamp('2026-11-28T02:21:22Z')).toBe('Nov 28, 2026, 02:21 UTC')
+    expect(formatUtcTimestamp('2026-11-27T20:21:22-06:00')).toBe('Nov 28, 2026, 02:21 UTC')
+    expect(formatUtcTimestamp('2026-10-27T22:09:00Z')).toBe('Oct 27, 2026, 22:09 UTC')
     expect(formatUtcTimestamp('not a time')).toBe('not a time')
   })
 })
