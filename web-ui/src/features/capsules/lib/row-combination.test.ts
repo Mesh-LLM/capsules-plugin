@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { RightCellStateKind } from '@/features/capsules/lib/exchange-row-state'
+import { rightCellDetail, type RightCellStateKind } from '@/features/capsules/lib/exchange-row-state'
 import { OWN_RECORD_MISSING, ownRecordMissing, rowCombinationText, WITNESS_HOLDS_IT, type RowCombinationInput } from '@/features/capsules/lib/row-combination'
 
 const ALL_OK = { content: '✓', sig: '✓', inclusion: '✓', registered: '–' } as const
@@ -33,6 +33,14 @@ describe('rowCombinationText -- what the badge and the chips say together', () =
     expect(missing('2026-11-28T02:58:00Z', true)).toBe(false)
     expect(missing('2026-11-28T02:58:00Z', false, null)).toBe(false)
     expect(missing(null)).toBe(false)
+  })
+
+  it('a SERVED row never says "sent": not given reads "nothing that arrived" (60d4b649)', () => {
+    expect(rowCombinationText(input({ state: 'open_not_given', roleTag: 'SERVED' }))).toMatch(/nothing that arrived names it by its id/)
+    expect(rowCombinationText(input({ state: 'open_not_given', roleTag: 'SERVED' }))).not.toMatch(/\bsent\b/)
+    expect(rowCombinationText(input({ state: 'open_not_given' }))).toMatch(/nothing they sent names it/)
+    expect(rightCellDetail({ kind: 'open_not_given', date: null }, 'SERVED')).toMatch(/nothing that arrived names it by its id/)
+    expect(rightCellDetail({ kind: 'open_not_given', date: null }, 'SERVED')).not.toMatch(/they sent/)
   })
 
   it('#388: a record missing from the loaded records says why and what to do; still loading says "yet"', () => {

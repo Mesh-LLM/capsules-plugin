@@ -6,15 +6,17 @@
 
 const FORMATS = new Map<string, Intl.DateTimeFormat>()
 
-/** The row face's short time, or (`full`) the table's: year and seconds too,
- *  so two records in one minute or in different years stay apart. */
+/** The row face's short time, or (`full`) the table's: the year too, so
+ *  records in different years stay apart. Never seconds: an exchange's time
+ *  is kept to the minute (`utc_now_minute`), so seconds would only ever read
+ *  ":00" (Sherlock2, f55ef9b5; its #408 acceptance check). */
 function timeFormat(timeZone: string | undefined, full: boolean): Intl.DateTimeFormat {
   const key = `${full ? 'full' : 'short'}:${timeZone ?? ''}`
   let format = FORMATS.get(key)
   if (!format) {
     // The viewer's locale, as before (the way Chat shows it).
     format = new Intl.DateTimeFormat(undefined, {
-      ...(full ? { year: 'numeric', second: '2-digit' } : {}),
+      ...(full ? { year: 'numeric' } : {}),
       month: 'short',
       day: 'numeric',
       hour: 'numeric',
@@ -34,8 +36,8 @@ export function formatExchangeTimestamp(timestamp: string | null, timeZone?: str
   return Number.isNaN(date.getTime()) ? timestamp : timeFormat(timeZone, false).format(date)
 }
 
-/** "Nov 27, 2026, 8:21:22 PM CST": the table view's time, with year and
- *  seconds, in the viewer's zone, named. */
+/** "Nov 27, 2026, 8:21 PM CST": the table view's time, with the year, in
+ *  the viewer's zone, named. */
 export function formatExchangeTimestampFull(timestamp: string | null, timeZone?: string): string {
   if (!timestamp) return 'timestamp unavailable'
   const date = new Date(timestamp)

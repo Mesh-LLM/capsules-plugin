@@ -77,7 +77,10 @@ export function rowCombinationText(input: RowCombinationInput): string {
     case 'open_not_held':
       return 'Your record is sealed and checks out; their record hasn’t arrived. It comes on its own only if their node sends records (on by default, unless its operator turned it off), so ask for it on this row.'
     case 'open_not_given':
-      return 'Your record is sealed and checks out; their record hasn’t arrived, and nothing they sent names it by its id. Ask for it on this row.'
+      // On a SERVED row never "sent": only what arrived is known (60d4b649).
+      return input.roleTag === 'SERVED'
+        ? 'Your record is sealed and checks out; their record hasn’t arrived, and nothing that arrived names it by its id. Ask for it on this row.'
+        : 'Your record is sealed and checks out; their record hasn’t arrived, and nothing they sent names it by its id. Ask for it on this row.'
     case 'open_not_asked':
       if (input.askPeer) return `Their record hasn’t arrived. You can ask ${input.askPeer} for it.`
       if (input.roleTag !== 'SERVED') return 'Your record doesn’t name who answered, so there is no one to ask.'

@@ -27,12 +27,14 @@ describe('formatExchangeTimestamp', () => {
 })
 
 describe('formatExchangeTimestampFull', () => {
-  it('keeps year and seconds apart, with the zone named', () => {
-    const a = formatExchangeTimestampFull('2026-11-28T02:21:22Z', CHICAGO)
-    const b = formatExchangeTimestampFull('2026-11-28T02:21:23Z', CHICAGO)
-    const nextYear = formatExchangeTimestampFull('2027-11-28T02:21:22Z', CHICAGO)
-    expect(a).not.toBe(b)
+  it('keeps the year, never seconds (times are kept to the minute), with the zone named', () => {
+    const a = formatExchangeTimestampFull('2026-11-28T02:21:00Z', CHICAGO)
+    const nextYear = formatExchangeTimestampFull('2027-11-28T02:21:00Z', CHICAGO)
     expect(a).toMatch(/2026/)
+    expect(a).toMatch(/8:21/)
+    // No seconds field (h:mm:ss); an on-the-hour time still reads "9:00".
+    expect(a).not.toMatch(/\d:\d\d:\d\d/)
+    expect(formatExchangeTimestampFull('2026-11-28T03:00:00Z', CHICAGO)).toMatch(/9:00 PM/)
     expect(nextYear).toMatch(/2027/)
     expect(a).toMatch(/CST|GMT-6/)
   })
