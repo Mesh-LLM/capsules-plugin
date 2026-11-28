@@ -32,7 +32,9 @@ describe('formatExchangeTimestampFull', () => {
     const nextYear = formatExchangeTimestampFull('2027-11-28T02:21:00Z', CHICAGO)
     expect(a).toMatch(/2026/)
     expect(a).toMatch(/8:21/)
-    expect(a).not.toMatch(/:00\b|\d:\d\d:\d\d/)
+    // No seconds field (h:mm:ss); an on-the-hour time still reads "9:00".
+    expect(a).not.toMatch(/\d:\d\d:\d\d/)
+    expect(formatExchangeTimestampFull('2026-11-28T03:00:00Z', CHICAGO)).toMatch(/9:00 PM/)
     expect(nextYear).toMatch(/2027/)
     expect(a).toMatch(/CST|GMT-6/)
   })
