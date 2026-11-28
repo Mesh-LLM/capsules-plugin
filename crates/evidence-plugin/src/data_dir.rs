@@ -289,7 +289,7 @@ pub fn data_dir() -> anyhow::Result<PathBuf> {
 /// This process's exclusive hold on the data directory, for its lifetime.
 #[must_use = "the directory is locked only while this is held"]
 pub struct DataDirLock {
-    _files: Vec<File>,
+    _files: Vec<LockedFile>,
     /// The ledger directory as it really is, while this holds it
     /// ([`holds_ledger`]).
     ledger: PathBuf,
@@ -322,9 +322,27 @@ pub fn holds_ledger(ledger_dir: &Path) -> bool {
         .contains(&real)
 }
 
+/// A lock file this process has locked, unlocked explicitly when dropped.
+///
+/// A Unix `flock` goes with the open file, not with one descriptor of it, and
+/// the OS releases it only once the last descriptor closes. A child process
+/// another thread is starting holds a copy of every open descriptor until it
+/// execs, so closing ours alone may leave the lock held for that moment
+/// (#404). Unlocking first frees it whatever copies remain. On Windows the
+/// lock goes with this handle and unlocking first is merely explicit.
+struct LockedFile(File);
+
+impl Drop for LockedFile {
+    fn drop(&mut self) {
+        // Nothing more to do on failure: closing the file still releases the
+        // lock once every copy is gone.
+        let _ = self.0.unlock();
+    }
+}
+
 /// One advisory lock on the file at `path` (never through a symlink), or why
 /// not: `Ok(None)` when another process holds it, with its pid.
-fn take(path: &Path, label: &str) -> anyhow::Result<Result<File, String>> {
+fn take(path: &Path, label: &str) -> anyhow::Result<Result<LockedFile, String>> {
     if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
         bail!(
             "{} is a symbolic link; refusing to lock through it",
@@ -341,10 +359,14 @@ fn take(path: &Path, label: &str) -> anyhow::Result<Result<File, String>> {
         .with_context(|| format!("open {}", path.display()))?;
     match file.try_lock() {
         Ok(()) => {
-            file.set_len(0)
-                .and_then(|()| writeln!(file, "{}", std::process::id()))
+            // Held from here on, so a failure below unlocks it too.
+            let mut locked = LockedFile(file);
+            locked
+                .0
+                .set_len(0)
+                .and_then(|()| writeln!(locked.0, "{}", std::process::id()))
                 .with_context(|| format!("write {}", path.display()))?;
-            Ok(Ok(file))
+            Ok(Ok(locked))
         }
         Err(TryLockError::WouldBlock) => {
             // On Windows the holder's exclusive lock blocks this read, so the
@@ -381,9 +403,7 @@ pub fn lock(dir: &Path) -> anyhow::Result<DataDirLock> {
 }
 
 /// [`lock`], retried every 50 ms for up to `wait` while another holder has
-/// it (the shelf's own lock rule, evidencebook#254 §2.4). A holder that has
-/// just let go may still be counted for a moment: a child process another
-/// thread is starting holds a copy of every open file until it execs.
+/// it (the shelf's own lock rule, evidencebook#254 §2.4).
 pub fn lock_waiting(dir: &Path, wait: std::time::Duration) -> anyhow::Result<DataDirLock> {
     let deadline = std::time::Instant::now() + wait;
     loop {
@@ -609,6 +629,46 @@ mod tests {
         let dir = tmp("lock-release");
         drop(lock(&dir).expect("first lock"));
         let _again = lock(&dir).expect("a new holder after the first let go");
+    }
+
+    /// A child process another thread starts holds a copy of every open
+    /// descriptor until it execs, and a Unix lock goes with the open file, not
+    /// one descriptor: the holder letting go must free the directory and its
+    /// ledger even while such copies live (#404). `try_clone` makes the same
+    /// kind of copy as that child, without a child whose copies of every
+    /// other test's files would trip their checks for other holders.
+    #[cfg(unix)]
+    #[test]
+    fn the_directory_is_free_once_the_holder_lets_go_while_a_copy_of_its_files_lives() {
+        let dir = tmp("lock-copied");
+        let held = lock(&dir).expect("first lock");
+        let copies: Vec<File> = held
+            ._files
+            .iter()
+            .map(|f| f.0.try_clone().unwrap())
+            .collect();
+        assert_eq!(copies.len(), 2, "the directory's lock and the ledger's");
+        drop(held);
+        let _again = lock(&dir).expect("a new holder after the first let go");
+        drop(copies);
+    }
+
+    /// Every lock file [`take`] locks is unlocked when dropped, whatever
+    /// copies of it live: the success path above, and the paths that give a
+    /// lock up on the way to a [`DataDirLock`] (a later lock found held, a
+    /// failed write), which drop the same [`LockedFile`].
+    #[cfg(unix)]
+    #[test]
+    fn a_dropped_lock_file_is_free_while_a_copy_of_it_lives() {
+        let path = tmp("lock-file-copied").join(LOCK_FILE);
+        let held = take(&path, "lock file").unwrap().expect("first lock");
+        assert!(take(&path, "lock file").unwrap().is_err(), "held");
+        let copy = held.0.try_clone().unwrap();
+        drop(held);
+        let _again = take(&path, "lock file")
+            .unwrap()
+            .expect("a new holder after the first let go");
+        drop(copy);
     }
 
     #[test]
