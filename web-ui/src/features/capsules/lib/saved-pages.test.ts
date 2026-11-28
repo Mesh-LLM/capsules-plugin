@@ -12,6 +12,9 @@ import composedAgree from '@/features/capsules/lib/receipt-fixtures/composed-agr
 import producerSelected from '@/features/capsules/lib/receipt-fixtures/producer-selected.bundle.json'
 // A payer's deal receipt as the plugin's own route cuts it (see ReceiptPanel.test.tsx).
 import meshPayerDeal from '@/features/capsules/lib/receipt-fixtures/mesh-payer-deal.bundle.json'
+// A provider's own receipt as the plugin's own route cuts it (see ReceiptPanel.test.tsx).
+import meshProviderSelected from '@/features/capsules/lib/receipt-fixtures/mesh-provider-selected.bundle.json'
+import { NOT_DRAWN_LINES } from '@/features/capsules/lib/receipt-view'
 import { embeddedBundle as embedded, openSavedPage as open, savedBytes } from '@/lib/test/open-saved-page'
 
 const fixture = JSON.parse(
@@ -285,9 +288,11 @@ describe('the sealed Settlement page', () => {
   })
 })
 
-// The receipt routes' bundles, as the node serves them: JSON text. The
-// fixtures are agent-action-capsule's strict vector (a producer-selected
-// bundle, one side's receipt) and composed/v1 vector (two copies that agree).
+// Bundles as the node serves them: JSON text. `provider` is the plugin's own
+// provider route's bundle; `oneSided` and `both` are agent-action-capsule's
+// strict vector (a producer-selected bundle) and composed/v1 vector (two
+// copies that agree), which verify but which no viewer receipt module draws.
+const provider = JSON.stringify(meshProviderSelected)
 const oneSided = JSON.stringify(producerSelected)
 const both = JSON.stringify(composedAgree)
 
@@ -303,17 +308,29 @@ const withoutEd25519 = {
 }
 
 describe('the receipt page, opened offline', () => {
-  it('checks the embedded receipt itself and hands back the JSON byte for byte', async () => {
-    const { html, fileName } = receiptPage({ kind: 'bundle', bundleText: oneSided }, 'ex-1', SAVED)
+  it('checks the embedded receipt itself, draws the provider\'s receipt with the viewer\'s module and hands back the JSON byte for byte (#398)', async () => {
+    const { html, fileName } = receiptPage({ kind: 'bundle', bundleText: provider }, 'ex-1', SAVED)
     expect(fileName).toBe('mesh-receipt-ex-1-20261029T180000.html')
-    expect(Buffer.from(embedded(html)).equals(Buffer.from(oneSided, 'utf8'))).toBe(true)
+    expect(Buffer.from(embedded(html)).equals(Buffer.from(provider, 'utf8'))).toBe(true)
 
     const { dom, requested, text } = await open(html)
-    expect(dom.window.document.querySelector('#result p.warn')?.textContent).toBe("Receipt: this node's receipt only")
-    expect(text).toMatch(/\d+ of \d+ records in the receipt are tied to a signed checkpoint\./)
+    const doc = dom.window.document
+    expect(doc.querySelector('#result p.warn')?.textContent).toBe("Receipt: this node's receipt only")
+    expect(text).toMatch(/\d+ of 3 records in the receipt are tied to a signed checkpoint\./)
     expect(text).not.toContain('stamped by both')
+    // The viewer's provider module draws it under the lines (capsule-viewer#390):
+    // its own half, the amounts received and the time served, with no owner's title.
+    const drawn = doc.querySelector('#result .receipt [data-module="capsuleviewer.receipt.provider/v0"]')
+    expect(drawn?.querySelector('[data-provider="own-half"]')?.textContent).toContain(
+      "This is this node's own record of its half of the exchange."
+    )
+    expect(drawn?.textContent).toContain('1,990 msat')
+    expect(drawn?.textContent).toContain('2026-10-30T19:50:00 UTC')
+    expect(doc.querySelector('#result .receipt h1, #result .receipt h2')).toBeNull()
+    // A page for anyone: no owner's words.
+    for (const owner of ['PRIVATE', 'Do not forward', 'your receipt']) expect(text).not.toContain(owner)
     expect(requested).toEqual([])
-    expect((await savedBytes(dom)).equals(Buffer.from(oneSided, 'utf8'))).toBe(true)
+    expect((await savedBytes(dom)).equals(Buffer.from(provider, 'utf8'))).toBe(true)
   })
 
   it('draws a payer\'s deal receipt with the viewer\'s receipt, its top line once and first (#376)', async () => {
@@ -346,15 +363,18 @@ describe('the receipt page, opened offline', () => {
     expect((await savedBytes(dom)).equals(Buffer.from(bundleText, 'utf8'))).toBe(true)
   })
 
-  it('draws no viewer receipt for a bundle no receipt module draws, and keeps the row\'s lines', async () => {
-    const { dom } = await open(receiptPage({ kind: 'bundle', bundleText: oneSided }, 'ex-6', SAVED).html)
-    expect(dom.window.document.querySelector('#result p.warn')?.textContent).toBe("Receipt: this node's receipt only")
-    expect(dom.window.document.querySelector('#result [data-region]')).toBeNull()
-  })
-
-  it('says "stamped by both" only for two copies that agree', async () => {
-    const { dom } = await open(receiptPage({ kind: 'bundle', bundleText: both }, 'ex-2', SAVED).html)
-    expect(dom.window.document.querySelector('#result p.ok')?.textContent).toBe('Receipt: stamped by both')
+  it.each([
+    ['a producer-selected bundle', oneSided],
+    ['two agreeing copies', both]
+  ])('draws no receipt for %s no receipt module draws, and says so in the not-drawn lines', async (_name, bundleText) => {
+    const { dom, text } = await open(receiptPage({ kind: 'bundle', bundleText }, 'ex-6', SAVED).html)
+    const lines = [...dom.window.document.querySelectorAll('#result p')].map((p) => p.textContent)
+    expect(lines).toEqual([...NOT_DRAWN_LINES])
+    expect(dom.window.document.querySelector('#result p.muted')?.textContent).toBe(NOT_DRAWN_LINES[0])
+    expect(dom.window.document.querySelector('#result .warn, #result .bad')).toBeNull()
+    expect(dom.window.document.querySelector('#result .receipt')).toBeNull()
+    expect(text).not.toContain('Receipt:')    // The lines name the page's own button, as the row's do (Sherlock2 on #398).
+    expect(dom.window.document.getElementById('save-json')?.textContent).toBe('Save bundle')
   })
 
   it('shows none of a receipt that does not check', async () => {

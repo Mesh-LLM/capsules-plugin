@@ -10,13 +10,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ReceiptPanel } from '@/features/capsules/components/ReceiptPanel'
 import type { PaneCRow } from '@/features/capsules/api/sidecarTypes'
 import { receiptPath } from '@/features/capsules/api/receiptClient'
-import { checkReceiptBundle, receiptCase, receiptRequest, receiptView } from '@/features/capsules/lib/receipt-view'
+import { NOT_DRAWN_LINES, checkReceiptBundle, receiptRequest, receiptView } from '@/features/capsules/lib/receipt-view'
 import composedAgree from '@/features/capsules/lib/receipt-fixtures/composed-agree.bundle.json'
 import producerSelected from '@/features/capsules/lib/receipt-fixtures/producer-selected.bundle.json'
 // A payer's deal receipt as the plugin's own route cuts it: the bundle
 // `deal_receipt::tests::a_paid_exchange_gives_a_bundle_of_exactly_its_four_deal_records`
 // writes with DEAL_RECEIPT_BUNDLE_OUT set (Mesh-LLM/capsules-plugin#376).
 import meshPayerDeal from '@/features/capsules/lib/receipt-fixtures/mesh-payer-deal.bundle.json'
+// A provider's own receipt as the plugin's `provider-receipt-bundle` route cuts
+// it (Mesh-LLM/capsules-plugin#134): the served exchange record and its two
+// payee legs, copied unchanged from capsule-viewer's
+// tests/testdata/receipt/mesh-provider-selected.bundle.json (capsule-viewer#390).
+import meshProviderSelected from '@/features/capsules/lib/receipt-fixtures/mesh-provider-selected.bundle.json'
 
 const EXCHANGE_RECORD = 'ab'.repeat(32)
 
@@ -69,31 +74,42 @@ async function check() {
 
 describe('ReceiptPanel', () => {
   it('shows "your receipt only" for the payer receipt, with every count over its denominator', async () => {
-    const fetchSpy = routeAnswers({ state: 'bundle', bundle: JSON.stringify(producerSelected) })
+    const fetchSpy = routeAnswers({ state: 'bundle', bundle: JSON.stringify(meshPayerDeal) })
     render(<ReceiptPanel row={payerRow} />)
     await check()
     const label = await screen.findByText('Receipt: your receipt only')
     expect(label).toHaveAttribute('data-receipt-case', 'your receipt only')
-    // 2 records in the vector, both bound to the signed checkpoint.
-    expect(screen.getByText(/2 of 2 records in the receipt are tied to a signed checkpoint/)).toBeInTheDocument()
+    // 4 deal records, each bound to the signed checkpoint.
+    expect(screen.getByText(/4 of 4 records in the receipt are tied to a signed checkpoint/)).toBeInTheDocument()
     expect(String(fetchSpy.mock.calls[0][0])).toContain(
       `/api/plugins/capsules/http/deal-receipt-bundle?capsule_id=${EXCHANGE_RECORD}`
     )
   })
 
   it('shows "your receipt only" for the provider receipt, asked by the host exchange id', async () => {
-    const fetchSpy = routeAnswers({ state: 'bundle', bundle: JSON.stringify(producerSelected) })
+    const fetchSpy = routeAnswers({ state: 'bundle', bundle: JSON.stringify(meshProviderSelected) })
     render(<ReceiptPanel row={providerRow} />)
     await check()
     await screen.findByText('Receipt: your receipt only')
+    expect(screen.getByText(/of 3 records in the receipt are tied to a signed checkpoint/)).toBeInTheDocument()
     expect(String(fetchSpy.mock.calls[0][0])).toContain('http/provider-receipt-bundle?exchange_id=ex-1')
   })
 
-  it('shows "stamped by both" for two verified copies that agree', async () => {
-    routeAnswers({ state: 'bundle', bundle: JSON.stringify(composedAgree) })
-    render(<ReceiptPanel row={payerRow} />)
+  // A bundle that verifies but that no viewer receipt module draws, such as
+  // two agreeing copies that are not a deal or a provider's receipt: the
+  // not-drawn lines (Sherlock2 on #398), never a case, an error or a verdict.
+  it.each([
+    ['two agreeing copies that are no receipt', composedAgree, payerRow],
+    ['a generic producer-selected bundle on a provider row', producerSelected, providerRow]
+  ])('shows the not-drawn lines for %s, with "Save bundle"', async (_name, bundle, row) => {
+    routeAnswers({ state: 'bundle', bundle: JSON.stringify(bundle) })
+    render(<ReceiptPanel row={row} />)
     await check()
-    expect(await screen.findByText('Receipt: stamped by both')).toBeInTheDocument()
+    expect(await screen.findByText(NOT_DRAWN_LINES.join(' '))).toHaveAttribute('data-receipt-case', 'not-drawn')
+    expect(screen.getByRole('button', { name: 'Save bundle' })).toBeInTheDocument()
+    expect(screen.queryByText(/Receipt:/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/could not be loaded/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/did not verify/)).not.toBeInTheDocument()
   })
 
   it('shows "no record" for a refusal from the route, not an error', async () => {
@@ -183,7 +199,7 @@ describe('ReceiptPanel states', () => {
     render(<ReceiptPanel row={payerRow} />)
     await check()
     await screen.findByText(/could not be loaded here/)
-    routeAnswers({ state: 'bundle', bundle: JSON.stringify(producerSelected) })
+    routeAnswers({ state: 'bundle', bundle: JSON.stringify(meshPayerDeal) })
     await userEvent.click(screen.getByRole('button', { name: 'Check again' }))
     expect(await screen.findByText('Receipt: your receipt only')).toBeInTheDocument()
   })
@@ -256,7 +272,7 @@ describe('ReceiptPanel states', () => {
   })
 
   it('does not offer "Save bundle" for a receipt that checked', async () => {
-    routeAnswers({ state: 'bundle', bundle: JSON.stringify(producerSelected) })
+    routeAnswers({ state: 'bundle', bundle: JSON.stringify(meshPayerDeal) })
     render(<ReceiptPanel row={payerRow} />)
     await check()
     await screen.findByText('Receipt: your receipt only')
@@ -284,9 +300,19 @@ describe('the receipt check (capsule-viewer\'s receipt export, #376)', () => {
     })
   })
 
-  it('keeps its own check for a bundle no receipt module draws (the provider half, capsule-viewer#390)', async () => {
-    const view = await checkReceiptBundle(JSON.stringify(producerSelected))
-    expect(view).toMatchObject({ kind: 'checked', case: 'one_sided', module: null, records: { total: 2, tied: 2 } })
+  it('checks a provider\'s own receipt with the viewer\'s provider module (capsule-viewer#390)', async () => {
+    const view = await checkReceiptBundle(JSON.stringify(meshProviderSelected))
+    expect(view).toMatchObject({
+      kind: 'checked',
+      case: 'one_sided',
+      module: 'capsuleviewer.receipt.provider/v0',
+      records: { total: 3 }
+    })
+  })
+
+  it('places a verified bundle no receipt module draws as not drawn, keeping its bytes', async () => {
+    const bundleText = JSON.stringify(producerSelected)
+    expect(await checkReceiptBundle(bundleText)).toEqual({ kind: 'not_drawn', bundleText })
   })
 
   it('shows the payer\'s deal receipt on the row in the viewer\'s words', async () => {
@@ -295,52 +321,6 @@ describe('the receipt check (capsule-viewer\'s receipt export, #376)', () => {
     await check()
     expect(await screen.findByText('Receipt: your receipt only')).toBeInTheDocument()
     expect(screen.getByText(/4 of 4 records in the receipt are tied to a signed checkpoint\./)).toBeInTheDocument()
-  })
-})
-
-describe('receiptCase', () => {
-  /** A context shaped as the runtime reports a composed/v1 block; only the
-   *  fields the case reads are set (a signed fixture cannot be altered
-   *  without breaking its signatures). */
-  const claim = (status: 'pass' | 'fail') => ({ status, findings: [] })
-  const memberClaims = (status: 'pass' | 'fail') => ({
-    graphClosure: claim(status),
-    intervalCoverage: claim('pass'),
-    perRecordMembership: claim('pass')
-  })
-  const agreeing = (over: Record<string, unknown> = {}) => ({
-    malformed: false,
-    status: 'pass',
-    members: [
-      { outcome: 'artifact', bundle: memberClaims('pass') },
-      { outcome: 'artifact', bundle: memberClaims('pass') }
-    ],
-    joins: [{ derived: 'agree', result: 'derived_matches' }],
-    corroboration: [{ result: 'corroborating' }],
-    ...over
-  })
-  const contextOf = (composed: unknown) => ({ extensions: [{ composed }] }) as never
-
-  it('is "both" only for two agreeing, corroborating, passing copies', () => {
-    expect(receiptCase(contextOf(agreeing()))).toBe('both')
-  })
-
-  it.each([
-    ['a join that disagrees', { joins: [{ derived: 'mismatch', result: 'derived_matches' }] }],
-    ['a redundant pair', { corroboration: [{ result: 'redundant' }] }],
-    ['a single artifact', { members: [{ outcome: 'artifact', bundle: memberClaims('pass') }] }],
-    ['no corroboration', { corroboration: [] }],
-    ['a block that did not pass', { status: 'fail' }],
-    [
-      'a copy whose own claims failed',
-      { members: [{ outcome: 'artifact', bundle: memberClaims('fail') }, { outcome: 'artifact' }] }
-    ]
-  ])('is not "both" for %s', (_name, over) => {
-    expect(receiptCase(contextOf(agreeing(over)))).toBe('one_sided')
-  })
-
-  it('is not "both" with no composed block', () => {
-    expect(receiptCase({ extensions: [] } as never)).toBe('one_sided')
   })
 })
 

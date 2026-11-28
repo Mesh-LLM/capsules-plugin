@@ -12,8 +12,8 @@ importers:
         specifier: 0.16.0
         version: 0.16.0(@action-state-group/cll@0.4.0(@types/node@26.4.1))
       '@action-state-group/capsule-viewer':
-        specifier: 0.27.0
-        version: 0.27.0(@types/node@26.4.1)
+        specifier: 0.28.0
+        version: 0.28.0(@types/node@26.4.1)
       '@action-state-group/cll':
         specifier: 0.4.0
         version: 0.4.0(@types/node@26.4.1)
@@ -129,8 +129,8 @@ packages:
       '@action-state-group/cll':
         optional: true
 
-  '@action-state-group/capsule-viewer@0.27.0':
-    resolution: {integrity: sha512-E3R3SKMclZ0xteM3OgF2cPJBUSen/z+R+LtBgTEOfkd0n+fu1gNJWuKQVCRivfQGtjJVdftFcjfvUgXnhifTzw==}
+  '@action-state-group/capsule-viewer@0.28.0':
+    resolution: {integrity: sha512-SKEBiD5xmRyEHhuCDTrb30eCYH928USP9Hxz5pwKBHPyfk/c8g36GQtRaOQMahITmGjMd0M5IW1yHR6k2Lhhtw==}
     engines: {node: '>=20'}
 
   '@action-state-group/cll@0.4.0':
@@ -1878,7 +1878,7 @@ snapshots:
     optionalDependencies:
       '@action-state-group/cll': 0.4.0(@types/node@26.4.1)
 
-  '@action-state-group/capsule-viewer@0.27.0(@types/node@26.4.1)':
+  '@action-state-group/capsule-viewer@0.28.0(@types/node@26.4.1)':
     dependencies:
       '@action-state-group/agent-action-capsule': 0.16.0(@action-state-group/cll@0.4.0(@types/node@26.4.1))
       '@action-state-group/cll': 0.4.0(@types/node@26.4.1)

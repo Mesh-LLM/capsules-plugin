@@ -94,6 +94,11 @@ export function ReceiptPanel({ row }: { row: PaneCRow }) {
             {lines?.lines.join(' ')}
           </span>
         ) : null}
+        {view?.kind === 'not_drawn' ? (
+          <span className="text-fg-dim" data-receipt-case="not-drawn">
+            {lines?.lines.join(' ')}
+          </span>
+        ) : null}
         {view?.kind === 'did_not_verify' ? (
           <span className="text-fg-dim" data-receipt-case="did-not-verify">
             {lines?.lines.join(' ')}
@@ -105,7 +110,7 @@ export function ReceiptPanel({ row }: { row: PaneCRow }) {
           </span>
         ) : null}
       </span>
-      {view?.kind === 'cannot_check' || view?.kind === 'did_not_verify' ? (
+      {view?.kind === 'cannot_check' || view?.kind === 'did_not_verify' || view?.kind === 'not_drawn' ? (
         <Button
           className={BUTTON_CLASS}
           onClick={() => saveBundle(view.bundleText)}
