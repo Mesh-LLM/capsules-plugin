@@ -29,14 +29,17 @@ totals `/1` withholds. Every key an earlier release minted listed `service_histo
   and list them in its commitment.
 - A node whose key has no such record (any key from before this release, or one whose record was
   lost) serves no Service History at all, `/0` included: it refuses all four definitions
-  `derivation_unsupported`, lists none, and its History page holds the card. A record naming
+  `derivation_unsupported`, lists none, and its History page shows only the history card. A record naming
   another key, or another revision, counts as none. A lost or stale record therefore withholds
   rather than reveals.
 - This node no longer serves `service_history/1` or `/2` under any key. It still checks them in
   answers from peers on earlier releases.
 
-A node gets a Service History again only under a new key, which starts a new History (a new data
-directory). Starting a new history from the Evidence tab keeps the key, and so keeps its record.
+A node gets a Service History again only under a new key, which starts a new History: start the
+node with `CAPSULES_DATA_DIR` set to a new, empty directory ([INSTALL.md](../INSTALL.md#where-the-records-are-kept)),
+and it mints a new key there with its record. The History under the old key does not carry over.
+Starting a new history from the Evidence tab keeps the key, so on a node upgraded with its old key
+it does not bring the Service History back.
 
 ## Identifier
 
@@ -143,9 +146,9 @@ suppressed below the floor like any other (ISH §6.1 item 3). A later answer nev
   Where the total is published and exactly one model is suppressed, the smallest other model is
   suppressed too, with `complementary`, so the suppressed one cannot be worked out from the total.
 - **A total that pins withheld models** (`/1`, ISH §6.2 item 5). A model is listed only for a week
-  that served it. Where two or more models are withheld, every one under the floor, and the total
-  less the published models is their number (each served once) or their number times 4 (each
-  served 4 times), the total would give each of them away, so it is withheld too, with
+  that served it. Where two or more models are withheld, every one under the floor, and what the
+  total leaves after the published models is either their number (each served once) or four times
+  it (each served 4 times), the total would give each of them away, so it is withheld too, with
   `complementary`, even when it is itself under the floor. Models of 4 and 4 withhold their total
   of 8, five models of 1 their total of 5, and models of 1 and 1 their total of 2, `complementary`
   rather than `below_floor`, so the reason does not tell 2 from 8. Models of 3 and 4 leave their
