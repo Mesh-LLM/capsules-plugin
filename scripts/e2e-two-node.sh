@@ -190,11 +190,14 @@ twin_keys=$(cat "$out/twin-keys.json")
 # next Monday 00:00 UTC, so the plugin (built with the test-period-policy
 # feature) is given two-minute periods from the same epoch: another
 # definition, with its own digest. Both nodes read it, since the requester
-# checks the answer against the definition it names.
+# checks the answer against the definition it names. It is
+# `inference-service-history/1` (`service_history/3`), served under
+# `evidence-interop/1` only, so the request names that profile; both nodes
+# are fresh, so each key is minted with its `/1` revision record.
 E2E_PERIOD_S=120
 export CAPSULES_TEST_PERIOD_LENGTH_S=$E2E_PERIOD_S
 SERVICE_HISTORY=$(jq -cS --argjson n "$E2E_PERIOD_S" \
-  '.period_policy.length_s = $n | .period_policy.min_length_s = $n' derivations/service-history-1.json \
+  '.period_policy.length_s = $n | .period_policy.min_length_s = $n' derivations/service-history-3.json \
   | tr -d '\n' | openssl dgst -sha256 -r | cut -d' ' -f1)
 echo "service history definition at ${E2E_PERIOD_S}s periods: $SERVICE_HISTORY"
 
@@ -336,7 +339,8 @@ PY
 service_history_at() {
   tool "$REQUESTER_CONSOLE" mesh_evidence_request "$(jq -cn --arg p "$provider_id" --arg pin "$1" \
     --arg d "$SERVICE_HISTORY" '{peer_id: $p,
-    request: {subject: {full_history: null}, coverage: {expected_pin: $pin}, derivation: $d}}')" \
+    request: {profile: "evidence-interop/1", subject: {full_history: null},
+    coverage: {expected_pin: $pin}, derivation: $d}}')" \
     > "$2"
 }
 service_history_newest() {

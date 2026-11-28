@@ -1,0 +1,13 @@
+{
+  "set": "aac-inference-service-history-v1",
+  "status": "Conformance vectors for inference-service-history/1 of the informational Inference-Service History Profile, over evidence-interop/1. Every key is a test key derived from a public seed; never use one for anything else.",
+  "spec": "spec/inference-service-history-profile-v0.md",
+  "generator": "python/scripts/generate_inference_service_history_v1_vectors.py",
+  "files": [
+    {
+      "path": "vectors.json",
+      "sha256": "d52aff389c5320571a5e434835115a58b65f4a346fd12ea3a8f048d600424742",
+      "count": 13
+    }
+  ]
+}

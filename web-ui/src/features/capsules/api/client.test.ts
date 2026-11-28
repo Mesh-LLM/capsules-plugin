@@ -25,7 +25,7 @@ describe('servedHistoryFrom', () => {
 
   it('names a Service History by its form', () => {
     const text = reply({ responder: KEY })
-    expect(servedHistoryFrom({ form: 'service_history/1', outcome: 'answered', reply: text, node_key_id: KEY, sharing: SHARING }).form).toBe('service_history')
+    expect(servedHistoryFrom({ form: 'service_history/3', outcome: 'answered', reply: text, node_key_id: KEY, sharing: SHARING }).form).toBe('service_history')
   })
 
   it('refuses a card signed under another key', () => {

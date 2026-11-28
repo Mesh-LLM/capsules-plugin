@@ -66,7 +66,7 @@ fn the_e2e_override_is_another_definition_with_its_own_digest() {
     assert_eq!(def.0.policy().length_s, 120);
     assert_eq!(
         def.digest(),
-        "cf7f57f95044d0cb573320f6eaba74d4a85bc73136f23c8112ca9d41f5c11eeb"
+        "88e2c6379ec3dc828b63a201f05af3d7746828ab5a37059dd0fe0e02e56633e0"
     );
     assert_ne!(def.digest(), DEFINITION_DIGEST);
     assert_ne!(def.0.policy_digest(), POLICY_DIGEST);

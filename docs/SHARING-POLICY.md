@@ -249,7 +249,7 @@ node it was proven to come from (or `unbound`), the audience it named, and
 pool full.
 
 The checkpoint list (or a range of it), the `history_card/1` and `history_card/2`
-derivations and the `service_history/1` derivation carry no record bodies: `share_history_segments` does not govern
+derivations and the `service_history/3` derivation carry no record bodies: `share_history_segments` does not govern
 them. The checkpoint list (or a range of it), `history_card/1` and `history_card/2` go to anyone, and
 `share_standard_history` governs the rest (below). The cases and their
 expected answers are in the plugin's evidence-request parity run
@@ -259,7 +259,7 @@ expected answers are in the plugin's evidence-request parity run
 
 Off by default. Standard History is what an evidence request can get that
 carries no record bodies: the checkpoint list (or a range of it), `history_card/1`,
-`history_card/2` and `service_history/1` (and any other derivation but `exchange_corroboration/1`,
+`history_card/2` and `service_history/3` (and any other derivation but `exchange_corroboration/1`,
 below).
 
 **The checkpoint list (or a range of it), `history_card/1` and `history_card/2` go to anyone who asks**, whatever
@@ -274,7 +274,7 @@ on and the checkpoint cadence on (the default), each push cuts a checkpoint
 (at most one per 100 ms), so a checkpoint's time can be the time one exchange
 ended.
 
-The rest (the Service History `service_history/1`
+The rest (the Service History `service_history/3`
 ([SERVICE-HISTORY.md](SERVICE-HISTORY.md)) and any other derivation) shows
 what this node serves, so with this switch off it goes only to a
 counterparty: a node that some record of this node names as the other side
@@ -503,7 +503,7 @@ change with it.
 - **What else the commitment says.** The ask goes to `mesh:<node_id>` over
   this plugin's evidence-request channel. The node answers `checkpoints`,
   `checkpoint_range`, `history_card/1`, `history_card/2`, `exchange_corroboration/1` and
-  `service_history/1` (the last two by their definition digest), each to a counterparty under
+  `service_history/3` and `/4` (the last three by their definition digest; the Service History only under a key minted for it, [SERVICE-HISTORY.md](SERVICE-HISTORY.md)), each to a counterparty under
   every setting while their full answers fit; the policy says who else gets them.
   `checkpoints` and `history_card/1` leave `answers.derivations` (and, for `checkpoints`,
   `answers.subjects`) at their own crossings, as above, and past it the size refusal applies to
@@ -531,7 +531,7 @@ change with it.
   configured, are what show the node's history to everyone alike.
   It carries no record, counterparty, deal count or service count.
   No setting turns it off or widens it. `share_standard_history` decides who
-  is answered the node's L1, the Service History (`service_history/1`): a
+  is answered the node's L1, the Service History (`service_history/3`): a
   proven counterparty, or anyone when it is on. `advertise_evidence_requests`
   changes nothing an answer carries. Both appear only in the signed policy
   (and so in its digest), never in the staple. The Service History is never

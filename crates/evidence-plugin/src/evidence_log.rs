@@ -145,7 +145,7 @@ pub struct Leaf {
     pub failed: bool,
     pub facts: LeafFacts,
     /// A verdict this node holds about itself, delivered to it
-    /// (`verdict_counts::held_about_self`): what `service_history/2` counts.
+    /// (`verdict_counts::held_about_self`): what `service_history/4` counts.
     pub verdict: Option<crate::verdict_counts::HeldVerdict>,
 }
 

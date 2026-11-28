@@ -2,7 +2,7 @@
 //! verdict's capsule id (Mesh-LLM/capsules-plugin#289; Steven u1598: the
 //! verdicts held about a node are "checkable for omission by digest").
 //!
-//! A node's `service_history/2` counts the verdicts its own log holds. A node
+//! A node's `service_history/4` counts the verdicts its own log holds. A node
 //! that dropped a delivered verdict shows a smaller count, and nothing in the
 //! count shows it. This derivation lets a referee, or any node that holds
 //! the referee's signed delivery, ask: "do you hold verdict D?". Held: the

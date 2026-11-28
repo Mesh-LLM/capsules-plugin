@@ -1,0 +1,2883 @@
+{
+  "set": "aac-inference-service-history-v1",
+  "status": "Conformance vectors for inference-service-history/1 of the informational Inference-Service History Profile, over evidence-interop/1. Every key is a test key derived from a public seed; never use one for anything else.",
+  "profile": "evidence-interop/1",
+  "history_profile": "inference-service-history/1",
+  "spec": "spec/inference-service-history-profile-v0.md",
+  "example_definitions": [
+    "service_history_example/1",
+    "service_history_verdicts_example/1"
+  ],
+  "test_keys": {
+    "note": "TEST-ONLY. Each private key is the 32-byte Ed25519 seed SHA-256(seed_label).",
+    "keys": {
+      "node": {
+        "seed_label": "inference-service-history-profile-v0 conformance vectors: node key",
+        "public": "1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9"
+      },
+      "node-log": {
+        "seed_label": "inference-service-history-profile-v0 conformance vectors: node log key",
+        "public": "af27e35f070d376f87ce0859973d34fa82204d5086c127d1e646eff5f1c2336d"
+      },
+      "peer": {
+        "seed_label": "inference-service-history-profile-v0 conformance vectors: peer node key",
+        "public": "582c60f2f98715969cac653a0afc59eb43ede89dae84f3ad8a78c69a3c29adaf"
+      },
+      "untrusted-peer": {
+        "seed_label": "inference-service-history-profile-v0 conformance vectors: peer key the relying party does not trust",
+        "public": "8967f180b61f3d85bda119f7ff01876e046539ce93dcefb0f2a6495729788246"
+      },
+      "witness": {
+        "seed_label": "inference-service-history-profile-v0 conformance vectors: witness key",
+        "public": "1b43682b0facfa5f2da0875193a1bb75c66019817cc24baef79041838e315caf"
+      },
+      "other-witness": {
+        "seed_label": "inference-service-history-profile-v0 conformance vectors: witness key the relying party has not configured",
+        "public": "b17daa07f7c09eef302209d7ffa6ea67dd9387d5797e95aee2b9dd7631e66804"
+      }
+    }
+  },
+  "contract": {
+    "document": {
+      "id": "S",
+      "version": "1",
+      "requirements": [
+        {
+          "id": "r-service",
+          "profile": "outcome",
+          "statement": "The node's served exchanges are shown under a verified envelope.",
+          "evidence_requirements": {
+            "accepted_epistemic_types": [
+              "producer_claim"
+            ]
+          }
+        }
+      ]
+    },
+    "document_jcs": "{\"id\":\"S\",\"requirements\":[{\"evidence_requirements\":{\"accepted_epistemic_types\":[\"producer_claim\"]},\"id\":\"r-service\",\"profile\":\"outcome\",\"statement\":\"The node's served exchanges are shown under a verified envelope.\"}],\"version\":\"1\"}",
+    "contract_ref": "S@1",
+    "contract_digest": "0269eebf43bdb5f689464ca6e51946974e1f850d711314655d843ad1319f2242",
+    "schema": {
+      "name": "evidence-contract-v0.json",
+      "sha256": "6b969610e6f120a9f5b98555aa5045644c62665f14075bb83fb9e78bab21b770"
+    }
+  },
+  "period_policy": {
+    "document": {
+      "epoch": "2026-10-01T00:00:00Z",
+      "floor": 5,
+      "length_s": 86400,
+      "min_length_s": 86400,
+      "suppression": "complementary"
+    },
+    "digest": "a0ee3985ee4440cd0c12384e7a6d20c512893850caa9c20d53bc3951b50f1600"
+  },
+  "standard_properties": [
+    "definition_form",
+    "definition_binding",
+    "artifact_form",
+    "history_card_content",
+    "units",
+    "labels",
+    "period_alignment",
+    "period_anchor",
+    "period_floor"
+  ],
+  "count": 13,
+  "cases": [
+    {
+      "id": "v1-standard-served",
+      "title": "The served-only History under /1: one withheld model and its partner, as under /0",
+      "cites": [
+        "§6.2",
+        "§6.3",
+        "§9"
+      ],
+      "source": "constructed: the base set's served counts; 2 October's model-b (3) is under the floor beside a published total, so model-a goes with it",
+      "kind": "history",
+      "pins": {
+        "trust_policy": {
+          "responder_keys": [
+            "1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9"
+          ],
+          "log_keys": [],
+          "foreign_keys": [],
+          "parties": {},
+          "successions": [],
+          "require_action_time_from_other_party": false
+        },
+        "verification_policy": {
+          "online": false,
+          "profiles_implemented": [
+            "evidence-interop/1"
+          ],
+          "kinds_implemented": [
+            "cll-checkpoint",
+            "cll-inclusion-proof",
+            "cll-consistency-proof"
+          ]
+        },
+        "service_history": {
+          "log_keys": [
+            "af27e35f070d376f87ce0859973d34fa82204d5086c127d1e646eff5f1c2336d"
+          ],
+          "witness_keys": [
+            "1b43682b0facfa5f2da0875193a1bb75c66019817cc24baef79041838e315caf"
+          ],
+          "peer_keys": [
+            "582c60f2f98715969cac653a0afc59eb43ede89dae84f3ad8a78c69a3c29adaf"
+          ]
+        },
+        "contract_ref": "S@1",
+        "contract_digest": "0269eebf43bdb5f689464ca6e51946974e1f850d711314655d843ad1319f2242",
+        "evaluation_time": "2026-10-05T06:00:00Z"
+      },
+      "inputs": {
+        "definition": {
+          "coverage_declaration": {
+            "kind": "stream_interval",
+            "rule": "all_records"
+          },
+          "embeds": [
+            "history_card/1"
+          ],
+          "excludes": [
+            "requester identity",
+            "per-recipient release state"
+          ],
+          "kind": "projection",
+          "level": "standard",
+          "members": [
+            {
+              "name": "history_card",
+              "required": true,
+              "derivation": "history_card/1",
+              "reads": [
+                "checkpoint: key_id, log_size, root, timestamp, sig",
+                "receipt: checkpoint, witness, sig"
+              ],
+              "units": [
+                {
+                  "where": "history (one entry per checkpoint)",
+                  "unit": "checkpoints"
+                },
+                {
+                  "where": "history[].receipts",
+                  "unit": "witness_receipts"
+                }
+              ]
+            },
+            {
+              "name": "period_counts",
+              "required": true,
+              "reads": [
+                "record: role",
+                "record: committed_at",
+                "record: model claim"
+              ],
+              "units": [
+                {
+                  "where": "periods[].cells[]",
+                  "unit": "exchanges_served"
+                }
+              ],
+              "claims": {
+                "asserted_by": "provider",
+                "label": "provider states",
+                "where": [
+                  "periods[].cells[].dimension"
+                ]
+              }
+            }
+          ],
+          "name": "service_history_example/1",
+          "period_policy": {
+            "epoch": "2026-10-01T00:00:00Z",
+            "floor": 5,
+            "length_s": 86400,
+            "min_length_s": 86400,
+            "suppression": "complementary"
+          },
+          "profile": "inference-service-history/1",
+          "reads": [
+            "checkpoint: key_id, log_size, root, timestamp, sig",
+            "receipt: checkpoint, witness, sig",
+            "record: role",
+            "record: committed_at",
+            "record: model claim"
+          ],
+          "spec": "vectors/inference-service-history-v1/README.md",
+          "subjects": [
+            "full_history"
+          ]
+        },
+        "request": {
+          "media_type": "application/json",
+          "octets_text": "{\"coverage\":{\"expected_pin\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"nonce\":\"requester-1/v1\",\"profile\":\"evidence-interop/1\",\"subject\":{\"full_history\":null}}"
+        },
+        "reply": {
+          "media_type": "application/json",
+          "octets_text": "{\"anchor\":{\"digest\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"artifact\":\"eyJhbmNob3IiOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIiwiY292ZXJhZ2VfZGVjbGFyYXRpb24iOnsiaW50ZXJ2YWwiOnsiZnJvbSI6bnVsbCwidG8iOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIn0sImtpbmQiOiJzdHJlYW1faW50ZXJ2YWwiLCJsaXZlX3NldCI6W3siY2hlY2twb2ludCI6Ijk4NmQ5Y2UwNDk1MWQwMWJlNjE5YzMyYWVhNjRiNDQyODg3OTkxYTUyOTBlYzA5YzZlODc4OWIxMjFlZmU4MmIiLCJjb3VudCI6NTIsInN0YXJ0IjowLCJzdHJlYW0iOiJub2RlLXN0cmVhbS0xIn1dLCJydWxlIjoiYWxsX3JlY29yZHMifSwiZGVjbGFyZWQiOlsiaGlzdG9yeV9jYXJkIiwicGVyaW9kX2NvdW50cyJdLCJkZXJpdmF0aW9uIjoiZDRjZTk4ZmZhODEzNGJhOTQ3MGNmZGNkZjQyZGMwODZlOTY3OWQ4ZGZmOGQxODdiZTMxMGYyMzBkYzE0NDcxYSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5X2NhcmQiOnsiYW5jaG9yIjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsImRlcml2YXRpb24iOiJoaXN0b3J5X2NhcmQvMSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5IjpbeyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MTAsInJvb3QiOiJkZTA5ODdiMDY2NzdiODU4ZjUzYTE2YjMzMWRkNTc4ZjllNTJiY2EyZWI2YzJkNjRjZDMxN2JkMTE3OGNjZTllIiwic2lnIjoiY2U3Yjk4Y2ZlYmRiOWM5MGRhZGM5YWVkOWU4MmQwYjg3MGZkZWQzZTBiMDM1YjkyNDgzNWU5OWE3ZTM2OWNkZjMzNTI0Nzg3ZWRkZWI1NGRmZDc1Y2RiMjgwNjI4ZGMxNzAzMDM1Zjc2M2Q3Y2M5YjM4NDJiNzBhNTEzN2ZiMGIiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAxVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W119LHsiY2hlY2twb2ludCI6eyJrZXlfaWQiOiJhZjI3ZTM1ZjA3MGQzNzZmODdjZTA4NTk5NzNkMzRmYTgyMjA0ZDUwODZjMTI3ZDFlNjQ2ZWZmNWYxYzIzMzZkIiwibG9nX3NpemUiOjI1LCJyb290IjoiYjYwZjFiYmZhNWQ3Y2RjOTc1NjliZGE4Y2JjZjQ4MjJkOTU2ZWUxYmE4YjA4MzU4MGQzMmRjYzNlNzI1MjNkMyIsInNpZyI6IjlmNjc0ZTU5YjQxNzg1ZmQ1OTY0NzgwZmUxMmQ2M2RhMDMzMTJmMjkwNmRhZjE5ZTgwNGJlZTlkZWU5YzA4NTg3Y2Q0NDU5NmViMTIwYTE2Njc2YzRmNjY1OTZhMGMxYTE1OTgzZTY2YThhZWJkMzI1YjZlOWI2OWRiNTkzODAxIiwidGltZXN0YW1wIjoiMjAyNi0xMC0wMlQxMjowMDowMFoifSwicmVjZWlwdHMiOlt7ImNoZWNrcG9pbnQiOiJmMjlmZTk1Mzc5ZGQwMjA3N2MwY2JmODJiYjIwZTI0ZmZhY2UyMmQ4NDFlZmQwNWJjMTIzMjc0MjhlNTZhYTAyIiwic2lnIjoiYWMwOWMzOTVjMTk0YjQ0NjVmZmJjM2ZhMTg5NWZkYmQ1YjhjMTU4MWE5ZTlkYmExMjgzNjg1NDAzOTEwNGQzNDJkYWE1NjRmNDJhODQyY2NjOTgyNDg0Y2RlOGVmZWY0MzgyZTk3N2RiMmEyNDBkOTdmMDdjYmFhMGRhNTc0MGQiLCJ3aXRuZXNzIjoiMWI0MzY4MmIwZmFjZmE1ZjJkYTA4NzUxOTNhMWJiNzVjNjYwMTk4MTdjYzI0YmFlZjc5MDQxODM4ZTMxNWNhZiJ9XX0seyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MzgsInJvb3QiOiI4OTM2MWEzZDYyNzY5NDcwMzQ1MGZmNWRhMTY4ZTgyYTdkZWQ1NjQyYzU2ZThhYTMyOWVlMzIxNGU1Mjg5MDZkIiwic2lnIjoiNzUyMjkxZGJiNmVkZWU0ZGNlODljZDVkNjk2ODg1ZWIyOGI5ZWQ2OWZkOWM0MmFiMDdhZDFiYTNlOTg3OTYxMTM4ZDA5OTYzYzQwMzBjYmNkNjJiYWFmMjFjODc5OWJkYWI3Y2MwOWNiZDA5MjkzYzIyNGFkYWYyMGQxMjExMDgiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAzVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W3siY2hlY2twb2ludCI6IjZiYWVjNmM2NDhmZGRkNjYxNjViZGQzZmVmYTdiYzRkZTg3NGQ3NjExMDM0MTVjMTcwNWEyM2UzMGNiODZkZjUiLCJzaWciOiI2ZGEwNjhjZDBkNTA3ZmQ3MTNkNTBjZDVkNjRjYjUyMTE4MzQ2OTVkOGJmOWEzZjZmMTRlNDM5MjJiYTcyZmQ5MzhlNWM3YTFmNmJkY2M3MjgzMjA3MGJjZDIwMGUwYjU5YTllNjhiODJlY2Y1OGZjNDA0YTdhODMwZGRhNWEwYSIsIndpdG5lc3MiOiIxYjQzNjgyYjBmYWNmYTVmMmRhMDg3NTE5M2ExYmI3NWM2NjAxOTgxN2NjMjRiYWVmNzkwNDE4MzhlMzE1Y2FmIn1dfSx7ImNoZWNrcG9pbnQiOnsia2V5X2lkIjoiYWYyN2UzNWYwNzBkMzc2Zjg3Y2UwODU5OTczZDM0ZmE4MjIwNGQ1MDg2YzEyN2QxZTY0NmVmZjVmMWMyMzM2ZCIsImxvZ19zaXplIjo1Miwicm9vdCI6IjI1ZWE3MjE4NzY2MGFjMzNjYWY4ZDMxMmVlZjRhMjBiNDM0MWNmZTNiZTM1Zjg5ZDMwNWVmZGI4Y2JhMGFkOTYiLCJzaWciOiJiNTJkNDVmNTZmNmQ3NGZjNmRhYjQ2ZDQ0NzUzNTA0YmU5NDRlOGYxNTA2YWU0MDVmOWNkOGVjYzA0MjZhYWE0M2U0Y2Q1M2NlYTA5MGM2NDBlMjI0MjZiZTE2M2ZlODgzYTZkOWUyY2M4Njc1MjVkMjZhYTUzNzNkNDZiZjMwZCIsInRpbWVzdGFtcCI6IjIwMjYtMTAtMDRUMDA6MDA6MDBaIn0sInJlY2VpcHRzIjpbeyJjaGVja3BvaW50IjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsInNpZyI6IjViM2JhM2U3MjJkYzNjMTk5MTI3NmRkMmY4MTM5ZjZhYmU3MTdhZTQ1NDFiYTg4NWIxOWM3ZWNlMzg1MjY2Yjg3NmFiYjMyYmY5OGU4MTc1YmNlNzMwYmY3YjQxMzdmNWU4ZTI2ZThkZDg0ODQzNzE0ZTcxODIwMmQ3M2E1NDAxIiwid2l0bmVzcyI6ImIxN2RhYTA3ZjdjMDllZWYzMDIyMDlkN2ZmYTZlYTY3ZGQ5Mzg3ZDU3OTdlOTVhZWUyYjlkZDc2MzFlNjY4MDQifV19XSwic3ViamVjdCI6eyJmdWxsX2hpc3RvcnkiOm51bGx9fSwiaGlzdG9yeV9jYXJkX2RpZ2VzdCI6ImYyZWY2ZjZhNDY4MmU2NGRkNTNjZWFiNTBlNzk5NTA2NmU4Yzk4MzFjNzc1ZmVjMjA3NzQwZTU1ZDg3ODcxNjkiLCJwZXJpb2RfY291bnRzIjp7InBlcmlvZHMiOlt7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjEyfSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6N30seyJkaW1lbnNpb24iOm51bGwsImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjE5fV0sImZyb20iOiIyMDI2LTEwLTAxVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wMlQwMDowMDowMFoifSx7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJjb21wbGVtZW50YXJ5IiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6bnVsbH0seyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1iIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjpudWxsLCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjoxMn1dLCJmcm9tIjoiMjAyNi0xMC0wMlQwMDowMDowMFoiLCJ0byI6IjIwMjYtMTAtMDNUMDA6MDA6MDBaIn0seyJjZWxscyI6W3siZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtYSJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjo2fSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6NX0seyJkaW1lbnNpb24iOm51bGwsImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjExfV0sImZyb20iOiIyMDI2LTEwLTAzVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wNFQwMDowMDowMFoifV0sInBvbGljeSI6ImEwZWUzOTg1ZWU0NDQwY2QwYzEyMzg0ZTdhNmQyMGM1MTI4OTM4NTBjYWE5YzIwZDUzYmMzOTUxYjUwZjE2MDAifSwic3ViamVjdCI6eyJmdWxsX2hpc3RvcnkiOm51bGx9fQ\",\"artifact_digest\":\"b1d0160d5144b549b830901254e77ce5a2f39ce513bb0832a97203679da04ffc\",\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"issued_at\":\"2026-10-04T00:00:05Z\",\"profile\":\"evidence-interop/1\",\"request_digest\":\"93ce156b57a266d7bdb1c5479308178e404f2979ae2f6b8ad46b139256746a25\",\"responder\":\"1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9\",\"sig\":\"096eea19cd5e0eb68db8bec11924a32178dac629ebc672758fcff2a1174261a357b7e6548ba3d99f06e705196a0d4cf76607bef526b8328c366345e8c14d4400\",\"subject\":{\"full_history\":null}}"
+        }
+      },
+      "expected": {
+        "exchange": {
+          "message_type": "envelope",
+          "subject": {
+            "full_history": null
+          },
+          "properties": {
+            "profile_version": "PASS",
+            "envelope_signature": "PASS",
+            "responder_trust": "PASS",
+            "responder_key_current": "NOT_CHECKED",
+            "issued_at_form": "PASS",
+            "request_binding": "PASS",
+            "subject_binding": "PASS",
+            "artifact_digest": "PASS",
+            "verification_binding": "NOT_PRESENT",
+            "anchor_match": "PASS",
+            "anchor_inclusion": "NOT_CHECKED"
+          },
+          "accepted": true,
+          "requirements": {
+            "r-service": {
+              "row": "envelope-4",
+              "status": "UNKNOWN",
+              "sufficiency": "UNKNOWN",
+              "verdict": "not_evaluable"
+            }
+          },
+          "claim": {
+            "evidence": [
+              {
+                "digest_alg": "SHA-256",
+                "digest": "b1d0160d5144b549b830901254e77ce5a2f39ce513bb0832a97203679da04ffc"
+              }
+            ],
+            "proofs": []
+          }
+        },
+        "history_properties": {
+          "definition_form": "PASS",
+          "definition_binding": "PASS",
+          "artifact_form": "PASS",
+          "history_card_content": "PASS",
+          "units": "PASS",
+          "labels": "PASS",
+          "period_alignment": "PASS",
+          "period_anchor": "PASS",
+          "period_floor": "PASS"
+        },
+        "coverage": {
+          "declared_kind": "stream_interval",
+          "properties": {
+            "coverage_declaration_form": "PASS",
+            "coverage_declaration_anchor": "PASS",
+            "coverage_declaration_population": "NOT_CHECKED",
+            "coverage_declaration_commitment": "NOT_CHECKED"
+          },
+          "relative_to": "the node's stream at the anchor, under all_records; completeness not established: counts not checked against records"
+        },
+        "shows": {
+          "witness": {
+            "checkpoints": 4,
+            "witness_receipts_counted": 2,
+            "witness_receipts_not_counted": [
+              {
+                "checkpoint": 3,
+                "reason": "witness key not configured"
+              }
+            ]
+          }
+        },
+        "accepted": true,
+        "fails": []
+      }
+    },
+    {
+      "id": "v1-total-withheld-two-under-floor",
+      "title": "Two models of 4 under a floor of 5: the total of 8 is withheld",
+      "cites": [
+        "§6.2",
+        "§6.3",
+        "§9"
+      ],
+      "source": "constructed: 2 October served 4 by model-a and 4 by model-b",
+      "kind": "history",
+      "pins": {
+        "trust_policy": {
+          "responder_keys": [
+            "1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9"
+          ],
+          "log_keys": [],
+          "foreign_keys": [],
+          "parties": {},
+          "successions": [],
+          "require_action_time_from_other_party": false
+        },
+        "verification_policy": {
+          "online": false,
+          "profiles_implemented": [
+            "evidence-interop/1"
+          ],
+          "kinds_implemented": [
+            "cll-checkpoint",
+            "cll-inclusion-proof",
+            "cll-consistency-proof"
+          ]
+        },
+        "service_history": {
+          "log_keys": [
+            "af27e35f070d376f87ce0859973d34fa82204d5086c127d1e646eff5f1c2336d"
+          ],
+          "witness_keys": [
+            "1b43682b0facfa5f2da0875193a1bb75c66019817cc24baef79041838e315caf"
+          ],
+          "peer_keys": [
+            "582c60f2f98715969cac653a0afc59eb43ede89dae84f3ad8a78c69a3c29adaf"
+          ]
+        },
+        "contract_ref": "S@1",
+        "contract_digest": "0269eebf43bdb5f689464ca6e51946974e1f850d711314655d843ad1319f2242",
+        "evaluation_time": "2026-10-05T06:00:00Z"
+      },
+      "inputs": {
+        "definition": {
+          "coverage_declaration": {
+            "kind": "stream_interval",
+            "rule": "all_records"
+          },
+          "embeds": [
+            "history_card/1"
+          ],
+          "excludes": [
+            "requester identity",
+            "per-recipient release state"
+          ],
+          "kind": "projection",
+          "level": "standard",
+          "members": [
+            {
+              "name": "history_card",
+              "required": true,
+              "derivation": "history_card/1",
+              "reads": [
+                "checkpoint: key_id, log_size, root, timestamp, sig",
+                "receipt: checkpoint, witness, sig"
+              ],
+              "units": [
+                {
+                  "where": "history (one entry per checkpoint)",
+                  "unit": "checkpoints"
+                },
+                {
+                  "where": "history[].receipts",
+                  "unit": "witness_receipts"
+                }
+              ]
+            },
+            {
+              "name": "period_counts",
+              "required": true,
+              "reads": [
+                "record: role",
+                "record: committed_at",
+                "record: model claim"
+              ],
+              "units": [
+                {
+                  "where": "periods[].cells[]",
+                  "unit": "exchanges_served"
+                }
+              ],
+              "claims": {
+                "asserted_by": "provider",
+                "label": "provider states",
+                "where": [
+                  "periods[].cells[].dimension"
+                ]
+              }
+            }
+          ],
+          "name": "service_history_example/1",
+          "period_policy": {
+            "epoch": "2026-10-01T00:00:00Z",
+            "floor": 5,
+            "length_s": 86400,
+            "min_length_s": 86400,
+            "suppression": "complementary"
+          },
+          "profile": "inference-service-history/1",
+          "reads": [
+            "checkpoint: key_id, log_size, root, timestamp, sig",
+            "receipt: checkpoint, witness, sig",
+            "record: role",
+            "record: committed_at",
+            "record: model claim"
+          ],
+          "spec": "vectors/inference-service-history-v1/README.md",
+          "subjects": [
+            "full_history"
+          ]
+        },
+        "request": {
+          "media_type": "application/json",
+          "octets_text": "{\"coverage\":{\"expected_pin\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"nonce\":\"requester-1/v1\",\"profile\":\"evidence-interop/1\",\"subject\":{\"full_history\":null}}"
+        },
+        "reply": {
+          "media_type": "application/json",
+          "octets_text": "{\"anchor\":{\"digest\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"artifact\":\"eyJhbmNob3IiOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIiwiY292ZXJhZ2VfZGVjbGFyYXRpb24iOnsiaW50ZXJ2YWwiOnsiZnJvbSI6bnVsbCwidG8iOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIn0sImtpbmQiOiJzdHJlYW1faW50ZXJ2YWwiLCJsaXZlX3NldCI6W3siY2hlY2twb2ludCI6Ijk4NmQ5Y2UwNDk1MWQwMWJlNjE5YzMyYWVhNjRiNDQyODg3OTkxYTUyOTBlYzA5YzZlODc4OWIxMjFlZmU4MmIiLCJjb3VudCI6NTIsInN0YXJ0IjowLCJzdHJlYW0iOiJub2RlLXN0cmVhbS0xIn1dLCJydWxlIjoiYWxsX3JlY29yZHMifSwiZGVjbGFyZWQiOlsiaGlzdG9yeV9jYXJkIiwicGVyaW9kX2NvdW50cyJdLCJkZXJpdmF0aW9uIjoiZDRjZTk4ZmZhODEzNGJhOTQ3MGNmZGNkZjQyZGMwODZlOTY3OWQ4ZGZmOGQxODdiZTMxMGYyMzBkYzE0NDcxYSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5X2NhcmQiOnsiYW5jaG9yIjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsImRlcml2YXRpb24iOiJoaXN0b3J5X2NhcmQvMSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5IjpbeyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MTAsInJvb3QiOiJkZTA5ODdiMDY2NzdiODU4ZjUzYTE2YjMzMWRkNTc4ZjllNTJiY2EyZWI2YzJkNjRjZDMxN2JkMTE3OGNjZTllIiwic2lnIjoiY2U3Yjk4Y2ZlYmRiOWM5MGRhZGM5YWVkOWU4MmQwYjg3MGZkZWQzZTBiMDM1YjkyNDgzNWU5OWE3ZTM2OWNkZjMzNTI0Nzg3ZWRkZWI1NGRmZDc1Y2RiMjgwNjI4ZGMxNzAzMDM1Zjc2M2Q3Y2M5YjM4NDJiNzBhNTEzN2ZiMGIiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAxVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W119LHsiY2hlY2twb2ludCI6eyJrZXlfaWQiOiJhZjI3ZTM1ZjA3MGQzNzZmODdjZTA4NTk5NzNkMzRmYTgyMjA0ZDUwODZjMTI3ZDFlNjQ2ZWZmNWYxYzIzMzZkIiwibG9nX3NpemUiOjI1LCJyb290IjoiYjYwZjFiYmZhNWQ3Y2RjOTc1NjliZGE4Y2JjZjQ4MjJkOTU2ZWUxYmE4YjA4MzU4MGQzMmRjYzNlNzI1MjNkMyIsInNpZyI6IjlmNjc0ZTU5YjQxNzg1ZmQ1OTY0NzgwZmUxMmQ2M2RhMDMzMTJmMjkwNmRhZjE5ZTgwNGJlZTlkZWU5YzA4NTg3Y2Q0NDU5NmViMTIwYTE2Njc2YzRmNjY1OTZhMGMxYTE1OTgzZTY2YThhZWJkMzI1YjZlOWI2OWRiNTkzODAxIiwidGltZXN0YW1wIjoiMjAyNi0xMC0wMlQxMjowMDowMFoifSwicmVjZWlwdHMiOlt7ImNoZWNrcG9pbnQiOiJmMjlmZTk1Mzc5ZGQwMjA3N2MwY2JmODJiYjIwZTI0ZmZhY2UyMmQ4NDFlZmQwNWJjMTIzMjc0MjhlNTZhYTAyIiwic2lnIjoiYWMwOWMzOTVjMTk0YjQ0NjVmZmJjM2ZhMTg5NWZkYmQ1YjhjMTU4MWE5ZTlkYmExMjgzNjg1NDAzOTEwNGQzNDJkYWE1NjRmNDJhODQyY2NjOTgyNDg0Y2RlOGVmZWY0MzgyZTk3N2RiMmEyNDBkOTdmMDdjYmFhMGRhNTc0MGQiLCJ3aXRuZXNzIjoiMWI0MzY4MmIwZmFjZmE1ZjJkYTA4NzUxOTNhMWJiNzVjNjYwMTk4MTdjYzI0YmFlZjc5MDQxODM4ZTMxNWNhZiJ9XX0seyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MzgsInJvb3QiOiI4OTM2MWEzZDYyNzY5NDcwMzQ1MGZmNWRhMTY4ZTgyYTdkZWQ1NjQyYzU2ZThhYTMyOWVlMzIxNGU1Mjg5MDZkIiwic2lnIjoiNzUyMjkxZGJiNmVkZWU0ZGNlODljZDVkNjk2ODg1ZWIyOGI5ZWQ2OWZkOWM0MmFiMDdhZDFiYTNlOTg3OTYxMTM4ZDA5OTYzYzQwMzBjYmNkNjJiYWFmMjFjODc5OWJkYWI3Y2MwOWNiZDA5MjkzYzIyNGFkYWYyMGQxMjExMDgiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAzVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W3siY2hlY2twb2ludCI6IjZiYWVjNmM2NDhmZGRkNjYxNjViZGQzZmVmYTdiYzRkZTg3NGQ3NjExMDM0MTVjMTcwNWEyM2UzMGNiODZkZjUiLCJzaWciOiI2ZGEwNjhjZDBkNTA3ZmQ3MTNkNTBjZDVkNjRjYjUyMTE4MzQ2OTVkOGJmOWEzZjZmMTRlNDM5MjJiYTcyZmQ5MzhlNWM3YTFmNmJkY2M3MjgzMjA3MGJjZDIwMGUwYjU5YTllNjhiODJlY2Y1OGZjNDA0YTdhODMwZGRhNWEwYSIsIndpdG5lc3MiOiIxYjQzNjgyYjBmYWNmYTVmMmRhMDg3NTE5M2ExYmI3NWM2NjAxOTgxN2NjMjRiYWVmNzkwNDE4MzhlMzE1Y2FmIn1dfSx7ImNoZWNrcG9pbnQiOnsia2V5X2lkIjoiYWYyN2UzNWYwNzBkMzc2Zjg3Y2UwODU5OTczZDM0ZmE4MjIwNGQ1MDg2YzEyN2QxZTY0NmVmZjVmMWMyMzM2ZCIsImxvZ19zaXplIjo1Miwicm9vdCI6IjI1ZWE3MjE4NzY2MGFjMzNjYWY4ZDMxMmVlZjRhMjBiNDM0MWNmZTNiZTM1Zjg5ZDMwNWVmZGI4Y2JhMGFkOTYiLCJzaWciOiJiNTJkNDVmNTZmNmQ3NGZjNmRhYjQ2ZDQ0NzUzNTA0YmU5NDRlOGYxNTA2YWU0MDVmOWNkOGVjYzA0MjZhYWE0M2U0Y2Q1M2NlYTA5MGM2NDBlMjI0MjZiZTE2M2ZlODgzYTZkOWUyY2M4Njc1MjVkMjZhYTUzNzNkNDZiZjMwZCIsInRpbWVzdGFtcCI6IjIwMjYtMTAtMDRUMDA6MDA6MDBaIn0sInJlY2VpcHRzIjpbeyJjaGVja3BvaW50IjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsInNpZyI6IjViM2JhM2U3MjJkYzNjMTk5MTI3NmRkMmY4MTM5ZjZhYmU3MTdhZTQ1NDFiYTg4NWIxOWM3ZWNlMzg1MjY2Yjg3NmFiYjMyYmY5OGU4MTc1YmNlNzMwYmY3YjQxMzdmNWU4ZTI2ZThkZDg0ODQzNzE0ZTcxODIwMmQ3M2E1NDAxIiwid2l0bmVzcyI6ImIxN2RhYTA3ZjdjMDllZWYzMDIyMDlkN2ZmYTZlYTY3ZGQ5Mzg3ZDU3OTdlOTVhZWUyYjlkZDc2MzFlNjY4MDQifV19XSwic3ViamVjdCI6eyJmdWxsX2hpc3RvcnkiOm51bGx9fSwiaGlzdG9yeV9jYXJkX2RpZ2VzdCI6ImYyZWY2ZjZhNDY4MmU2NGRkNTNjZWFiNTBlNzk5NTA2NmU4Yzk4MzFjNzc1ZmVjMjA3NzQwZTU1ZDg3ODcxNjkiLCJwZXJpb2RfY291bnRzIjp7InBlcmlvZHMiOlt7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjEyfSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6N30seyJkaW1lbnNpb24iOm51bGwsImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjE5fV0sImZyb20iOiIyMDI2LTEwLTAxVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wMlQwMDowMDowMFoifSx7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtYiJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJzdXBwcmVzc2VkIjoiYmVsb3dfZmxvb3IiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjpudWxsfSx7ImRpbWVuc2lvbiI6bnVsbCwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwic3VwcHJlc3NlZCI6ImNvbXBsZW1lbnRhcnkiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjpudWxsfV0sImZyb20iOiIyMDI2LTEwLTAyVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wM1QwMDowMDowMFoifSx7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjZ9LHsiZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtYiJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjo1fSx7ImRpbWVuc2lvbiI6bnVsbCwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6MTF9XSwiZnJvbSI6IjIwMjYtMTAtMDNUMDA6MDA6MDBaIiwidG8iOiIyMDI2LTEwLTA0VDAwOjAwOjAwWiJ9XSwicG9saWN5IjoiYTBlZTM5ODVlZTQ0NDBjZDBjMTIzODRlN2E2ZDIwYzUxMjg5Mzg1MGNhYTljMjBkNTNiYzM5NTFiNTBmMTYwMCJ9LCJzdWJqZWN0Ijp7ImZ1bGxfaGlzdG9yeSI6bnVsbH19\",\"artifact_digest\":\"9f33da4bf6dcab59f9ad9f0314bd02389fb54b538c1a245110f7b5063dd0021c\",\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"issued_at\":\"2026-10-04T00:00:05Z\",\"profile\":\"evidence-interop/1\",\"request_digest\":\"93ce156b57a266d7bdb1c5479308178e404f2979ae2f6b8ad46b139256746a25\",\"responder\":\"1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9\",\"sig\":\"2b844a91a95e72074eb79ebcdebd6ddcbef9ea4289421dc53bc04ef26d5a341c77b071af558a88e6244d372bc9f9d8fb6c9d97b674cd623b92766e10f7d8530e\",\"subject\":{\"full_history\":null}}"
+        }
+      },
+      "expected": {
+        "exchange": {
+          "message_type": "envelope",
+          "subject": {
+            "full_history": null
+          },
+          "properties": {
+            "profile_version": "PASS",
+            "envelope_signature": "PASS",
+            "responder_trust": "PASS",
+            "responder_key_current": "NOT_CHECKED",
+            "issued_at_form": "PASS",
+            "request_binding": "PASS",
+            "subject_binding": "PASS",
+            "artifact_digest": "PASS",
+            "verification_binding": "NOT_PRESENT",
+            "anchor_match": "PASS",
+            "anchor_inclusion": "NOT_CHECKED"
+          },
+          "accepted": true,
+          "requirements": {
+            "r-service": {
+              "row": "envelope-4",
+              "status": "UNKNOWN",
+              "sufficiency": "UNKNOWN",
+              "verdict": "not_evaluable"
+            }
+          },
+          "claim": {
+            "evidence": [
+              {
+                "digest_alg": "SHA-256",
+                "digest": "9f33da4bf6dcab59f9ad9f0314bd02389fb54b538c1a245110f7b5063dd0021c"
+              }
+            ],
+            "proofs": []
+          }
+        },
+        "history_properties": {
+          "definition_form": "PASS",
+          "definition_binding": "PASS",
+          "artifact_form": "PASS",
+          "history_card_content": "PASS",
+          "units": "PASS",
+          "labels": "PASS",
+          "period_alignment": "PASS",
+          "period_anchor": "PASS",
+          "period_floor": "PASS"
+        },
+        "coverage": {
+          "declared_kind": "stream_interval",
+          "properties": {
+            "coverage_declaration_form": "PASS",
+            "coverage_declaration_anchor": "PASS",
+            "coverage_declaration_population": "NOT_CHECKED",
+            "coverage_declaration_commitment": "NOT_CHECKED"
+          },
+          "relative_to": "the node's stream at the anchor, under all_records; completeness not established: counts not checked against records"
+        },
+        "shows": {
+          "witness": {
+            "checkpoints": 4,
+            "witness_receipts_counted": 2,
+            "witness_receipts_not_counted": [
+              {
+                "checkpoint": 3,
+                "reason": "witness key not configured"
+              }
+            ]
+          }
+        },
+        "accepted": true,
+        "fails": []
+      }
+    },
+    {
+      "id": "v1-total-withheld-five-ones",
+      "title": "Five models of 1 each: the total of 5 is withheld",
+      "cites": [
+        "§6.2",
+        "§6.3",
+        "§9"
+      ],
+      "source": "constructed: 2 October served 1 by each of five models",
+      "kind": "history",
+      "pins": {
+        "trust_policy": {
+          "responder_keys": [
+            "1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9"
+          ],
+          "log_keys": [],
+          "foreign_keys": [],
+          "parties": {},
+          "successions": [],
+          "require_action_time_from_other_party": false
+        },
+        "verification_policy": {
+          "online": false,
+          "profiles_implemented": [
+            "evidence-interop/1"
+          ],
+          "kinds_implemented": [
+            "cll-checkpoint",
+            "cll-inclusion-proof",
+            "cll-consistency-proof"
+          ]
+        },
+        "service_history": {
+          "log_keys": [
+            "af27e35f070d376f87ce0859973d34fa82204d5086c127d1e646eff5f1c2336d"
+          ],
+          "witness_keys": [
+            "1b43682b0facfa5f2da0875193a1bb75c66019817cc24baef79041838e315caf"
+          ],
+          "peer_keys": [
+            "582c60f2f98715969cac653a0afc59eb43ede89dae84f3ad8a78c69a3c29adaf"
+          ]
+        },
+        "contract_ref": "S@1",
+        "contract_digest": "0269eebf43bdb5f689464ca6e51946974e1f850d711314655d843ad1319f2242",
+        "evaluation_time": "2026-10-05T06:00:00Z"
+      },
+      "inputs": {
+        "definition": {
+          "coverage_declaration": {
+            "kind": "stream_interval",
+            "rule": "all_records"
+          },
+          "embeds": [
+            "history_card/1"
+          ],
+          "excludes": [
+            "requester identity",
+            "per-recipient release state"
+          ],
+          "kind": "projection",
+          "level": "standard",
+          "members": [
+            {
+              "name": "history_card",
+              "required": true,
+              "derivation": "history_card/1",
+              "reads": [
+                "checkpoint: key_id, log_size, root, timestamp, sig",
+                "receipt: checkpoint, witness, sig"
+              ],
+              "units": [
+                {
+                  "where": "history (one entry per checkpoint)",
+                  "unit": "checkpoints"
+                },
+                {
+                  "where": "history[].receipts",
+                  "unit": "witness_receipts"
+                }
+              ]
+            },
+            {
+              "name": "period_counts",
+              "required": true,
+              "reads": [
+                "record: role",
+                "record: committed_at",
+                "record: model claim"
+              ],
+              "units": [
+                {
+                  "where": "periods[].cells[]",
+                  "unit": "exchanges_served"
+                }
+              ],
+              "claims": {
+                "asserted_by": "provider",
+                "label": "provider states",
+                "where": [
+                  "periods[].cells[].dimension"
+                ]
+              }
+            }
+          ],
+          "name": "service_history_example/1",
+          "period_policy": {
+            "epoch": "2026-10-01T00:00:00Z",
+            "floor": 5,
+            "length_s": 86400,
+            "min_length_s": 86400,
+            "suppression": "complementary"
+          },
+          "profile": "inference-service-history/1",
+          "reads": [
+            "checkpoint: key_id, log_size, root, timestamp, sig",
+            "receipt: checkpoint, witness, sig",
+            "record: role",
+            "record: committed_at",
+            "record: model claim"
+          ],
+          "spec": "vectors/inference-service-history-v1/README.md",
+          "subjects": [
+            "full_history"
+          ]
+        },
+        "request": {
+          "media_type": "application/json",
+          "octets_text": "{\"coverage\":{\"expected_pin\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"nonce\":\"requester-1/v1\",\"profile\":\"evidence-interop/1\",\"subject\":{\"full_history\":null}}"
+        },
+        "reply": {
+          "media_type": "application/json",
+          "octets_text": "{\"anchor\":{\"digest\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"artifact\":\"eyJhbmNob3IiOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIiwiY292ZXJhZ2VfZGVjbGFyYXRpb24iOnsiaW50ZXJ2YWwiOnsiZnJvbSI6bnVsbCwidG8iOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIn0sImtpbmQiOiJzdHJlYW1faW50ZXJ2YWwiLCJsaXZlX3NldCI6W3siY2hlY2twb2ludCI6Ijk4NmQ5Y2UwNDk1MWQwMWJlNjE5YzMyYWVhNjRiNDQyODg3OTkxYTUyOTBlYzA5YzZlODc4OWIxMjFlZmU4MmIiLCJjb3VudCI6NTIsInN0YXJ0IjowLCJzdHJlYW0iOiJub2RlLXN0cmVhbS0xIn1dLCJydWxlIjoiYWxsX3JlY29yZHMifSwiZGVjbGFyZWQiOlsiaGlzdG9yeV9jYXJkIiwicGVyaW9kX2NvdW50cyJdLCJkZXJpdmF0aW9uIjoiZDRjZTk4ZmZhODEzNGJhOTQ3MGNmZGNkZjQyZGMwODZlOTY3OWQ4ZGZmOGQxODdiZTMxMGYyMzBkYzE0NDcxYSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5X2NhcmQiOnsiYW5jaG9yIjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsImRlcml2YXRpb24iOiJoaXN0b3J5X2NhcmQvMSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5IjpbeyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MTAsInJvb3QiOiJkZTA5ODdiMDY2NzdiODU4ZjUzYTE2YjMzMWRkNTc4ZjllNTJiY2EyZWI2YzJkNjRjZDMxN2JkMTE3OGNjZTllIiwic2lnIjoiY2U3Yjk4Y2ZlYmRiOWM5MGRhZGM5YWVkOWU4MmQwYjg3MGZkZWQzZTBiMDM1YjkyNDgzNWU5OWE3ZTM2OWNkZjMzNTI0Nzg3ZWRkZWI1NGRmZDc1Y2RiMjgwNjI4ZGMxNzAzMDM1Zjc2M2Q3Y2M5YjM4NDJiNzBhNTEzN2ZiMGIiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAxVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W119LHsiY2hlY2twb2ludCI6eyJrZXlfaWQiOiJhZjI3ZTM1ZjA3MGQzNzZmODdjZTA4NTk5NzNkMzRmYTgyMjA0ZDUwODZjMTI3ZDFlNjQ2ZWZmNWYxYzIzMzZkIiwibG9nX3NpemUiOjI1LCJyb290IjoiYjYwZjFiYmZhNWQ3Y2RjOTc1NjliZGE4Y2JjZjQ4MjJkOTU2ZWUxYmE4YjA4MzU4MGQzMmRjYzNlNzI1MjNkMyIsInNpZyI6IjlmNjc0ZTU5YjQxNzg1ZmQ1OTY0NzgwZmUxMmQ2M2RhMDMzMTJmMjkwNmRhZjE5ZTgwNGJlZTlkZWU5YzA4NTg3Y2Q0NDU5NmViMTIwYTE2Njc2YzRmNjY1OTZhMGMxYTE1OTgzZTY2YThhZWJkMzI1YjZlOWI2OWRiNTkzODAxIiwidGltZXN0YW1wIjoiMjAyNi0xMC0wMlQxMjowMDowMFoifSwicmVjZWlwdHMiOlt7ImNoZWNrcG9pbnQiOiJmMjlmZTk1Mzc5ZGQwMjA3N2MwY2JmODJiYjIwZTI0ZmZhY2UyMmQ4NDFlZmQwNWJjMTIzMjc0MjhlNTZhYTAyIiwic2lnIjoiYWMwOWMzOTVjMTk0YjQ0NjVmZmJjM2ZhMTg5NWZkYmQ1YjhjMTU4MWE5ZTlkYmExMjgzNjg1NDAzOTEwNGQzNDJkYWE1NjRmNDJhODQyY2NjOTgyNDg0Y2RlOGVmZWY0MzgyZTk3N2RiMmEyNDBkOTdmMDdjYmFhMGRhNTc0MGQiLCJ3aXRuZXNzIjoiMWI0MzY4MmIwZmFjZmE1ZjJkYTA4NzUxOTNhMWJiNzVjNjYwMTk4MTdjYzI0YmFlZjc5MDQxODM4ZTMxNWNhZiJ9XX0seyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MzgsInJvb3QiOiI4OTM2MWEzZDYyNzY5NDcwMzQ1MGZmNWRhMTY4ZTgyYTdkZWQ1NjQyYzU2ZThhYTMyOWVlMzIxNGU1Mjg5MDZkIiwic2lnIjoiNzUyMjkxZGJiNmVkZWU0ZGNlODljZDVkNjk2ODg1ZWIyOGI5ZWQ2OWZkOWM0MmFiMDdhZDFiYTNlOTg3OTYxMTM4ZDA5OTYzYzQwMzBjYmNkNjJiYWFmMjFjODc5OWJkYWI3Y2MwOWNiZDA5MjkzYzIyNGFkYWYyMGQxMjExMDgiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAzVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W3siY2hlY2twb2ludCI6IjZiYWVjNmM2NDhmZGRkNjYxNjViZGQzZmVmYTdiYzRkZTg3NGQ3NjExMDM0MTVjMTcwNWEyM2UzMGNiODZkZjUiLCJzaWciOiI2ZGEwNjhjZDBkNTA3ZmQ3MTNkNTBjZDVkNjRjYjUyMTE4MzQ2OTVkOGJmOWEzZjZmMTRlNDM5MjJiYTcyZmQ5MzhlNWM3YTFmNmJkY2M3MjgzMjA3MGJjZDIwMGUwYjU5YTllNjhiODJlY2Y1OGZjNDA0YTdhODMwZGRhNWEwYSIsIndpdG5lc3MiOiIxYjQzNjgyYjBmYWNmYTVmMmRhMDg3NTE5M2ExYmI3NWM2NjAxOTgxN2NjMjRiYWVmNzkwNDE4MzhlMzE1Y2FmIn1dfSx7ImNoZWNrcG9pbnQiOnsia2V5X2lkIjoiYWYyN2UzNWYwNzBkMzc2Zjg3Y2UwODU5OTczZDM0ZmE4MjIwNGQ1MDg2YzEyN2QxZTY0NmVmZjVmMWMyMzM2ZCIsImxvZ19zaXplIjo1Miwicm9vdCI6IjI1ZWE3MjE4NzY2MGFjMzNjYWY4ZDMxMmVlZjRhMjBiNDM0MWNmZTNiZTM1Zjg5ZDMwNWVmZGI4Y2JhMGFkOTYiLCJzaWciOiJiNTJkNDVmNTZmNmQ3NGZjNmRhYjQ2ZDQ0NzUzNTA0YmU5NDRlOGYxNTA2YWU0MDVmOWNkOGVjYzA0MjZhYWE0M2U0Y2Q1M2NlYTA5MGM2NDBlMjI0MjZiZTE2M2ZlODgzYTZkOWUyY2M4Njc1MjVkMjZhYTUzNzNkNDZiZjMwZCIsInRpbWVzdGFtcCI6IjIwMjYtMTAtMDRUMDA6MDA6MDBaIn0sInJlY2VpcHRzIjpbeyJjaGVja3BvaW50IjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsInNpZyI6IjViM2JhM2U3MjJkYzNjMTk5MTI3NmRkMmY4MTM5ZjZhYmU3MTdhZTQ1NDFiYTg4NWIxOWM3ZWNlMzg1MjY2Yjg3NmFiYjMyYmY5OGU4MTc1YmNlNzMwYmY3YjQxMzdmNWU4ZTI2ZThkZDg0ODQzNzE0ZTcxODIwMmQ3M2E1NDAxIiwid2l0bmVzcyI6ImIxN2RhYTA3ZjdjMDllZWYzMDIyMDlkN2ZmYTZlYTY3ZGQ5Mzg3ZDU3OTdlOTVhZWUyYjlkZDc2MzFlNjY4MDQifV19XSwic3ViamVjdCI6eyJmdWxsX2hpc3RvcnkiOm51bGx9fSwiaGlzdG9yeV9jYXJkX2RpZ2VzdCI6ImYyZWY2ZjZhNDY4MmU2NGRkNTNjZWFiNTBlNzk5NTA2NmU4Yzk4MzFjNzc1ZmVjMjA3NzQwZTU1ZDg3ODcxNjkiLCJwZXJpb2RfY291bnRzIjp7InBlcmlvZHMiOlt7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjEyfSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6N30seyJkaW1lbnNpb24iOm51bGwsImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjE5fV0sImZyb20iOiIyMDI2LTEwLTAxVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wMlQwMDowMDowMFoifSx7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtYiJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJzdXBwcmVzc2VkIjoiYmVsb3dfZmxvb3IiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjpudWxsfSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWMifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwic3VwcHJlc3NlZCI6ImJlbG93X2Zsb29yIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6bnVsbH0seyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1kIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtZSJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJzdXBwcmVzc2VkIjoiYmVsb3dfZmxvb3IiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjpudWxsfSx7ImRpbWVuc2lvbiI6bnVsbCwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwic3VwcHJlc3NlZCI6ImNvbXBsZW1lbnRhcnkiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjpudWxsfV0sImZyb20iOiIyMDI2LTEwLTAyVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wM1QwMDowMDowMFoifSx7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjZ9LHsiZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtYiJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjo1fSx7ImRpbWVuc2lvbiI6bnVsbCwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6MTF9XSwiZnJvbSI6IjIwMjYtMTAtMDNUMDA6MDA6MDBaIiwidG8iOiIyMDI2LTEwLTA0VDAwOjAwOjAwWiJ9XSwicG9saWN5IjoiYTBlZTM5ODVlZTQ0NDBjZDBjMTIzODRlN2E2ZDIwYzUxMjg5Mzg1MGNhYTljMjBkNTNiYzM5NTFiNTBmMTYwMCJ9LCJzdWJqZWN0Ijp7ImZ1bGxfaGlzdG9yeSI6bnVsbH19\",\"artifact_digest\":\"4f2ded2b6fc99fbc0a7b34630c579afd38f617f9b2abf144fa9420cec82887e7\",\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"issued_at\":\"2026-10-04T00:00:05Z\",\"profile\":\"evidence-interop/1\",\"request_digest\":\"93ce156b57a266d7bdb1c5479308178e404f2979ae2f6b8ad46b139256746a25\",\"responder\":\"1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9\",\"sig\":\"015efe2b41a306da299d0d2845007205314c07697d9cce0c3e271b27e4fbe4563903154287e1eae0ad05d7d2d28ca9a1d260ec4a2123beccbc8efc4fedfbae03\",\"subject\":{\"full_history\":null}}"
+        }
+      },
+      "expected": {
+        "exchange": {
+          "message_type": "envelope",
+          "subject": {
+            "full_history": null
+          },
+          "properties": {
+            "profile_version": "PASS",
+            "envelope_signature": "PASS",
+            "responder_trust": "PASS",
+            "responder_key_current": "NOT_CHECKED",
+            "issued_at_form": "PASS",
+            "request_binding": "PASS",
+            "subject_binding": "PASS",
+            "artifact_digest": "PASS",
+            "verification_binding": "NOT_PRESENT",
+            "anchor_match": "PASS",
+            "anchor_inclusion": "NOT_CHECKED"
+          },
+          "accepted": true,
+          "requirements": {
+            "r-service": {
+              "row": "envelope-4",
+              "status": "UNKNOWN",
+              "sufficiency": "UNKNOWN",
+              "verdict": "not_evaluable"
+            }
+          },
+          "claim": {
+            "evidence": [
+              {
+                "digest_alg": "SHA-256",
+                "digest": "4f2ded2b6fc99fbc0a7b34630c579afd38f617f9b2abf144fa9420cec82887e7"
+              }
+            ],
+            "proofs": []
+          }
+        },
+        "history_properties": {
+          "definition_form": "PASS",
+          "definition_binding": "PASS",
+          "artifact_form": "PASS",
+          "history_card_content": "PASS",
+          "units": "PASS",
+          "labels": "PASS",
+          "period_alignment": "PASS",
+          "period_anchor": "PASS",
+          "period_floor": "PASS"
+        },
+        "coverage": {
+          "declared_kind": "stream_interval",
+          "properties": {
+            "coverage_declaration_form": "PASS",
+            "coverage_declaration_anchor": "PASS",
+            "coverage_declaration_population": "NOT_CHECKED",
+            "coverage_declaration_commitment": "NOT_CHECKED"
+          },
+          "relative_to": "the node's stream at the anchor, under all_records; completeness not established: counts not checked against records"
+        },
+        "shows": {
+          "witness": {
+            "checkpoints": 4,
+            "witness_receipts_counted": 2,
+            "witness_receipts_not_counted": [
+              {
+                "checkpoint": 3,
+                "reason": "witness key not configured"
+              }
+            ]
+          }
+        },
+        "accepted": true,
+        "fails": []
+      }
+    },
+    {
+      "id": "v1-total-under-floor-withheld-complementary",
+      "title": "Two models of 1: the total of 2, under the floor, is withheld complementary, so the reason does not tell it from a total of 8",
+      "cites": [
+        "§6.2",
+        "§6.3",
+        "§9"
+      ],
+      "source": "constructed: 2 October served 1 by model-a and 1 by model-b",
+      "kind": "history",
+      "pins": {
+        "trust_policy": {
+          "responder_keys": [
+            "1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9"
+          ],
+          "log_keys": [],
+          "foreign_keys": [],
+          "parties": {},
+          "successions": [],
+          "require_action_time_from_other_party": false
+        },
+        "verification_policy": {
+          "online": false,
+          "profiles_implemented": [
+            "evidence-interop/1"
+          ],
+          "kinds_implemented": [
+            "cll-checkpoint",
+            "cll-inclusion-proof",
+            "cll-consistency-proof"
+          ]
+        },
+        "service_history": {
+          "log_keys": [
+            "af27e35f070d376f87ce0859973d34fa82204d5086c127d1e646eff5f1c2336d"
+          ],
+          "witness_keys": [
+            "1b43682b0facfa5f2da0875193a1bb75c66019817cc24baef79041838e315caf"
+          ],
+          "peer_keys": [
+            "582c60f2f98715969cac653a0afc59eb43ede89dae84f3ad8a78c69a3c29adaf"
+          ]
+        },
+        "contract_ref": "S@1",
+        "contract_digest": "0269eebf43bdb5f689464ca6e51946974e1f850d711314655d843ad1319f2242",
+        "evaluation_time": "2026-10-05T06:00:00Z"
+      },
+      "inputs": {
+        "definition": {
+          "coverage_declaration": {
+            "kind": "stream_interval",
+            "rule": "all_records"
+          },
+          "embeds": [
+            "history_card/1"
+          ],
+          "excludes": [
+            "requester identity",
+            "per-recipient release state"
+          ],
+          "kind": "projection",
+          "level": "standard",
+          "members": [
+            {
+              "name": "history_card",
+              "required": true,
+              "derivation": "history_card/1",
+              "reads": [
+                "checkpoint: key_id, log_size, root, timestamp, sig",
+                "receipt: checkpoint, witness, sig"
+              ],
+              "units": [
+                {
+                  "where": "history (one entry per checkpoint)",
+                  "unit": "checkpoints"
+                },
+                {
+                  "where": "history[].receipts",
+                  "unit": "witness_receipts"
+                }
+              ]
+            },
+            {
+              "name": "period_counts",
+              "required": true,
+              "reads": [
+                "record: role",
+                "record: committed_at",
+                "record: model claim"
+              ],
+              "units": [
+                {
+                  "where": "periods[].cells[]",
+                  "unit": "exchanges_served"
+                }
+              ],
+              "claims": {
+                "asserted_by": "provider",
+                "label": "provider states",
+                "where": [
+                  "periods[].cells[].dimension"
+                ]
+              }
+            }
+          ],
+          "name": "service_history_example/1",
+          "period_policy": {
+            "epoch": "2026-10-01T00:00:00Z",
+            "floor": 5,
+            "length_s": 86400,
+            "min_length_s": 86400,
+            "suppression": "complementary"
+          },
+          "profile": "inference-service-history/1",
+          "reads": [
+            "checkpoint: key_id, log_size, root, timestamp, sig",
+            "receipt: checkpoint, witness, sig",
+            "record: role",
+            "record: committed_at",
+            "record: model claim"
+          ],
+          "spec": "vectors/inference-service-history-v1/README.md",
+          "subjects": [
+            "full_history"
+          ]
+        },
+        "request": {
+          "media_type": "application/json",
+          "octets_text": "{\"coverage\":{\"expected_pin\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"nonce\":\"requester-1/v1\",\"profile\":\"evidence-interop/1\",\"subject\":{\"full_history\":null}}"
+        },
+        "reply": {
+          "media_type": "application/json",
+          "octets_text": "{\"anchor\":{\"digest\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"artifact\":\"eyJhbmNob3IiOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIiwiY292ZXJhZ2VfZGVjbGFyYXRpb24iOnsiaW50ZXJ2YWwiOnsiZnJvbSI6bnVsbCwidG8iOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIn0sImtpbmQiOiJzdHJlYW1faW50ZXJ2YWwiLCJsaXZlX3NldCI6W3siY2hlY2twb2ludCI6Ijk4NmQ5Y2UwNDk1MWQwMWJlNjE5YzMyYWVhNjRiNDQyODg3OTkxYTUyOTBlYzA5YzZlODc4OWIxMjFlZmU4MmIiLCJjb3VudCI6NTIsInN0YXJ0IjowLCJzdHJlYW0iOiJub2RlLXN0cmVhbS0xIn1dLCJydWxlIjoiYWxsX3JlY29yZHMifSwiZGVjbGFyZWQiOlsiaGlzdG9yeV9jYXJkIiwicGVyaW9kX2NvdW50cyJdLCJkZXJpdmF0aW9uIjoiZDRjZTk4ZmZhODEzNGJhOTQ3MGNmZGNkZjQyZGMwODZlOTY3OWQ4ZGZmOGQxODdiZTMxMGYyMzBkYzE0NDcxYSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5X2NhcmQiOnsiYW5jaG9yIjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsImRlcml2YXRpb24iOiJoaXN0b3J5X2NhcmQvMSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5IjpbeyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MTAsInJvb3QiOiJkZTA5ODdiMDY2NzdiODU4ZjUzYTE2YjMzMWRkNTc4ZjllNTJiY2EyZWI2YzJkNjRjZDMxN2JkMTE3OGNjZTllIiwic2lnIjoiY2U3Yjk4Y2ZlYmRiOWM5MGRhZGM5YWVkOWU4MmQwYjg3MGZkZWQzZTBiMDM1YjkyNDgzNWU5OWE3ZTM2OWNkZjMzNTI0Nzg3ZWRkZWI1NGRmZDc1Y2RiMjgwNjI4ZGMxNzAzMDM1Zjc2M2Q3Y2M5YjM4NDJiNzBhNTEzN2ZiMGIiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAxVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W119LHsiY2hlY2twb2ludCI6eyJrZXlfaWQiOiJhZjI3ZTM1ZjA3MGQzNzZmODdjZTA4NTk5NzNkMzRmYTgyMjA0ZDUwODZjMTI3ZDFlNjQ2ZWZmNWYxYzIzMzZkIiwibG9nX3NpemUiOjI1LCJyb290IjoiYjYwZjFiYmZhNWQ3Y2RjOTc1NjliZGE4Y2JjZjQ4MjJkOTU2ZWUxYmE4YjA4MzU4MGQzMmRjYzNlNzI1MjNkMyIsInNpZyI6IjlmNjc0ZTU5YjQxNzg1ZmQ1OTY0NzgwZmUxMmQ2M2RhMDMzMTJmMjkwNmRhZjE5ZTgwNGJlZTlkZWU5YzA4NTg3Y2Q0NDU5NmViMTIwYTE2Njc2YzRmNjY1OTZhMGMxYTE1OTgzZTY2YThhZWJkMzI1YjZlOWI2OWRiNTkzODAxIiwidGltZXN0YW1wIjoiMjAyNi0xMC0wMlQxMjowMDowMFoifSwicmVjZWlwdHMiOlt7ImNoZWNrcG9pbnQiOiJmMjlmZTk1Mzc5ZGQwMjA3N2MwY2JmODJiYjIwZTI0ZmZhY2UyMmQ4NDFlZmQwNWJjMTIzMjc0MjhlNTZhYTAyIiwic2lnIjoiYWMwOWMzOTVjMTk0YjQ0NjVmZmJjM2ZhMTg5NWZkYmQ1YjhjMTU4MWE5ZTlkYmExMjgzNjg1NDAzOTEwNGQzNDJkYWE1NjRmNDJhODQyY2NjOTgyNDg0Y2RlOGVmZWY0MzgyZTk3N2RiMmEyNDBkOTdmMDdjYmFhMGRhNTc0MGQiLCJ3aXRuZXNzIjoiMWI0MzY4MmIwZmFjZmE1ZjJkYTA4NzUxOTNhMWJiNzVjNjYwMTk4MTdjYzI0YmFlZjc5MDQxODM4ZTMxNWNhZiJ9XX0seyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MzgsInJvb3QiOiI4OTM2MWEzZDYyNzY5NDcwMzQ1MGZmNWRhMTY4ZTgyYTdkZWQ1NjQyYzU2ZThhYTMyOWVlMzIxNGU1Mjg5MDZkIiwic2lnIjoiNzUyMjkxZGJiNmVkZWU0ZGNlODljZDVkNjk2ODg1ZWIyOGI5ZWQ2OWZkOWM0MmFiMDdhZDFiYTNlOTg3OTYxMTM4ZDA5OTYzYzQwMzBjYmNkNjJiYWFmMjFjODc5OWJkYWI3Y2MwOWNiZDA5MjkzYzIyNGFkYWYyMGQxMjExMDgiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAzVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W3siY2hlY2twb2ludCI6IjZiYWVjNmM2NDhmZGRkNjYxNjViZGQzZmVmYTdiYzRkZTg3NGQ3NjExMDM0MTVjMTcwNWEyM2UzMGNiODZkZjUiLCJzaWciOiI2ZGEwNjhjZDBkNTA3ZmQ3MTNkNTBjZDVkNjRjYjUyMTE4MzQ2OTVkOGJmOWEzZjZmMTRlNDM5MjJiYTcyZmQ5MzhlNWM3YTFmNmJkY2M3MjgzMjA3MGJjZDIwMGUwYjU5YTllNjhiODJlY2Y1OGZjNDA0YTdhODMwZGRhNWEwYSIsIndpdG5lc3MiOiIxYjQzNjgyYjBmYWNmYTVmMmRhMDg3NTE5M2ExYmI3NWM2NjAxOTgxN2NjMjRiYWVmNzkwNDE4MzhlMzE1Y2FmIn1dfSx7ImNoZWNrcG9pbnQiOnsia2V5X2lkIjoiYWYyN2UzNWYwNzBkMzc2Zjg3Y2UwODU5OTczZDM0ZmE4MjIwNGQ1MDg2YzEyN2QxZTY0NmVmZjVmMWMyMzM2ZCIsImxvZ19zaXplIjo1Miwicm9vdCI6IjI1ZWE3MjE4NzY2MGFjMzNjYWY4ZDMxMmVlZjRhMjBiNDM0MWNmZTNiZTM1Zjg5ZDMwNWVmZGI4Y2JhMGFkOTYiLCJzaWciOiJiNTJkNDVmNTZmNmQ3NGZjNmRhYjQ2ZDQ0NzUzNTA0YmU5NDRlOGYxNTA2YWU0MDVmOWNkOGVjYzA0MjZhYWE0M2U0Y2Q1M2NlYTA5MGM2NDBlMjI0MjZiZTE2M2ZlODgzYTZkOWUyY2M4Njc1MjVkMjZhYTUzNzNkNDZiZjMwZCIsInRpbWVzdGFtcCI6IjIwMjYtMTAtMDRUMDA6MDA6MDBaIn0sInJlY2VpcHRzIjpbeyJjaGVja3BvaW50IjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsInNpZyI6IjViM2JhM2U3MjJkYzNjMTk5MTI3NmRkMmY4MTM5ZjZhYmU3MTdhZTQ1NDFiYTg4NWIxOWM3ZWNlMzg1MjY2Yjg3NmFiYjMyYmY5OGU4MTc1YmNlNzMwYmY3YjQxMzdmNWU4ZTI2ZThkZDg0ODQzNzE0ZTcxODIwMmQ3M2E1NDAxIiwid2l0bmVzcyI6ImIxN2RhYTA3ZjdjMDllZWYzMDIyMDlkN2ZmYTZlYTY3ZGQ5Mzg3ZDU3OTdlOTVhZWUyYjlkZDc2MzFlNjY4MDQifV19XSwic3ViamVjdCI6eyJmdWxsX2hpc3RvcnkiOm51bGx9fSwiaGlzdG9yeV9jYXJkX2RpZ2VzdCI6ImYyZWY2ZjZhNDY4MmU2NGRkNTNjZWFiNTBlNzk5NTA2NmU4Yzk4MzFjNzc1ZmVjMjA3NzQwZTU1ZDg3ODcxNjkiLCJwZXJpb2RfY291bnRzIjp7InBlcmlvZHMiOlt7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjEyfSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6N30seyJkaW1lbnNpb24iOm51bGwsImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjE5fV0sImZyb20iOiIyMDI2LTEwLTAxVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wMlQwMDowMDowMFoifSx7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtYiJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJzdXBwcmVzc2VkIjoiYmVsb3dfZmxvb3IiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjpudWxsfSx7ImRpbWVuc2lvbiI6bnVsbCwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwic3VwcHJlc3NlZCI6ImNvbXBsZW1lbnRhcnkiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjpudWxsfV0sImZyb20iOiIyMDI2LTEwLTAyVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wM1QwMDowMDowMFoifSx7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjZ9LHsiZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtYiJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjo1fSx7ImRpbWVuc2lvbiI6bnVsbCwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6MTF9XSwiZnJvbSI6IjIwMjYtMTAtMDNUMDA6MDA6MDBaIiwidG8iOiIyMDI2LTEwLTA0VDAwOjAwOjAwWiJ9XSwicG9saWN5IjoiYTBlZTM5ODVlZTQ0NDBjZDBjMTIzODRlN2E2ZDIwYzUxMjg5Mzg1MGNhYTljMjBkNTNiYzM5NTFiNTBmMTYwMCJ9LCJzdWJqZWN0Ijp7ImZ1bGxfaGlzdG9yeSI6bnVsbH19\",\"artifact_digest\":\"9f33da4bf6dcab59f9ad9f0314bd02389fb54b538c1a245110f7b5063dd0021c\",\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"issued_at\":\"2026-10-04T00:00:05Z\",\"profile\":\"evidence-interop/1\",\"request_digest\":\"93ce156b57a266d7bdb1c5479308178e404f2979ae2f6b8ad46b139256746a25\",\"responder\":\"1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9\",\"sig\":\"2b844a91a95e72074eb79ebcdebd6ddcbef9ea4289421dc53bc04ef26d5a341c77b071af558a88e6244d372bc9f9d8fb6c9d97b674cd623b92766e10f7d8530e\",\"subject\":{\"full_history\":null}}"
+        }
+      },
+      "expected": {
+        "exchange": {
+          "message_type": "envelope",
+          "subject": {
+            "full_history": null
+          },
+          "properties": {
+            "profile_version": "PASS",
+            "envelope_signature": "PASS",
+            "responder_trust": "PASS",
+            "responder_key_current": "NOT_CHECKED",
+            "issued_at_form": "PASS",
+            "request_binding": "PASS",
+            "subject_binding": "PASS",
+            "artifact_digest": "PASS",
+            "verification_binding": "NOT_PRESENT",
+            "anchor_match": "PASS",
+            "anchor_inclusion": "NOT_CHECKED"
+          },
+          "accepted": true,
+          "requirements": {
+            "r-service": {
+              "row": "envelope-4",
+              "status": "UNKNOWN",
+              "sufficiency": "UNKNOWN",
+              "verdict": "not_evaluable"
+            }
+          },
+          "claim": {
+            "evidence": [
+              {
+                "digest_alg": "SHA-256",
+                "digest": "9f33da4bf6dcab59f9ad9f0314bd02389fb54b538c1a245110f7b5063dd0021c"
+              }
+            ],
+            "proofs": []
+          }
+        },
+        "history_properties": {
+          "definition_form": "PASS",
+          "definition_binding": "PASS",
+          "artifact_form": "PASS",
+          "history_card_content": "PASS",
+          "units": "PASS",
+          "labels": "PASS",
+          "period_alignment": "PASS",
+          "period_anchor": "PASS",
+          "period_floor": "PASS"
+        },
+        "coverage": {
+          "declared_kind": "stream_interval",
+          "properties": {
+            "coverage_declaration_form": "PASS",
+            "coverage_declaration_anchor": "PASS",
+            "coverage_declaration_population": "NOT_CHECKED",
+            "coverage_declaration_commitment": "NOT_CHECKED"
+          },
+          "relative_to": "the node's stream at the anchor, under all_records; completeness not established: counts not checked against records"
+        },
+        "shows": {
+          "witness": {
+            "checkpoints": 4,
+            "witness_receipts_counted": 2,
+            "witness_receipts_not_counted": [
+              {
+                "checkpoint": 3,
+                "reason": "witness key not configured"
+              }
+            ]
+          }
+        },
+        "accepted": true,
+        "fails": []
+      }
+    },
+    {
+      "id": "v1-total-pins-nothing-published",
+      "title": "Models of 3 and 4: the total of 7 fixes neither and is published",
+      "cites": [
+        "§6.2",
+        "§6.3",
+        "§9"
+      ],
+      "source": "constructed: 2 October served 3 by model-a and 4 by model-b",
+      "kind": "history",
+      "pins": {
+        "trust_policy": {
+          "responder_keys": [
+            "1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9"
+          ],
+          "log_keys": [],
+          "foreign_keys": [],
+          "parties": {},
+          "successions": [],
+          "require_action_time_from_other_party": false
+        },
+        "verification_policy": {
+          "online": false,
+          "profiles_implemented": [
+            "evidence-interop/1"
+          ],
+          "kinds_implemented": [
+            "cll-checkpoint",
+            "cll-inclusion-proof",
+            "cll-consistency-proof"
+          ]
+        },
+        "service_history": {
+          "log_keys": [
+            "af27e35f070d376f87ce0859973d34fa82204d5086c127d1e646eff5f1c2336d"
+          ],
+          "witness_keys": [
+            "1b43682b0facfa5f2da0875193a1bb75c66019817cc24baef79041838e315caf"
+          ],
+          "peer_keys": [
+            "582c60f2f98715969cac653a0afc59eb43ede89dae84f3ad8a78c69a3c29adaf"
+          ]
+        },
+        "contract_ref": "S@1",
+        "contract_digest": "0269eebf43bdb5f689464ca6e51946974e1f850d711314655d843ad1319f2242",
+        "evaluation_time": "2026-10-05T06:00:00Z"
+      },
+      "inputs": {
+        "definition": {
+          "coverage_declaration": {
+            "kind": "stream_interval",
+            "rule": "all_records"
+          },
+          "embeds": [
+            "history_card/1"
+          ],
+          "excludes": [
+            "requester identity",
+            "per-recipient release state"
+          ],
+          "kind": "projection",
+          "level": "standard",
+          "members": [
+            {
+              "name": "history_card",
+              "required": true,
+              "derivation": "history_card/1",
+              "reads": [
+                "checkpoint: key_id, log_size, root, timestamp, sig",
+                "receipt: checkpoint, witness, sig"
+              ],
+              "units": [
+                {
+                  "where": "history (one entry per checkpoint)",
+                  "unit": "checkpoints"
+                },
+                {
+                  "where": "history[].receipts",
+                  "unit": "witness_receipts"
+                }
+              ]
+            },
+            {
+              "name": "period_counts",
+              "required": true,
+              "reads": [
+                "record: role",
+                "record: committed_at",
+                "record: model claim"
+              ],
+              "units": [
+                {
+                  "where": "periods[].cells[]",
+                  "unit": "exchanges_served"
+                }
+              ],
+              "claims": {
+                "asserted_by": "provider",
+                "label": "provider states",
+                "where": [
+                  "periods[].cells[].dimension"
+                ]
+              }
+            }
+          ],
+          "name": "service_history_example/1",
+          "period_policy": {
+            "epoch": "2026-10-01T00:00:00Z",
+            "floor": 5,
+            "length_s": 86400,
+            "min_length_s": 86400,
+            "suppression": "complementary"
+          },
+          "profile": "inference-service-history/1",
+          "reads": [
+            "checkpoint: key_id, log_size, root, timestamp, sig",
+            "receipt: checkpoint, witness, sig",
+            "record: role",
+            "record: committed_at",
+            "record: model claim"
+          ],
+          "spec": "vectors/inference-service-history-v1/README.md",
+          "subjects": [
+            "full_history"
+          ]
+        },
+        "request": {
+          "media_type": "application/json",
+          "octets_text": "{\"coverage\":{\"expected_pin\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"nonce\":\"requester-1/v1\",\"profile\":\"evidence-interop/1\",\"subject\":{\"full_history\":null}}"
+        },
+        "reply": {
+          "media_type": "application/json",
+          "octets_text": "{\"anchor\":{\"digest\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"artifact\":\"eyJhbmNob3IiOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIiwiY292ZXJhZ2VfZGVjbGFyYXRpb24iOnsiaW50ZXJ2YWwiOnsiZnJvbSI6bnVsbCwidG8iOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIn0sImtpbmQiOiJzdHJlYW1faW50ZXJ2YWwiLCJsaXZlX3NldCI6W3siY2hlY2twb2ludCI6Ijk4NmQ5Y2UwNDk1MWQwMWJlNjE5YzMyYWVhNjRiNDQyODg3OTkxYTUyOTBlYzA5YzZlODc4OWIxMjFlZmU4MmIiLCJjb3VudCI6NTIsInN0YXJ0IjowLCJzdHJlYW0iOiJub2RlLXN0cmVhbS0xIn1dLCJydWxlIjoiYWxsX3JlY29yZHMifSwiZGVjbGFyZWQiOlsiaGlzdG9yeV9jYXJkIiwicGVyaW9kX2NvdW50cyJdLCJkZXJpdmF0aW9uIjoiZDRjZTk4ZmZhODEzNGJhOTQ3MGNmZGNkZjQyZGMwODZlOTY3OWQ4ZGZmOGQxODdiZTMxMGYyMzBkYzE0NDcxYSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5X2NhcmQiOnsiYW5jaG9yIjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsImRlcml2YXRpb24iOiJoaXN0b3J5X2NhcmQvMSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5IjpbeyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MTAsInJvb3QiOiJkZTA5ODdiMDY2NzdiODU4ZjUzYTE2YjMzMWRkNTc4ZjllNTJiY2EyZWI2YzJkNjRjZDMxN2JkMTE3OGNjZTllIiwic2lnIjoiY2U3Yjk4Y2ZlYmRiOWM5MGRhZGM5YWVkOWU4MmQwYjg3MGZkZWQzZTBiMDM1YjkyNDgzNWU5OWE3ZTM2OWNkZjMzNTI0Nzg3ZWRkZWI1NGRmZDc1Y2RiMjgwNjI4ZGMxNzAzMDM1Zjc2M2Q3Y2M5YjM4NDJiNzBhNTEzN2ZiMGIiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAxVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W119LHsiY2hlY2twb2ludCI6eyJrZXlfaWQiOiJhZjI3ZTM1ZjA3MGQzNzZmODdjZTA4NTk5NzNkMzRmYTgyMjA0ZDUwODZjMTI3ZDFlNjQ2ZWZmNWYxYzIzMzZkIiwibG9nX3NpemUiOjI1LCJyb290IjoiYjYwZjFiYmZhNWQ3Y2RjOTc1NjliZGE4Y2JjZjQ4MjJkOTU2ZWUxYmE4YjA4MzU4MGQzMmRjYzNlNzI1MjNkMyIsInNpZyI6IjlmNjc0ZTU5YjQxNzg1ZmQ1OTY0NzgwZmUxMmQ2M2RhMDMzMTJmMjkwNmRhZjE5ZTgwNGJlZTlkZWU5YzA4NTg3Y2Q0NDU5NmViMTIwYTE2Njc2YzRmNjY1OTZhMGMxYTE1OTgzZTY2YThhZWJkMzI1YjZlOWI2OWRiNTkzODAxIiwidGltZXN0YW1wIjoiMjAyNi0xMC0wMlQxMjowMDowMFoifSwicmVjZWlwdHMiOlt7ImNoZWNrcG9pbnQiOiJmMjlmZTk1Mzc5ZGQwMjA3N2MwY2JmODJiYjIwZTI0ZmZhY2UyMmQ4NDFlZmQwNWJjMTIzMjc0MjhlNTZhYTAyIiwic2lnIjoiYWMwOWMzOTVjMTk0YjQ0NjVmZmJjM2ZhMTg5NWZkYmQ1YjhjMTU4MWE5ZTlkYmExMjgzNjg1NDAzOTEwNGQzNDJkYWE1NjRmNDJhODQyY2NjOTgyNDg0Y2RlOGVmZWY0MzgyZTk3N2RiMmEyNDBkOTdmMDdjYmFhMGRhNTc0MGQiLCJ3aXRuZXNzIjoiMWI0MzY4MmIwZmFjZmE1ZjJkYTA4NzUxOTNhMWJiNzVjNjYwMTk4MTdjYzI0YmFlZjc5MDQxODM4ZTMxNWNhZiJ9XX0seyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MzgsInJvb3QiOiI4OTM2MWEzZDYyNzY5NDcwMzQ1MGZmNWRhMTY4ZTgyYTdkZWQ1NjQyYzU2ZThhYTMyOWVlMzIxNGU1Mjg5MDZkIiwic2lnIjoiNzUyMjkxZGJiNmVkZWU0ZGNlODljZDVkNjk2ODg1ZWIyOGI5ZWQ2OWZkOWM0MmFiMDdhZDFiYTNlOTg3OTYxMTM4ZDA5OTYzYzQwMzBjYmNkNjJiYWFmMjFjODc5OWJkYWI3Y2MwOWNiZDA5MjkzYzIyNGFkYWYyMGQxMjExMDgiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAzVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W3siY2hlY2twb2ludCI6IjZiYWVjNmM2NDhmZGRkNjYxNjViZGQzZmVmYTdiYzRkZTg3NGQ3NjExMDM0MTVjMTcwNWEyM2UzMGNiODZkZjUiLCJzaWciOiI2ZGEwNjhjZDBkNTA3ZmQ3MTNkNTBjZDVkNjRjYjUyMTE4MzQ2OTVkOGJmOWEzZjZmMTRlNDM5MjJiYTcyZmQ5MzhlNWM3YTFmNmJkY2M3MjgzMjA3MGJjZDIwMGUwYjU5YTllNjhiODJlY2Y1OGZjNDA0YTdhODMwZGRhNWEwYSIsIndpdG5lc3MiOiIxYjQzNjgyYjBmYWNmYTVmMmRhMDg3NTE5M2ExYmI3NWM2NjAxOTgxN2NjMjRiYWVmNzkwNDE4MzhlMzE1Y2FmIn1dfSx7ImNoZWNrcG9pbnQiOnsia2V5X2lkIjoiYWYyN2UzNWYwNzBkMzc2Zjg3Y2UwODU5OTczZDM0ZmE4MjIwNGQ1MDg2YzEyN2QxZTY0NmVmZjVmMWMyMzM2ZCIsImxvZ19zaXplIjo1Miwicm9vdCI6IjI1ZWE3MjE4NzY2MGFjMzNjYWY4ZDMxMmVlZjRhMjBiNDM0MWNmZTNiZTM1Zjg5ZDMwNWVmZGI4Y2JhMGFkOTYiLCJzaWciOiJiNTJkNDVmNTZmNmQ3NGZjNmRhYjQ2ZDQ0NzUzNTA0YmU5NDRlOGYxNTA2YWU0MDVmOWNkOGVjYzA0MjZhYWE0M2U0Y2Q1M2NlYTA5MGM2NDBlMjI0MjZiZTE2M2ZlODgzYTZkOWUyY2M4Njc1MjVkMjZhYTUzNzNkNDZiZjMwZCIsInRpbWVzdGFtcCI6IjIwMjYtMTAtMDRUMDA6MDA6MDBaIn0sInJlY2VpcHRzIjpbeyJjaGVja3BvaW50IjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsInNpZyI6IjViM2JhM2U3MjJkYzNjMTk5MTI3NmRkMmY4MTM5ZjZhYmU3MTdhZTQ1NDFiYTg4NWIxOWM3ZWNlMzg1MjY2Yjg3NmFiYjMyYmY5OGU4MTc1YmNlNzMwYmY3YjQxMzdmNWU4ZTI2ZThkZDg0ODQzNzE0ZTcxODIwMmQ3M2E1NDAxIiwid2l0bmVzcyI6ImIxN2RhYTA3ZjdjMDllZWYzMDIyMDlkN2ZmYTZlYTY3ZGQ5Mzg3ZDU3OTdlOTVhZWUyYjlkZDc2MzFlNjY4MDQifV19XSwic3ViamVjdCI6eyJmdWxsX2hpc3RvcnkiOm51bGx9fSwiaGlzdG9yeV9jYXJkX2RpZ2VzdCI6ImYyZWY2ZjZhNDY4MmU2NGRkNTNjZWFiNTBlNzk5NTA2NmU4Yzk4MzFjNzc1ZmVjMjA3NzQwZTU1ZDg3ODcxNjkiLCJwZXJpb2RfY291bnRzIjp7InBlcmlvZHMiOlt7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjEyfSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6N30seyJkaW1lbnNpb24iOm51bGwsImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjE5fV0sImZyb20iOiIyMDI2LTEwLTAxVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wMlQwMDowMDowMFoifSx7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtYiJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJzdXBwcmVzc2VkIjoiYmVsb3dfZmxvb3IiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjpudWxsfSx7ImRpbWVuc2lvbiI6bnVsbCwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6N31dLCJmcm9tIjoiMjAyNi0xMC0wMlQwMDowMDowMFoiLCJ0byI6IjIwMjYtMTAtMDNUMDA6MDA6MDBaIn0seyJjZWxscyI6W3siZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtYSJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjo2fSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6NX0seyJkaW1lbnNpb24iOm51bGwsImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjExfV0sImZyb20iOiIyMDI2LTEwLTAzVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wNFQwMDowMDowMFoifV0sInBvbGljeSI6ImEwZWUzOTg1ZWU0NDQwY2QwYzEyMzg0ZTdhNmQyMGM1MTI4OTM4NTBjYWE5YzIwZDUzYmMzOTUxYjUwZjE2MDAifSwic3ViamVjdCI6eyJmdWxsX2hpc3RvcnkiOm51bGx9fQ\",\"artifact_digest\":\"f5b76992d11cb06effc05eefc90b1883482e6701d8a791ba317e04ee1c1447fb\",\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"issued_at\":\"2026-10-04T00:00:05Z\",\"profile\":\"evidence-interop/1\",\"request_digest\":\"93ce156b57a266d7bdb1c5479308178e404f2979ae2f6b8ad46b139256746a25\",\"responder\":\"1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9\",\"sig\":\"d1f96553d3a38f7ccce2e8eb623fb3fa9600d425bdab680724f3048b97348a0cc2a51b956129089072211ba46e59e12f9f250f53240f0dc1db746c7e5a10ae09\",\"subject\":{\"full_history\":null}}"
+        }
+      },
+      "expected": {
+        "exchange": {
+          "message_type": "envelope",
+          "subject": {
+            "full_history": null
+          },
+          "properties": {
+            "profile_version": "PASS",
+            "envelope_signature": "PASS",
+            "responder_trust": "PASS",
+            "responder_key_current": "NOT_CHECKED",
+            "issued_at_form": "PASS",
+            "request_binding": "PASS",
+            "subject_binding": "PASS",
+            "artifact_digest": "PASS",
+            "verification_binding": "NOT_PRESENT",
+            "anchor_match": "PASS",
+            "anchor_inclusion": "NOT_CHECKED"
+          },
+          "accepted": true,
+          "requirements": {
+            "r-service": {
+              "row": "envelope-4",
+              "status": "UNKNOWN",
+              "sufficiency": "UNKNOWN",
+              "verdict": "not_evaluable"
+            }
+          },
+          "claim": {
+            "evidence": [
+              {
+                "digest_alg": "SHA-256",
+                "digest": "f5b76992d11cb06effc05eefc90b1883482e6701d8a791ba317e04ee1c1447fb"
+              }
+            ],
+            "proofs": []
+          }
+        },
+        "history_properties": {
+          "definition_form": "PASS",
+          "definition_binding": "PASS",
+          "artifact_form": "PASS",
+          "history_card_content": "PASS",
+          "units": "PASS",
+          "labels": "PASS",
+          "period_alignment": "PASS",
+          "period_anchor": "PASS",
+          "period_floor": "PASS"
+        },
+        "coverage": {
+          "declared_kind": "stream_interval",
+          "properties": {
+            "coverage_declaration_form": "PASS",
+            "coverage_declaration_anchor": "PASS",
+            "coverage_declaration_population": "NOT_CHECKED",
+            "coverage_declaration_commitment": "NOT_CHECKED"
+          },
+          "relative_to": "the node's stream at the anchor, under all_records; completeness not established: counts not checked against records"
+        },
+        "shows": {
+          "witness": {
+            "checkpoints": 4,
+            "witness_receipts_counted": 2,
+            "witness_receipts_not_counted": [
+              {
+                "checkpoint": 3,
+                "reason": "witness key not configured"
+              }
+            ]
+          }
+        },
+        "accepted": true,
+        "fails": []
+      }
+    },
+    {
+      "id": "mutant-v1-total-pins-two-under-floor",
+      "title": "Two models of 4 withheld beside a published total of 8",
+      "cites": [
+        "§6.2",
+        "§6.3",
+        "§9"
+      ],
+      "source": "constructed: v1-total-withheld-two-under-floor with the total published",
+      "kind": "history",
+      "pins": {
+        "trust_policy": {
+          "responder_keys": [
+            "1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9"
+          ],
+          "log_keys": [],
+          "foreign_keys": [],
+          "parties": {},
+          "successions": [],
+          "require_action_time_from_other_party": false
+        },
+        "verification_policy": {
+          "online": false,
+          "profiles_implemented": [
+            "evidence-interop/1"
+          ],
+          "kinds_implemented": [
+            "cll-checkpoint",
+            "cll-inclusion-proof",
+            "cll-consistency-proof"
+          ]
+        },
+        "service_history": {
+          "log_keys": [
+            "af27e35f070d376f87ce0859973d34fa82204d5086c127d1e646eff5f1c2336d"
+          ],
+          "witness_keys": [
+            "1b43682b0facfa5f2da0875193a1bb75c66019817cc24baef79041838e315caf"
+          ],
+          "peer_keys": [
+            "582c60f2f98715969cac653a0afc59eb43ede89dae84f3ad8a78c69a3c29adaf"
+          ]
+        },
+        "contract_ref": "S@1",
+        "contract_digest": "0269eebf43bdb5f689464ca6e51946974e1f850d711314655d843ad1319f2242",
+        "evaluation_time": "2026-10-05T06:00:00Z"
+      },
+      "inputs": {
+        "definition": {
+          "coverage_declaration": {
+            "kind": "stream_interval",
+            "rule": "all_records"
+          },
+          "embeds": [
+            "history_card/1"
+          ],
+          "excludes": [
+            "requester identity",
+            "per-recipient release state"
+          ],
+          "kind": "projection",
+          "level": "standard",
+          "members": [
+            {
+              "name": "history_card",
+              "required": true,
+              "derivation": "history_card/1",
+              "reads": [
+                "checkpoint: key_id, log_size, root, timestamp, sig",
+                "receipt: checkpoint, witness, sig"
+              ],
+              "units": [
+                {
+                  "where": "history (one entry per checkpoint)",
+                  "unit": "checkpoints"
+                },
+                {
+                  "where": "history[].receipts",
+                  "unit": "witness_receipts"
+                }
+              ]
+            },
+            {
+              "name": "period_counts",
+              "required": true,
+              "reads": [
+                "record: role",
+                "record: committed_at",
+                "record: model claim"
+              ],
+              "units": [
+                {
+                  "where": "periods[].cells[]",
+                  "unit": "exchanges_served"
+                }
+              ],
+              "claims": {
+                "asserted_by": "provider",
+                "label": "provider states",
+                "where": [
+                  "periods[].cells[].dimension"
+                ]
+              }
+            }
+          ],
+          "name": "service_history_example/1",
+          "period_policy": {
+            "epoch": "2026-10-01T00:00:00Z",
+            "floor": 5,
+            "length_s": 86400,
+            "min_length_s": 86400,
+            "suppression": "complementary"
+          },
+          "profile": "inference-service-history/1",
+          "reads": [
+            "checkpoint: key_id, log_size, root, timestamp, sig",
+            "receipt: checkpoint, witness, sig",
+            "record: role",
+            "record: committed_at",
+            "record: model claim"
+          ],
+          "spec": "vectors/inference-service-history-v1/README.md",
+          "subjects": [
+            "full_history"
+          ]
+        },
+        "request": {
+          "media_type": "application/json",
+          "octets_text": "{\"coverage\":{\"expected_pin\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"nonce\":\"requester-1/v1\",\"profile\":\"evidence-interop/1\",\"subject\":{\"full_history\":null}}"
+        },
+        "reply": {
+          "media_type": "application/json",
+          "octets_text": "{\"anchor\":{\"digest\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"artifact\":\"eyJhbmNob3IiOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIiwiY292ZXJhZ2VfZGVjbGFyYXRpb24iOnsiaW50ZXJ2YWwiOnsiZnJvbSI6bnVsbCwidG8iOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIn0sImtpbmQiOiJzdHJlYW1faW50ZXJ2YWwiLCJsaXZlX3NldCI6W3siY2hlY2twb2ludCI6Ijk4NmQ5Y2UwNDk1MWQwMWJlNjE5YzMyYWVhNjRiNDQyODg3OTkxYTUyOTBlYzA5YzZlODc4OWIxMjFlZmU4MmIiLCJjb3VudCI6NTIsInN0YXJ0IjowLCJzdHJlYW0iOiJub2RlLXN0cmVhbS0xIn1dLCJydWxlIjoiYWxsX3JlY29yZHMifSwiZGVjbGFyZWQiOlsiaGlzdG9yeV9jYXJkIiwicGVyaW9kX2NvdW50cyJdLCJkZXJpdmF0aW9uIjoiZDRjZTk4ZmZhODEzNGJhOTQ3MGNmZGNkZjQyZGMwODZlOTY3OWQ4ZGZmOGQxODdiZTMxMGYyMzBkYzE0NDcxYSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5X2NhcmQiOnsiYW5jaG9yIjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsImRlcml2YXRpb24iOiJoaXN0b3J5X2NhcmQvMSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5IjpbeyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MTAsInJvb3QiOiJkZTA5ODdiMDY2NzdiODU4ZjUzYTE2YjMzMWRkNTc4ZjllNTJiY2EyZWI2YzJkNjRjZDMxN2JkMTE3OGNjZTllIiwic2lnIjoiY2U3Yjk4Y2ZlYmRiOWM5MGRhZGM5YWVkOWU4MmQwYjg3MGZkZWQzZTBiMDM1YjkyNDgzNWU5OWE3ZTM2OWNkZjMzNTI0Nzg3ZWRkZWI1NGRmZDc1Y2RiMjgwNjI4ZGMxNzAzMDM1Zjc2M2Q3Y2M5YjM4NDJiNzBhNTEzN2ZiMGIiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAxVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W119LHsiY2hlY2twb2ludCI6eyJrZXlfaWQiOiJhZjI3ZTM1ZjA3MGQzNzZmODdjZTA4NTk5NzNkMzRmYTgyMjA0ZDUwODZjMTI3ZDFlNjQ2ZWZmNWYxYzIzMzZkIiwibG9nX3NpemUiOjI1LCJyb290IjoiYjYwZjFiYmZhNWQ3Y2RjOTc1NjliZGE4Y2JjZjQ4MjJkOTU2ZWUxYmE4YjA4MzU4MGQzMmRjYzNlNzI1MjNkMyIsInNpZyI6IjlmNjc0ZTU5YjQxNzg1ZmQ1OTY0NzgwZmUxMmQ2M2RhMDMzMTJmMjkwNmRhZjE5ZTgwNGJlZTlkZWU5YzA4NTg3Y2Q0NDU5NmViMTIwYTE2Njc2YzRmNjY1OTZhMGMxYTE1OTgzZTY2YThhZWJkMzI1YjZlOWI2OWRiNTkzODAxIiwidGltZXN0YW1wIjoiMjAyNi0xMC0wMlQxMjowMDowMFoifSwicmVjZWlwdHMiOlt7ImNoZWNrcG9pbnQiOiJmMjlmZTk1Mzc5ZGQwMjA3N2MwY2JmODJiYjIwZTI0ZmZhY2UyMmQ4NDFlZmQwNWJjMTIzMjc0MjhlNTZhYTAyIiwic2lnIjoiYWMwOWMzOTVjMTk0YjQ0NjVmZmJjM2ZhMTg5NWZkYmQ1YjhjMTU4MWE5ZTlkYmExMjgzNjg1NDAzOTEwNGQzNDJkYWE1NjRmNDJhODQyY2NjOTgyNDg0Y2RlOGVmZWY0MzgyZTk3N2RiMmEyNDBkOTdmMDdjYmFhMGRhNTc0MGQiLCJ3aXRuZXNzIjoiMWI0MzY4MmIwZmFjZmE1ZjJkYTA4NzUxOTNhMWJiNzVjNjYwMTk4MTdjYzI0YmFlZjc5MDQxODM4ZTMxNWNhZiJ9XX0seyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MzgsInJvb3QiOiI4OTM2MWEzZDYyNzY5NDcwMzQ1MGZmNWRhMTY4ZTgyYTdkZWQ1NjQyYzU2ZThhYTMyOWVlMzIxNGU1Mjg5MDZkIiwic2lnIjoiNzUyMjkxZGJiNmVkZWU0ZGNlODljZDVkNjk2ODg1ZWIyOGI5ZWQ2OWZkOWM0MmFiMDdhZDFiYTNlOTg3OTYxMTM4ZDA5OTYzYzQwMzBjYmNkNjJiYWFmMjFjODc5OWJkYWI3Y2MwOWNiZDA5MjkzYzIyNGFkYWYyMGQxMjExMDgiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAzVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W3siY2hlY2twb2ludCI6IjZiYWVjNmM2NDhmZGRkNjYxNjViZGQzZmVmYTdiYzRkZTg3NGQ3NjExMDM0MTVjMTcwNWEyM2UzMGNiODZkZjUiLCJzaWciOiI2ZGEwNjhjZDBkNTA3ZmQ3MTNkNTBjZDVkNjRjYjUyMTE4MzQ2OTVkOGJmOWEzZjZmMTRlNDM5MjJiYTcyZmQ5MzhlNWM3YTFmNmJkY2M3MjgzMjA3MGJjZDIwMGUwYjU5YTllNjhiODJlY2Y1OGZjNDA0YTdhODMwZGRhNWEwYSIsIndpdG5lc3MiOiIxYjQzNjgyYjBmYWNmYTVmMmRhMDg3NTE5M2ExYmI3NWM2NjAxOTgxN2NjMjRiYWVmNzkwNDE4MzhlMzE1Y2FmIn1dfSx7ImNoZWNrcG9pbnQiOnsia2V5X2lkIjoiYWYyN2UzNWYwNzBkMzc2Zjg3Y2UwODU5OTczZDM0ZmE4MjIwNGQ1MDg2YzEyN2QxZTY0NmVmZjVmMWMyMzM2ZCIsImxvZ19zaXplIjo1Miwicm9vdCI6IjI1ZWE3MjE4NzY2MGFjMzNjYWY4ZDMxMmVlZjRhMjBiNDM0MWNmZTNiZTM1Zjg5ZDMwNWVmZGI4Y2JhMGFkOTYiLCJzaWciOiJiNTJkNDVmNTZmNmQ3NGZjNmRhYjQ2ZDQ0NzUzNTA0YmU5NDRlOGYxNTA2YWU0MDVmOWNkOGVjYzA0MjZhYWE0M2U0Y2Q1M2NlYTA5MGM2NDBlMjI0MjZiZTE2M2ZlODgzYTZkOWUyY2M4Njc1MjVkMjZhYTUzNzNkNDZiZjMwZCIsInRpbWVzdGFtcCI6IjIwMjYtMTAtMDRUMDA6MDA6MDBaIn0sInJlY2VpcHRzIjpbeyJjaGVja3BvaW50IjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsInNpZyI6IjViM2JhM2U3MjJkYzNjMTk5MTI3NmRkMmY4MTM5ZjZhYmU3MTdhZTQ1NDFiYTg4NWIxOWM3ZWNlMzg1MjY2Yjg3NmFiYjMyYmY5OGU4MTc1YmNlNzMwYmY3YjQxMzdmNWU4ZTI2ZThkZDg0ODQzNzE0ZTcxODIwMmQ3M2E1NDAxIiwid2l0bmVzcyI6ImIxN2RhYTA3ZjdjMDllZWYzMDIyMDlkN2ZmYTZlYTY3ZGQ5Mzg3ZDU3OTdlOTVhZWUyYjlkZDc2MzFlNjY4MDQifV19XSwic3ViamVjdCI6eyJmdWxsX2hpc3RvcnkiOm51bGx9fSwiaGlzdG9yeV9jYXJkX2RpZ2VzdCI6ImYyZWY2ZjZhNDY4MmU2NGRkNTNjZWFiNTBlNzk5NTA2NmU4Yzk4MzFjNzc1ZmVjMjA3NzQwZTU1ZDg3ODcxNjkiLCJwZXJpb2RfY291bnRzIjp7InBlcmlvZHMiOlt7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjEyfSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6N30seyJkaW1lbnNpb24iOm51bGwsImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjE5fV0sImZyb20iOiIyMDI2LTEwLTAxVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wMlQwMDowMDowMFoifSx7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtYiJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJzdXBwcmVzc2VkIjoiYmVsb3dfZmxvb3IiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjpudWxsfSx7ImRpbWVuc2lvbiI6bnVsbCwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6OH1dLCJmcm9tIjoiMjAyNi0xMC0wMlQwMDowMDowMFoiLCJ0byI6IjIwMjYtMTAtMDNUMDA6MDA6MDBaIn0seyJjZWxscyI6W3siZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtYSJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjo2fSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6NX0seyJkaW1lbnNpb24iOm51bGwsImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjExfV0sImZyb20iOiIyMDI2LTEwLTAzVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wNFQwMDowMDowMFoifV0sInBvbGljeSI6ImEwZWUzOTg1ZWU0NDQwY2QwYzEyMzg0ZTdhNmQyMGM1MTI4OTM4NTBjYWE5YzIwZDUzYmMzOTUxYjUwZjE2MDAifSwic3ViamVjdCI6eyJmdWxsX2hpc3RvcnkiOm51bGx9fQ\",\"artifact_digest\":\"e5850d3c114d86de9ca8dda2f24c3b2a1f8b19f7ab0b97aa5cca733a212d8223\",\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"issued_at\":\"2026-10-04T00:00:05Z\",\"profile\":\"evidence-interop/1\",\"request_digest\":\"93ce156b57a266d7bdb1c5479308178e404f2979ae2f6b8ad46b139256746a25\",\"responder\":\"1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9\",\"sig\":\"79e6bb66252f8346403d506621de3b1dfd6f11c31a48c829890e923a498c43c617c4cc74cb39e0de7029baa3c014907d5679650636828e77cc181b6cf0d49a08\",\"subject\":{\"full_history\":null}}"
+        }
+      },
+      "expected": {
+        "exchange": {
+          "message_type": "envelope",
+          "subject": {
+            "full_history": null
+          },
+          "properties": {
+            "profile_version": "PASS",
+            "envelope_signature": "PASS",
+            "responder_trust": "PASS",
+            "responder_key_current": "NOT_CHECKED",
+            "issued_at_form": "PASS",
+            "request_binding": "PASS",
+            "subject_binding": "PASS",
+            "artifact_digest": "PASS",
+            "verification_binding": "NOT_PRESENT",
+            "anchor_match": "PASS",
+            "anchor_inclusion": "NOT_CHECKED"
+          },
+          "accepted": true,
+          "requirements": {
+            "r-service": {
+              "row": "envelope-4",
+              "status": "UNKNOWN",
+              "sufficiency": "UNKNOWN",
+              "verdict": "not_evaluable"
+            }
+          },
+          "claim": {
+            "evidence": [
+              {
+                "digest_alg": "SHA-256",
+                "digest": "e5850d3c114d86de9ca8dda2f24c3b2a1f8b19f7ab0b97aa5cca733a212d8223"
+              }
+            ],
+            "proofs": []
+          }
+        },
+        "history_properties": {
+          "definition_form": "PASS",
+          "definition_binding": "PASS",
+          "artifact_form": "PASS",
+          "history_card_content": "PASS",
+          "units": "PASS",
+          "labels": "PASS",
+          "period_alignment": "PASS",
+          "period_anchor": "PASS",
+          "period_floor": "FAIL"
+        },
+        "coverage": {
+          "declared_kind": "stream_interval",
+          "properties": {
+            "coverage_declaration_form": "PASS",
+            "coverage_declaration_anchor": "PASS",
+            "coverage_declaration_population": "NOT_CHECKED",
+            "coverage_declaration_commitment": "NOT_CHECKED"
+          },
+          "relative_to": "the node's stream at the anchor, under all_records; completeness not established: counts not checked against records"
+        },
+        "shows": {
+          "witness": {
+            "checkpoints": 4,
+            "witness_receipts_counted": 2,
+            "witness_receipts_not_counted": [
+              {
+                "checkpoint": 3,
+                "reason": "witness key not configured"
+              }
+            ]
+          }
+        },
+        "accepted": false,
+        "fails": [
+          "period_floor"
+        ]
+      }
+    },
+    {
+      "id": "mutant-v1-total-pins-five-ones",
+      "title": "Five models of 1 withheld beside a published total of 5",
+      "cites": [
+        "§6.2",
+        "§6.3",
+        "§9"
+      ],
+      "source": "constructed: v1-total-withheld-five-ones with the total published",
+      "kind": "history",
+      "pins": {
+        "trust_policy": {
+          "responder_keys": [
+            "1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9"
+          ],
+          "log_keys": [],
+          "foreign_keys": [],
+          "parties": {},
+          "successions": [],
+          "require_action_time_from_other_party": false
+        },
+        "verification_policy": {
+          "online": false,
+          "profiles_implemented": [
+            "evidence-interop/1"
+          ],
+          "kinds_implemented": [
+            "cll-checkpoint",
+            "cll-inclusion-proof",
+            "cll-consistency-proof"
+          ]
+        },
+        "service_history": {
+          "log_keys": [
+            "af27e35f070d376f87ce0859973d34fa82204d5086c127d1e646eff5f1c2336d"
+          ],
+          "witness_keys": [
+            "1b43682b0facfa5f2da0875193a1bb75c66019817cc24baef79041838e315caf"
+          ],
+          "peer_keys": [
+            "582c60f2f98715969cac653a0afc59eb43ede89dae84f3ad8a78c69a3c29adaf"
+          ]
+        },
+        "contract_ref": "S@1",
+        "contract_digest": "0269eebf43bdb5f689464ca6e51946974e1f850d711314655d843ad1319f2242",
+        "evaluation_time": "2026-10-05T06:00:00Z"
+      },
+      "inputs": {
+        "definition": {
+          "coverage_declaration": {
+            "kind": "stream_interval",
+            "rule": "all_records"
+          },
+          "embeds": [
+            "history_card/1"
+          ],
+          "excludes": [
+            "requester identity",
+            "per-recipient release state"
+          ],
+          "kind": "projection",
+          "level": "standard",
+          "members": [
+            {
+              "name": "history_card",
+              "required": true,
+              "derivation": "history_card/1",
+              "reads": [
+                "checkpoint: key_id, log_size, root, timestamp, sig",
+                "receipt: checkpoint, witness, sig"
+              ],
+              "units": [
+                {
+                  "where": "history (one entry per checkpoint)",
+                  "unit": "checkpoints"
+                },
+                {
+                  "where": "history[].receipts",
+                  "unit": "witness_receipts"
+                }
+              ]
+            },
+            {
+              "name": "period_counts",
+              "required": true,
+              "reads": [
+                "record: role",
+                "record: committed_at",
+                "record: model claim"
+              ],
+              "units": [
+                {
+                  "where": "periods[].cells[]",
+                  "unit": "exchanges_served"
+                }
+              ],
+              "claims": {
+                "asserted_by": "provider",
+                "label": "provider states",
+                "where": [
+                  "periods[].cells[].dimension"
+                ]
+              }
+            }
+          ],
+          "name": "service_history_example/1",
+          "period_policy": {
+            "epoch": "2026-10-01T00:00:00Z",
+            "floor": 5,
+            "length_s": 86400,
+            "min_length_s": 86400,
+            "suppression": "complementary"
+          },
+          "profile": "inference-service-history/1",
+          "reads": [
+            "checkpoint: key_id, log_size, root, timestamp, sig",
+            "receipt: checkpoint, witness, sig",
+            "record: role",
+            "record: committed_at",
+            "record: model claim"
+          ],
+          "spec": "vectors/inference-service-history-v1/README.md",
+          "subjects": [
+            "full_history"
+          ]
+        },
+        "request": {
+          "media_type": "application/json",
+          "octets_text": "{\"coverage\":{\"expected_pin\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"nonce\":\"requester-1/v1\",\"profile\":\"evidence-interop/1\",\"subject\":{\"full_history\":null}}"
+        },
+        "reply": {
+          "media_type": "application/json",
+          "octets_text": "{\"anchor\":{\"digest\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"artifact\":\"eyJhbmNob3IiOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIiwiY292ZXJhZ2VfZGVjbGFyYXRpb24iOnsiaW50ZXJ2YWwiOnsiZnJvbSI6bnVsbCwidG8iOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIn0sImtpbmQiOiJzdHJlYW1faW50ZXJ2YWwiLCJsaXZlX3NldCI6W3siY2hlY2twb2ludCI6Ijk4NmQ5Y2UwNDk1MWQwMWJlNjE5YzMyYWVhNjRiNDQyODg3OTkxYTUyOTBlYzA5YzZlODc4OWIxMjFlZmU4MmIiLCJjb3VudCI6NTIsInN0YXJ0IjowLCJzdHJlYW0iOiJub2RlLXN0cmVhbS0xIn1dLCJydWxlIjoiYWxsX3JlY29yZHMifSwiZGVjbGFyZWQiOlsiaGlzdG9yeV9jYXJkIiwicGVyaW9kX2NvdW50cyJdLCJkZXJpdmF0aW9uIjoiZDRjZTk4ZmZhODEzNGJhOTQ3MGNmZGNkZjQyZGMwODZlOTY3OWQ4ZGZmOGQxODdiZTMxMGYyMzBkYzE0NDcxYSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5X2NhcmQiOnsiYW5jaG9yIjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsImRlcml2YXRpb24iOiJoaXN0b3J5X2NhcmQvMSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5IjpbeyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MTAsInJvb3QiOiJkZTA5ODdiMDY2NzdiODU4ZjUzYTE2YjMzMWRkNTc4ZjllNTJiY2EyZWI2YzJkNjRjZDMxN2JkMTE3OGNjZTllIiwic2lnIjoiY2U3Yjk4Y2ZlYmRiOWM5MGRhZGM5YWVkOWU4MmQwYjg3MGZkZWQzZTBiMDM1YjkyNDgzNWU5OWE3ZTM2OWNkZjMzNTI0Nzg3ZWRkZWI1NGRmZDc1Y2RiMjgwNjI4ZGMxNzAzMDM1Zjc2M2Q3Y2M5YjM4NDJiNzBhNTEzN2ZiMGIiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAxVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W119LHsiY2hlY2twb2ludCI6eyJrZXlfaWQiOiJhZjI3ZTM1ZjA3MGQzNzZmODdjZTA4NTk5NzNkMzRmYTgyMjA0ZDUwODZjMTI3ZDFlNjQ2ZWZmNWYxYzIzMzZkIiwibG9nX3NpemUiOjI1LCJyb290IjoiYjYwZjFiYmZhNWQ3Y2RjOTc1NjliZGE4Y2JjZjQ4MjJkOTU2ZWUxYmE4YjA4MzU4MGQzMmRjYzNlNzI1MjNkMyIsInNpZyI6IjlmNjc0ZTU5YjQxNzg1ZmQ1OTY0NzgwZmUxMmQ2M2RhMDMzMTJmMjkwNmRhZjE5ZTgwNGJlZTlkZWU5YzA4NTg3Y2Q0NDU5NmViMTIwYTE2Njc2YzRmNjY1OTZhMGMxYTE1OTgzZTY2YThhZWJkMzI1YjZlOWI2OWRiNTkzODAxIiwidGltZXN0YW1wIjoiMjAyNi0xMC0wMlQxMjowMDowMFoifSwicmVjZWlwdHMiOlt7ImNoZWNrcG9pbnQiOiJmMjlmZTk1Mzc5ZGQwMjA3N2MwY2JmODJiYjIwZTI0ZmZhY2UyMmQ4NDFlZmQwNWJjMTIzMjc0MjhlNTZhYTAyIiwic2lnIjoiYWMwOWMzOTVjMTk0YjQ0NjVmZmJjM2ZhMTg5NWZkYmQ1YjhjMTU4MWE5ZTlkYmExMjgzNjg1NDAzOTEwNGQzNDJkYWE1NjRmNDJhODQyY2NjOTgyNDg0Y2RlOGVmZWY0MzgyZTk3N2RiMmEyNDBkOTdmMDdjYmFhMGRhNTc0MGQiLCJ3aXRuZXNzIjoiMWI0MzY4MmIwZmFjZmE1ZjJkYTA4NzUxOTNhMWJiNzVjNjYwMTk4MTdjYzI0YmFlZjc5MDQxODM4ZTMxNWNhZiJ9XX0seyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MzgsInJvb3QiOiI4OTM2MWEzZDYyNzY5NDcwMzQ1MGZmNWRhMTY4ZTgyYTdkZWQ1NjQyYzU2ZThhYTMyOWVlMzIxNGU1Mjg5MDZkIiwic2lnIjoiNzUyMjkxZGJiNmVkZWU0ZGNlODljZDVkNjk2ODg1ZWIyOGI5ZWQ2OWZkOWM0MmFiMDdhZDFiYTNlOTg3OTYxMTM4ZDA5OTYzYzQwMzBjYmNkNjJiYWFmMjFjODc5OWJkYWI3Y2MwOWNiZDA5MjkzYzIyNGFkYWYyMGQxMjExMDgiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAzVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W3siY2hlY2twb2ludCI6IjZiYWVjNmM2NDhmZGRkNjYxNjViZGQzZmVmYTdiYzRkZTg3NGQ3NjExMDM0MTVjMTcwNWEyM2UzMGNiODZkZjUiLCJzaWciOiI2ZGEwNjhjZDBkNTA3ZmQ3MTNkNTBjZDVkNjRjYjUyMTE4MzQ2OTVkOGJmOWEzZjZmMTRlNDM5MjJiYTcyZmQ5MzhlNWM3YTFmNmJkY2M3MjgzMjA3MGJjZDIwMGUwYjU5YTllNjhiODJlY2Y1OGZjNDA0YTdhODMwZGRhNWEwYSIsIndpdG5lc3MiOiIxYjQzNjgyYjBmYWNmYTVmMmRhMDg3NTE5M2ExYmI3NWM2NjAxOTgxN2NjMjRiYWVmNzkwNDE4MzhlMzE1Y2FmIn1dfSx7ImNoZWNrcG9pbnQiOnsia2V5X2lkIjoiYWYyN2UzNWYwNzBkMzc2Zjg3Y2UwODU5OTczZDM0ZmE4MjIwNGQ1MDg2YzEyN2QxZTY0NmVmZjVmMWMyMzM2ZCIsImxvZ19zaXplIjo1Miwicm9vdCI6IjI1ZWE3MjE4NzY2MGFjMzNjYWY4ZDMxMmVlZjRhMjBiNDM0MWNmZTNiZTM1Zjg5ZDMwNWVmZGI4Y2JhMGFkOTYiLCJzaWciOiJiNTJkNDVmNTZmNmQ3NGZjNmRhYjQ2ZDQ0NzUzNTA0YmU5NDRlOGYxNTA2YWU0MDVmOWNkOGVjYzA0MjZhYWE0M2U0Y2Q1M2NlYTA5MGM2NDBlMjI0MjZiZTE2M2ZlODgzYTZkOWUyY2M4Njc1MjVkMjZhYTUzNzNkNDZiZjMwZCIsInRpbWVzdGFtcCI6IjIwMjYtMTAtMDRUMDA6MDA6MDBaIn0sInJlY2VpcHRzIjpbeyJjaGVja3BvaW50IjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsInNpZyI6IjViM2JhM2U3MjJkYzNjMTk5MTI3NmRkMmY4MTM5ZjZhYmU3MTdhZTQ1NDFiYTg4NWIxOWM3ZWNlMzg1MjY2Yjg3NmFiYjMyYmY5OGU4MTc1YmNlNzMwYmY3YjQxMzdmNWU4ZTI2ZThkZDg0ODQzNzE0ZTcxODIwMmQ3M2E1NDAxIiwid2l0bmVzcyI6ImIxN2RhYTA3ZjdjMDllZWYzMDIyMDlkN2ZmYTZlYTY3ZGQ5Mzg3ZDU3OTdlOTVhZWUyYjlkZDc2MzFlNjY4MDQifV19XSwic3ViamVjdCI6eyJmdWxsX2hpc3RvcnkiOm51bGx9fSwiaGlzdG9yeV9jYXJkX2RpZ2VzdCI6ImYyZWY2ZjZhNDY4MmU2NGRkNTNjZWFiNTBlNzk5NTA2NmU4Yzk4MzFjNzc1ZmVjMjA3NzQwZTU1ZDg3ODcxNjkiLCJwZXJpb2RfY291bnRzIjp7InBlcmlvZHMiOlt7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjEyfSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6N30seyJkaW1lbnNpb24iOm51bGwsImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjE5fV0sImZyb20iOiIyMDI2LTEwLTAxVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wMlQwMDowMDowMFoifSx7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtYiJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJzdXBwcmVzc2VkIjoiYmVsb3dfZmxvb3IiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjpudWxsfSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWMifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwic3VwcHJlc3NlZCI6ImJlbG93X2Zsb29yIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6bnVsbH0seyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1kIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtZSJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJzdXBwcmVzc2VkIjoiYmVsb3dfZmxvb3IiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjpudWxsfSx7ImRpbWVuc2lvbiI6bnVsbCwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6NX1dLCJmcm9tIjoiMjAyNi0xMC0wMlQwMDowMDowMFoiLCJ0byI6IjIwMjYtMTAtMDNUMDA6MDA6MDBaIn0seyJjZWxscyI6W3siZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtYSJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjo2fSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6NX0seyJkaW1lbnNpb24iOm51bGwsImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjExfV0sImZyb20iOiIyMDI2LTEwLTAzVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wNFQwMDowMDowMFoifV0sInBvbGljeSI6ImEwZWUzOTg1ZWU0NDQwY2QwYzEyMzg0ZTdhNmQyMGM1MTI4OTM4NTBjYWE5YzIwZDUzYmMzOTUxYjUwZjE2MDAifSwic3ViamVjdCI6eyJmdWxsX2hpc3RvcnkiOm51bGx9fQ\",\"artifact_digest\":\"b910590ec8c92242ed7975adb7e7cdaca41275457e76ae87c4a6878478826a22\",\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"issued_at\":\"2026-10-04T00:00:05Z\",\"profile\":\"evidence-interop/1\",\"request_digest\":\"93ce156b57a266d7bdb1c5479308178e404f2979ae2f6b8ad46b139256746a25\",\"responder\":\"1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9\",\"sig\":\"0b7f5b9ec7f5bf66027d04e14df1fb7e23d4de8742f7dd1e0f400edd563ec789e83b24d0ca184a2dd1a7ddd499f11163519b8b27864f82612d035c2f453f0803\",\"subject\":{\"full_history\":null}}"
+        }
+      },
+      "expected": {
+        "exchange": {
+          "message_type": "envelope",
+          "subject": {
+            "full_history": null
+          },
+          "properties": {
+            "profile_version": "PASS",
+            "envelope_signature": "PASS",
+            "responder_trust": "PASS",
+            "responder_key_current": "NOT_CHECKED",
+            "issued_at_form": "PASS",
+            "request_binding": "PASS",
+            "subject_binding": "PASS",
+            "artifact_digest": "PASS",
+            "verification_binding": "NOT_PRESENT",
+            "anchor_match": "PASS",
+            "anchor_inclusion": "NOT_CHECKED"
+          },
+          "accepted": true,
+          "requirements": {
+            "r-service": {
+              "row": "envelope-4",
+              "status": "UNKNOWN",
+              "sufficiency": "UNKNOWN",
+              "verdict": "not_evaluable"
+            }
+          },
+          "claim": {
+            "evidence": [
+              {
+                "digest_alg": "SHA-256",
+                "digest": "b910590ec8c92242ed7975adb7e7cdaca41275457e76ae87c4a6878478826a22"
+              }
+            ],
+            "proofs": []
+          }
+        },
+        "history_properties": {
+          "definition_form": "PASS",
+          "definition_binding": "PASS",
+          "artifact_form": "PASS",
+          "history_card_content": "PASS",
+          "units": "PASS",
+          "labels": "PASS",
+          "period_alignment": "PASS",
+          "period_anchor": "PASS",
+          "period_floor": "FAIL"
+        },
+        "coverage": {
+          "declared_kind": "stream_interval",
+          "properties": {
+            "coverage_declaration_form": "PASS",
+            "coverage_declaration_anchor": "PASS",
+            "coverage_declaration_population": "NOT_CHECKED",
+            "coverage_declaration_commitment": "NOT_CHECKED"
+          },
+          "relative_to": "the node's stream at the anchor, under all_records; completeness not established: counts not checked against records"
+        },
+        "shows": {
+          "witness": {
+            "checkpoints": 4,
+            "witness_receipts_counted": 2,
+            "witness_receipts_not_counted": [
+              {
+                "checkpoint": 3,
+                "reason": "witness key not configured"
+              }
+            ]
+          }
+        },
+        "accepted": false,
+        "fails": [
+          "period_floor"
+        ]
+      }
+    },
+    {
+      "id": "mutant-v1-total-pins-beside-published",
+      "title": "A published model of 10 and two of 4 withheld beside a published total of 18: the rest of 8 fixes both",
+      "cites": [
+        "§6.2",
+        "§6.3",
+        "§9"
+      ],
+      "source": "constructed: 2 October served 10 by model-a, 4 by model-b and 4 by model-c, the total published",
+      "kind": "history",
+      "pins": {
+        "trust_policy": {
+          "responder_keys": [
+            "1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9"
+          ],
+          "log_keys": [],
+          "foreign_keys": [],
+          "parties": {},
+          "successions": [],
+          "require_action_time_from_other_party": false
+        },
+        "verification_policy": {
+          "online": false,
+          "profiles_implemented": [
+            "evidence-interop/1"
+          ],
+          "kinds_implemented": [
+            "cll-checkpoint",
+            "cll-inclusion-proof",
+            "cll-consistency-proof"
+          ]
+        },
+        "service_history": {
+          "log_keys": [
+            "af27e35f070d376f87ce0859973d34fa82204d5086c127d1e646eff5f1c2336d"
+          ],
+          "witness_keys": [
+            "1b43682b0facfa5f2da0875193a1bb75c66019817cc24baef79041838e315caf"
+          ],
+          "peer_keys": [
+            "582c60f2f98715969cac653a0afc59eb43ede89dae84f3ad8a78c69a3c29adaf"
+          ]
+        },
+        "contract_ref": "S@1",
+        "contract_digest": "0269eebf43bdb5f689464ca6e51946974e1f850d711314655d843ad1319f2242",
+        "evaluation_time": "2026-10-05T06:00:00Z"
+      },
+      "inputs": {
+        "definition": {
+          "coverage_declaration": {
+            "kind": "stream_interval",
+            "rule": "all_records"
+          },
+          "embeds": [
+            "history_card/1"
+          ],
+          "excludes": [
+            "requester identity",
+            "per-recipient release state"
+          ],
+          "kind": "projection",
+          "level": "standard",
+          "members": [
+            {
+              "name": "history_card",
+              "required": true,
+              "derivation": "history_card/1",
+              "reads": [
+                "checkpoint: key_id, log_size, root, timestamp, sig",
+                "receipt: checkpoint, witness, sig"
+              ],
+              "units": [
+                {
+                  "where": "history (one entry per checkpoint)",
+                  "unit": "checkpoints"
+                },
+                {
+                  "where": "history[].receipts",
+                  "unit": "witness_receipts"
+                }
+              ]
+            },
+            {
+              "name": "period_counts",
+              "required": true,
+              "reads": [
+                "record: role",
+                "record: committed_at",
+                "record: model claim"
+              ],
+              "units": [
+                {
+                  "where": "periods[].cells[]",
+                  "unit": "exchanges_served"
+                }
+              ],
+              "claims": {
+                "asserted_by": "provider",
+                "label": "provider states",
+                "where": [
+                  "periods[].cells[].dimension"
+                ]
+              }
+            }
+          ],
+          "name": "service_history_example/1",
+          "period_policy": {
+            "epoch": "2026-10-01T00:00:00Z",
+            "floor": 5,
+            "length_s": 86400,
+            "min_length_s": 86400,
+            "suppression": "complementary"
+          },
+          "profile": "inference-service-history/1",
+          "reads": [
+            "checkpoint: key_id, log_size, root, timestamp, sig",
+            "receipt: checkpoint, witness, sig",
+            "record: role",
+            "record: committed_at",
+            "record: model claim"
+          ],
+          "spec": "vectors/inference-service-history-v1/README.md",
+          "subjects": [
+            "full_history"
+          ]
+        },
+        "request": {
+          "media_type": "application/json",
+          "octets_text": "{\"coverage\":{\"expected_pin\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"nonce\":\"requester-1/v1\",\"profile\":\"evidence-interop/1\",\"subject\":{\"full_history\":null}}"
+        },
+        "reply": {
+          "media_type": "application/json",
+          "octets_text": "{\"anchor\":{\"digest\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"artifact\":\"eyJhbmNob3IiOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIiwiY292ZXJhZ2VfZGVjbGFyYXRpb24iOnsiaW50ZXJ2YWwiOnsiZnJvbSI6bnVsbCwidG8iOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIn0sImtpbmQiOiJzdHJlYW1faW50ZXJ2YWwiLCJsaXZlX3NldCI6W3siY2hlY2twb2ludCI6Ijk4NmQ5Y2UwNDk1MWQwMWJlNjE5YzMyYWVhNjRiNDQyODg3OTkxYTUyOTBlYzA5YzZlODc4OWIxMjFlZmU4MmIiLCJjb3VudCI6NTIsInN0YXJ0IjowLCJzdHJlYW0iOiJub2RlLXN0cmVhbS0xIn1dLCJydWxlIjoiYWxsX3JlY29yZHMifSwiZGVjbGFyZWQiOlsiaGlzdG9yeV9jYXJkIiwicGVyaW9kX2NvdW50cyJdLCJkZXJpdmF0aW9uIjoiZDRjZTk4ZmZhODEzNGJhOTQ3MGNmZGNkZjQyZGMwODZlOTY3OWQ4ZGZmOGQxODdiZTMxMGYyMzBkYzE0NDcxYSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5X2NhcmQiOnsiYW5jaG9yIjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsImRlcml2YXRpb24iOiJoaXN0b3J5X2NhcmQvMSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5IjpbeyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MTAsInJvb3QiOiJkZTA5ODdiMDY2NzdiODU4ZjUzYTE2YjMzMWRkNTc4ZjllNTJiY2EyZWI2YzJkNjRjZDMxN2JkMTE3OGNjZTllIiwic2lnIjoiY2U3Yjk4Y2ZlYmRiOWM5MGRhZGM5YWVkOWU4MmQwYjg3MGZkZWQzZTBiMDM1YjkyNDgzNWU5OWE3ZTM2OWNkZjMzNTI0Nzg3ZWRkZWI1NGRmZDc1Y2RiMjgwNjI4ZGMxNzAzMDM1Zjc2M2Q3Y2M5YjM4NDJiNzBhNTEzN2ZiMGIiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAxVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W119LHsiY2hlY2twb2ludCI6eyJrZXlfaWQiOiJhZjI3ZTM1ZjA3MGQzNzZmODdjZTA4NTk5NzNkMzRmYTgyMjA0ZDUwODZjMTI3ZDFlNjQ2ZWZmNWYxYzIzMzZkIiwibG9nX3NpemUiOjI1LCJyb290IjoiYjYwZjFiYmZhNWQ3Y2RjOTc1NjliZGE4Y2JjZjQ4MjJkOTU2ZWUxYmE4YjA4MzU4MGQzMmRjYzNlNzI1MjNkMyIsInNpZyI6IjlmNjc0ZTU5YjQxNzg1ZmQ1OTY0NzgwZmUxMmQ2M2RhMDMzMTJmMjkwNmRhZjE5ZTgwNGJlZTlkZWU5YzA4NTg3Y2Q0NDU5NmViMTIwYTE2Njc2YzRmNjY1OTZhMGMxYTE1OTgzZTY2YThhZWJkMzI1YjZlOWI2OWRiNTkzODAxIiwidGltZXN0YW1wIjoiMjAyNi0xMC0wMlQxMjowMDowMFoifSwicmVjZWlwdHMiOlt7ImNoZWNrcG9pbnQiOiJmMjlmZTk1Mzc5ZGQwMjA3N2MwY2JmODJiYjIwZTI0ZmZhY2UyMmQ4NDFlZmQwNWJjMTIzMjc0MjhlNTZhYTAyIiwic2lnIjoiYWMwOWMzOTVjMTk0YjQ0NjVmZmJjM2ZhMTg5NWZkYmQ1YjhjMTU4MWE5ZTlkYmExMjgzNjg1NDAzOTEwNGQzNDJkYWE1NjRmNDJhODQyY2NjOTgyNDg0Y2RlOGVmZWY0MzgyZTk3N2RiMmEyNDBkOTdmMDdjYmFhMGRhNTc0MGQiLCJ3aXRuZXNzIjoiMWI0MzY4MmIwZmFjZmE1ZjJkYTA4NzUxOTNhMWJiNzVjNjYwMTk4MTdjYzI0YmFlZjc5MDQxODM4ZTMxNWNhZiJ9XX0seyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MzgsInJvb3QiOiI4OTM2MWEzZDYyNzY5NDcwMzQ1MGZmNWRhMTY4ZTgyYTdkZWQ1NjQyYzU2ZThhYTMyOWVlMzIxNGU1Mjg5MDZkIiwic2lnIjoiNzUyMjkxZGJiNmVkZWU0ZGNlODljZDVkNjk2ODg1ZWIyOGI5ZWQ2OWZkOWM0MmFiMDdhZDFiYTNlOTg3OTYxMTM4ZDA5OTYzYzQwMzBjYmNkNjJiYWFmMjFjODc5OWJkYWI3Y2MwOWNiZDA5MjkzYzIyNGFkYWYyMGQxMjExMDgiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAzVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W3siY2hlY2twb2ludCI6IjZiYWVjNmM2NDhmZGRkNjYxNjViZGQzZmVmYTdiYzRkZTg3NGQ3NjExMDM0MTVjMTcwNWEyM2UzMGNiODZkZjUiLCJzaWciOiI2ZGEwNjhjZDBkNTA3ZmQ3MTNkNTBjZDVkNjRjYjUyMTE4MzQ2OTVkOGJmOWEzZjZmMTRlNDM5MjJiYTcyZmQ5MzhlNWM3YTFmNmJkY2M3MjgzMjA3MGJjZDIwMGUwYjU5YTllNjhiODJlY2Y1OGZjNDA0YTdhODMwZGRhNWEwYSIsIndpdG5lc3MiOiIxYjQzNjgyYjBmYWNmYTVmMmRhMDg3NTE5M2ExYmI3NWM2NjAxOTgxN2NjMjRiYWVmNzkwNDE4MzhlMzE1Y2FmIn1dfSx7ImNoZWNrcG9pbnQiOnsia2V5X2lkIjoiYWYyN2UzNWYwNzBkMzc2Zjg3Y2UwODU5OTczZDM0ZmE4MjIwNGQ1MDg2YzEyN2QxZTY0NmVmZjVmMWMyMzM2ZCIsImxvZ19zaXplIjo1Miwicm9vdCI6IjI1ZWE3MjE4NzY2MGFjMzNjYWY4ZDMxMmVlZjRhMjBiNDM0MWNmZTNiZTM1Zjg5ZDMwNWVmZGI4Y2JhMGFkOTYiLCJzaWciOiJiNTJkNDVmNTZmNmQ3NGZjNmRhYjQ2ZDQ0NzUzNTA0YmU5NDRlOGYxNTA2YWU0MDVmOWNkOGVjYzA0MjZhYWE0M2U0Y2Q1M2NlYTA5MGM2NDBlMjI0MjZiZTE2M2ZlODgzYTZkOWUyY2M4Njc1MjVkMjZhYTUzNzNkNDZiZjMwZCIsInRpbWVzdGFtcCI6IjIwMjYtMTAtMDRUMDA6MDA6MDBaIn0sInJlY2VpcHRzIjpbeyJjaGVja3BvaW50IjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsInNpZyI6IjViM2JhM2U3MjJkYzNjMTk5MTI3NmRkMmY4MTM5ZjZhYmU3MTdhZTQ1NDFiYTg4NWIxOWM3ZWNlMzg1MjY2Yjg3NmFiYjMyYmY5OGU4MTc1YmNlNzMwYmY3YjQxMzdmNWU4ZTI2ZThkZDg0ODQzNzE0ZTcxODIwMmQ3M2E1NDAxIiwid2l0bmVzcyI6ImIxN2RhYTA3ZjdjMDllZWYzMDIyMDlkN2ZmYTZlYTY3ZGQ5Mzg3ZDU3OTdlOTVhZWUyYjlkZDc2MzFlNjY4MDQifV19XSwic3ViamVjdCI6eyJmdWxsX2hpc3RvcnkiOm51bGx9fSwiaGlzdG9yeV9jYXJkX2RpZ2VzdCI6ImYyZWY2ZjZhNDY4MmU2NGRkNTNjZWFiNTBlNzk5NTA2NmU4Yzk4MzFjNzc1ZmVjMjA3NzQwZTU1ZDg3ODcxNjkiLCJwZXJpb2RfY291bnRzIjp7InBlcmlvZHMiOlt7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjEyfSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6N30seyJkaW1lbnNpb24iOm51bGwsImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjE5fV0sImZyb20iOiIyMDI2LTEwLTAxVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wMlQwMDowMDowMFoifSx7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjEwfSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwic3VwcHJlc3NlZCI6ImJlbG93X2Zsb29yIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6bnVsbH0seyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1jIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjpudWxsLCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjoxOH1dLCJmcm9tIjoiMjAyNi0xMC0wMlQwMDowMDowMFoiLCJ0byI6IjIwMjYtMTAtMDNUMDA6MDA6MDBaIn0seyJjZWxscyI6W3siZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtYSJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjo2fSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6NX0seyJkaW1lbnNpb24iOm51bGwsImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjExfV0sImZyb20iOiIyMDI2LTEwLTAzVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wNFQwMDowMDowMFoifV0sInBvbGljeSI6ImEwZWUzOTg1ZWU0NDQwY2QwYzEyMzg0ZTdhNmQyMGM1MTI4OTM4NTBjYWE5YzIwZDUzYmMzOTUxYjUwZjE2MDAifSwic3ViamVjdCI6eyJmdWxsX2hpc3RvcnkiOm51bGx9fQ\",\"artifact_digest\":\"dc51196d9208cf03177372c93663564154320bf0692d26c7e90a99b0b27b0bc0\",\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"issued_at\":\"2026-10-04T00:00:05Z\",\"profile\":\"evidence-interop/1\",\"request_digest\":\"93ce156b57a266d7bdb1c5479308178e404f2979ae2f6b8ad46b139256746a25\",\"responder\":\"1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9\",\"sig\":\"e9f0f949e2825dcc5ec933cfa16622716db2db116aa1e73c1a01eae4b7b25595155de5179e8dfa5b5457a982bc7dba397c8e627cea610c38310c3efb6d9c0f01\",\"subject\":{\"full_history\":null}}"
+        }
+      },
+      "expected": {
+        "exchange": {
+          "message_type": "envelope",
+          "subject": {
+            "full_history": null
+          },
+          "properties": {
+            "profile_version": "PASS",
+            "envelope_signature": "PASS",
+            "responder_trust": "PASS",
+            "responder_key_current": "NOT_CHECKED",
+            "issued_at_form": "PASS",
+            "request_binding": "PASS",
+            "subject_binding": "PASS",
+            "artifact_digest": "PASS",
+            "verification_binding": "NOT_PRESENT",
+            "anchor_match": "PASS",
+            "anchor_inclusion": "NOT_CHECKED"
+          },
+          "accepted": true,
+          "requirements": {
+            "r-service": {
+              "row": "envelope-4",
+              "status": "UNKNOWN",
+              "sufficiency": "UNKNOWN",
+              "verdict": "not_evaluable"
+            }
+          },
+          "claim": {
+            "evidence": [
+              {
+                "digest_alg": "SHA-256",
+                "digest": "dc51196d9208cf03177372c93663564154320bf0692d26c7e90a99b0b27b0bc0"
+              }
+            ],
+            "proofs": []
+          }
+        },
+        "history_properties": {
+          "definition_form": "PASS",
+          "definition_binding": "PASS",
+          "artifact_form": "PASS",
+          "history_card_content": "PASS",
+          "units": "PASS",
+          "labels": "PASS",
+          "period_alignment": "PASS",
+          "period_anchor": "PASS",
+          "period_floor": "FAIL"
+        },
+        "coverage": {
+          "declared_kind": "stream_interval",
+          "properties": {
+            "coverage_declaration_form": "PASS",
+            "coverage_declaration_anchor": "PASS",
+            "coverage_declaration_population": "NOT_CHECKED",
+            "coverage_declaration_commitment": "NOT_CHECKED"
+          },
+          "relative_to": "the node's stream at the anchor, under all_records; completeness not established: counts not checked against records"
+        },
+        "shows": {
+          "witness": {
+            "checkpoints": 4,
+            "witness_receipts_counted": 2,
+            "witness_receipts_not_counted": [
+              {
+                "checkpoint": 3,
+                "reason": "witness key not configured"
+              }
+            ]
+          }
+        },
+        "accepted": false,
+        "fails": [
+          "period_floor"
+        ]
+      }
+    },
+    {
+      "id": "mutant-v1-total-short-of-withheld",
+      "title": "A published model of 10 and three withheld beside a published total of 12: three listed cells hold at least 1 each, so the total is at least 13",
+      "cites": [
+        "§6.2",
+        "§6.3",
+        "§9"
+      ],
+      "source": "constructed: 2 October's three withheld models beside a total 2 more than the published cells",
+      "kind": "history",
+      "pins": {
+        "trust_policy": {
+          "responder_keys": [
+            "1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9"
+          ],
+          "log_keys": [],
+          "foreign_keys": [],
+          "parties": {},
+          "successions": [],
+          "require_action_time_from_other_party": false
+        },
+        "verification_policy": {
+          "online": false,
+          "profiles_implemented": [
+            "evidence-interop/1"
+          ],
+          "kinds_implemented": [
+            "cll-checkpoint",
+            "cll-inclusion-proof",
+            "cll-consistency-proof"
+          ]
+        },
+        "service_history": {
+          "log_keys": [
+            "af27e35f070d376f87ce0859973d34fa82204d5086c127d1e646eff5f1c2336d"
+          ],
+          "witness_keys": [
+            "1b43682b0facfa5f2da0875193a1bb75c66019817cc24baef79041838e315caf"
+          ],
+          "peer_keys": [
+            "582c60f2f98715969cac653a0afc59eb43ede89dae84f3ad8a78c69a3c29adaf"
+          ]
+        },
+        "contract_ref": "S@1",
+        "contract_digest": "0269eebf43bdb5f689464ca6e51946974e1f850d711314655d843ad1319f2242",
+        "evaluation_time": "2026-10-05T06:00:00Z"
+      },
+      "inputs": {
+        "definition": {
+          "coverage_declaration": {
+            "kind": "stream_interval",
+            "rule": "all_records"
+          },
+          "embeds": [
+            "history_card/1"
+          ],
+          "excludes": [
+            "requester identity",
+            "per-recipient release state"
+          ],
+          "kind": "projection",
+          "level": "standard",
+          "members": [
+            {
+              "name": "history_card",
+              "required": true,
+              "derivation": "history_card/1",
+              "reads": [
+                "checkpoint: key_id, log_size, root, timestamp, sig",
+                "receipt: checkpoint, witness, sig"
+              ],
+              "units": [
+                {
+                  "where": "history (one entry per checkpoint)",
+                  "unit": "checkpoints"
+                },
+                {
+                  "where": "history[].receipts",
+                  "unit": "witness_receipts"
+                }
+              ]
+            },
+            {
+              "name": "period_counts",
+              "required": true,
+              "reads": [
+                "record: role",
+                "record: committed_at",
+                "record: model claim"
+              ],
+              "units": [
+                {
+                  "where": "periods[].cells[]",
+                  "unit": "exchanges_served"
+                }
+              ],
+              "claims": {
+                "asserted_by": "provider",
+                "label": "provider states",
+                "where": [
+                  "periods[].cells[].dimension"
+                ]
+              }
+            }
+          ],
+          "name": "service_history_example/1",
+          "period_policy": {
+            "epoch": "2026-10-01T00:00:00Z",
+            "floor": 5,
+            "length_s": 86400,
+            "min_length_s": 86400,
+            "suppression": "complementary"
+          },
+          "profile": "inference-service-history/1",
+          "reads": [
+            "checkpoint: key_id, log_size, root, timestamp, sig",
+            "receipt: checkpoint, witness, sig",
+            "record: role",
+            "record: committed_at",
+            "record: model claim"
+          ],
+          "spec": "vectors/inference-service-history-v1/README.md",
+          "subjects": [
+            "full_history"
+          ]
+        },
+        "request": {
+          "media_type": "application/json",
+          "octets_text": "{\"coverage\":{\"expected_pin\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"nonce\":\"requester-1/v1\",\"profile\":\"evidence-interop/1\",\"subject\":{\"full_history\":null}}"
+        },
+        "reply": {
+          "media_type": "application/json",
+          "octets_text": "{\"anchor\":{\"digest\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"artifact\":\"eyJhbmNob3IiOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIiwiY292ZXJhZ2VfZGVjbGFyYXRpb24iOnsiaW50ZXJ2YWwiOnsiZnJvbSI6bnVsbCwidG8iOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIn0sImtpbmQiOiJzdHJlYW1faW50ZXJ2YWwiLCJsaXZlX3NldCI6W3siY2hlY2twb2ludCI6Ijk4NmQ5Y2UwNDk1MWQwMWJlNjE5YzMyYWVhNjRiNDQyODg3OTkxYTUyOTBlYzA5YzZlODc4OWIxMjFlZmU4MmIiLCJjb3VudCI6NTIsInN0YXJ0IjowLCJzdHJlYW0iOiJub2RlLXN0cmVhbS0xIn1dLCJydWxlIjoiYWxsX3JlY29yZHMifSwiZGVjbGFyZWQiOlsiaGlzdG9yeV9jYXJkIiwicGVyaW9kX2NvdW50cyJdLCJkZXJpdmF0aW9uIjoiZDRjZTk4ZmZhODEzNGJhOTQ3MGNmZGNkZjQyZGMwODZlOTY3OWQ4ZGZmOGQxODdiZTMxMGYyMzBkYzE0NDcxYSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5X2NhcmQiOnsiYW5jaG9yIjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsImRlcml2YXRpb24iOiJoaXN0b3J5X2NhcmQvMSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5IjpbeyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MTAsInJvb3QiOiJkZTA5ODdiMDY2NzdiODU4ZjUzYTE2YjMzMWRkNTc4ZjllNTJiY2EyZWI2YzJkNjRjZDMxN2JkMTE3OGNjZTllIiwic2lnIjoiY2U3Yjk4Y2ZlYmRiOWM5MGRhZGM5YWVkOWU4MmQwYjg3MGZkZWQzZTBiMDM1YjkyNDgzNWU5OWE3ZTM2OWNkZjMzNTI0Nzg3ZWRkZWI1NGRmZDc1Y2RiMjgwNjI4ZGMxNzAzMDM1Zjc2M2Q3Y2M5YjM4NDJiNzBhNTEzN2ZiMGIiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAxVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W119LHsiY2hlY2twb2ludCI6eyJrZXlfaWQiOiJhZjI3ZTM1ZjA3MGQzNzZmODdjZTA4NTk5NzNkMzRmYTgyMjA0ZDUwODZjMTI3ZDFlNjQ2ZWZmNWYxYzIzMzZkIiwibG9nX3NpemUiOjI1LCJyb290IjoiYjYwZjFiYmZhNWQ3Y2RjOTc1NjliZGE4Y2JjZjQ4MjJkOTU2ZWUxYmE4YjA4MzU4MGQzMmRjYzNlNzI1MjNkMyIsInNpZyI6IjlmNjc0ZTU5YjQxNzg1ZmQ1OTY0NzgwZmUxMmQ2M2RhMDMzMTJmMjkwNmRhZjE5ZTgwNGJlZTlkZWU5YzA4NTg3Y2Q0NDU5NmViMTIwYTE2Njc2YzRmNjY1OTZhMGMxYTE1OTgzZTY2YThhZWJkMzI1YjZlOWI2OWRiNTkzODAxIiwidGltZXN0YW1wIjoiMjAyNi0xMC0wMlQxMjowMDowMFoifSwicmVjZWlwdHMiOlt7ImNoZWNrcG9pbnQiOiJmMjlmZTk1Mzc5ZGQwMjA3N2MwY2JmODJiYjIwZTI0ZmZhY2UyMmQ4NDFlZmQwNWJjMTIzMjc0MjhlNTZhYTAyIiwic2lnIjoiYWMwOWMzOTVjMTk0YjQ0NjVmZmJjM2ZhMTg5NWZkYmQ1YjhjMTU4MWE5ZTlkYmExMjgzNjg1NDAzOTEwNGQzNDJkYWE1NjRmNDJhODQyY2NjOTgyNDg0Y2RlOGVmZWY0MzgyZTk3N2RiMmEyNDBkOTdmMDdjYmFhMGRhNTc0MGQiLCJ3aXRuZXNzIjoiMWI0MzY4MmIwZmFjZmE1ZjJkYTA4NzUxOTNhMWJiNzVjNjYwMTk4MTdjYzI0YmFlZjc5MDQxODM4ZTMxNWNhZiJ9XX0seyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MzgsInJvb3QiOiI4OTM2MWEzZDYyNzY5NDcwMzQ1MGZmNWRhMTY4ZTgyYTdkZWQ1NjQyYzU2ZThhYTMyOWVlMzIxNGU1Mjg5MDZkIiwic2lnIjoiNzUyMjkxZGJiNmVkZWU0ZGNlODljZDVkNjk2ODg1ZWIyOGI5ZWQ2OWZkOWM0MmFiMDdhZDFiYTNlOTg3OTYxMTM4ZDA5OTYzYzQwMzBjYmNkNjJiYWFmMjFjODc5OWJkYWI3Y2MwOWNiZDA5MjkzYzIyNGFkYWYyMGQxMjExMDgiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAzVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W3siY2hlY2twb2ludCI6IjZiYWVjNmM2NDhmZGRkNjYxNjViZGQzZmVmYTdiYzRkZTg3NGQ3NjExMDM0MTVjMTcwNWEyM2UzMGNiODZkZjUiLCJzaWciOiI2ZGEwNjhjZDBkNTA3ZmQ3MTNkNTBjZDVkNjRjYjUyMTE4MzQ2OTVkOGJmOWEzZjZmMTRlNDM5MjJiYTcyZmQ5MzhlNWM3YTFmNmJkY2M3MjgzMjA3MGJjZDIwMGUwYjU5YTllNjhiODJlY2Y1OGZjNDA0YTdhODMwZGRhNWEwYSIsIndpdG5lc3MiOiIxYjQzNjgyYjBmYWNmYTVmMmRhMDg3NTE5M2ExYmI3NWM2NjAxOTgxN2NjMjRiYWVmNzkwNDE4MzhlMzE1Y2FmIn1dfSx7ImNoZWNrcG9pbnQiOnsia2V5X2lkIjoiYWYyN2UzNWYwNzBkMzc2Zjg3Y2UwODU5OTczZDM0ZmE4MjIwNGQ1MDg2YzEyN2QxZTY0NmVmZjVmMWMyMzM2ZCIsImxvZ19zaXplIjo1Miwicm9vdCI6IjI1ZWE3MjE4NzY2MGFjMzNjYWY4ZDMxMmVlZjRhMjBiNDM0MWNmZTNiZTM1Zjg5ZDMwNWVmZGI4Y2JhMGFkOTYiLCJzaWciOiJiNTJkNDVmNTZmNmQ3NGZjNmRhYjQ2ZDQ0NzUzNTA0YmU5NDRlOGYxNTA2YWU0MDVmOWNkOGVjYzA0MjZhYWE0M2U0Y2Q1M2NlYTA5MGM2NDBlMjI0MjZiZTE2M2ZlODgzYTZkOWUyY2M4Njc1MjVkMjZhYTUzNzNkNDZiZjMwZCIsInRpbWVzdGFtcCI6IjIwMjYtMTAtMDRUMDA6MDA6MDBaIn0sInJlY2VpcHRzIjpbeyJjaGVja3BvaW50IjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsInNpZyI6IjViM2JhM2U3MjJkYzNjMTk5MTI3NmRkMmY4MTM5ZjZhYmU3MTdhZTQ1NDFiYTg4NWIxOWM3ZWNlMzg1MjY2Yjg3NmFiYjMyYmY5OGU4MTc1YmNlNzMwYmY3YjQxMzdmNWU4ZTI2ZThkZDg0ODQzNzE0ZTcxODIwMmQ3M2E1NDAxIiwid2l0bmVzcyI6ImIxN2RhYTA3ZjdjMDllZWYzMDIyMDlkN2ZmYTZlYTY3ZGQ5Mzg3ZDU3OTdlOTVhZWUyYjlkZDc2MzFlNjY4MDQifV19XSwic3ViamVjdCI6eyJmdWxsX2hpc3RvcnkiOm51bGx9fSwiaGlzdG9yeV9jYXJkX2RpZ2VzdCI6ImYyZWY2ZjZhNDY4MmU2NGRkNTNjZWFiNTBlNzk5NTA2NmU4Yzk4MzFjNzc1ZmVjMjA3NzQwZTU1ZDg3ODcxNjkiLCJwZXJpb2RfY291bnRzIjp7InBlcmlvZHMiOlt7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjEyfSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6N30seyJkaW1lbnNpb24iOm51bGwsImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjE5fV0sImZyb20iOiIyMDI2LTEwLTAxVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wMlQwMDowMDowMFoifSx7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjEwfSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwic3VwcHJlc3NlZCI6ImJlbG93X2Zsb29yIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6bnVsbH0seyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1jIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtZCJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJzdXBwcmVzc2VkIjoiYmVsb3dfZmxvb3IiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjpudWxsfSx7ImRpbWVuc2lvbiI6bnVsbCwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6MTJ9XSwiZnJvbSI6IjIwMjYtMTAtMDJUMDA6MDA6MDBaIiwidG8iOiIyMDI2LTEwLTAzVDAwOjAwOjAwWiJ9LHsiY2VsbHMiOlt7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWEifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6Nn0seyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1iIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjV9LHsiZGltZW5zaW9uIjpudWxsLCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjoxMX1dLCJmcm9tIjoiMjAyNi0xMC0wM1QwMDowMDowMFoiLCJ0byI6IjIwMjYtMTAtMDRUMDA6MDA6MDBaIn1dLCJwb2xpY3kiOiJhMGVlMzk4NWVlNDQ0MGNkMGMxMjM4NGU3YTZkMjBjNTEyODkzODUwY2FhOWMyMGQ1M2JjMzk1MWI1MGYxNjAwIn0sInN1YmplY3QiOnsiZnVsbF9oaXN0b3J5IjpudWxsfX0\",\"artifact_digest\":\"035aee2ae2d12c946a467f96eb4f0e3a6f7e7d8a47d56b37c6c24cbf9158c654\",\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"issued_at\":\"2026-10-04T00:00:05Z\",\"profile\":\"evidence-interop/1\",\"request_digest\":\"93ce156b57a266d7bdb1c5479308178e404f2979ae2f6b8ad46b139256746a25\",\"responder\":\"1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9\",\"sig\":\"93211d8799a5eaf77fdeae016d8c1d4ad44038f7205e98ef4bf052a3b71f1190fbc7f1b276ceb2306d93447eae0748c3d2edf1a2d044c36f809eef0d91b8b80d\",\"subject\":{\"full_history\":null}}"
+        }
+      },
+      "expected": {
+        "exchange": {
+          "message_type": "envelope",
+          "subject": {
+            "full_history": null
+          },
+          "properties": {
+            "profile_version": "PASS",
+            "envelope_signature": "PASS",
+            "responder_trust": "PASS",
+            "responder_key_current": "NOT_CHECKED",
+            "issued_at_form": "PASS",
+            "request_binding": "PASS",
+            "subject_binding": "PASS",
+            "artifact_digest": "PASS",
+            "verification_binding": "NOT_PRESENT",
+            "anchor_match": "PASS",
+            "anchor_inclusion": "NOT_CHECKED"
+          },
+          "accepted": true,
+          "requirements": {
+            "r-service": {
+              "row": "envelope-4",
+              "status": "UNKNOWN",
+              "sufficiency": "UNKNOWN",
+              "verdict": "not_evaluable"
+            }
+          },
+          "claim": {
+            "evidence": [
+              {
+                "digest_alg": "SHA-256",
+                "digest": "035aee2ae2d12c946a467f96eb4f0e3a6f7e7d8a47d56b37c6c24cbf9158c654"
+              }
+            ],
+            "proofs": []
+          }
+        },
+        "history_properties": {
+          "definition_form": "PASS",
+          "definition_binding": "PASS",
+          "artifact_form": "PASS",
+          "history_card_content": "PASS",
+          "units": "PASS",
+          "labels": "PASS",
+          "period_alignment": "PASS",
+          "period_anchor": "PASS",
+          "period_floor": "FAIL"
+        },
+        "coverage": {
+          "declared_kind": "stream_interval",
+          "properties": {
+            "coverage_declaration_form": "PASS",
+            "coverage_declaration_anchor": "PASS",
+            "coverage_declaration_population": "NOT_CHECKED",
+            "coverage_declaration_commitment": "NOT_CHECKED"
+          },
+          "relative_to": "the node's stream at the anchor, under all_records; completeness not established: counts not checked against records"
+        },
+        "shows": {
+          "witness": {
+            "checkpoints": 4,
+            "witness_receipts_counted": 2,
+            "witness_receipts_not_counted": [
+              {
+                "checkpoint": 3,
+                "reason": "witness key not configured"
+              }
+            ]
+          }
+        },
+        "accepted": false,
+        "fails": [
+          "period_floor"
+        ]
+      }
+    },
+    {
+      "id": "mutant-v1-total-over-withheld",
+      "title": "A published model of 10 and two withheld under the floor beside a published total of 19: two cells under a floor of 5 hold at most 8",
+      "cites": [
+        "§6.2",
+        "§6.3",
+        "§9"
+      ],
+      "source": "constructed: mutant-v1-total-pins-beside-published with the total raised to 19",
+      "kind": "history",
+      "pins": {
+        "trust_policy": {
+          "responder_keys": [
+            "1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9"
+          ],
+          "log_keys": [],
+          "foreign_keys": [],
+          "parties": {},
+          "successions": [],
+          "require_action_time_from_other_party": false
+        },
+        "verification_policy": {
+          "online": false,
+          "profiles_implemented": [
+            "evidence-interop/1"
+          ],
+          "kinds_implemented": [
+            "cll-checkpoint",
+            "cll-inclusion-proof",
+            "cll-consistency-proof"
+          ]
+        },
+        "service_history": {
+          "log_keys": [
+            "af27e35f070d376f87ce0859973d34fa82204d5086c127d1e646eff5f1c2336d"
+          ],
+          "witness_keys": [
+            "1b43682b0facfa5f2da0875193a1bb75c66019817cc24baef79041838e315caf"
+          ],
+          "peer_keys": [
+            "582c60f2f98715969cac653a0afc59eb43ede89dae84f3ad8a78c69a3c29adaf"
+          ]
+        },
+        "contract_ref": "S@1",
+        "contract_digest": "0269eebf43bdb5f689464ca6e51946974e1f850d711314655d843ad1319f2242",
+        "evaluation_time": "2026-10-05T06:00:00Z"
+      },
+      "inputs": {
+        "definition": {
+          "coverage_declaration": {
+            "kind": "stream_interval",
+            "rule": "all_records"
+          },
+          "embeds": [
+            "history_card/1"
+          ],
+          "excludes": [
+            "requester identity",
+            "per-recipient release state"
+          ],
+          "kind": "projection",
+          "level": "standard",
+          "members": [
+            {
+              "name": "history_card",
+              "required": true,
+              "derivation": "history_card/1",
+              "reads": [
+                "checkpoint: key_id, log_size, root, timestamp, sig",
+                "receipt: checkpoint, witness, sig"
+              ],
+              "units": [
+                {
+                  "where": "history (one entry per checkpoint)",
+                  "unit": "checkpoints"
+                },
+                {
+                  "where": "history[].receipts",
+                  "unit": "witness_receipts"
+                }
+              ]
+            },
+            {
+              "name": "period_counts",
+              "required": true,
+              "reads": [
+                "record: role",
+                "record: committed_at",
+                "record: model claim"
+              ],
+              "units": [
+                {
+                  "where": "periods[].cells[]",
+                  "unit": "exchanges_served"
+                }
+              ],
+              "claims": {
+                "asserted_by": "provider",
+                "label": "provider states",
+                "where": [
+                  "periods[].cells[].dimension"
+                ]
+              }
+            }
+          ],
+          "name": "service_history_example/1",
+          "period_policy": {
+            "epoch": "2026-10-01T00:00:00Z",
+            "floor": 5,
+            "length_s": 86400,
+            "min_length_s": 86400,
+            "suppression": "complementary"
+          },
+          "profile": "inference-service-history/1",
+          "reads": [
+            "checkpoint: key_id, log_size, root, timestamp, sig",
+            "receipt: checkpoint, witness, sig",
+            "record: role",
+            "record: committed_at",
+            "record: model claim"
+          ],
+          "spec": "vectors/inference-service-history-v1/README.md",
+          "subjects": [
+            "full_history"
+          ]
+        },
+        "request": {
+          "media_type": "application/json",
+          "octets_text": "{\"coverage\":{\"expected_pin\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"nonce\":\"requester-1/v1\",\"profile\":\"evidence-interop/1\",\"subject\":{\"full_history\":null}}"
+        },
+        "reply": {
+          "media_type": "application/json",
+          "octets_text": "{\"anchor\":{\"digest\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"artifact\":\"eyJhbmNob3IiOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIiwiY292ZXJhZ2VfZGVjbGFyYXRpb24iOnsiaW50ZXJ2YWwiOnsiZnJvbSI6bnVsbCwidG8iOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIn0sImtpbmQiOiJzdHJlYW1faW50ZXJ2YWwiLCJsaXZlX3NldCI6W3siY2hlY2twb2ludCI6Ijk4NmQ5Y2UwNDk1MWQwMWJlNjE5YzMyYWVhNjRiNDQyODg3OTkxYTUyOTBlYzA5YzZlODc4OWIxMjFlZmU4MmIiLCJjb3VudCI6NTIsInN0YXJ0IjowLCJzdHJlYW0iOiJub2RlLXN0cmVhbS0xIn1dLCJydWxlIjoiYWxsX3JlY29yZHMifSwiZGVjbGFyZWQiOlsiaGlzdG9yeV9jYXJkIiwicGVyaW9kX2NvdW50cyJdLCJkZXJpdmF0aW9uIjoiZDRjZTk4ZmZhODEzNGJhOTQ3MGNmZGNkZjQyZGMwODZlOTY3OWQ4ZGZmOGQxODdiZTMxMGYyMzBkYzE0NDcxYSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5X2NhcmQiOnsiYW5jaG9yIjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsImRlcml2YXRpb24iOiJoaXN0b3J5X2NhcmQvMSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5IjpbeyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MTAsInJvb3QiOiJkZTA5ODdiMDY2NzdiODU4ZjUzYTE2YjMzMWRkNTc4ZjllNTJiY2EyZWI2YzJkNjRjZDMxN2JkMTE3OGNjZTllIiwic2lnIjoiY2U3Yjk4Y2ZlYmRiOWM5MGRhZGM5YWVkOWU4MmQwYjg3MGZkZWQzZTBiMDM1YjkyNDgzNWU5OWE3ZTM2OWNkZjMzNTI0Nzg3ZWRkZWI1NGRmZDc1Y2RiMjgwNjI4ZGMxNzAzMDM1Zjc2M2Q3Y2M5YjM4NDJiNzBhNTEzN2ZiMGIiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAxVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W119LHsiY2hlY2twb2ludCI6eyJrZXlfaWQiOiJhZjI3ZTM1ZjA3MGQzNzZmODdjZTA4NTk5NzNkMzRmYTgyMjA0ZDUwODZjMTI3ZDFlNjQ2ZWZmNWYxYzIzMzZkIiwibG9nX3NpemUiOjI1LCJyb290IjoiYjYwZjFiYmZhNWQ3Y2RjOTc1NjliZGE4Y2JjZjQ4MjJkOTU2ZWUxYmE4YjA4MzU4MGQzMmRjYzNlNzI1MjNkMyIsInNpZyI6IjlmNjc0ZTU5YjQxNzg1ZmQ1OTY0NzgwZmUxMmQ2M2RhMDMzMTJmMjkwNmRhZjE5ZTgwNGJlZTlkZWU5YzA4NTg3Y2Q0NDU5NmViMTIwYTE2Njc2YzRmNjY1OTZhMGMxYTE1OTgzZTY2YThhZWJkMzI1YjZlOWI2OWRiNTkzODAxIiwidGltZXN0YW1wIjoiMjAyNi0xMC0wMlQxMjowMDowMFoifSwicmVjZWlwdHMiOlt7ImNoZWNrcG9pbnQiOiJmMjlmZTk1Mzc5ZGQwMjA3N2MwY2JmODJiYjIwZTI0ZmZhY2UyMmQ4NDFlZmQwNWJjMTIzMjc0MjhlNTZhYTAyIiwic2lnIjoiYWMwOWMzOTVjMTk0YjQ0NjVmZmJjM2ZhMTg5NWZkYmQ1YjhjMTU4MWE5ZTlkYmExMjgzNjg1NDAzOTEwNGQzNDJkYWE1NjRmNDJhODQyY2NjOTgyNDg0Y2RlOGVmZWY0MzgyZTk3N2RiMmEyNDBkOTdmMDdjYmFhMGRhNTc0MGQiLCJ3aXRuZXNzIjoiMWI0MzY4MmIwZmFjZmE1ZjJkYTA4NzUxOTNhMWJiNzVjNjYwMTk4MTdjYzI0YmFlZjc5MDQxODM4ZTMxNWNhZiJ9XX0seyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MzgsInJvb3QiOiI4OTM2MWEzZDYyNzY5NDcwMzQ1MGZmNWRhMTY4ZTgyYTdkZWQ1NjQyYzU2ZThhYTMyOWVlMzIxNGU1Mjg5MDZkIiwic2lnIjoiNzUyMjkxZGJiNmVkZWU0ZGNlODljZDVkNjk2ODg1ZWIyOGI5ZWQ2OWZkOWM0MmFiMDdhZDFiYTNlOTg3OTYxMTM4ZDA5OTYzYzQwMzBjYmNkNjJiYWFmMjFjODc5OWJkYWI3Y2MwOWNiZDA5MjkzYzIyNGFkYWYyMGQxMjExMDgiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAzVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W3siY2hlY2twb2ludCI6IjZiYWVjNmM2NDhmZGRkNjYxNjViZGQzZmVmYTdiYzRkZTg3NGQ3NjExMDM0MTVjMTcwNWEyM2UzMGNiODZkZjUiLCJzaWciOiI2ZGEwNjhjZDBkNTA3ZmQ3MTNkNTBjZDVkNjRjYjUyMTE4MzQ2OTVkOGJmOWEzZjZmMTRlNDM5MjJiYTcyZmQ5MzhlNWM3YTFmNmJkY2M3MjgzMjA3MGJjZDIwMGUwYjU5YTllNjhiODJlY2Y1OGZjNDA0YTdhODMwZGRhNWEwYSIsIndpdG5lc3MiOiIxYjQzNjgyYjBmYWNmYTVmMmRhMDg3NTE5M2ExYmI3NWM2NjAxOTgxN2NjMjRiYWVmNzkwNDE4MzhlMzE1Y2FmIn1dfSx7ImNoZWNrcG9pbnQiOnsia2V5X2lkIjoiYWYyN2UzNWYwNzBkMzc2Zjg3Y2UwODU5OTczZDM0ZmE4MjIwNGQ1MDg2YzEyN2QxZTY0NmVmZjVmMWMyMzM2ZCIsImxvZ19zaXplIjo1Miwicm9vdCI6IjI1ZWE3MjE4NzY2MGFjMzNjYWY4ZDMxMmVlZjRhMjBiNDM0MWNmZTNiZTM1Zjg5ZDMwNWVmZGI4Y2JhMGFkOTYiLCJzaWciOiJiNTJkNDVmNTZmNmQ3NGZjNmRhYjQ2ZDQ0NzUzNTA0YmU5NDRlOGYxNTA2YWU0MDVmOWNkOGVjYzA0MjZhYWE0M2U0Y2Q1M2NlYTA5MGM2NDBlMjI0MjZiZTE2M2ZlODgzYTZkOWUyY2M4Njc1MjVkMjZhYTUzNzNkNDZiZjMwZCIsInRpbWVzdGFtcCI6IjIwMjYtMTAtMDRUMDA6MDA6MDBaIn0sInJlY2VpcHRzIjpbeyJjaGVja3BvaW50IjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsInNpZyI6IjViM2JhM2U3MjJkYzNjMTk5MTI3NmRkMmY4MTM5ZjZhYmU3MTdhZTQ1NDFiYTg4NWIxOWM3ZWNlMzg1MjY2Yjg3NmFiYjMyYmY5OGU4MTc1YmNlNzMwYmY3YjQxMzdmNWU4ZTI2ZThkZDg0ODQzNzE0ZTcxODIwMmQ3M2E1NDAxIiwid2l0bmVzcyI6ImIxN2RhYTA3ZjdjMDllZWYzMDIyMDlkN2ZmYTZlYTY3ZGQ5Mzg3ZDU3OTdlOTVhZWUyYjlkZDc2MzFlNjY4MDQifV19XSwic3ViamVjdCI6eyJmdWxsX2hpc3RvcnkiOm51bGx9fSwiaGlzdG9yeV9jYXJkX2RpZ2VzdCI6ImYyZWY2ZjZhNDY4MmU2NGRkNTNjZWFiNTBlNzk5NTA2NmU4Yzk4MzFjNzc1ZmVjMjA3NzQwZTU1ZDg3ODcxNjkiLCJwZXJpb2RfY291bnRzIjp7InBlcmlvZHMiOlt7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjEyfSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6N30seyJkaW1lbnNpb24iOm51bGwsImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjE5fV0sImZyb20iOiIyMDI2LTEwLTAxVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wMlQwMDowMDowMFoifSx7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjEwfSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwic3VwcHJlc3NlZCI6ImJlbG93X2Zsb29yIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6bnVsbH0seyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1jIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjpudWxsLCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjoxOX1dLCJmcm9tIjoiMjAyNi0xMC0wMlQwMDowMDowMFoiLCJ0byI6IjIwMjYtMTAtMDNUMDA6MDA6MDBaIn0seyJjZWxscyI6W3siZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtYSJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjo2fSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6NX0seyJkaW1lbnNpb24iOm51bGwsImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjExfV0sImZyb20iOiIyMDI2LTEwLTAzVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wNFQwMDowMDowMFoifV0sInBvbGljeSI6ImEwZWUzOTg1ZWU0NDQwY2QwYzEyMzg0ZTdhNmQyMGM1MTI4OTM4NTBjYWE5YzIwZDUzYmMzOTUxYjUwZjE2MDAifSwic3ViamVjdCI6eyJmdWxsX2hpc3RvcnkiOm51bGx9fQ\",\"artifact_digest\":\"920e8f8c6e71bde341a66339b5508b9061e9779354cef00c26748a3dec94dfd0\",\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"issued_at\":\"2026-10-04T00:00:05Z\",\"profile\":\"evidence-interop/1\",\"request_digest\":\"93ce156b57a266d7bdb1c5479308178e404f2979ae2f6b8ad46b139256746a25\",\"responder\":\"1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9\",\"sig\":\"f85fc7b5a5e75ab40dfff940c198a82041506bf91d9a30af6a66db99b2c4f7a40d7c99b851b3d64461ad361d2f8e767fa9dc791b0325b604877dd13f2fc2be0b\",\"subject\":{\"full_history\":null}}"
+        }
+      },
+      "expected": {
+        "exchange": {
+          "message_type": "envelope",
+          "subject": {
+            "full_history": null
+          },
+          "properties": {
+            "profile_version": "PASS",
+            "envelope_signature": "PASS",
+            "responder_trust": "PASS",
+            "responder_key_current": "NOT_CHECKED",
+            "issued_at_form": "PASS",
+            "request_binding": "PASS",
+            "subject_binding": "PASS",
+            "artifact_digest": "PASS",
+            "verification_binding": "NOT_PRESENT",
+            "anchor_match": "PASS",
+            "anchor_inclusion": "NOT_CHECKED"
+          },
+          "accepted": true,
+          "requirements": {
+            "r-service": {
+              "row": "envelope-4",
+              "status": "UNKNOWN",
+              "sufficiency": "UNKNOWN",
+              "verdict": "not_evaluable"
+            }
+          },
+          "claim": {
+            "evidence": [
+              {
+                "digest_alg": "SHA-256",
+                "digest": "920e8f8c6e71bde341a66339b5508b9061e9779354cef00c26748a3dec94dfd0"
+              }
+            ],
+            "proofs": []
+          }
+        },
+        "history_properties": {
+          "definition_form": "PASS",
+          "definition_binding": "PASS",
+          "artifact_form": "PASS",
+          "history_card_content": "PASS",
+          "units": "PASS",
+          "labels": "PASS",
+          "period_alignment": "PASS",
+          "period_anchor": "PASS",
+          "period_floor": "FAIL"
+        },
+        "coverage": {
+          "declared_kind": "stream_interval",
+          "properties": {
+            "coverage_declaration_form": "PASS",
+            "coverage_declaration_anchor": "PASS",
+            "coverage_declaration_population": "NOT_CHECKED",
+            "coverage_declaration_commitment": "NOT_CHECKED"
+          },
+          "relative_to": "the node's stream at the anchor, under all_records; completeness not established: counts not checked against records"
+        },
+        "shows": {
+          "witness": {
+            "checkpoints": 4,
+            "witness_receipts_counted": 2,
+            "witness_receipts_not_counted": [
+              {
+                "checkpoint": 3,
+                "reason": "witness key not configured"
+              }
+            ]
+          }
+        },
+        "accepted": false,
+        "fails": [
+          "period_floor"
+        ]
+      }
+    },
+    {
+      "id": "mutant-v1-total-withheld-beside-one-model",
+      "title": "One model withheld under the floor, its partner and the total withheld complementary",
+      "cites": [
+        "§6.2",
+        "§6.3",
+        "§9"
+      ],
+      "source": "constructed: v1-standard-served with 2 October's total withheld complementary; /1 withholds a total only beside two or more models under the floor",
+      "kind": "history",
+      "pins": {
+        "trust_policy": {
+          "responder_keys": [
+            "1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9"
+          ],
+          "log_keys": [],
+          "foreign_keys": [],
+          "parties": {},
+          "successions": [],
+          "require_action_time_from_other_party": false
+        },
+        "verification_policy": {
+          "online": false,
+          "profiles_implemented": [
+            "evidence-interop/1"
+          ],
+          "kinds_implemented": [
+            "cll-checkpoint",
+            "cll-inclusion-proof",
+            "cll-consistency-proof"
+          ]
+        },
+        "service_history": {
+          "log_keys": [
+            "af27e35f070d376f87ce0859973d34fa82204d5086c127d1e646eff5f1c2336d"
+          ],
+          "witness_keys": [
+            "1b43682b0facfa5f2da0875193a1bb75c66019817cc24baef79041838e315caf"
+          ],
+          "peer_keys": [
+            "582c60f2f98715969cac653a0afc59eb43ede89dae84f3ad8a78c69a3c29adaf"
+          ]
+        },
+        "contract_ref": "S@1",
+        "contract_digest": "0269eebf43bdb5f689464ca6e51946974e1f850d711314655d843ad1319f2242",
+        "evaluation_time": "2026-10-05T06:00:00Z"
+      },
+      "inputs": {
+        "definition": {
+          "coverage_declaration": {
+            "kind": "stream_interval",
+            "rule": "all_records"
+          },
+          "embeds": [
+            "history_card/1"
+          ],
+          "excludes": [
+            "requester identity",
+            "per-recipient release state"
+          ],
+          "kind": "projection",
+          "level": "standard",
+          "members": [
+            {
+              "name": "history_card",
+              "required": true,
+              "derivation": "history_card/1",
+              "reads": [
+                "checkpoint: key_id, log_size, root, timestamp, sig",
+                "receipt: checkpoint, witness, sig"
+              ],
+              "units": [
+                {
+                  "where": "history (one entry per checkpoint)",
+                  "unit": "checkpoints"
+                },
+                {
+                  "where": "history[].receipts",
+                  "unit": "witness_receipts"
+                }
+              ]
+            },
+            {
+              "name": "period_counts",
+              "required": true,
+              "reads": [
+                "record: role",
+                "record: committed_at",
+                "record: model claim"
+              ],
+              "units": [
+                {
+                  "where": "periods[].cells[]",
+                  "unit": "exchanges_served"
+                }
+              ],
+              "claims": {
+                "asserted_by": "provider",
+                "label": "provider states",
+                "where": [
+                  "periods[].cells[].dimension"
+                ]
+              }
+            }
+          ],
+          "name": "service_history_example/1",
+          "period_policy": {
+            "epoch": "2026-10-01T00:00:00Z",
+            "floor": 5,
+            "length_s": 86400,
+            "min_length_s": 86400,
+            "suppression": "complementary"
+          },
+          "profile": "inference-service-history/1",
+          "reads": [
+            "checkpoint: key_id, log_size, root, timestamp, sig",
+            "receipt: checkpoint, witness, sig",
+            "record: role",
+            "record: committed_at",
+            "record: model claim"
+          ],
+          "spec": "vectors/inference-service-history-v1/README.md",
+          "subjects": [
+            "full_history"
+          ]
+        },
+        "request": {
+          "media_type": "application/json",
+          "octets_text": "{\"coverage\":{\"expected_pin\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"nonce\":\"requester-1/v1\",\"profile\":\"evidence-interop/1\",\"subject\":{\"full_history\":null}}"
+        },
+        "reply": {
+          "media_type": "application/json",
+          "octets_text": "{\"anchor\":{\"digest\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"artifact\":\"eyJhbmNob3IiOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIiwiY292ZXJhZ2VfZGVjbGFyYXRpb24iOnsiaW50ZXJ2YWwiOnsiZnJvbSI6bnVsbCwidG8iOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIn0sImtpbmQiOiJzdHJlYW1faW50ZXJ2YWwiLCJsaXZlX3NldCI6W3siY2hlY2twb2ludCI6Ijk4NmQ5Y2UwNDk1MWQwMWJlNjE5YzMyYWVhNjRiNDQyODg3OTkxYTUyOTBlYzA5YzZlODc4OWIxMjFlZmU4MmIiLCJjb3VudCI6NTIsInN0YXJ0IjowLCJzdHJlYW0iOiJub2RlLXN0cmVhbS0xIn1dLCJydWxlIjoiYWxsX3JlY29yZHMifSwiZGVjbGFyZWQiOlsiaGlzdG9yeV9jYXJkIiwicGVyaW9kX2NvdW50cyJdLCJkZXJpdmF0aW9uIjoiZDRjZTk4ZmZhODEzNGJhOTQ3MGNmZGNkZjQyZGMwODZlOTY3OWQ4ZGZmOGQxODdiZTMxMGYyMzBkYzE0NDcxYSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5X2NhcmQiOnsiYW5jaG9yIjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsImRlcml2YXRpb24iOiJoaXN0b3J5X2NhcmQvMSIsImV2aWRlbmNlX3N0cmVhbSI6Im5vZGUtc3RyZWFtLTEiLCJoaXN0b3J5IjpbeyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MTAsInJvb3QiOiJkZTA5ODdiMDY2NzdiODU4ZjUzYTE2YjMzMWRkNTc4ZjllNTJiY2EyZWI2YzJkNjRjZDMxN2JkMTE3OGNjZTllIiwic2lnIjoiY2U3Yjk4Y2ZlYmRiOWM5MGRhZGM5YWVkOWU4MmQwYjg3MGZkZWQzZTBiMDM1YjkyNDgzNWU5OWE3ZTM2OWNkZjMzNTI0Nzg3ZWRkZWI1NGRmZDc1Y2RiMjgwNjI4ZGMxNzAzMDM1Zjc2M2Q3Y2M5YjM4NDJiNzBhNTEzN2ZiMGIiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAxVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W119LHsiY2hlY2twb2ludCI6eyJrZXlfaWQiOiJhZjI3ZTM1ZjA3MGQzNzZmODdjZTA4NTk5NzNkMzRmYTgyMjA0ZDUwODZjMTI3ZDFlNjQ2ZWZmNWYxYzIzMzZkIiwibG9nX3NpemUiOjI1LCJyb290IjoiYjYwZjFiYmZhNWQ3Y2RjOTc1NjliZGE4Y2JjZjQ4MjJkOTU2ZWUxYmE4YjA4MzU4MGQzMmRjYzNlNzI1MjNkMyIsInNpZyI6IjlmNjc0ZTU5YjQxNzg1ZmQ1OTY0NzgwZmUxMmQ2M2RhMDMzMTJmMjkwNmRhZjE5ZTgwNGJlZTlkZWU5YzA4NTg3Y2Q0NDU5NmViMTIwYTE2Njc2YzRmNjY1OTZhMGMxYTE1OTgzZTY2YThhZWJkMzI1YjZlOWI2OWRiNTkzODAxIiwidGltZXN0YW1wIjoiMjAyNi0xMC0wMlQxMjowMDowMFoifSwicmVjZWlwdHMiOlt7ImNoZWNrcG9pbnQiOiJmMjlmZTk1Mzc5ZGQwMjA3N2MwY2JmODJiYjIwZTI0ZmZhY2UyMmQ4NDFlZmQwNWJjMTIzMjc0MjhlNTZhYTAyIiwic2lnIjoiYWMwOWMzOTVjMTk0YjQ0NjVmZmJjM2ZhMTg5NWZkYmQ1YjhjMTU4MWE5ZTlkYmExMjgzNjg1NDAzOTEwNGQzNDJkYWE1NjRmNDJhODQyY2NjOTgyNDg0Y2RlOGVmZWY0MzgyZTk3N2RiMmEyNDBkOTdmMDdjYmFhMGRhNTc0MGQiLCJ3aXRuZXNzIjoiMWI0MzY4MmIwZmFjZmE1ZjJkYTA4NzUxOTNhMWJiNzVjNjYwMTk4MTdjYzI0YmFlZjc5MDQxODM4ZTMxNWNhZiJ9XX0seyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MzgsInJvb3QiOiI4OTM2MWEzZDYyNzY5NDcwMzQ1MGZmNWRhMTY4ZTgyYTdkZWQ1NjQyYzU2ZThhYTMyOWVlMzIxNGU1Mjg5MDZkIiwic2lnIjoiNzUyMjkxZGJiNmVkZWU0ZGNlODljZDVkNjk2ODg1ZWIyOGI5ZWQ2OWZkOWM0MmFiMDdhZDFiYTNlOTg3OTYxMTM4ZDA5OTYzYzQwMzBjYmNkNjJiYWFmMjFjODc5OWJkYWI3Y2MwOWNiZDA5MjkzYzIyNGFkYWYyMGQxMjExMDgiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAzVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W3siY2hlY2twb2ludCI6IjZiYWVjNmM2NDhmZGRkNjYxNjViZGQzZmVmYTdiYzRkZTg3NGQ3NjExMDM0MTVjMTcwNWEyM2UzMGNiODZkZjUiLCJzaWciOiI2ZGEwNjhjZDBkNTA3ZmQ3MTNkNTBjZDVkNjRjYjUyMTE4MzQ2OTVkOGJmOWEzZjZmMTRlNDM5MjJiYTcyZmQ5MzhlNWM3YTFmNmJkY2M3MjgzMjA3MGJjZDIwMGUwYjU5YTllNjhiODJlY2Y1OGZjNDA0YTdhODMwZGRhNWEwYSIsIndpdG5lc3MiOiIxYjQzNjgyYjBmYWNmYTVmMmRhMDg3NTE5M2ExYmI3NWM2NjAxOTgxN2NjMjRiYWVmNzkwNDE4MzhlMzE1Y2FmIn1dfSx7ImNoZWNrcG9pbnQiOnsia2V5X2lkIjoiYWYyN2UzNWYwNzBkMzc2Zjg3Y2UwODU5OTczZDM0ZmE4MjIwNGQ1MDg2YzEyN2QxZTY0NmVmZjVmMWMyMzM2ZCIsImxvZ19zaXplIjo1Miwicm9vdCI6IjI1ZWE3MjE4NzY2MGFjMzNjYWY4ZDMxMmVlZjRhMjBiNDM0MWNmZTNiZTM1Zjg5ZDMwNWVmZGI4Y2JhMGFkOTYiLCJzaWciOiJiNTJkNDVmNTZmNmQ3NGZjNmRhYjQ2ZDQ0NzUzNTA0YmU5NDRlOGYxNTA2YWU0MDVmOWNkOGVjYzA0MjZhYWE0M2U0Y2Q1M2NlYTA5MGM2NDBlMjI0MjZiZTE2M2ZlODgzYTZkOWUyY2M4Njc1MjVkMjZhYTUzNzNkNDZiZjMwZCIsInRpbWVzdGFtcCI6IjIwMjYtMTAtMDRUMDA6MDA6MDBaIn0sInJlY2VpcHRzIjpbeyJjaGVja3BvaW50IjoiOTg2ZDljZTA0OTUxZDAxYmU2MTljMzJhZWE2NGI0NDI4ODc5OTFhNTI5MGVjMDljNmU4Nzg5YjEyMWVmZTgyYiIsInNpZyI6IjViM2JhM2U3MjJkYzNjMTk5MTI3NmRkMmY4MTM5ZjZhYmU3MTdhZTQ1NDFiYTg4NWIxOWM3ZWNlMzg1MjY2Yjg3NmFiYjMyYmY5OGU4MTc1YmNlNzMwYmY3YjQxMzdmNWU4ZTI2ZThkZDg0ODQzNzE0ZTcxODIwMmQ3M2E1NDAxIiwid2l0bmVzcyI6ImIxN2RhYTA3ZjdjMDllZWYzMDIyMDlkN2ZmYTZlYTY3ZGQ5Mzg3ZDU3OTdlOTVhZWUyYjlkZDc2MzFlNjY4MDQifV19XSwic3ViamVjdCI6eyJmdWxsX2hpc3RvcnkiOm51bGx9fSwiaGlzdG9yeV9jYXJkX2RpZ2VzdCI6ImYyZWY2ZjZhNDY4MmU2NGRkNTNjZWFiNTBlNzk5NTA2NmU4Yzk4MzFjNzc1ZmVjMjA3NzQwZTU1ZDg3ODcxNjkiLCJwZXJpb2RfY291bnRzIjp7InBlcmlvZHMiOlt7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjEyfSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6N30seyJkaW1lbnNpb24iOm51bGwsImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjE5fV0sImZyb20iOiIyMDI2LTEwLTAxVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wMlQwMDowMDowMFoifSx7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJjb21wbGVtZW50YXJ5IiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6bnVsbH0seyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1iIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjpudWxsLCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJzdXBwcmVzc2VkIjoiY29tcGxlbWVudGFyeSIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOm51bGx9XSwiZnJvbSI6IjIwMjYtMTAtMDJUMDA6MDA6MDBaIiwidG8iOiIyMDI2LTEwLTAzVDAwOjAwOjAwWiJ9LHsiY2VsbHMiOlt7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWEifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6Nn0seyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1iIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjV9LHsiZGltZW5zaW9uIjpudWxsLCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjoxMX1dLCJmcm9tIjoiMjAyNi0xMC0wM1QwMDowMDowMFoiLCJ0byI6IjIwMjYtMTAtMDRUMDA6MDA6MDBaIn1dLCJwb2xpY3kiOiJhMGVlMzk4NWVlNDQ0MGNkMGMxMjM4NGU3YTZkMjBjNTEyODkzODUwY2FhOWMyMGQ1M2JjMzk1MWI1MGYxNjAwIn0sInN1YmplY3QiOnsiZnVsbF9oaXN0b3J5IjpudWxsfX0\",\"artifact_digest\":\"163eeb079b95a928ebc41c15eddf1cc2b129b51d6b982aa801f4f358bd307f4f\",\"derivation\":\"d4ce98ffa8134ba9470cfdcdf42dc086e9679d8dff8d187be310f230dc14471a\",\"issued_at\":\"2026-10-04T00:00:05Z\",\"profile\":\"evidence-interop/1\",\"request_digest\":\"93ce156b57a266d7bdb1c5479308178e404f2979ae2f6b8ad46b139256746a25\",\"responder\":\"1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9\",\"sig\":\"2ebbc781468727b0e89daaf8426b0b0a7ff1ef3d4e350b81f36d0abae2dafdf8384bbe95469670013fbef348082f4931381c3c06d2a071ad6a08d852841fc70b\",\"subject\":{\"full_history\":null}}"
+        }
+      },
+      "expected": {
+        "exchange": {
+          "message_type": "envelope",
+          "subject": {
+            "full_history": null
+          },
+          "properties": {
+            "profile_version": "PASS",
+            "envelope_signature": "PASS",
+            "responder_trust": "PASS",
+            "responder_key_current": "NOT_CHECKED",
+            "issued_at_form": "PASS",
+            "request_binding": "PASS",
+            "subject_binding": "PASS",
+            "artifact_digest": "PASS",
+            "verification_binding": "NOT_PRESENT",
+            "anchor_match": "PASS",
+            "anchor_inclusion": "NOT_CHECKED"
+          },
+          "accepted": true,
+          "requirements": {
+            "r-service": {
+              "row": "envelope-4",
+              "status": "UNKNOWN",
+              "sufficiency": "UNKNOWN",
+              "verdict": "not_evaluable"
+            }
+          },
+          "claim": {
+            "evidence": [
+              {
+                "digest_alg": "SHA-256",
+                "digest": "163eeb079b95a928ebc41c15eddf1cc2b129b51d6b982aa801f4f358bd307f4f"
+              }
+            ],
+            "proofs": []
+          }
+        },
+        "history_properties": {
+          "definition_form": "PASS",
+          "definition_binding": "PASS",
+          "artifact_form": "PASS",
+          "history_card_content": "PASS",
+          "units": "PASS",
+          "labels": "PASS",
+          "period_alignment": "PASS",
+          "period_anchor": "PASS",
+          "period_floor": "FAIL"
+        },
+        "coverage": {
+          "declared_kind": "stream_interval",
+          "properties": {
+            "coverage_declaration_form": "PASS",
+            "coverage_declaration_anchor": "PASS",
+            "coverage_declaration_population": "NOT_CHECKED",
+            "coverage_declaration_commitment": "NOT_CHECKED"
+          },
+          "relative_to": "the node's stream at the anchor, under all_records; completeness not established: counts not checked against records"
+        },
+        "shows": {
+          "witness": {
+            "checkpoints": 4,
+            "witness_receipts_counted": 2,
+            "witness_receipts_not_counted": [
+              {
+                "checkpoint": 3,
+                "reason": "witness key not configured"
+              }
+            ]
+          }
+        },
+        "accepted": false,
+        "fails": [
+          "period_floor"
+        ]
+      }
+    },
+    {
+      "id": "v1-verdict-total-withheld",
+      "title": "A verdict result's table under /1: 4 contradicted about each of two model hashes, total withheld",
+      "cites": [
+        "§5.3",
+        "§6.2",
+        "§6.3",
+        "§9"
+      ],
+      "source": "constructed: the verdict set's verdicts with 2 October's contradicted ones 4 and 4",
+      "kind": "history",
+      "pins": {
+        "trust_policy": {
+          "responder_keys": [
+            "1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9"
+          ],
+          "log_keys": [],
+          "foreign_keys": [],
+          "parties": {},
+          "successions": [],
+          "require_action_time_from_other_party": false
+        },
+        "verification_policy": {
+          "online": false,
+          "profiles_implemented": [
+            "evidence-interop/1"
+          ],
+          "kinds_implemented": [
+            "cll-checkpoint",
+            "cll-inclusion-proof",
+            "cll-consistency-proof"
+          ]
+        },
+        "service_history": {
+          "log_keys": [
+            "af27e35f070d376f87ce0859973d34fa82204d5086c127d1e646eff5f1c2336d"
+          ],
+          "witness_keys": [
+            "1b43682b0facfa5f2da0875193a1bb75c66019817cc24baef79041838e315caf"
+          ],
+          "peer_keys": [
+            "582c60f2f98715969cac653a0afc59eb43ede89dae84f3ad8a78c69a3c29adaf"
+          ]
+        },
+        "contract_ref": "S@1",
+        "contract_digest": "0269eebf43bdb5f689464ca6e51946974e1f850d711314655d843ad1319f2242",
+        "evaluation_time": "2026-10-05T06:00:00Z"
+      },
+      "inputs": {
+        "definition": {
+          "coverage_declaration": {
+            "kind": "stream_interval",
+            "rule": "all_records"
+          },
+          "embeds": [
+            "history_card/1"
+          ],
+          "excludes": [
+            "requester identity",
+            "per-recipient release state"
+          ],
+          "kind": "projection",
+          "level": "standard",
+          "members": [
+            {
+              "name": "history_card",
+              "required": true,
+              "derivation": "history_card/1",
+              "reads": [
+                "checkpoint: key_id, log_size, root, timestamp, sig",
+                "receipt: checkpoint, witness, sig"
+              ],
+              "units": [
+                {
+                  "where": "history (one entry per checkpoint)",
+                  "unit": "checkpoints"
+                },
+                {
+                  "where": "history[].receipts",
+                  "unit": "witness_receipts"
+                }
+              ]
+            },
+            {
+              "name": "period_counts",
+              "required": true,
+              "reads": [
+                "record: role",
+                "record: committed_at",
+                "record: model claim"
+              ],
+              "units": [
+                {
+                  "where": "periods[].cells[]",
+                  "unit": "exchanges_served"
+                }
+              ],
+              "claims": {
+                "asserted_by": "provider",
+                "label": "provider states",
+                "where": [
+                  "periods[].cells[].dimension"
+                ]
+              }
+            },
+            {
+              "name": "verdict_counts",
+              "required": true,
+              "reads": [
+                "record: referee verdict held by this node",
+                "record: model identity hash",
+                "record: committed_at"
+              ],
+              "units": [
+                {
+                  "where": "periods[].cells[]",
+                  "unit": "referee_verdicts"
+                }
+              ],
+              "claims": {
+                "asserted_by": "provider",
+                "label": "provider states",
+                "where": [
+                  "periods[].cells[].dimension.model_hash"
+                ]
+              }
+            }
+          ],
+          "name": "service_history_verdicts_example/1",
+          "period_policy": {
+            "epoch": "2026-10-01T00:00:00Z",
+            "floor": 5,
+            "length_s": 86400,
+            "min_length_s": 86400,
+            "suppression": "complementary"
+          },
+          "profile": "inference-service-history/1",
+          "reads": [
+            "checkpoint: key_id, log_size, root, timestamp, sig",
+            "receipt: checkpoint, witness, sig",
+            "record: role",
+            "record: committed_at",
+            "record: model claim",
+            "record: referee verdict held by this node",
+            "record: model identity hash"
+          ],
+          "spec": "vectors/inference-service-history-v1/README.md",
+          "subjects": [
+            "full_history"
+          ]
+        },
+        "request": {
+          "media_type": "application/json",
+          "octets_text": "{\"coverage\":{\"expected_pin\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"derivation\":\"ecc169db8b6b83b68b898f3495c41b7bf564f321fa5e50509b825a2d0d24989d\",\"nonce\":\"requester-1/v1-verdicts\",\"profile\":\"evidence-interop/1\",\"subject\":{\"full_history\":null}}"
+        },
+        "reply": {
+          "media_type": "application/json",
+          "octets_text": "{\"anchor\":{\"digest\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"artifact\":\"eyJhbmNob3IiOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIiwiY292ZXJhZ2VfZGVjbGFyYXRpb24iOnsiaW50ZXJ2YWwiOnsiZnJvbSI6bnVsbCwidG8iOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIn0sImtpbmQiOiJzdHJlYW1faW50ZXJ2YWwiLCJsaXZlX3NldCI6W3siY2hlY2twb2ludCI6Ijk4NmQ5Y2UwNDk1MWQwMWJlNjE5YzMyYWVhNjRiNDQyODg3OTkxYTUyOTBlYzA5YzZlODc4OWIxMjFlZmU4MmIiLCJjb3VudCI6NTIsInN0YXJ0IjowLCJzdHJlYW0iOiJub2RlLXN0cmVhbS0xIn1dLCJydWxlIjoiYWxsX3JlY29yZHMifSwiZGVjbGFyZWQiOlsiaGlzdG9yeV9jYXJkIiwicGVyaW9kX2NvdW50cyIsInZlcmRpY3RfY291bnRzIl0sImRlcml2YXRpb24iOiJlY2MxNjlkYjhiNmI4M2I2OGI4OThmMzQ5NWM0MWI3YmY1NjRmMzIxZmE1ZTUwNTA5YjgyNWEyZDBkMjQ5ODlkIiwiZXZpZGVuY2Vfc3RyZWFtIjoibm9kZS1zdHJlYW0tMSIsImhpc3RvcnlfY2FyZCI6eyJhbmNob3IiOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIiwiZGVyaXZhdGlvbiI6Imhpc3RvcnlfY2FyZC8xIiwiZXZpZGVuY2Vfc3RyZWFtIjoibm9kZS1zdHJlYW0tMSIsImhpc3RvcnkiOlt7ImNoZWNrcG9pbnQiOnsia2V5X2lkIjoiYWYyN2UzNWYwNzBkMzc2Zjg3Y2UwODU5OTczZDM0ZmE4MjIwNGQ1MDg2YzEyN2QxZTY0NmVmZjVmMWMyMzM2ZCIsImxvZ19zaXplIjoxMCwicm9vdCI6ImRlMDk4N2IwNjY3N2I4NThmNTNhMTZiMzMxZGQ1NzhmOWU1MmJjYTJlYjZjMmQ2NGNkMzE3YmQxMTc4Y2NlOWUiLCJzaWciOiJjZTdiOThjZmViZGI5YzkwZGFkYzlhZWQ5ZTgyZDBiODcwZmRlZDNlMGIwMzViOTI0ODM1ZTk5YTdlMzY5Y2RmMzM1MjQ3ODdlZGRlYjU0ZGZkNzVjZGIyODA2MjhkYzE3MDMwMzVmNzYzZDdjYzliMzg0MmI3MGE1MTM3ZmIwYiIsInRpbWVzdGFtcCI6IjIwMjYtMTAtMDFUMTI6MDA6MDBaIn0sInJlY2VpcHRzIjpbXX0seyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MjUsInJvb3QiOiJiNjBmMWJiZmE1ZDdjZGM5NzU2OWJkYThjYmNmNDgyMmQ5NTZlZTFiYThiMDgzNTgwZDMyZGNjM2U3MjUyM2QzIiwic2lnIjoiOWY2NzRlNTliNDE3ODVmZDU5NjQ3ODBmZTEyZDYzZGEwMzMxMmYyOTA2ZGFmMTllODA0YmVlOWRlZTljMDg1ODdjZDQ0NTk2ZWIxMjBhMTY2NzZjNGY2NjU5NmEwYzFhMTU5ODNlNjZhOGFlYmQzMjViNmU5YjY5ZGI1OTM4MDEiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAyVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W3siY2hlY2twb2ludCI6ImYyOWZlOTUzNzlkZDAyMDc3YzBjYmY4MmJiMjBlMjRmZmFjZTIyZDg0MWVmZDA1YmMxMjMyNzQyOGU1NmFhMDIiLCJzaWciOiJhYzA5YzM5NWMxOTRiNDQ2NWZmYmMzZmExODk1ZmRiZDViOGMxNTgxYTllOWRiYTEyODM2ODU0MDM5MTA0ZDM0MmRhYTU2NGY0MmE4NDJjY2M5ODI0ODRjZGU4ZWZlZjQzODJlOTc3ZGIyYTI0MGQ5N2YwN2NiYWEwZGE1NzQwZCIsIndpdG5lc3MiOiIxYjQzNjgyYjBmYWNmYTVmMmRhMDg3NTE5M2ExYmI3NWM2NjAxOTgxN2NjMjRiYWVmNzkwNDE4MzhlMzE1Y2FmIn1dfSx7ImNoZWNrcG9pbnQiOnsia2V5X2lkIjoiYWYyN2UzNWYwNzBkMzc2Zjg3Y2UwODU5OTczZDM0ZmE4MjIwNGQ1MDg2YzEyN2QxZTY0NmVmZjVmMWMyMzM2ZCIsImxvZ19zaXplIjozOCwicm9vdCI6Ijg5MzYxYTNkNjI3Njk0NzAzNDUwZmY1ZGExNjhlODJhN2RlZDU2NDJjNTZlOGFhMzI5ZWUzMjE0ZTUyODkwNmQiLCJzaWciOiI3NTIyOTFkYmI2ZWRlZTRkY2U4OWNkNWQ2OTY4ODVlYjI4YjllZDY5ZmQ5YzQyYWIwN2FkMWJhM2U5ODc5NjExMzhkMDk5NjNjNDAzMGNiY2Q2MmJhYWYyMWM4Nzk5YmRhYjdjYzA5Y2JkMDkyOTNjMjI0YWRhZjIwZDEyMTEwOCIsInRpbWVzdGFtcCI6IjIwMjYtMTAtMDNUMTI6MDA6MDBaIn0sInJlY2VpcHRzIjpbeyJjaGVja3BvaW50IjoiNmJhZWM2YzY0OGZkZGQ2NjE2NWJkZDNmZWZhN2JjNGRlODc0ZDc2MTEwMzQxNWMxNzA1YTIzZTMwY2I4NmRmNSIsInNpZyI6IjZkYTA2OGNkMGQ1MDdmZDcxM2Q1MGNkNWQ2NGNiNTIxMTgzNDY5NWQ4YmY5YTNmNmYxNGU0MzkyMmJhNzJmZDkzOGU1YzdhMWY2YmRjYzcyODMyMDcwYmNkMjAwZTBiNTlhOWU2OGI4MmVjZjU4ZmM0MDRhN2E4MzBkZGE1YTBhIiwid2l0bmVzcyI6IjFiNDM2ODJiMGZhY2ZhNWYyZGEwODc1MTkzYTFiYjc1YzY2MDE5ODE3Y2MyNGJhZWY3OTA0MTgzOGUzMTVjYWYifV19LHsiY2hlY2twb2ludCI6eyJrZXlfaWQiOiJhZjI3ZTM1ZjA3MGQzNzZmODdjZTA4NTk5NzNkMzRmYTgyMjA0ZDUwODZjMTI3ZDFlNjQ2ZWZmNWYxYzIzMzZkIiwibG9nX3NpemUiOjUyLCJyb290IjoiMjVlYTcyMTg3NjYwYWMzM2NhZjhkMzEyZWVmNGEyMGI0MzQxY2ZlM2JlMzVmODlkMzA1ZWZkYjhjYmEwYWQ5NiIsInNpZyI6ImI1MmQ0NWY1NmY2ZDc0ZmM2ZGFiNDZkNDQ3NTM1MDRiZTk0NGU4ZjE1MDZhZTQwNWY5Y2Q4ZWNjMDQyNmFhYTQzZTRjZDUzY2VhMDkwYzY0MGUyMjQyNmJlMTYzZmU4ODNhNmQ5ZTJjYzg2NzUyNWQyNmFhNTM3M2Q0NmJmMzBkIiwidGltZXN0YW1wIjoiMjAyNi0xMC0wNFQwMDowMDowMFoifSwicmVjZWlwdHMiOlt7ImNoZWNrcG9pbnQiOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIiwic2lnIjoiNWIzYmEzZTcyMmRjM2MxOTkxMjc2ZGQyZjgxMzlmNmFiZTcxN2FlNDU0MWJhODg1YjE5YzdlY2UzODUyNjZiODc2YWJiMzJiZjk4ZTgxNzViY2U3MzBiZjdiNDEzN2Y1ZThlMjZlOGRkODQ4NDM3MTRlNzE4MjAyZDczYTU0MDEiLCJ3aXRuZXNzIjoiYjE3ZGFhMDdmN2MwOWVlZjMwMjIwOWQ3ZmZhNmVhNjdkZDkzODdkNTc5N2U5NWFlZTJiOWRkNzYzMWU2NjgwNCJ9XX1dLCJzdWJqZWN0Ijp7ImZ1bGxfaGlzdG9yeSI6bnVsbH19LCJoaXN0b3J5X2NhcmRfZGlnZXN0IjoiZjJlZjZmNmE0NjgyZTY0ZGQ1M2NlYWI1MGU3OTk1MDY2ZThjOTgzMWM3NzVmZWMyMDc3NDBlNTVkODc4NzE2OSIsInBlcmlvZF9jb3VudHMiOnsicGVyaW9kcyI6W3siY2VsbHMiOlt7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWEifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6MTJ9LHsiZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtYiJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjo3fSx7ImRpbWVuc2lvbiI6bnVsbCwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6MTl9XSwiZnJvbSI6IjIwMjYtMTAtMDFUMDA6MDA6MDBaIiwidG8iOiIyMDI2LTEwLTAyVDAwOjAwOjAwWiJ9LHsiY2VsbHMiOlt7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWEifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwic3VwcHJlc3NlZCI6ImNvbXBsZW1lbnRhcnkiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjpudWxsfSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwic3VwcHJlc3NlZCI6ImJlbG93X2Zsb29yIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6bnVsbH0seyJkaW1lbnNpb24iOm51bGwsImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjEyfV0sImZyb20iOiIyMDI2LTEwLTAyVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wM1QwMDowMDowMFoifSx7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjZ9LHsiZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtYiJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjo1fSx7ImRpbWVuc2lvbiI6bnVsbCwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6MTF9XSwiZnJvbSI6IjIwMjYtMTAtMDNUMDA6MDA6MDBaIiwidG8iOiIyMDI2LTEwLTA0VDAwOjAwOjAwWiJ9XSwicG9saWN5IjoiYTBlZTM5ODVlZTQ0NDBjZDBjMTIzODRlN2E2ZDIwYzUxMjg5Mzg1MGNhYTljMjBkNTNiYzM5NTFiNTBmMTYwMCJ9LCJzdWJqZWN0Ijp7ImZ1bGxfaGlzdG9yeSI6bnVsbH0sInZlcmRpY3RfY291bnRzIjp7ImNoZWNrIjoicmVmZXJlZV92ZXJkaWN0IiwicGVyaW9kcyI6W3siY2VsbHMiOlt7ImRpbWVuc2lvbiI6eyJtb2RlbF9oYXNoIjoiMTk5NTk5MjhmNmI0MmFiMmU1ZTMxM2M3N2VhNGU2N2UxM2U5MjY1YWViZjExZmVhOTc4OGU2OTVhN2E2ODE1NSIsInJlc3VsdCI6ImNvcnJvYm9yYXRlZCJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoicmVmZXJlZV92ZXJkaWN0cyIsInZhbHVlIjo2fSx7ImRpbWVuc2lvbiI6eyJtb2RlbF9oYXNoIjoiM2JiMWM3MDUxMDMwMThhYTA4ZTUwMDc3MWNhMDBkYTZlZjQ3MDE1MGQ3MDMxNjZkMWMxZWRiZGI5ZmFkNWE4ZCIsInJlc3VsdCI6ImNvcnJvYm9yYXRlZCJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoicmVmZXJlZV92ZXJkaWN0cyIsInZhbHVlIjo5fSx7ImRpbWVuc2lvbiI6eyJyZXN1bHQiOiJjb3Jyb2JvcmF0ZWQifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6InJlZmVyZWVfdmVyZGljdHMiLCJ2YWx1ZSI6MTV9LHsiZGltZW5zaW9uIjp7Im1vZGVsX2hhc2giOiIzYmIxYzcwNTEwMzAxOGFhMDhlNTAwNzcxY2EwMGRhNmVmNDcwMTUwZDcwMzE2NmQxYzFlZGJkYjlmYWQ1YThkIiwicmVzdWx0IjoiY29udHJhZGljdGVkIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJyZWZlcmVlX3ZlcmRpY3RzIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjp7InJlc3VsdCI6ImNvbnRyYWRpY3RlZCJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJzdXBwcmVzc2VkIjoiYmVsb3dfZmxvb3IiLCJ1bml0IjoicmVmZXJlZV92ZXJkaWN0cyIsInZhbHVlIjpudWxsfSx7ImRpbWVuc2lvbiI6eyJyZXN1bHQiOiJpbmNvbmNsdXNpdmUifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwic3VwcHJlc3NlZCI6ImJlbG93X2Zsb29yIiwidW5pdCI6InJlZmVyZWVfdmVyZGljdHMiLCJ2YWx1ZSI6bnVsbH0seyJkaW1lbnNpb24iOnsibW9kZWxfaGFzaCI6IjE5OTU5OTI4ZjZiNDJhYjJlNWUzMTNjNzdlYTRlNjdlMTNlOTI2NWFlYmYxMWZlYTk3ODhlNjk1YTdhNjgxNTUiLCJyZXN1bHQiOiJub3RfY29tcGFyYWJsZSJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoicmVmZXJlZV92ZXJkaWN0cyIsInZhbHVlIjo1fSx7ImRpbWVuc2lvbiI6eyJyZXN1bHQiOiJub3RfY29tcGFyYWJsZSJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoicmVmZXJlZV92ZXJkaWN0cyIsInZhbHVlIjo1fV0sImZyb20iOiIyMDI2LTEwLTAxVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wMlQwMDowMDowMFoifSx7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWxfaGFzaCI6IjNiYjFjNzA1MTAzMDE4YWEwOGU1MDA3NzFjYTAwZGE2ZWY0NzAxNTBkNzAzMTY2ZDFjMWVkYmRiOWZhZDVhOGQiLCJyZXN1bHQiOiJjb3Jyb2JvcmF0ZWQifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6InJlZmVyZWVfdmVyZGljdHMiLCJ2YWx1ZSI6NX0seyJkaW1lbnNpb24iOnsicmVzdWx0IjoiY29ycm9ib3JhdGVkIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJyZWZlcmVlX3ZlcmRpY3RzIiwidmFsdWUiOjV9LHsiZGltZW5zaW9uIjp7Im1vZGVsX2hhc2giOiIxOTk1OTkyOGY2YjQyYWIyZTVlMzEzYzc3ZWE0ZTY3ZTEzZTkyNjVhZWJmMTFmZWE5Nzg4ZTY5NWE3YTY4MTU1IiwicmVzdWx0IjoiY29udHJhZGljdGVkIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJyZWZlcmVlX3ZlcmRpY3RzIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjp7Im1vZGVsX2hhc2giOiIzYmIxYzcwNTEwMzAxOGFhMDhlNTAwNzcxY2EwMGRhNmVmNDcwMTUwZDcwMzE2NmQxYzFlZGJkYjlmYWQ1YThkIiwicmVzdWx0IjoiY29udHJhZGljdGVkIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJyZWZlcmVlX3ZlcmRpY3RzIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjp7InJlc3VsdCI6ImNvbnRyYWRpY3RlZCJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJzdXBwcmVzc2VkIjoiY29tcGxlbWVudGFyeSIsInVuaXQiOiJyZWZlcmVlX3ZlcmRpY3RzIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjp7Im1vZGVsX2hhc2giOiIxOTk1OTkyOGY2YjQyYWIyZTVlMzEzYzc3ZWE0ZTY3ZTEzZTkyNjVhZWJmMTFmZWE5Nzg4ZTY5NWE3YTY4MTU1IiwicmVzdWx0IjoiaW5jb25jbHVzaXZlIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJyZWZlcmVlX3ZlcmRpY3RzIiwidmFsdWUiOjExfSx7ImRpbWVuc2lvbiI6eyJyZXN1bHQiOiJpbmNvbmNsdXNpdmUifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6InJlZmVyZWVfdmVyZGljdHMiLCJ2YWx1ZSI6MTF9LHsiZGltZW5zaW9uIjp7InJlc3VsdCI6Im5vdF9jb21wYXJhYmxlIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJyZWZlcmVlX3ZlcmRpY3RzIiwidmFsdWUiOm51bGx9XSwiZnJvbSI6IjIwMjYtMTAtMDJUMDA6MDA6MDBaIiwidG8iOiIyMDI2LTEwLTAzVDAwOjAwOjAwWiJ9LHsiY2VsbHMiOlt7ImRpbWVuc2lvbiI6eyJtb2RlbF9oYXNoIjoiMTk5NTk5MjhmNmI0MmFiMmU1ZTMxM2M3N2VhNGU2N2UxM2U5MjY1YWViZjExZmVhOTc4OGU2OTVhN2E2ODE1NSIsInJlc3VsdCI6ImNvcnJvYm9yYXRlZCJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoicmVmZXJlZV92ZXJkaWN0cyIsInZhbHVlIjo4fSx7ImRpbWVuc2lvbiI6eyJtb2RlbF9oYXNoIjoiM2JiMWM3MDUxMDMwMThhYTA4ZTUwMDc3MWNhMDBkYTZlZjQ3MDE1MGQ3MDMxNjZkMWMxZWRiZGI5ZmFkNWE4ZCIsInJlc3VsdCI6ImNvcnJvYm9yYXRlZCJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoicmVmZXJlZV92ZXJkaWN0cyIsInZhbHVlIjoyMH0seyJkaW1lbnNpb24iOnsicmVzdWx0IjoiY29ycm9ib3JhdGVkIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJyZWZlcmVlX3ZlcmRpY3RzIiwidmFsdWUiOjI4fSx7ImRpbWVuc2lvbiI6eyJyZXN1bHQiOiJjb250cmFkaWN0ZWQifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwic3VwcHJlc3NlZCI6ImJlbG93X2Zsb29yIiwidW5pdCI6InJlZmVyZWVfdmVyZGljdHMiLCJ2YWx1ZSI6bnVsbH0seyJkaW1lbnNpb24iOnsibW9kZWxfaGFzaCI6IjE5OTU5OTI4ZjZiNDJhYjJlNWUzMTNjNzdlYTRlNjdlMTNlOTI2NWFlYmYxMWZlYTk3ODhlNjk1YTdhNjgxNTUiLCJyZXN1bHQiOiJpbmNvbmNsdXNpdmUifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6InJlZmVyZWVfdmVyZGljdHMiLCJ2YWx1ZSI6Nn0seyJkaW1lbnNpb24iOnsibW9kZWxfaGFzaCI6IjNiYjFjNzA1MTAzMDE4YWEwOGU1MDA3NzFjYTAwZGE2ZWY0NzAxNTBkNzAzMTY2ZDFjMWVkYmRiOWZhZDVhOGQiLCJyZXN1bHQiOiJpbmNvbmNsdXNpdmUifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6InJlZmVyZWVfdmVyZGljdHMiLCJ2YWx1ZSI6NX0seyJkaW1lbnNpb24iOnsicmVzdWx0IjoiaW5jb25jbHVzaXZlIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJyZWZlcmVlX3ZlcmRpY3RzIiwidmFsdWUiOjExfSx7ImRpbWVuc2lvbiI6eyJtb2RlbF9oYXNoIjoiM2JiMWM3MDUxMDMwMThhYTA4ZTUwMDc3MWNhMDBkYTZlZjQ3MDE1MGQ3MDMxNjZkMWMxZWRiZGI5ZmFkNWE4ZCIsInJlc3VsdCI6Im5vdF9jb21wYXJhYmxlIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJyZWZlcmVlX3ZlcmRpY3RzIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjp7InJlc3VsdCI6Im5vdF9jb21wYXJhYmxlIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJyZWZlcmVlX3ZlcmRpY3RzIiwidmFsdWUiOm51bGx9XSwiZnJvbSI6IjIwMjYtMTAtMDNUMDA6MDA6MDBaIiwidG8iOiIyMDI2LTEwLTA0VDAwOjAwOjAwWiJ9XSwicG9saWN5IjoiYTBlZTM5ODVlZTQ0NDBjZDBjMTIzODRlN2E2ZDIwYzUxMjg5Mzg1MGNhYTljMjBkNTNiYzM5NTFiNTBmMTYwMCIsInNpZ25lZF9ieSI6ImNoZWNrZXIifX0\",\"artifact_digest\":\"d1869c300df1e2b40ebe091c477ae2923bab5d8c0ae118bdaab961834dcce48a\",\"derivation\":\"ecc169db8b6b83b68b898f3495c41b7bf564f321fa5e50509b825a2d0d24989d\",\"issued_at\":\"2026-10-04T00:00:05Z\",\"profile\":\"evidence-interop/1\",\"request_digest\":\"8a11f174a7bb7f68416ae9db949432cd67236285413fa7e20d4ff902f07a9b4d\",\"responder\":\"1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9\",\"sig\":\"544af49fa904b7d9cd52bc4adc9edbdb66c6f5460914af7a1c26d5ed16348b2514d82467c0c61261aa05484f4842922325fc547fe17abd91efbb84b6c13b7c0b\",\"subject\":{\"full_history\":null}}"
+        }
+      },
+      "expected": {
+        "exchange": {
+          "message_type": "envelope",
+          "subject": {
+            "full_history": null
+          },
+          "properties": {
+            "profile_version": "PASS",
+            "envelope_signature": "PASS",
+            "responder_trust": "PASS",
+            "responder_key_current": "NOT_CHECKED",
+            "issued_at_form": "PASS",
+            "request_binding": "PASS",
+            "subject_binding": "PASS",
+            "artifact_digest": "PASS",
+            "verification_binding": "NOT_PRESENT",
+            "anchor_match": "PASS",
+            "anchor_inclusion": "NOT_CHECKED"
+          },
+          "accepted": true,
+          "requirements": {
+            "r-service": {
+              "row": "envelope-4",
+              "status": "UNKNOWN",
+              "sufficiency": "UNKNOWN",
+              "verdict": "not_evaluable"
+            }
+          },
+          "claim": {
+            "evidence": [
+              {
+                "digest_alg": "SHA-256",
+                "digest": "d1869c300df1e2b40ebe091c477ae2923bab5d8c0ae118bdaab961834dcce48a"
+              }
+            ],
+            "proofs": []
+          }
+        },
+        "history_properties": {
+          "definition_form": "PASS",
+          "definition_binding": "PASS",
+          "artifact_form": "PASS",
+          "history_card_content": "PASS",
+          "units": "PASS",
+          "labels": "PASS",
+          "period_alignment": "PASS",
+          "period_anchor": "PASS",
+          "period_floor": "PASS"
+        },
+        "coverage": {
+          "declared_kind": "stream_interval",
+          "properties": {
+            "coverage_declaration_form": "PASS",
+            "coverage_declaration_anchor": "PASS",
+            "coverage_declaration_population": "NOT_CHECKED",
+            "coverage_declaration_commitment": "NOT_CHECKED"
+          },
+          "relative_to": "the node's stream at the anchor, under all_records; completeness not established: counts not checked against records"
+        },
+        "shows": {
+          "witness": {
+            "checkpoints": 4,
+            "witness_receipts_counted": 2,
+            "witness_receipts_not_counted": [
+              {
+                "checkpoint": 3,
+                "reason": "witness key not configured"
+              }
+            ]
+          }
+        },
+        "accepted": true,
+        "fails": []
+      }
+    },
+    {
+      "id": "mutant-v1-verdict-total-pins",
+      "title": "The same verdict table with the contradicted total of 8 published",
+      "cites": [
+        "§5.3",
+        "§6.2",
+        "§6.3",
+        "§9"
+      ],
+      "source": "constructed: v1-verdict-total-withheld with 2 October's contradicted total published",
+      "kind": "history",
+      "pins": {
+        "trust_policy": {
+          "responder_keys": [
+            "1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9"
+          ],
+          "log_keys": [],
+          "foreign_keys": [],
+          "parties": {},
+          "successions": [],
+          "require_action_time_from_other_party": false
+        },
+        "verification_policy": {
+          "online": false,
+          "profiles_implemented": [
+            "evidence-interop/1"
+          ],
+          "kinds_implemented": [
+            "cll-checkpoint",
+            "cll-inclusion-proof",
+            "cll-consistency-proof"
+          ]
+        },
+        "service_history": {
+          "log_keys": [
+            "af27e35f070d376f87ce0859973d34fa82204d5086c127d1e646eff5f1c2336d"
+          ],
+          "witness_keys": [
+            "1b43682b0facfa5f2da0875193a1bb75c66019817cc24baef79041838e315caf"
+          ],
+          "peer_keys": [
+            "582c60f2f98715969cac653a0afc59eb43ede89dae84f3ad8a78c69a3c29adaf"
+          ]
+        },
+        "contract_ref": "S@1",
+        "contract_digest": "0269eebf43bdb5f689464ca6e51946974e1f850d711314655d843ad1319f2242",
+        "evaluation_time": "2026-10-05T06:00:00Z"
+      },
+      "inputs": {
+        "definition": {
+          "coverage_declaration": {
+            "kind": "stream_interval",
+            "rule": "all_records"
+          },
+          "embeds": [
+            "history_card/1"
+          ],
+          "excludes": [
+            "requester identity",
+            "per-recipient release state"
+          ],
+          "kind": "projection",
+          "level": "standard",
+          "members": [
+            {
+              "name": "history_card",
+              "required": true,
+              "derivation": "history_card/1",
+              "reads": [
+                "checkpoint: key_id, log_size, root, timestamp, sig",
+                "receipt: checkpoint, witness, sig"
+              ],
+              "units": [
+                {
+                  "where": "history (one entry per checkpoint)",
+                  "unit": "checkpoints"
+                },
+                {
+                  "where": "history[].receipts",
+                  "unit": "witness_receipts"
+                }
+              ]
+            },
+            {
+              "name": "period_counts",
+              "required": true,
+              "reads": [
+                "record: role",
+                "record: committed_at",
+                "record: model claim"
+              ],
+              "units": [
+                {
+                  "where": "periods[].cells[]",
+                  "unit": "exchanges_served"
+                }
+              ],
+              "claims": {
+                "asserted_by": "provider",
+                "label": "provider states",
+                "where": [
+                  "periods[].cells[].dimension"
+                ]
+              }
+            },
+            {
+              "name": "verdict_counts",
+              "required": true,
+              "reads": [
+                "record: referee verdict held by this node",
+                "record: model identity hash",
+                "record: committed_at"
+              ],
+              "units": [
+                {
+                  "where": "periods[].cells[]",
+                  "unit": "referee_verdicts"
+                }
+              ],
+              "claims": {
+                "asserted_by": "provider",
+                "label": "provider states",
+                "where": [
+                  "periods[].cells[].dimension.model_hash"
+                ]
+              }
+            }
+          ],
+          "name": "service_history_verdicts_example/1",
+          "period_policy": {
+            "epoch": "2026-10-01T00:00:00Z",
+            "floor": 5,
+            "length_s": 86400,
+            "min_length_s": 86400,
+            "suppression": "complementary"
+          },
+          "profile": "inference-service-history/1",
+          "reads": [
+            "checkpoint: key_id, log_size, root, timestamp, sig",
+            "receipt: checkpoint, witness, sig",
+            "record: role",
+            "record: committed_at",
+            "record: model claim",
+            "record: referee verdict held by this node",
+            "record: model identity hash"
+          ],
+          "spec": "vectors/inference-service-history-v1/README.md",
+          "subjects": [
+            "full_history"
+          ]
+        },
+        "request": {
+          "media_type": "application/json",
+          "octets_text": "{\"coverage\":{\"expected_pin\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"derivation\":\"ecc169db8b6b83b68b898f3495c41b7bf564f321fa5e50509b825a2d0d24989d\",\"nonce\":\"requester-1/v1-verdicts\",\"profile\":\"evidence-interop/1\",\"subject\":{\"full_history\":null}}"
+        },
+        "reply": {
+          "media_type": "application/json",
+          "octets_text": "{\"anchor\":{\"digest\":\"986d9ce04951d01be619c32aea64b442887991a5290ec09c6e8789b121efe82b\"},\"artifact\":\"eyJhbmNob3IiOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIiwiY292ZXJhZ2VfZGVjbGFyYXRpb24iOnsiaW50ZXJ2YWwiOnsiZnJvbSI6bnVsbCwidG8iOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIn0sImtpbmQiOiJzdHJlYW1faW50ZXJ2YWwiLCJsaXZlX3NldCI6W3siY2hlY2twb2ludCI6Ijk4NmQ5Y2UwNDk1MWQwMWJlNjE5YzMyYWVhNjRiNDQyODg3OTkxYTUyOTBlYzA5YzZlODc4OWIxMjFlZmU4MmIiLCJjb3VudCI6NTIsInN0YXJ0IjowLCJzdHJlYW0iOiJub2RlLXN0cmVhbS0xIn1dLCJydWxlIjoiYWxsX3JlY29yZHMifSwiZGVjbGFyZWQiOlsiaGlzdG9yeV9jYXJkIiwicGVyaW9kX2NvdW50cyIsInZlcmRpY3RfY291bnRzIl0sImRlcml2YXRpb24iOiJlY2MxNjlkYjhiNmI4M2I2OGI4OThmMzQ5NWM0MWI3YmY1NjRmMzIxZmE1ZTUwNTA5YjgyNWEyZDBkMjQ5ODlkIiwiZXZpZGVuY2Vfc3RyZWFtIjoibm9kZS1zdHJlYW0tMSIsImhpc3RvcnlfY2FyZCI6eyJhbmNob3IiOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIiwiZGVyaXZhdGlvbiI6Imhpc3RvcnlfY2FyZC8xIiwiZXZpZGVuY2Vfc3RyZWFtIjoibm9kZS1zdHJlYW0tMSIsImhpc3RvcnkiOlt7ImNoZWNrcG9pbnQiOnsia2V5X2lkIjoiYWYyN2UzNWYwNzBkMzc2Zjg3Y2UwODU5OTczZDM0ZmE4MjIwNGQ1MDg2YzEyN2QxZTY0NmVmZjVmMWMyMzM2ZCIsImxvZ19zaXplIjoxMCwicm9vdCI6ImRlMDk4N2IwNjY3N2I4NThmNTNhMTZiMzMxZGQ1NzhmOWU1MmJjYTJlYjZjMmQ2NGNkMzE3YmQxMTc4Y2NlOWUiLCJzaWciOiJjZTdiOThjZmViZGI5YzkwZGFkYzlhZWQ5ZTgyZDBiODcwZmRlZDNlMGIwMzViOTI0ODM1ZTk5YTdlMzY5Y2RmMzM1MjQ3ODdlZGRlYjU0ZGZkNzVjZGIyODA2MjhkYzE3MDMwMzVmNzYzZDdjYzliMzg0MmI3MGE1MTM3ZmIwYiIsInRpbWVzdGFtcCI6IjIwMjYtMTAtMDFUMTI6MDA6MDBaIn0sInJlY2VpcHRzIjpbXX0seyJjaGVja3BvaW50Ijp7ImtleV9pZCI6ImFmMjdlMzVmMDcwZDM3NmY4N2NlMDg1OTk3M2QzNGZhODIyMDRkNTA4NmMxMjdkMWU2NDZlZmY1ZjFjMjMzNmQiLCJsb2dfc2l6ZSI6MjUsInJvb3QiOiJiNjBmMWJiZmE1ZDdjZGM5NzU2OWJkYThjYmNmNDgyMmQ5NTZlZTFiYThiMDgzNTgwZDMyZGNjM2U3MjUyM2QzIiwic2lnIjoiOWY2NzRlNTliNDE3ODVmZDU5NjQ3ODBmZTEyZDYzZGEwMzMxMmYyOTA2ZGFmMTllODA0YmVlOWRlZTljMDg1ODdjZDQ0NTk2ZWIxMjBhMTY2NzZjNGY2NjU5NmEwYzFhMTU5ODNlNjZhOGFlYmQzMjViNmU5YjY5ZGI1OTM4MDEiLCJ0aW1lc3RhbXAiOiIyMDI2LTEwLTAyVDEyOjAwOjAwWiJ9LCJyZWNlaXB0cyI6W3siY2hlY2twb2ludCI6ImYyOWZlOTUzNzlkZDAyMDc3YzBjYmY4MmJiMjBlMjRmZmFjZTIyZDg0MWVmZDA1YmMxMjMyNzQyOGU1NmFhMDIiLCJzaWciOiJhYzA5YzM5NWMxOTRiNDQ2NWZmYmMzZmExODk1ZmRiZDViOGMxNTgxYTllOWRiYTEyODM2ODU0MDM5MTA0ZDM0MmRhYTU2NGY0MmE4NDJjY2M5ODI0ODRjZGU4ZWZlZjQzODJlOTc3ZGIyYTI0MGQ5N2YwN2NiYWEwZGE1NzQwZCIsIndpdG5lc3MiOiIxYjQzNjgyYjBmYWNmYTVmMmRhMDg3NTE5M2ExYmI3NWM2NjAxOTgxN2NjMjRiYWVmNzkwNDE4MzhlMzE1Y2FmIn1dfSx7ImNoZWNrcG9pbnQiOnsia2V5X2lkIjoiYWYyN2UzNWYwNzBkMzc2Zjg3Y2UwODU5OTczZDM0ZmE4MjIwNGQ1MDg2YzEyN2QxZTY0NmVmZjVmMWMyMzM2ZCIsImxvZ19zaXplIjozOCwicm9vdCI6Ijg5MzYxYTNkNjI3Njk0NzAzNDUwZmY1ZGExNjhlODJhN2RlZDU2NDJjNTZlOGFhMzI5ZWUzMjE0ZTUyODkwNmQiLCJzaWciOiI3NTIyOTFkYmI2ZWRlZTRkY2U4OWNkNWQ2OTY4ODVlYjI4YjllZDY5ZmQ5YzQyYWIwN2FkMWJhM2U5ODc5NjExMzhkMDk5NjNjNDAzMGNiY2Q2MmJhYWYyMWM4Nzk5YmRhYjdjYzA5Y2JkMDkyOTNjMjI0YWRhZjIwZDEyMTEwOCIsInRpbWVzdGFtcCI6IjIwMjYtMTAtMDNUMTI6MDA6MDBaIn0sInJlY2VpcHRzIjpbeyJjaGVja3BvaW50IjoiNmJhZWM2YzY0OGZkZGQ2NjE2NWJkZDNmZWZhN2JjNGRlODc0ZDc2MTEwMzQxNWMxNzA1YTIzZTMwY2I4NmRmNSIsInNpZyI6IjZkYTA2OGNkMGQ1MDdmZDcxM2Q1MGNkNWQ2NGNiNTIxMTgzNDY5NWQ4YmY5YTNmNmYxNGU0MzkyMmJhNzJmZDkzOGU1YzdhMWY2YmRjYzcyODMyMDcwYmNkMjAwZTBiNTlhOWU2OGI4MmVjZjU4ZmM0MDRhN2E4MzBkZGE1YTBhIiwid2l0bmVzcyI6IjFiNDM2ODJiMGZhY2ZhNWYyZGEwODc1MTkzYTFiYjc1YzY2MDE5ODE3Y2MyNGJhZWY3OTA0MTgzOGUzMTVjYWYifV19LHsiY2hlY2twb2ludCI6eyJrZXlfaWQiOiJhZjI3ZTM1ZjA3MGQzNzZmODdjZTA4NTk5NzNkMzRmYTgyMjA0ZDUwODZjMTI3ZDFlNjQ2ZWZmNWYxYzIzMzZkIiwibG9nX3NpemUiOjUyLCJyb290IjoiMjVlYTcyMTg3NjYwYWMzM2NhZjhkMzEyZWVmNGEyMGI0MzQxY2ZlM2JlMzVmODlkMzA1ZWZkYjhjYmEwYWQ5NiIsInNpZyI6ImI1MmQ0NWY1NmY2ZDc0ZmM2ZGFiNDZkNDQ3NTM1MDRiZTk0NGU4ZjE1MDZhZTQwNWY5Y2Q4ZWNjMDQyNmFhYTQzZTRjZDUzY2VhMDkwYzY0MGUyMjQyNmJlMTYzZmU4ODNhNmQ5ZTJjYzg2NzUyNWQyNmFhNTM3M2Q0NmJmMzBkIiwidGltZXN0YW1wIjoiMjAyNi0xMC0wNFQwMDowMDowMFoifSwicmVjZWlwdHMiOlt7ImNoZWNrcG9pbnQiOiI5ODZkOWNlMDQ5NTFkMDFiZTYxOWMzMmFlYTY0YjQ0Mjg4Nzk5MWE1MjkwZWMwOWM2ZTg3ODliMTIxZWZlODJiIiwic2lnIjoiNWIzYmEzZTcyMmRjM2MxOTkxMjc2ZGQyZjgxMzlmNmFiZTcxN2FlNDU0MWJhODg1YjE5YzdlY2UzODUyNjZiODc2YWJiMzJiZjk4ZTgxNzViY2U3MzBiZjdiNDEzN2Y1ZThlMjZlOGRkODQ4NDM3MTRlNzE4MjAyZDczYTU0MDEiLCJ3aXRuZXNzIjoiYjE3ZGFhMDdmN2MwOWVlZjMwMjIwOWQ3ZmZhNmVhNjdkZDkzODdkNTc5N2U5NWFlZTJiOWRkNzYzMWU2NjgwNCJ9XX1dLCJzdWJqZWN0Ijp7ImZ1bGxfaGlzdG9yeSI6bnVsbH19LCJoaXN0b3J5X2NhcmRfZGlnZXN0IjoiZjJlZjZmNmE0NjgyZTY0ZGQ1M2NlYWI1MGU3OTk1MDY2ZThjOTgzMWM3NzVmZWMyMDc3NDBlNTVkODc4NzE2OSIsInBlcmlvZF9jb3VudHMiOnsicGVyaW9kcyI6W3siY2VsbHMiOlt7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWEifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6MTJ9LHsiZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtYiJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjo3fSx7ImRpbWVuc2lvbiI6bnVsbCwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6MTl9XSwiZnJvbSI6IjIwMjYtMTAtMDFUMDA6MDA6MDBaIiwidG8iOiIyMDI2LTEwLTAyVDAwOjAwOjAwWiJ9LHsiY2VsbHMiOlt7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWEifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwic3VwcHJlc3NlZCI6ImNvbXBsZW1lbnRhcnkiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjpudWxsfSx7ImRpbWVuc2lvbiI6eyJtb2RlbCI6Im1vZGVsLWIifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwic3VwcHJlc3NlZCI6ImJlbG93X2Zsb29yIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6bnVsbH0seyJkaW1lbnNpb24iOm51bGwsImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjEyfV0sImZyb20iOiIyMDI2LTEwLTAyVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wM1QwMDowMDowMFoifSx7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWwiOiJtb2RlbC1hIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJleGNoYW5nZXNfc2VydmVkIiwidmFsdWUiOjZ9LHsiZGltZW5zaW9uIjp7Im1vZGVsIjoibW9kZWwtYiJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoiZXhjaGFuZ2VzX3NlcnZlZCIsInZhbHVlIjo1fSx7ImRpbWVuc2lvbiI6bnVsbCwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6ImV4Y2hhbmdlc19zZXJ2ZWQiLCJ2YWx1ZSI6MTF9XSwiZnJvbSI6IjIwMjYtMTAtMDNUMDA6MDA6MDBaIiwidG8iOiIyMDI2LTEwLTA0VDAwOjAwOjAwWiJ9XSwicG9saWN5IjoiYTBlZTM5ODVlZTQ0NDBjZDBjMTIzODRlN2E2ZDIwYzUxMjg5Mzg1MGNhYTljMjBkNTNiYzM5NTFiNTBmMTYwMCJ9LCJzdWJqZWN0Ijp7ImZ1bGxfaGlzdG9yeSI6bnVsbH0sInZlcmRpY3RfY291bnRzIjp7ImNoZWNrIjoicmVmZXJlZV92ZXJkaWN0IiwicGVyaW9kcyI6W3siY2VsbHMiOlt7ImRpbWVuc2lvbiI6eyJtb2RlbF9oYXNoIjoiMTk5NTk5MjhmNmI0MmFiMmU1ZTMxM2M3N2VhNGU2N2UxM2U5MjY1YWViZjExZmVhOTc4OGU2OTVhN2E2ODE1NSIsInJlc3VsdCI6ImNvcnJvYm9yYXRlZCJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoicmVmZXJlZV92ZXJkaWN0cyIsInZhbHVlIjo2fSx7ImRpbWVuc2lvbiI6eyJtb2RlbF9oYXNoIjoiM2JiMWM3MDUxMDMwMThhYTA4ZTUwMDc3MWNhMDBkYTZlZjQ3MDE1MGQ3MDMxNjZkMWMxZWRiZGI5ZmFkNWE4ZCIsInJlc3VsdCI6ImNvcnJvYm9yYXRlZCJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoicmVmZXJlZV92ZXJkaWN0cyIsInZhbHVlIjo5fSx7ImRpbWVuc2lvbiI6eyJyZXN1bHQiOiJjb3Jyb2JvcmF0ZWQifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6InJlZmVyZWVfdmVyZGljdHMiLCJ2YWx1ZSI6MTV9LHsiZGltZW5zaW9uIjp7Im1vZGVsX2hhc2giOiIzYmIxYzcwNTEwMzAxOGFhMDhlNTAwNzcxY2EwMGRhNmVmNDcwMTUwZDcwMzE2NmQxYzFlZGJkYjlmYWQ1YThkIiwicmVzdWx0IjoiY29udHJhZGljdGVkIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJyZWZlcmVlX3ZlcmRpY3RzIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjp7InJlc3VsdCI6ImNvbnRyYWRpY3RlZCJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJzdXBwcmVzc2VkIjoiYmVsb3dfZmxvb3IiLCJ1bml0IjoicmVmZXJlZV92ZXJkaWN0cyIsInZhbHVlIjpudWxsfSx7ImRpbWVuc2lvbiI6eyJyZXN1bHQiOiJpbmNvbmNsdXNpdmUifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwic3VwcHJlc3NlZCI6ImJlbG93X2Zsb29yIiwidW5pdCI6InJlZmVyZWVfdmVyZGljdHMiLCJ2YWx1ZSI6bnVsbH0seyJkaW1lbnNpb24iOnsibW9kZWxfaGFzaCI6IjE5OTU5OTI4ZjZiNDJhYjJlNWUzMTNjNzdlYTRlNjdlMTNlOTI2NWFlYmYxMWZlYTk3ODhlNjk1YTdhNjgxNTUiLCJyZXN1bHQiOiJub3RfY29tcGFyYWJsZSJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoicmVmZXJlZV92ZXJkaWN0cyIsInZhbHVlIjo1fSx7ImRpbWVuc2lvbiI6eyJyZXN1bHQiOiJub3RfY29tcGFyYWJsZSJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoicmVmZXJlZV92ZXJkaWN0cyIsInZhbHVlIjo1fV0sImZyb20iOiIyMDI2LTEwLTAxVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wMlQwMDowMDowMFoifSx7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWxfaGFzaCI6IjNiYjFjNzA1MTAzMDE4YWEwOGU1MDA3NzFjYTAwZGE2ZWY0NzAxNTBkNzAzMTY2ZDFjMWVkYmRiOWZhZDVhOGQiLCJyZXN1bHQiOiJjb3Jyb2JvcmF0ZWQifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6InJlZmVyZWVfdmVyZGljdHMiLCJ2YWx1ZSI6NX0seyJkaW1lbnNpb24iOnsicmVzdWx0IjoiY29ycm9ib3JhdGVkIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJyZWZlcmVlX3ZlcmRpY3RzIiwidmFsdWUiOjV9LHsiZGltZW5zaW9uIjp7Im1vZGVsX2hhc2giOiIxOTk1OTkyOGY2YjQyYWIyZTVlMzEzYzc3ZWE0ZTY3ZTEzZTkyNjVhZWJmMTFmZWE5Nzg4ZTY5NWE3YTY4MTU1IiwicmVzdWx0IjoiY29udHJhZGljdGVkIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJyZWZlcmVlX3ZlcmRpY3RzIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjp7Im1vZGVsX2hhc2giOiIzYmIxYzcwNTEwMzAxOGFhMDhlNTAwNzcxY2EwMGRhNmVmNDcwMTUwZDcwMzE2NmQxYzFlZGJkYjlmYWQ1YThkIiwicmVzdWx0IjoiY29udHJhZGljdGVkIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJyZWZlcmVlX3ZlcmRpY3RzIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjp7InJlc3VsdCI6ImNvbnRyYWRpY3RlZCJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoicmVmZXJlZV92ZXJkaWN0cyIsInZhbHVlIjo4fSx7ImRpbWVuc2lvbiI6eyJtb2RlbF9oYXNoIjoiMTk5NTk5MjhmNmI0MmFiMmU1ZTMxM2M3N2VhNGU2N2UxM2U5MjY1YWViZjExZmVhOTc4OGU2OTVhN2E2ODE1NSIsInJlc3VsdCI6ImluY29uY2x1c2l2ZSJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoicmVmZXJlZV92ZXJkaWN0cyIsInZhbHVlIjoxMX0seyJkaW1lbnNpb24iOnsicmVzdWx0IjoiaW5jb25jbHVzaXZlIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJyZWZlcmVlX3ZlcmRpY3RzIiwidmFsdWUiOjExfSx7ImRpbWVuc2lvbiI6eyJyZXN1bHQiOiJub3RfY29tcGFyYWJsZSJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJzdXBwcmVzc2VkIjoiYmVsb3dfZmxvb3IiLCJ1bml0IjoicmVmZXJlZV92ZXJkaWN0cyIsInZhbHVlIjpudWxsfV0sImZyb20iOiIyMDI2LTEwLTAyVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wM1QwMDowMDowMFoifSx7ImNlbGxzIjpbeyJkaW1lbnNpb24iOnsibW9kZWxfaGFzaCI6IjE5OTU5OTI4ZjZiNDJhYjJlNWUzMTNjNzdlYTRlNjdlMTNlOTI2NWFlYmYxMWZlYTk3ODhlNjk1YTdhNjgxNTUiLCJyZXN1bHQiOiJjb3Jyb2JvcmF0ZWQifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6InJlZmVyZWVfdmVyZGljdHMiLCJ2YWx1ZSI6OH0seyJkaW1lbnNpb24iOnsibW9kZWxfaGFzaCI6IjNiYjFjNzA1MTAzMDE4YWEwOGU1MDA3NzFjYTAwZGE2ZWY0NzAxNTBkNzAzMTY2ZDFjMWVkYmRiOWZhZDVhOGQiLCJyZXN1bHQiOiJjb3Jyb2JvcmF0ZWQifSwibGFiZWwiOiJzZWxmX3JlcG9ydGVkIiwidW5pdCI6InJlZmVyZWVfdmVyZGljdHMiLCJ2YWx1ZSI6MjB9LHsiZGltZW5zaW9uIjp7InJlc3VsdCI6ImNvcnJvYm9yYXRlZCJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoicmVmZXJlZV92ZXJkaWN0cyIsInZhbHVlIjoyOH0seyJkaW1lbnNpb24iOnsicmVzdWx0IjoiY29udHJhZGljdGVkIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInN1cHByZXNzZWQiOiJiZWxvd19mbG9vciIsInVuaXQiOiJyZWZlcmVlX3ZlcmRpY3RzIiwidmFsdWUiOm51bGx9LHsiZGltZW5zaW9uIjp7Im1vZGVsX2hhc2giOiIxOTk1OTkyOGY2YjQyYWIyZTVlMzEzYzc3ZWE0ZTY3ZTEzZTkyNjVhZWJmMTFmZWE5Nzg4ZTY5NWE3YTY4MTU1IiwicmVzdWx0IjoiaW5jb25jbHVzaXZlIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJyZWZlcmVlX3ZlcmRpY3RzIiwidmFsdWUiOjZ9LHsiZGltZW5zaW9uIjp7Im1vZGVsX2hhc2giOiIzYmIxYzcwNTEwMzAxOGFhMDhlNTAwNzcxY2EwMGRhNmVmNDcwMTUwZDcwMzE2NmQxYzFlZGJkYjlmYWQ1YThkIiwicmVzdWx0IjoiaW5jb25jbHVzaXZlIn0sImxhYmVsIjoic2VsZl9yZXBvcnRlZCIsInVuaXQiOiJyZWZlcmVlX3ZlcmRpY3RzIiwidmFsdWUiOjV9LHsiZGltZW5zaW9uIjp7InJlc3VsdCI6ImluY29uY2x1c2l2ZSJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJ1bml0IjoicmVmZXJlZV92ZXJkaWN0cyIsInZhbHVlIjoxMX0seyJkaW1lbnNpb24iOnsibW9kZWxfaGFzaCI6IjNiYjFjNzA1MTAzMDE4YWEwOGU1MDA3NzFjYTAwZGE2ZWY0NzAxNTBkNzAzMTY2ZDFjMWVkYmRiOWZhZDVhOGQiLCJyZXN1bHQiOiJub3RfY29tcGFyYWJsZSJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJzdXBwcmVzc2VkIjoiYmVsb3dfZmxvb3IiLCJ1bml0IjoicmVmZXJlZV92ZXJkaWN0cyIsInZhbHVlIjpudWxsfSx7ImRpbWVuc2lvbiI6eyJyZXN1bHQiOiJub3RfY29tcGFyYWJsZSJ9LCJsYWJlbCI6InNlbGZfcmVwb3J0ZWQiLCJzdXBwcmVzc2VkIjoiYmVsb3dfZmxvb3IiLCJ1bml0IjoicmVmZXJlZV92ZXJkaWN0cyIsInZhbHVlIjpudWxsfV0sImZyb20iOiIyMDI2LTEwLTAzVDAwOjAwOjAwWiIsInRvIjoiMjAyNi0xMC0wNFQwMDowMDowMFoifV0sInBvbGljeSI6ImEwZWUzOTg1ZWU0NDQwY2QwYzEyMzg0ZTdhNmQyMGM1MTI4OTM4NTBjYWE5YzIwZDUzYmMzOTUxYjUwZjE2MDAiLCJzaWduZWRfYnkiOiJjaGVja2VyIn19\",\"artifact_digest\":\"802ed74963d9851ea46cd1c65aa20a95fa4b1c50fdbd192b37ca63e54681a720\",\"derivation\":\"ecc169db8b6b83b68b898f3495c41b7bf564f321fa5e50509b825a2d0d24989d\",\"issued_at\":\"2026-10-04T00:00:05Z\",\"profile\":\"evidence-interop/1\",\"request_digest\":\"8a11f174a7bb7f68416ae9db949432cd67236285413fa7e20d4ff902f07a9b4d\",\"responder\":\"1ba603348e940aee8e3c88d69493d2251cb7ef6e160bdc8f81c81a6260360ea9\",\"sig\":\"7212d24625c602d4421773899f3df2900af577709b409f7281132f0575e9ca51019bef3d47ed0b2ee2bdc1edd91beb72f1f18ee6099783eb67fb815f7932ee05\",\"subject\":{\"full_history\":null}}"
+        }
+      },
+      "expected": {
+        "exchange": {
+          "message_type": "envelope",
+          "subject": {
+            "full_history": null
+          },
+          "properties": {
+            "profile_version": "PASS",
+            "envelope_signature": "PASS",
+            "responder_trust": "PASS",
+            "responder_key_current": "NOT_CHECKED",
+            "issued_at_form": "PASS",
+            "request_binding": "PASS",
+            "subject_binding": "PASS",
+            "artifact_digest": "PASS",
+            "verification_binding": "NOT_PRESENT",
+            "anchor_match": "PASS",
+            "anchor_inclusion": "NOT_CHECKED"
+          },
+          "accepted": true,
+          "requirements": {
+            "r-service": {
+              "row": "envelope-4",
+              "status": "UNKNOWN",
+              "sufficiency": "UNKNOWN",
+              "verdict": "not_evaluable"
+            }
+          },
+          "claim": {
+            "evidence": [
+              {
+                "digest_alg": "SHA-256",
+                "digest": "802ed74963d9851ea46cd1c65aa20a95fa4b1c50fdbd192b37ca63e54681a720"
+              }
+            ],
+            "proofs": []
+          }
+        },
+        "history_properties": {
+          "definition_form": "PASS",
+          "definition_binding": "PASS",
+          "artifact_form": "PASS",
+          "history_card_content": "PASS",
+          "units": "PASS",
+          "labels": "PASS",
+          "period_alignment": "PASS",
+          "period_anchor": "PASS",
+          "period_floor": "FAIL"
+        },
+        "coverage": {
+          "declared_kind": "stream_interval",
+          "properties": {
+            "coverage_declaration_form": "PASS",
+            "coverage_declaration_anchor": "PASS",
+            "coverage_declaration_population": "NOT_CHECKED",
+            "coverage_declaration_commitment": "NOT_CHECKED"
+          },
+          "relative_to": "the node's stream at the anchor, under all_records; completeness not established: counts not checked against records"
+        },
+        "shows": {
+          "witness": {
+            "checkpoints": 4,
+            "witness_receipts_counted": 2,
+            "witness_receipts_not_counted": [
+              {
+                "checkpoint": 3,
+                "reason": "witness key not configured"
+              }
+            ]
+          }
+        },
+        "accepted": false,
+        "fails": [
+          "period_floor"
+        ]
+      }
+    }
+  ]
+}

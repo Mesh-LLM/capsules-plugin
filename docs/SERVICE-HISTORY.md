@@ -1,26 +1,57 @@
-# `service_history/1`: a node's history card and weekly served counts, in one answer
+# `service_history/3`: a node's history card and weekly served counts, in one answer
 
 This is the human-readable definition of the derivation whose definition document is
-[`derivations/service-history-1.json`](../derivations/service-history-1.json). The document is what
-the digest covers. This page explains it and changes nothing it says: a change of meaning is
-`service_history/2`, with a new document and a new digest.
+[`derivations/service-history-3.json`](../derivations/service-history-3.json). The document is what
+the digest covers. This page explains it and changes nothing it says: a change of meaning is a new
+definition, with a new document and a new digest.
 
 It is a Standard History under agent-action-capsule's inference-service history profile
-(`spec/inference-service-history-profile-v0.md`, action-state-group/agent-action-capsule#315 at
-f8c946ed, merged 2026-10-29, cited here as ISH). Section numbers below are that document's.
+(`spec/inference-service-history-profile-v0.md`, cited here as ISH), revision
+`inference-service-history/1` (action-state-group/agent-action-capsule#671 at e1286e01, released
+in the crate 0.15.0 this plugin pins). Section numbers below are that document's.
+
+## Revision `/1`, and which key serves it
+
+`service_history/3` is `service_history/1` under `inference-service-history/1`, and
+`service_history/4` (below) is `service_history/2` under it: the same frame, members, weeks and
+floor, with only `profile` and `name` changed. A definition's digest is never changed in place
+(ISH §4.1), so the revision is new definitions. `/1` adds one rule to `/0` (ISH §6.2 item 5, Steven's
+ruling on action-state-group/agent-action-capsule#616): a total that would give away two or more
+models withheld under the floor is withheld too (The counts, below).
+
+**Only under a key minted for `/1`** (ISH §6.1 item 9). A key that serves `/1` serves no `/0`
+History, and no key that served `/0` serves `/1`: a `/0` answer publishes, over the same weeks, the
+totals `/1` withholds. Every key an earlier release minted listed `service_history/1` and `/2` (both
+`/0`) in its commitment. So:
+
+- A node writes `keys/ish-revision` beside `keys/node-key.pem` when it mints its key, naming that
+  key's id and `inference-service-history/1`. Only then does it serve `service_history/3` and `/4`
+  and list them in its commitment.
+- A node whose key has no such record (any key from before this release, or one whose record was
+  lost) serves no Service History at all, `/0` included: it refuses all four definitions
+  `derivation_unsupported`, lists none, and its History page holds the card. A record naming
+  another key, or another revision, counts as none. A lost or stale record therefore withholds
+  rather than reveals.
+- This node no longer serves `service_history/1` or `/2` under any key. It still checks them in
+  answers from peers on earlier releases.
+
+A node gets a Service History again only under a new key, which starts a new History (a new data
+directory). Starting a new history from the Evidence tab keeps the key, and so keeps its record.
 
 ## Identifier
 
 - **A request names it by the digest of its definition:**
-  `cbc96d800ad206791db7e0793b80a2720c1908468ba99692b739aa8e74aab2d8`. That is SHA-256 over the RFC
-  8785 bytes of `service-history-1.json`.
-- `service_history/1` is the document's name, not a token. A request naming it is refused
+  `1021d0c12dbea1c1ff288edc30d4f05197c64e7615796f41d17ade7467ea5780`. That is SHA-256 over the RFC
+  8785 bytes of `service-history-3.json`.
+- `service_history/3` is the document's name, not a token. A request naming it is refused
   `derivation_unsupported`.
 - It is not registered.
+- `service_history/1` (`cbc96d80…`) and `/2` (`0f6cee6c…`) are the frozen `/0` definitions an
+  earlier release served. This node checks them and never serves them.
 
 ## The definition
 
-It carries ISH §4.1's frame and no other member: `profile` `inference-service-history/0`, `level`
+It carries ISH §4.1's frame and no other member: `profile` `inference-service-history/1`, `level`
 `standard`, `kind` `projection`, `embeds` `["history_card/1"]`, `subjects` `["full_history"]`, its
 two members, `reads`, `excludes` (`requester identity` among them), the Standard
 `coverage_declaration` (`stream_interval`, `all_records`), the `period_policy` and `spec`.
@@ -51,6 +82,9 @@ run a failed provider record (role `served`) as served and differ from the node'
 
 ## What is answered
 
+- **The profile:** `evidence-interop/1` only (ISH, Interop profile revision). A request under
+  `evidence-interop/0`, or naming no `profile` (which asks for `/0`), is refused `policy_declined`.
+- **The key:** one recorded for `/1` (above); under any other key, `derivation_unsupported`.
 - **The subject:** `full_history`. Any other subject is refused `policy_declined`.
 - **The coverage:** an `expected_pin` naming a checkpoint whose time is a period boundary, a Monday
   at 00:00:00 UTC. Any other anchor, and `min_freshness`, is refused `policy_declined`, the same for
@@ -108,8 +142,16 @@ suppressed below the floor like any other (ISH §6.1 item 3). A later answer nev
 - **The floor.** A cell under 5 is published with `value` null and `suppressed` `below_floor`.
   Where the total is published and exactly one model is suppressed, the smallest other model is
   suppressed too, with `complementary`, so the suppressed one cannot be worked out from the total.
+- **A total that pins withheld models** (`/1`, ISH §6.2 item 5). A model is listed only for a week
+  that served it. Where two or more models are withheld, every one under the floor, and the total
+  less the published models is their number (each served once) or their number times 4 (each
+  served 4 times), the total would give each of them away, so it is withheld too, with
+  `complementary`, even when it is itself under the floor. Models of 4 and 4 withhold their total
+  of 8, five models of 1 their total of 5, and models of 1 and 1 their total of 2, `complementary`
+  rather than `below_floor`, so the reason does not tell 2 from 8. Models of 3 and 4 leave their
+  total of 7 published.
 - **What is never counted:** latency (Steven, 2026-10-22), requested exchanges, quantization,
-  weights digests, referee verdicts (`service_history/2` counts them, below) and anything about who asked.
+  weights digests, referee verdicts (`service_history/4` counts them, below) and anything about who asked.
 
 ## Never beside `standard_history/1`
 
@@ -159,14 +201,15 @@ verifier holding one says it did not check it.
   in it scores or ranks a node.
 - The card shows each checkpoint's exact log size, which the weekly counts do not cover (ISH §12).
 
-## `service_history/2`: the verdicts this node holds about itself
+## `service_history/4`: the verdicts this node holds about itself
 
-[`derivations/service-history-2.json`](../derivations/service-history-2.json) is `service_history/1`
-with a third member, `verdict_counts`. It is a new derivation with its own digest,
-`0f6cee6c5c2f57e7682137e4b40a9dcfad0f8db5a69d5bebaf99995936ea96f2`; `service_history/1` and its
-digest are unchanged and still answered. The same frame, subject, coverage, pin and period policy
-(week, floor 5, complementary suppression) apply, and a node that serves `service_history/2` serves no
-`standard_history/1` or `/2` card for the same reason. It is Standard History under the same switch,
+[`derivations/service-history-4.json`](../derivations/service-history-4.json) is `service_history/3`
+with a third member, `verdict_counts` (and `service_history/2` under `inference-service-history/1`).
+It is a new derivation with its own digest,
+`33321827c0e8678cc16cd41f54e9e6bcb0f9d9dcd71e4d4019c39ecbdf6a3d3b`; `service_history/3` is still
+answered beside it. The same frame, subject, coverage, pin, period policy (week, floor 5,
+complementary suppression), profile and key rule apply, and a node that serves `service_history/4`
+serves no `standard_history/1` or `/2` card for the same reason. It is Standard History under the same switch,
 `share_standard_history`. Section numbers are the profile's (ISH §4.3, §5.3, as amended by
 action-state-group/agent-action-capsule#614).
 
@@ -197,9 +240,10 @@ period lists, for each of the four results in the order above, one cell per mode
 `identity_hash` a verdict seals, `unknown` when it seals none, never the weights digest) and the
 result's total, `{"dimension": {"model_hash": ..., "result": ...}}` or `{"dimension": {"result":
 ...}}`, each labelled `self_reported`. A cell under 5 is withheld, and complementary suppression
-applies within each result's table. Where two or more models are each withheld and the published
-total would give them away, the total is withheld too; that is the library's rule for these tables,
-and the profile leaves the general case open (SH-8). `check` names the kind of check counted and
+applies within each result's table. Where two or more models are each withheld and the result's
+total would give them away, the total is withheld too, by the same `/1` rule as the served counts
+(ISH §6.2 item 5: verdict counts are period counts). In a week where each of two model hashes was
+contradicted 4 times, the contradicted total of 8 is withheld. `check` names the kind of check counted and
 `signed_by` says its result is signed by the checker, never by the node it concerns: a later audit
 result is another kind in the same member, counted separately.
 

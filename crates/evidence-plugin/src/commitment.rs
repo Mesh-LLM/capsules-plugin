@@ -84,10 +84,12 @@ pub const ANSWERS_WITHIN: &str = "PT1M";
 
 /// The derivations this node answers, each as an ask names it:
 /// `checkpoints` (the subject, which needs none), the registered tokens, and
-/// `exchange_corroboration/1` and `service_history/1` by the digest of each
-/// one's definition document, its name on the wire. Service History's is the
-/// definition this node serves (`service_history::definition_digest`), so it
-/// is read once at run time. A counterparty is answered each of them under
+/// `exchange_corroboration/1` and `service_history/3` and `/4` by the digest
+/// of each one's definition document, its name on the wire. Service
+/// History's are the definitions this node serves
+/// (`service_history::definition_digest`), so they are read once at run
+/// time, and are listed only under a key that serves them
+/// ([`Policy::service_history`]). A counterparty is answered each of them under
 /// every setting; who else gets one is the policy's to say. `checkpoints`
 /// and `checkpoint_range` are the subjects, named like the derivations; the
 /// unranged `checkpoints` leaves the list once its full answer no longer fits
@@ -99,7 +101,7 @@ pub static DERIVATIONS: std::sync::LazyLock<[&str; 8]> = std::sync::LazyLock::ne
         evidence_request::registry::DERIVATION_HISTORY_CARD_2,
         crate::exchange_corroboration::DEFINITION_DIGEST,
         crate::service_history::definition_digest(),
-        crate::service_history::definition_digest_2(),
+        crate::service_history::definition_digest_verdicts(),
         crate::verdict_held::DEFINITION_DIGEST,
         CHECKPOINT_RANGE,
     ]
@@ -151,6 +153,11 @@ pub struct Policy {
     /// false once, like `history_card_1`, and moves the policy digest with
     /// it. Not a setting.
     pub checkpoints: bool,
+    /// Whether this node's key serves Service History
+    /// (`service_history::key_serves`, ISH §6.1 item 9): false for a key an
+    /// earlier release minted, which served `inference-service-history/0`,
+    /// and then `service_history/3` and `/4` are not listed. Not a setting.
+    pub service_history: bool,
     pub record_at_completion: bool,
     pub history_segments: &'static str,
     pub share_standard_history: bool,
@@ -171,6 +178,7 @@ impl Policy {
         Self {
             history_card_1: true,
             checkpoints: true,
+            service_history: false,
             record_at_completion: !share_policy::record_at_completion_is_off_for(
                 raw(share_policy::ENV_RECORD_AT_COMPLETION).as_deref(),
             ),
@@ -230,11 +238,17 @@ impl Policy {
 
     /// Whether this policy names `derivation` (or subject, for the two
     /// names that are both): not `history_card/1` and not the unranged
-    /// `checkpoints` once their full answers no longer fit.
+    /// `checkpoints` once their full answers no longer fit, and Service
+    /// History only under a key that serves it.
     fn names(&self, derivation: &str) -> bool {
         match derivation {
             DERIVATION_HISTORY_CARD => self.history_card_1,
             CHECKPOINTS => self.checkpoints,
+            d if d == crate::service_history::definition_digest()
+                || d == crate::service_history::definition_digest_verdicts() =>
+            {
+                self.service_history
+            }
             _ => true,
         }
     }
@@ -361,6 +375,8 @@ pub fn with_responder_for<T>(
     };
     policy.history_card_1 = fit.history_card_1;
     policy.checkpoints = fit.checkpoints;
+    policy.service_history =
+        crate::service_history::key_serves(capsules.ledger_dir(), capsules.signing_key());
     let digest = policy.digest(capsules.signing_key());
     let announced = if strangers_only {
         Default::default()

@@ -842,7 +842,7 @@ fn corpus_cases(ledger: &[Value], cps: &[CorpusCheckpoint]) -> Vec<Value> {
 }
 
 /// PRD T7's default half: checkpoints and `history_card/1` are stranger-safe
-/// and go to anyone (R-8); the rest of Standard History (`service_history/1`,
+/// and go to anyone (R-8); the rest of Standard History (`service_history/3`,
 /// any other derivation) goes to a counterparty, and every other requester
 /// is refused `policy_declined` before the subject is looked up. `first`
 /// is the corpus's checkpoint on a period boundary, where a Service History
@@ -866,6 +866,9 @@ fn standard_history_cases(latest: &Value, first: &Value, record: &str) -> Vec<Va
             asker,
         );
         r["coverage"] = first.clone();
+        // `inference-service-history/1` is served under `evidence-interop/1`
+        // only (ISH, Interop profile revision).
+        r["profile"] = json!("evidence-interop/1");
         r
     };
     // A case asked by `asker`: signed by it, so it is that node.
@@ -915,13 +918,13 @@ fn standard_history_cases(latest: &Value, first: &Value, record: &str) -> Vec<Va
         ),
         by(
             "service_history_to_a_non_counterparty",
-            "service_history/1 is not shared with a node this one never exchanged with",
+            "service_history/3 is not shared with a node this one never exchanged with",
             "counterparties",
             service_history(Some("node-z")),
         ),
         by(
             "service_history_to_a_counterparty",
-            "a counterparty is answered service_history/1",
+            "a counterparty is answered service_history/3",
             "counterparties",
             service_history(Some("node-a")),
         ),
@@ -947,7 +950,7 @@ fn standard_history_cases(latest: &Value, first: &Value, record: &str) -> Vec<Va
             "standard_history_unknown_pin_to_a_non_counterparty",
             "the refusal comes before the anchor is resolved: it says nothing about what this node holds",
             "counterparties",
-            json!({"subject": {"full_history": null}, "coverage": {"expected_pin": "d".repeat(64)}, "derivation": crate::service_history::definition_digest(), "requester_id": "node-z"}),
+            json!({"profile": "evidence-interop/1", "subject": {"full_history": null}, "coverage": {"expected_pin": "d".repeat(64)}, "derivation": crate::service_history::definition_digest(), "requester_id": "node-z"}),
         ),
         by(
             "checkpoints_unknown_pin_to_a_non_counterparty",
@@ -1132,6 +1135,9 @@ fn run() -> (BTreeMap<String, Value>, Vec<String>) {
     let data = tempfile::tempdir().unwrap();
     let ledger_dir = data.path().join("ledger");
     let cps = corpus_ledger_dir(&ledger_dir, &key);
+    // The node's key is one this build minted: it serves Service History.
+    std::fs::create_dir_all(data.path().join("keys")).unwrap();
+    crate::service_history::record_minted_key(&data.path().join("keys"), &key).unwrap();
     let cases = corpus_cases(&corpus_ledger(), &cps);
     let announced = announced_keys();
 

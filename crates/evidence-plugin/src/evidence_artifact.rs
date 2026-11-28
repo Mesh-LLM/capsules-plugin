@@ -44,7 +44,9 @@
 //!   subject}`, each entry the derivation's members with `inclusion` the
 //!   half's `cll-inclusion-proof` at the anchor, in hex
 //!   (`crate::exchange_corroboration`);
-//! - `service_history/1` (this node's own, named by its definition digest):
+//! - a Service History (`service_history/3` and `/4`, and the `/0`
+//!   `service_history/1` and `/2` of peers on earlier releases, each named by
+//!   its definition digest):
 //!   RFC 8785 of `{anchor, coverage_declaration, declared, derivation,
 //!   evidence_stream, history_card, history_card_digest, period_counts,
 //!   subject}`, the card the `history_card/1` artifact at the same anchor

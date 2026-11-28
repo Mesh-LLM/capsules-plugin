@@ -590,7 +590,15 @@ impl CapsuleState {
             )?)
         };
         crate::ledger_format::check_and_stamp(&ledger_dir)?;
+        // A key minted here serves Service History under
+        // `inference-service-history/1`, and its record says so; a key an
+        // earlier release minted has no record and serves none (ISH §6.1
+        // item 9, `service_history`).
+        let minting = !data_dir.join("keys").join("node-key.pem").exists();
         let keys = keys::load_or_create(&data_dir.join("keys"))?;
+        if minting {
+            crate::service_history::record_minted_key(&data_dir.join("keys"), &keys.signing_key)?;
+        }
         let node_keys = crate::chain_store::node_signing_keys(&data_dir.join("keys"));
         let (stores, (ledger, report)) = match crate::chain_store::stays_flat(&ledger_dir)? {
             // A flat history the stores cannot hold whole stays flat, as
