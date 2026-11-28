@@ -48,7 +48,12 @@ export function SettlementStrip({ settlement }: { settlement: PayerBook | null |
       <HoverChip census="settlement:provider_book" label={SETTLEMENT_PROVIDER_BOOK_TOOLTIP}>
         <span className="text-fg-faint">{view.providerBook}</span>
       </HoverChip>
+      {/* #410: what the wallet paid for this exchange first, then the metered
+         bill, each named and never summed; then, under the metered rule, who
+         keeps what the bill didn't use. */}
+      {view.walletPaid ? <span className="font-mono tabular-nums text-fg-dim">{view.walletPaid}</span> : null}
       {view.finalAmount ? <span className="font-mono tabular-nums text-fg-dim">{view.finalAmount}</span> : null}
+      {view.depositKept ? <span className="text-fg-dim">{view.depositKept}</span> : null}
       {view.termsNote ? <span className="text-fg-faint">{view.termsNote}</span> : null}
     </div>
   )
