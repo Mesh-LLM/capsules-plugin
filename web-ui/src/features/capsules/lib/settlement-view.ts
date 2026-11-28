@@ -106,17 +106,28 @@ export const DEPOSIT_KEPT_TEXT =
   'the seller keeps any part of the deposit the bill didn’t use; it isn’t refunded or carried forward'
 
 /** The rail's metered rule (ln-payments-plugin docs/lightning-payments.md:98)
- *  applies when the wallet paid a deposit (segment 0) and the bill was
- *  accounted with no final invoice: the deposit covered the bill, and the
- *  seller keeps what it didn't use. A host before token metering issued an
- *  input and an output invoice for every exchange, so a book with an output
- *  invoice never reads this way. */
+ *  applies when the wallet paid a deposit (segment 0), the bill was
+ *  accounted with no final invoice, and the bill fits inside the deposit:
+ *  the deposit covered the bill, and the seller keeps what it didn't use. A
+ *  host before token metering issued an input and an output invoice for every
+ *  exchange, so a book with an output invoice never reads this way. The host
+ *  issues any final invoice before it accounts the bill
+ *  (`crates/evidence-plugin/src/settlement_legs.rs:33-34`); the bill check
+ *  holds even if a book is read out of that order. It compares and prints
+ *  nothing (Sherlock2, #420). */
 function depositKeptText(settlement: PayerBook): string | null {
-  const depositPaid = settlement.entries.some(
+  const deposit = settlement.entries.find(
     (entry) => entry.phase === 'input_settlement_observed' && entry.source === 'wallet_reported' && entry.segment === 0
   )
   const finalInvoice = settlement.entries.some((entry) => entry.phase.startsWith('output_'))
-  return depositPaid && !finalInvoice && typeof settlement.final_accounted_msat === 'number' ? DEPOSIT_KEPT_TEXT : null
+  const bill = settlement.final_accounted_msat
+  return deposit &&
+    typeof deposit.amount_msat === 'number' &&
+    !finalInvoice &&
+    typeof bill === 'number' &&
+    bill <= deposit.amount_msat
+    ? DEPOSIT_KEPT_TEXT
+    : null
 }
 
 /** The row face for a paid exchange, or `null` when the row has no payment

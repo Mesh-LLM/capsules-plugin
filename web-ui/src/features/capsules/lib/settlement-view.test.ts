@@ -287,6 +287,10 @@ describe('the paid-exchange view: what was charged, who paid, and outcomes the h
   it('#410: no wallet payment, no paid line; no bill accounted yet, no deposit line', () => {
     expect(settlementRowView({ ...book('terms_only'), entries: [] })?.walletPaid).toBeNull()
     expect(settlementRowView({ ...lab(), final_accounted_msat: null })?.depositKept).toBeNull()
+    // A bill larger than the deposit, read before its final invoice: no line.
+    expect(settlementRowView({ ...lab(), final_accounted_msat: 1200 })?.depositKept).toBeNull()
+    // A bill equal to the deposit: the line still holds ("any part").
+    expect(settlementRowView({ ...lab(), final_accounted_msat: 1000 })?.depositKept).toBe(DEPOSIT_KEPT_TEXT)
   })
 
   it('lists the wallet’s credited amount, fee and a delivered watermark on each step that carries them', () => {
