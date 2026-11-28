@@ -340,9 +340,10 @@ export function latestWitnessed(card: JsonRecord | null | undefined): { at: stri
 
 /** Each record's witness coverage, by ledger order, the way
  *  `checkpointCoverageByRecord` reads local checkpoints. An empty map when it
- *  can't be told: the witness is off (no witnessed chip is shown), the card
- *  isn't loaded, or a witness holds a checkpoint whose coverage wasn't
- *  reported. */
+ *  can't be told: the witness is off (no witnessed chip is shown), the node
+ *  didn't say whether one is set (`unknown`, only from a node on another
+ *  version), the card isn't loaded, or a witness holds a checkpoint whose
+ *  coverage wasn't reported. */
 export function witnessCoverageByRecord(
   ledgerOrderIds: readonly string[],
   card: JsonRecord | null | undefined
@@ -350,7 +351,7 @@ export function witnessCoverageByRecord(
   const coverage = new Map<string, WitnessCoverage>()
   if (!card) return coverage
   const state = checkpointRegistration(card).witnessState
-  if (state === 'pending' || state === 'unknown') {
+  if (state === 'pending') {
     ledgerOrderIds.forEach((id) => coverage.set(id, { kind: 'none' }))
     return coverage
   }

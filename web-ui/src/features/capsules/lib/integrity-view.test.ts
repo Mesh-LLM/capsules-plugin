@@ -236,12 +236,13 @@ describe('witnessCoverageByRecord — each record against the latest checkpoint 
   it('no witness holds any checkpoint: every record says none', () => {
     const card = { checkpoint_count: 2, witnesses: [], witnessed_checkpoint_count: 0, witness_configured: true }
     expect(witnessCoverageByRecord(ids, card).get('r1')).toEqual({ kind: 'none' })
-    expect(witnessCoverageByRecord(ids, { checkpoint_count: 2, witnesses: [] }).get('r1')).toEqual({ kind: 'none' })
   })
 
-  it('unknown stays unknown: witness off, no card, or a witnessed checkpoint with no reported coverage', () => {
+  it('unknown stays unknown: witness off, not said, no card, or a witnessed checkpoint with no reported coverage', () => {
     expect(witnessCoverageByRecord(ids, { checkpoint_count: 2, witnesses: [], witness_configured: false }).size).toBe(0)
     expect(witnessCoverageByRecord(ids, null).size).toBe(0)
+    // The node didn't say whether a witness is set: can't tell, not "none".
+    expect(witnessCoverageByRecord(ids, { checkpoint_count: 2, witnesses: [] }).size).toBe(0)
     const unreported = { ...witnessedCard, latest_witnessed: { timestamp: at, mmr_size: 4, witnesses: [] } }
     expect(latestWitnessed(unreported)).toBeNull()
     expect(witnessCoverageByRecord(ids, unreported).size).toBe(0)
