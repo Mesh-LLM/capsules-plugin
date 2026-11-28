@@ -253,7 +253,7 @@ pub fn with_route(
             .binding_id("evidence_provider_receipt_bundle")
             .description(
                 "The provider's own receipt for one paid exchange, served or failed: the model \
-                 and what it received, for the viewer to render. Cuts a signed checkpoint when none \
+                 and the payment it received, for the viewer to render. Cuts a signed checkpoint when none \
                  covers the records yet.",
             )
             .input::<ProviderReceiptArgs>()
