@@ -70,6 +70,7 @@ import {
 } from '@/features/capsules/lib/exchange-day-groups'
 import { EVIDENCE_SOURCE_LABEL, evidenceSource } from '@/features/capsules/lib/evidence-source'
 import { exchangeTextNotice, heroStatusLine } from '@/features/capsules/lib/your-records'
+import { ownRecordMissing } from '@/features/capsules/lib/row-combination'
 import { useRecordsStatus } from '@/features/capsules/lib/use-your-records'
 import { CleanUpRecordsDialog } from '@/features/capsules/components/CleanUpRecordsDialog'
 import { YourRecordsDialog } from '@/features/capsules/components/YourRecordsDialog'
@@ -427,15 +428,16 @@ function ExchangesSection({
   requesterStartedDate,
   focusExchangeKey,
   ledgerOrderIds = [],
-  ledgerLoaded = false
+  ledgerFetchedAt = null
 }: {
   recordsById: Map<string, CapsuleRecord>
   /** This node's record ids in ledger order (padding left out), the order a
    *  checkpoint's coverage counts in. */
   ledgerOrderIds?: readonly string[]
-  /** The node's records have loaded (`recordsById` is the whole ledger), so
-   *  a record missing from it is missing, not still loading (#388). */
-  ledgerLoaded?: boolean
+  /** When the node's records (`recordsById`, the whole ledger) were last
+   *  fetched, or `null` before they load: a row's record is called missing
+   *  only when its exchange is older than that fetch (#388). */
+  ledgerFetchedAt?: number | null
   nodePubKeyPem: string | null
   /** §3E -- "Get the other side’s record" and
    *  "Register a checkpoint" beside the headline both land on the Integrity
@@ -1096,7 +1098,12 @@ function ExchangesSection({
                           row.raw.mine.capsule_id ? (recordsById.get(row.raw.mine.capsule_id) ?? null) : null
                         }
                         ownRecordMissing={
-                          ledgerLoaded && !!row.raw.mine.capsule_id && !recordsById.has(row.raw.mine.capsule_id)
+                          ownRecordMissing({
+                            capsuleId: row.raw.mine.capsule_id ?? null,
+                            timestamp: row.timestamp,
+                            held: (id) => recordsById.has(id),
+                            ledgerFetchedAt
+                          })
                         }
                         checkpointCovered={
                           row.raw.mine.capsule_id ? (checkpointCoverage.get(row.raw.mine.capsule_id) ?? null) : null
@@ -1888,7 +1895,7 @@ export function LedgerPageContent({ focusExchangeKey }: { focusExchangeKey?: str
                     sampleData={source === 'sample'}
                     recordsById={recordsById}
                     ledgerOrderIds={ledgerOrder}
-                    ledgerLoaded={ledgerQuery.isSuccess}
+                    ledgerFetchedAt={ledgerQuery.isSuccess ? ledgerQuery.dataUpdatedAt : null}
                   />
                 )
               },

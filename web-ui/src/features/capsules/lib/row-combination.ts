@@ -28,6 +28,23 @@ export type RowCombinationInput = {
 export const OWN_RECORD_MISSING =
   'Your record of this exchange isn’t among the records this node returned, so nothing about your side is checked here. Reload the page; if it stays, save the evidence file and check this node’s storage.'
 
+/** Whether a row's own record is missing from the node's records (#388), not
+ *  just newer than the last fetch of them: the rows and the records refetch
+ *  on separate timers, so a record whose exchange is no older than that fetch
+ *  (record times are kept to the minute) may simply not be in it yet. */
+export function ownRecordMissing(input: {
+  capsuleId: string | null
+  timestamp: string | null
+  held: (capsuleId: string) => boolean
+  /** When the node's records were last fetched (ms), or `null` before. */
+  ledgerFetchedAt: number | null
+}): boolean {
+  if (input.ledgerFetchedAt === null || !input.capsuleId || input.held(input.capsuleId)) return false
+  const at = input.timestamp ? Date.parse(input.timestamp) : Number.NaN
+  // A minute's margin: the record's time is cut to the minute.
+  return Number.isFinite(at) && at + 60_000 <= input.ledgerFetchedAt
+}
+
 export const WITNESS_HOLDS_IT = ' A witness you don’t run also holds your checkpoint.'
 
 export function rowCombinationText(input: RowCombinationInput): string {
