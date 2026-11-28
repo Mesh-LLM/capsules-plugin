@@ -547,7 +547,7 @@ export function rightCellText(state: RightCellState): string {
  *  not-held cases are the ones Item 4 calls out; the rest carry the same
  *  discipline so every state's (i) has an honest sentence. */
 export function rightCellDetail(state: RightCellState, roleTag?: string): string {
-  if (roleTag === 'SERVED' && (state.kind === 'closed' || state.kind === 'open_not_held')) {
+  if (roleTag === 'SERVED' && (state.kind === 'closed' || state.kind === 'open_not_held' || state.kind === 'open_not_given')) {
     return ROW_STATE_TOOLTIPS_SERVED[state.kind]
   }
   return ROW_STATE_TOOLTIPS[state.kind]

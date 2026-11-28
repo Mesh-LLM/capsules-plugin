@@ -161,6 +161,8 @@ export const ROW_STATE_TOOLTIPS = {
 export const ROW_STATE_TOOLTIPS_SERVED = {
   closed:
     'The node you served signed its own record of this exchange with the key it announced. It names you as the node that served it, checks out on this machine, and names the same request, answer and model weights as yours.',
+  open_not_given:
+    'Their record hasn’t arrived, and nothing that arrived names it by its id. It arrives on its own only if their node sends records (on by default, unless its operator turned it off); otherwise, ask for it on this row.',
   open_not_held:
     'Their record hasn’t arrived, or what arrived doesn’t name you as the node that served it. It arrives on its own only if their node sends records (on by default, unless its operator turned it off); otherwise, ask for it on this row.'
 } as const
