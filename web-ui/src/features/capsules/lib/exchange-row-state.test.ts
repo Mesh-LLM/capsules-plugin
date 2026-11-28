@@ -1,3 +1,4 @@
+import { ed25519 } from '@noble/curves/ed25519'
 import { describe, expect, it } from 'vitest'
 import {
   deriveRightCellState,
@@ -8,6 +9,8 @@ import {
   rightCellDetail,
   rightCellStatusLabel,
   rightCellText,
+  recordVerdict,
+  servedBinding,
   type RightCellState,
   type RightCellStateKind
 } from '@/features/capsules/lib/exchange-row-state'
@@ -17,6 +20,7 @@ import type { PeerRecomputeState } from '@/features/capsules/lib/recompute-ident
 import { fixtureHalfBody, fixtureMineCell, fixtureTheirsCell } from '@/features/capsules/lib/pushed-half-fixtures'
 import { STANDING_WORD } from '@/features/capsules/lib/banned-terms'
 import { formatExchangeTimestamp } from '@/features/capsules/lib/local-time'
+import { hex, signedBy } from '@/features/capsules/lib/cose-test-signing'
 
 function paneCRow(overrides: Partial<PaneCRow> = {}): PaneCRow {
   return {
@@ -711,5 +715,96 @@ describe('deriveRightCellState — a provider half the door refused for its clai
       theirs: { ...paneCRow().theirs, evidence_outcome: 'claims_refused', evidence_outcome_date: '2026-09-28T08:00:00Z' }
     })
     expect(deriveRightCellState(row).kind).toBe('contradicted')
+  })
+})
+
+// #412: on a row this node SERVED, a record of theirs is from the node it
+// served only when its signature holds under the key that requesting node is
+// known by (`mine.requester_key_id`, bound by the plugin), whichever way it
+// arrived. Real ed25519 signatures over real capsule ids throughout.
+describe('deriveRightCellState — a SERVED row: the record must be signed by the requester (#412)', () => {
+  const REQUESTER = ed25519.utils.randomSecretKey()
+  const OTHER_NODE = ed25519.utils.randomSecretKey()
+  const REQUESTER_KEY = hex(ed25519.getPublicKey(REQUESTER))
+  const THEIRS_ID = 'f'.repeat(64)
+
+  /** Our served record, with the requester's key the plugin bound to it. */
+  function servedMine(requesterKeyId: string | null | undefined): PaneCRow['mine'] {
+    const cell: PaneCRow['mine'] = { ...fixtureMineCell(), role: 'served' }
+    if (requesterKeyId !== undefined) cell.requester_key_id = requesterKeyId
+    return cell
+  }
+
+  /** The requester's record of the exchange: names us as server, cites our
+   *  digests (or not), signed by `secret`. */
+  function theirRecord(secret: Uint8Array, outcome: 'agrees' | 'disagrees' = 'agrees') {
+    return signedBy(
+      fixtureHalfBody({ capsuleId: THEIRS_ID, responseDigest: outcome === 'agrees' ? undefined : 'e'.repeat(64) }),
+      secret
+    )
+  }
+
+  function servedRow(record: Record<string, unknown>, ...key: [] | [string | null | undefined]): PaneCRow {
+    return paneCRow({
+      role_tag: 'SERVED',
+      mine: servedMine(key.length === 0 ? REQUESTER_KEY : key[0]),
+      // The door accepted the key (any announced key passes it) and the
+      // body recomputes: only the requester binding is left to decide.
+      theirs: { ...fixtureTheirsCell('agrees', { capsuleId: THEIRS_ID }), role: 'requested', record },
+      digest_match: { state: 'verified' }
+    })
+  }
+
+  it('a record signed by the requester’s announced key confirms', () => {
+    expect(deriveRightCellState(servedRow(theirRecord(REQUESTER))).kind).toBe('closed')
+  })
+
+  it('the key is compared without regard to hex case', () => {
+    expect(deriveRightCellState(servedRow(theirRecord(REQUESTER), REQUESTER_KEY.toUpperCase())).kind).toBe('closed')
+  })
+
+  it('a record signed by another node’s key, naming this node as server, never confirms nor disagrees', () => {
+    expect(deriveRightCellState(servedRow(theirRecord(OTHER_NODE))).kind).toBe('open_not_held')
+    expect(deriveRightCellState(servedRow(theirRecord(OTHER_NODE, 'disagrees'))).kind).toBe('open_not_held')
+  })
+
+  it('with no announcement for the requester, nothing confirms', () => {
+    expect(deriveRightCellState(servedRow(theirRecord(REQUESTER), null)).kind).toBe('open_not_held')
+    expect(deriveRightCellState(servedRow(theirRecord(REQUESTER), undefined)).kind).toBe('open_not_held')
+  })
+
+  it('a record from the requester that differs from ours disagrees', () => {
+    expect(deriveRightCellState(servedRow(theirRecord(REQUESTER, 'disagrees'))).kind).toBe('contradicted')
+  })
+
+  it('a record naming the requester’s key but signed by another key never confirms', () => {
+    const forged = { ...theirRecord(OTHER_NODE), key_id: REQUESTER_KEY }
+    expect(deriveRightCellState(servedRow(forged)).kind).toBe('open_not_held')
+  })
+
+  it('a FETCHED record is judged by the same signature, not by the key its sender supplied', () => {
+    const row = servedRow(theirRecord(REQUESTER))
+    // The fetch verified its statement under a key the reply carried
+    // (`signatureOk: true`), but the record itself is another node's.
+    const forged = { ...theirRecord(OTHER_NODE), key_id: REQUESTER_KEY }
+    expect(deriveRightCellState(row, fetched({ peerRecord: forged })).kind).toBe('open_not_held')
+    expect(deriveRightCellState(row, fetched({ peerRecord: theirRecord(REQUESTER) })).kind).toBe('closed')
+  })
+
+  it('a record with no signature of its own never confirms on a SERVED row', () => {
+    const { signature: _dropped, ...unsigned } = theirRecord(REQUESTER)
+    expect(deriveRightCellState(servedRow(unsigned)).kind).toBe('open_not_held')
+  })
+
+  it('an ASKED row keeps its own check: no requester key is needed', () => {
+    expect(servedBinding(fixtureMineCell())).toBeNull()
+    expect(
+      recordVerdict(
+        { status: 'found', idMatch: true, signatureOk: true, peerRecord: citingPeerRecord(), fetch: () => {} },
+        localRecordWithDigests(),
+        'fetched',
+        servedBinding(fixtureMineCell())
+      ).kind
+    ).toBe('closed')
   })
 })

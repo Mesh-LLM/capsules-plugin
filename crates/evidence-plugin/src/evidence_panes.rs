@@ -2737,6 +2737,72 @@ fn mark_claims_refused(
     }
 }
 
+/// #412: on a cell for an exchange this node SERVED, the key the requester
+/// announced, so the page counts a record of theirs as from the node it
+/// served only when that key signed it. The requester is our own record's
+/// `requesting_party`, which the host sets from the connection's
+/// authenticated node id (`capsule_emit.rs`), never the request; its key is
+/// the one its host announced for it ([`crate::peer_keys::key_bound_to`]). `requester_key_id` is null when no
+/// requester is named or it announced no key. Every `mine` cell whose role
+/// is `served` gets the field: Pane C rows and Pane B `confirmed_siblings`,
+/// so both panes run the same gate on the same inputs.
+fn attach_requester_keys(
+    pane: &mut Value,
+    our_records: &[Value],
+    configured: Option<&str>,
+    announced: &std::collections::BTreeMap<String, String>,
+) {
+    let ours_by_id: HashMap<&str, &Value> = our_records
+        .iter()
+        .filter_map(|r| {
+            r.get("capsule_id")
+                .and_then(Value::as_str)
+                .map(|id| (id, r))
+        })
+        .collect();
+    let attach = |mine: &mut Value| {
+        if mine.get("role").and_then(Value::as_str) != Some("served") {
+            return;
+        }
+        let key = mine
+            .get("capsule_id")
+            .and_then(Value::as_str)
+            .and_then(|id| ours_by_id.get(id))
+            .filter(|record| label_role(record) == "served")
+            .and_then(|record| full_counterparty_node_id(record))
+            .and_then(|requester| {
+                crate::peer_keys::key_bound_to(configured, announced, &requester)
+            });
+        mine["requester_key_id"] = json!(key);
+    };
+    let Some(rows) = pane.get_mut("rows").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for row in rows {
+        if let Some(mine) = row.get_mut("mine").filter(|m| m.is_object()) {
+            attach(mine);
+        }
+        if let Some(siblings) = row
+            .get_mut("confirmed_siblings")
+            .and_then(Value::as_array_mut)
+        {
+            for sibling in siblings {
+                if let Some(mine) = sibling.get_mut("mine").filter(|m| m.is_object()) {
+                    attach(mine);
+                }
+            }
+        }
+    }
+}
+
+/// [`attach_requester_keys`] with the registry as it is now: the operator's
+/// `CAPSULES_PEER_KEYS` and the host's announced keys.
+fn attach_requester_keys_now(pane: &mut Value, our_records: &[Value]) {
+    let configured = crate::settings::var(crate::peer_keys::ENV_PEER_KEYS).ok();
+    let announced = crate::peer_keys::announced::snapshot();
+    attach_requester_keys(pane, our_records, configured.as_deref(), &announced);
+}
+
 pub(crate) fn build_pane_json(
     pane: &str,
     ledger_dir: &Path,
@@ -2769,6 +2835,7 @@ pub(crate) fn build_pane_json(
                 &settlements,
             );
             crate::verdict_counts::attach(&mut pane, &our_records, ledger_dir);
+            attach_requester_keys_now(&mut pane, &our_records);
             Some(pane)
         }
         "pane-c" => {
@@ -2783,6 +2850,7 @@ pub(crate) fn build_pane_json(
                 ),
             };
             mark_claims_refused(&mut pane, &our_records, &read_claim_refusals(ledger_dir));
+            attach_requester_keys_now(&mut pane, &our_records);
             crate::referee::request::attach_rows(&mut pane, ledger_dir);
             // With no session kept, a half that cites one still says it is
             // not evaluated here rather than reading as "no agreement".
@@ -5441,6 +5509,50 @@ mod tests {
             json!({ "role": "served", "outcome": "served" });
         assert!(!is_failed(&odd));
         assert_eq!(label_role(&odd), "served");
+    }
+
+    /// #412: a served cell carries the key bound to the requester our own
+    /// record names; an asked cell carries none; an unknown requester or one
+    /// with no bound key reads null, in Pane C rows and Pane B siblings.
+    #[test]
+    fn served_cells_carry_the_requesters_bound_key() {
+        let served = |id: &str, requester: &str| {
+            json!({
+                "capsule_id": id,
+                "model_attestation": {"compute_attestation": {"x-mesh-poc-v1": {
+                    "role": "served",
+                    "serving_provenance": {"served_by_node_id": "self", "requesting_party": requester}
+                }}}
+            })
+        };
+        let records = vec![
+            served("s-known", "node-b"),
+            served("s-unannounced", "node-z"),
+            served("s-unknown", "unknown"),
+        ];
+        let key_b = "bb".repeat(32);
+        let announced: std::collections::BTreeMap<String, String> =
+            [("node-b".to_string(), key_b.clone())]
+                .into_iter()
+                .collect();
+        let cell = |id: &str, role: &str| json!({"capsule_id": id, "role": role});
+        let mut pane = json!({"rows": [
+            {"mine": cell("s-known", "served")},
+            {"mine": cell("s-unannounced", "served")},
+            {"mine": cell("s-unknown", "served")},
+            {"mine": cell("a-1", "requested")},
+            {"confirmed_siblings": [{"mine": cell("s-known", "served")}]},
+        ]});
+        attach_requester_keys(&mut pane, &records, None, &announced);
+        let rows = &pane["rows"];
+        assert_eq!(rows[0]["mine"]["requester_key_id"], json!(key_b));
+        assert_eq!(rows[1]["mine"]["requester_key_id"], Value::Null);
+        assert_eq!(rows[2]["mine"]["requester_key_id"], Value::Null);
+        assert!(rows[3]["mine"].get("requester_key_id").is_none());
+        assert_eq!(
+            rows[4]["confirmed_siblings"][0]["mine"]["requester_key_id"],
+            json!(key_b)
+        );
     }
 
     #[test]

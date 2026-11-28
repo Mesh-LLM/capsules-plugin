@@ -29,6 +29,8 @@ import {
   type AskJudges
 } from './ask-for-record'
 import { judgeRow } from './row-evidence'
+import { servedBinding } from './exchange-row-state'
+import { coseSign1, hex, signedBy } from './cose-test-signing'
 import { formatExchangeTimestamp } from '@/features/capsules/lib/local-time'
 
 const ASKED_AT = '2026-09-28T21:00:00Z'
@@ -36,7 +38,7 @@ const ASKED_AT = '2026-09-28T21:00:00Z'
 /** The row's state after a run of asks, as the row derives it. */
 function stateAfterAsks(row: PaneCRow, outcomes: AskOutcome[], local: unknown, fetched: PeerRecomputeState | null = null) {
   let ask: RowAsk | null = null
-  for (const outcome of outcomes) ask = settleRowAsk(ask, outcome, local as never)
+  for (const outcome of outcomes) ask = settleRowAsk(ask, outcome, local as never, servedBinding(row.mine))
   return judgeRow(row, local as never, fetched, ask).state
 }
 
@@ -64,7 +66,6 @@ function waitingRow(): PaneCRow {
   } as unknown as PaneCRow
 }
 
-const hex = (bytes: Uint8Array) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 
 /** The peer's own key, as this node was told it (`announced_key_id`). */
 const PEER_SECRET = ed25519.utils.randomSecretKey()
@@ -131,27 +132,6 @@ function artifactLeafIndices(body: Record<string, unknown>): number[] {
   const text = atob(String(body.artifact).replace(/-/g, '+').replace(/_/g, '/'))
   const parsed = JSON.parse(text) as { records: { leaf_index: number }[] }
   return parsed.records.map((r) => r.leaf_index)
-}
-
-/** A COSE_Sign1 (EdDSA, attached payload) over `payload`, as the producer
- *  signs a record's `capsule_id`. */
-function coseSign1(payload: Uint8Array, secret: Uint8Array): string {
-  const protectedHeader = Uint8Array.of(0xa1, 0x01, 0x27)
-  const sigStructure = Uint8Array.of(
-    0x84,
-    0x6a,
-    ...new TextEncoder().encode('Signature1'),
-    0x43,
-    ...protectedHeader,
-    0x40,
-    0x58,
-    payload.length,
-    ...payload
-  )
-  const sig = ed25519.sign(sigStructure, secret)
-  return hex(
-    Uint8Array.of(0xd2, 0x84, 0x43, ...protectedHeader, 0xa0, 0x58, payload.length, ...payload, 0x58, 0x40, ...sig)
-  )
 }
 
 function signedRecord(secret: Uint8Array): Record<string, unknown> {
@@ -624,5 +604,34 @@ describe('producerSignatureVerifies', () => {
   it('fails when the envelope does not sign the record’s own id', () => {
     const record = signedRecord(PEER_SECRET)
     expect(producerSignatureVerifies({ ...record, capsule_id: '08'.repeat(32) }, ANNOUNCED)).toBe(false)
+  })
+})
+
+// #412: an asked record on a SERVED row is kept as a verdict only when the
+// requester's announced key signed it, as the row itself judges it.
+describe('settleRowAsk — a SERVED row keeps only a record the requester signed (#412)', () => {
+  const REQUESTER = ed25519.utils.randomSecretKey()
+  const OTHER_NODE = ed25519.utils.randomSecretKey()
+  const served = { requesterKeyId: hex(ed25519.getPublicKey(REQUESTER)) }
+  const ours = fixtureHalfBody({ capsuleId: 'mine-1' })
+  const asked = (signer: Uint8Array): AskOutcome => ({
+    kind: 'record',
+    at: '2026-11-27T12:00:00Z',
+    evidence: {
+      status: 'found',
+      idMatch: true,
+      signatureOk: true,
+      peerRecord: signedBy(fixtureHalfBody({ capsuleId: 'f'.repeat(64) }), signer),
+      fetch: () => {}
+    }
+  })
+
+  it('keeps one signed by the requester', () => {
+    expect(settleRowAsk(null, asked(REQUESTER), ours as never, served).record).not.toBeNull()
+  })
+
+  it('does not keep one signed by another node, or any with no requester key', () => {
+    expect(settleRowAsk(null, asked(OTHER_NODE), ours as never, served).record).toBeNull()
+    expect(settleRowAsk(null, asked(REQUESTER), ours as never, { requesterKeyId: null }).record).toBeNull()
   })
 })

@@ -23,12 +23,17 @@
 import { ed25519 } from '@noble/curves/ed25519'
 import type { CapsuleRecord } from '@/features/capsules/api/types'
 import type { AskSubject, EvidenceAskReply } from '@/features/capsules/api/evidenceRequestClient'
-import { verifyCoseSign1 } from '@/features/capsules/lib/cose'
+import {
+  announcedKeyBytes,
+  hexBytes,
+  producerSignatureVerifies
+} from '@/features/capsules/lib/producer-signature'
 import {
   fullTimeInstant,
   isVerifiedRecord,
   recordVerdict,
-  type RightCellStateKind
+  type RightCellStateKind,
+  type ServedBinding
 } from '@/features/capsules/lib/exchange-row-state'
 import { recomputeIdMatch, type PeerRecomputeState } from '@/features/capsules/lib/recompute-identity'
 import { formatExchangeTimestamp } from '@/features/capsules/lib/local-time'
@@ -217,13 +222,6 @@ export function rowAskControls(input: RowAskInput): { record: RowAskControl; his
   return { record, history }
 }
 
-function hexBytes(hex: string): Uint8Array | null {
-  if (!/^([0-9a-f]{2})+$/i.test(hex)) return null
-  const bytes = new Uint8Array(hex.length / 2)
-  for (let i = 0; i < bytes.length; i++) bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16)
-  return bytes
-}
-
 /** The bytes a refusal's signature covers: its three signed fields as JSON
  *  with sorted keys and no spaces (`capsule_emit.evidence_request.Refusal`). */
 export function refusalSigningBody(refusal: { request_digest: string; reason: string; issued_at: string }): Uint8Array {
@@ -233,14 +231,6 @@ export function refusalSigningBody(refusal: { request_digest: string; reason: st
     request_digest: refusal.request_digest
   })
   return new TextEncoder().encode(body)
-}
-
-/** The announced key's bytes, when the item names that same key. */
-function announcedKeyBytes(namedKeyId: unknown, announcedKeyId: string | null): Uint8Array | null {
-  const named = str(namedKeyId)?.toLowerCase()
-  if (!announcedKeyId || named !== announcedKeyId.toLowerCase()) return null
-  const key = hexBytes(announcedKeyId)
-  return key && key.length === 32 ? key : null
 }
 
 /** Why a refusal proves nothing, or `null` when it holds: signed under the
@@ -269,17 +259,7 @@ export function refusalProblem(
   }
 }
 
-/** A record's producer signature: a COSE_Sign1 over its own 32-byte
- *  `capsule_id`, under the key this node was told the peer signs with. A
- *  record naming any other key, or a peer with no announced key, fails. */
-export function producerSignatureVerifies(record: Record<string, unknown>, announcedKeyId: string | null): boolean {
-  const envelope = hexBytes(str(record.signature) ?? '')
-  const key = announcedKeyBytes(record.key_id, announcedKeyId)
-  const id = hexBytes(str(record.capsule_id) ?? '')
-  if (!envelope || !key || !id) return false
-  const result = verifyCoseSign1(envelope, key)
-  return result.verified && result.payload.length === id.length && result.payload.every((b, i) => b === id[i])
-}
+export { producerSignatureVerifies }
 
 export type AskJudges = {
   recomputeIdMatch: (record: Record<string, unknown>, capsuleId: string | null) => Promise<boolean | null>
@@ -535,7 +515,8 @@ function newerClaim(stored: RowAsk['claim'], incoming: NonNullable<RowAsk['claim
 export function settleRowAsk(
   previous: RowAsk | null | undefined,
   outcome: AskOutcome,
-  localRecord: CapsuleRecord | null | undefined
+  localRecord: CapsuleRecord | null | undefined,
+  served: ServedBinding | null
 ): RowAsk {
   const claim =
     outcome.kind === 'refused' || outcome.kind === 'no_record'
@@ -545,7 +526,7 @@ export function settleRowAsk(
   // kept; one that reaches none -- even validly signed, from another provider
   // or for another exchange -- only updates `latest`.
   const keeps =
-    outcome.kind === 'record' && recordVerdict(outcome.evidence, localRecord, 'asked').kind !== 'no_verdict'
+    outcome.kind === 'record' && recordVerdict(outcome.evidence, localRecord, 'asked', served).kind !== 'no_verdict'
   const record = keeps ? outcome : (previous?.record ?? null)
   return { latest: outcome, claim, record }
 }

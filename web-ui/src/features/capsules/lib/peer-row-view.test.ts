@@ -6,7 +6,9 @@
 // sidecar doesn't back. These are the properties an adversarial reviewer
 // would try to break, so they're asserted directly against the pure
 // view-model functions rather than only through component snapshots.
+import { ed25519 } from '@noble/curves/ed25519'
 import { describe, expect, it } from 'vitest'
+import { hex, signedBy } from '@/features/capsules/lib/cose-test-signing'
 import type { PaneBConfirmedSibling, PaneBRow, PaneCRow, TwinRowFacts } from '@/features/capsules/api/sidecarTypes'
 import { LatencySource } from '@/lib/api/types'
 import type { PeerMeshStatus } from '@/features/capsules/lib/peer-mesh-status'
@@ -72,6 +74,38 @@ function confirmedSibling(
     digest_match: { state: matchState }
   }
 }
+
+// #412: Pane B runs the same gate on a sibling of an exchange this node
+// SERVED, so it counts the requester's record only when the requester's
+// announced key signed it -- the same answer Pane C gives for that exchange.
+describe('confirmedByOtherSide — a served exchange needs the requester’s signature (#412)', () => {
+  const REQUESTER = ed25519.utils.randomSecretKey()
+  const OTHER_NODE = ed25519.utils.randomSecretKey()
+  const REQUESTER_KEY = hex(ed25519.getPublicKey(REQUESTER))
+
+  function servedSibling(signer: Uint8Array, requesterKeyId: string | null): PaneBConfirmedSibling {
+    const sibling = confirmedSibling()
+    const record = signedBy(sibling.theirs.record ?? {}, signer)
+    return {
+      ...sibling,
+      mine: { ...fixtureMineCell(), role: 'served', requester_key_id: requesterKeyId },
+      theirs: { ...sibling.theirs, role: 'requested', record }
+    }
+  }
+
+  it('counts one signed by the requester’s announced key', () => {
+    const row = baseRow({ exchange_count: 1, confirmed_siblings: [servedSibling(REQUESTER, REQUESTER_KEY)] })
+    expect(confirmedByOtherSide(row).confirmed).toBe(1)
+  })
+
+  it('does not count one signed by another node’s key, nor any when the requester announced none', () => {
+    const row = baseRow({
+      exchange_count: 2,
+      confirmed_siblings: [servedSibling(OTHER_NODE, REQUESTER_KEY), servedSibling(REQUESTER, null)]
+    })
+    expect(confirmedByOtherSide(row)).toEqual({ confirmed: 0, total: 2, note: 'none confirmed yet' })
+  })
+})
 
 describe('withYouCounts — fold-in finding 1: confirmed comes from the ONE gate', () => {
   it('reads requested/served from role_and_count_cell and confirmed from the gate — NEVER pair.verified', () => {
