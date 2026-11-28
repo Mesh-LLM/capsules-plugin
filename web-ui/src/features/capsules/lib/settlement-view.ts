@@ -59,15 +59,74 @@ export type SettlementRowView = {
   providerBook: string
   /** Said when the records disagree on the terms they name. */
   termsNote: string | null
-  /** The payer's own final amount, as recorded (`final_accounted`), or
-   *  `null` when there is none. Never a sum made here, never a balance. */
+  /** What this node's wallet paid for this exchange: each payment its
+   *  wallet reported in this exchange's own book, in order, never summed
+   *  (#410). Deposits for the seller's other models are other books. */
+  walletPaid: string | null
+  /** The payer's own final amount, as recorded (`final_accounted`): the
+   *  metered bill, or `null` when there is none. Never a sum made here,
+   *  never a balance. */
   finalAmount: string | null
+  /** Said when the rail's metered rule applies (a deposit paid and no final
+   *  invoice): the seller keeps what the bill didn't use. No difference is
+   *  printed (Sherlock2's ruling on #410). */
+  depositKept: string | null
 }
 
-/** The payer's final amount, as it recorded it. */
+function msatText(n: number): string {
+  return `${n.toLocaleString('en-US')} msat`
+}
+
+/** The payer's metered bill, as it recorded it (Sherlock2's wording, #410). */
 function finalAmountText(settlement: PayerBook): string | null {
   return typeof settlement.final_accounted_msat === 'number'
-    ? `final amount, as you recorded it: ${settlement.final_accounted_msat} msat`
+    ? `metered bill, as you recorded it: ${msatText(settlement.final_accounted_msat)}`
+    : null
+}
+
+/** The payments this node's wallet reported settled in this exchange's book. */
+function walletPayments(settlement: PayerBook): number[] {
+  return settlement.entries
+    .filter(
+      (entry) =>
+        entry.source === 'wallet_reported' &&
+        entry.phase.endsWith('_settlement_observed') &&
+        typeof entry.amount_msat === 'number'
+    )
+    .map((entry) => entry.amount_msat as number)
+}
+
+/** "your wallet paid for this exchange: 1,000 msat, then 24 msat". */
+function walletPaidText(settlement: PayerBook): string | null {
+  const paid = walletPayments(settlement)
+  return paid.length > 0 ? `your wallet paid for this exchange: ${paid.map(msatText).join(', then ')}` : null
+}
+
+export const DEPOSIT_KEPT_TEXT =
+  'the seller keeps any part of the deposit the bill didn’t use; it isn’t refunded or carried forward'
+
+/** The rail's metered rule (ln-payments-plugin docs/lightning-payments.md:98)
+ *  applies when the wallet paid a deposit (segment 0), the bill was
+ *  accounted with no final invoice, and the bill fits inside the deposit:
+ *  the deposit covered the bill, and the seller keeps what it didn't use. A
+ *  host before token metering issued an input and an output invoice for every
+ *  exchange, so a book with an output invoice never reads this way. The host
+ *  issues any final invoice before it accounts the bill
+ *  (`crates/evidence-plugin/src/settlement_legs.rs:33-34`); the bill check
+ *  holds even if a book is read out of that order. It compares and prints
+ *  nothing (Sherlock2, #420). */
+function depositKeptText(settlement: PayerBook): string | null {
+  const deposit = settlement.entries.find(
+    (entry) => entry.phase === 'input_settlement_observed' && entry.source === 'wallet_reported' && entry.segment === 0
+  )
+  const finalInvoice = settlement.entries.some((entry) => entry.phase.startsWith('output_'))
+  const bill = settlement.final_accounted_msat
+  return deposit &&
+    typeof deposit.amount_msat === 'number' &&
+    !finalInvoice &&
+    typeof bill === 'number' &&
+    bill <= deposit.amount_msat
+    ? DEPOSIT_KEPT_TEXT
     : null
 }
 
@@ -81,6 +140,8 @@ export function settlementRowView(settlement: PayerBook | null | undefined): Set
   const chipLabel = chip === 'paid' ? 'paid' : 'terms accepted'
   const termsNote = settlement.terms_digests.length > 1 ? 'these payment records name different terms' : null
   const finalAmount = finalAmountText(settlement)
+  const walletPaid = walletPaidText(settlement)
+  const depositKept = depositKeptText(settlement)
   // Only the host's own states are read; the page's refinement of `settled`
   // is never accepted from the wire.
   if (!isStateKey(settlement.state) || settlement.state === 'settled_without_reference') {
@@ -95,7 +156,9 @@ export function settlementRowView(settlement: PayerBook | null | undefined): Set
       tone: 'muted',
       providerBook,
       termsNote,
-      finalAmount
+      walletPaid,
+      finalAmount,
+      depositKept
     }
   }
   const state: SettlementStateKey =
@@ -111,7 +174,9 @@ export function settlementRowView(settlement: PayerBook | null | undefined): Set
     tone: STATE_TONE[state],
     providerBook,
     termsNote,
-    finalAmount
+    walletPaid,
+    finalAmount,
+    depositKept
   }
 }
 

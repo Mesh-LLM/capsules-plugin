@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PaneCRow, PayerBook, PeerSettlementCounts } from '@/features/capsules/api/sidecarTypes'
 import {
+  DEPOSIT_KEPT_TEXT,
   peerSettlementText,
   providerSettlementView,
   settlementCloseCounts,
@@ -241,9 +242,55 @@ describe('the paid-exchange view: what was charged, who paid, and outcomes the h
     expect(`${view?.label} ${view?.tooltip}`).not.toMatch(/balance/)
   })
 
-  it('shows the payer’s own final amount as recorded, never a sum made here', () => {
+  it('shows the payer’s own metered bill as recorded, never a sum made here', () => {
     const view = settlementRowView({ ...book('settled'), final_accounted_msat: 579 })
-    expect(view?.finalAmount).toBe('final amount, as you recorded it: 579 msat')
+    expect(view?.finalAmount).toBe('metered bill, as you recorded it: 579 msat')
+  })
+
+  // #410 (Sherlock2's ruling): what the wallet paid for this exchange first,
+  // then the metered bill, each named and never summed; deposits for the
+  // seller's other models are other books, never on this row.
+  const deposit = (amount: number) => ({ ...settled_entry(), amount_msat: amount })
+  const lab = (): PayerBook => ({
+    ...book('settled'),
+    final_accounted_msat: 34,
+    entries: [
+      { capsule_id: 'i', timestamp: null, phase: 'input_invoice_issued', source: 'provider_asserted', segment: 0, payment_hash: 'aa', amount_msat: 1000 },
+      deposit(1000),
+      { capsule_id: 'f', timestamp: null, phase: 'final_accounted', source: 'payer_asserted', segment: null, payment_hash: null, amount_msat: 34 }
+    ]
+  })
+
+  it('#410: the lab case reads wallet paid, then the metered bill, then who keeps the unused deposit; no difference printed', () => {
+    const view = settlementRowView(lab())
+    expect(view?.walletPaid).toBe('your wallet paid for this exchange: 1,000 msat')
+    expect(view?.finalAmount).toBe('metered bill, as you recorded it: 34 msat')
+    expect(view?.depositKept).toBe(DEPOSIT_KEPT_TEXT)
+    expect(`${view?.walletPaid} ${view?.finalAmount} ${view?.depositKept}`).not.toMatch(/966/)
+  })
+
+  it('#410: two payments are listed in order, never summed, and a final invoice means no deposit line', () => {
+    const view = settlementRowView({
+      ...lab(),
+      final_accounted_msat: 1024,
+      entries: [
+        deposit(1000),
+        { capsule_id: 'o', timestamp: null, phase: 'output_invoice_issued', source: 'provider_asserted', segment: 1, payment_hash: 'bb', amount_msat: 24 },
+        { capsule_id: 'p2', timestamp: null, phase: 'output_settlement_observed', source: 'wallet_reported', segment: 1, payment_hash: 'bb', amount_msat: 24 }
+      ]
+    })
+    expect(view?.walletPaid).toBe('your wallet paid for this exchange: 1,000 msat, then 24 msat')
+    expect(view?.walletPaid).not.toMatch(/1,024/)
+    expect(view?.depositKept).toBeNull()
+  })
+
+  it('#410: no wallet payment, no paid line; no bill accounted yet, no deposit line', () => {
+    expect(settlementRowView({ ...book('terms_only'), entries: [] })?.walletPaid).toBeNull()
+    expect(settlementRowView({ ...lab(), final_accounted_msat: null })?.depositKept).toBeNull()
+    // A bill larger than the deposit, read before its final invoice: no line.
+    expect(settlementRowView({ ...lab(), final_accounted_msat: 1200 })?.depositKept).toBeNull()
+    // A bill equal to the deposit: the line still holds ("any part").
+    expect(settlementRowView({ ...lab(), final_accounted_msat: 1000 })?.depositKept).toBe(DEPOSIT_KEPT_TEXT)
   })
 
   it('lists the wallet’s credited amount, fee and a delivered watermark on each step that carries them', () => {
