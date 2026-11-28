@@ -123,8 +123,9 @@ export async function receiptView(fetched: ReceiptFetch): Promise<ReceiptView> {
 
 /** Which receipt route a row can ask, or null when it is not a paid exchange
  *  this node can name. Payer: an ASKED row with a payer book, named by the
- *  row's own record. Provider: a SERVED row with a provider book covering
- *  exactly one exchange id. */
+ *  row's own record. Provider: a SERVED or FAILED row with a provider book
+ *  covering exactly one exchange id (a provider paid for an exchange that
+ *  failed holds its half too: u1578 E and F, #399). */
 export function receiptRequest(row: PaneCRow): ReceiptRequest | null {
   if (row.role_tag === 'ASKED' && row.settlement && row.settlement.state !== 'terms_only' && row.mine.capsule_id) {
     return { side: 'payer', capsuleId: row.mine.capsule_id }
@@ -132,7 +133,8 @@ export function receiptRequest(row: PaneCRow): ReceiptRequest | null {
   // Terms accepted with no invoice is not a paid exchange: it has no deal.
   const book = row.provider_settlement
   const ids = book?.state === 'terms_only' ? undefined : book?.exchange_ids
-  if (row.role_tag === 'SERVED' && ids?.length === 1 && ids[0]) return { side: 'provider', exchangeId: ids[0] }
+  const ownHalf = row.role_tag === 'SERVED' || row.role_tag === 'FAILED'
+  if (ownHalf && ids?.length === 1 && ids[0]) return { side: 'provider', exchangeId: ids[0] }
   return null
 }
 

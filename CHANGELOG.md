@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- **A provider paid for an exchange that failed can save that exchange's receipt (Mesh-LLM/capsules-plugin#399; capsule-viewer#465).** The `provider-receipt-bundle` route now also roots at this node's own record that the exchange failed, with the payee legs noted for it, as it roots at a served record. A FAILED row with a provider book naming one exchange has "Check receipt" and "Save receipt page", and the viewer's provider module draws the receipt as failed ("It was not served."). Before, the row had no receipt and its saved page read "this exchange was paid, but this node cannot yet name the one deal it belongs to". A failed exchange with no payment noted, the summary of failures not sealed one by one, and the requester's own failed record are still refused, as is an exchange id with both a served and a failed record. The route's description now reads "for one paid exchange, served or failed".
+
 ## 0.1.25
 
 ### Changed
