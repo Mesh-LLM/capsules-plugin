@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { formatExchangeTimestamp } from '@/features/capsules/lib/local-time'
 import type { RecordsStatus } from '@/features/capsules/api/recordsClient'
 import {
   CLEANUP_OPTIONS,
@@ -42,6 +43,19 @@ describe('hero line 3', () => {
     expect(heroStatusLine({ records: 1, confirmed: 0, disagreements: 1, witness: 'latest' })).toBe(
       '1 record · 0 saved as confirmed · 1 disagreement · also held by a witness you don’t run'
     )
+  })
+
+  // Sherlock2's ruling on #411: the header names the latest witnessed
+  // checkpoint's time, the same one each row's witness line names.
+  it('says up to which checkpoint a witness holds, by its time in the viewer\'s zone', () => {
+    const at = '2026-11-28T02:00:00Z'
+    for (const witness of ['latest', 'earlier'] as const) {
+      expect(heroStatusLine({ records: 2, confirmed: 1, disagreements: 0, witness, witnessedAt: at }).split(' · ')[3]).toBe(
+        `also held by a witness you don’t run, up to ${formatExchangeTimestamp(at)}`
+      )
+    }
+    // No witnessed checkpoint: no "up to" clause.
+    expect(heroStatusLine({ records: 2, confirmed: 1, disagreements: 0, witness: 'pending', witnessedAt: null })).not.toMatch(/up to/)
   })
 
   // The live run: a witness was set and held earlier checkpoints, the latest

@@ -20,9 +20,13 @@ import type { EntryRowChipKey, EntryRowChipMark } from '@/features/capsules/lib/
 import type { ChecksRow } from '@/features/capsules/lib/security-checks-view'
 import { HoverChip } from '@/features/capsules/components/HoverChip'
 import { ENTRY_CHIP_RESULT_TOOLTIPS } from '@/features/capsules/lib/tooltip-copy'
+import { witnessCoverageLine, type WitnessCoverage } from '@/features/capsules/lib/integrity-view'
 
-/** The hover for one chip's result. Only the checkpoint chip has a `◐`. */
-function chipTooltip(chip: EntryRowChipKey, mark: EntryRowChipMark): string {
+/** The hover for one chip's result. The checkpoint chip has a `◐`, and the
+ *  witnessed chip reads the record's witness coverage when it is known
+ *  (#411), unless a check already decided it. */
+function chipTooltip(chip: EntryRowChipKey, mark: EntryRowChipMark, witnessCoverage: WitnessCoverage | null): string {
+  if (chip === 'registered' && witnessCoverage && (mark === '–' || mark === '◐')) return witnessCoverageLine(witnessCoverage)
   const byMark: Partial<Record<EntryRowChipMark, string>> = ENTRY_CHIP_RESULT_TOOLTIPS[chip]
   return byMark[mark] ?? ENTRY_CHIP_RESULT_TOOLTIPS[chip]['–']
 }
@@ -37,6 +41,7 @@ const MARK_COLOR: Record<EntryRowChipMark, string> = {
 export function ExchangeRowChips({
   checks,
   checkpointCovered = null,
+  witnessCoverage = null,
   witnessOff = false,
   onChipActivate
 }: {
@@ -45,6 +50,9 @@ export function ExchangeRowChips({
   checks: readonly ChecksRow[]
   /** Whether a checkpoint covers this row's record, by the node's count. */
   checkpointCovered?: boolean | null
+  /** Where this record stands with a witness this node doesn't run (#411);
+   *  `null` = not known. */
+  witnessCoverage?: WitnessCoverage | null
   /** No witness is set on this node (`checkpointRegistration`'s `off`): the
    *  "witnessed" chip would only ever read `–`, so it isn't shown. */
   witnessOff?: boolean
@@ -55,12 +63,12 @@ export function ExchangeRowChips({
   return (
     <div aria-label="checks summary" className="flex flex-wrap items-center gap-2.5" role="group">
       {ENTRY_ROW_CHIP_ORDER.filter((chip) => !(witnessOff && chip === 'registered')).map((chip) => {
-        const mark = entryRowChipMark(checks, chip, checkpointCovered)
+        const mark = entryRowChipMark(checks, chip, checkpointCovered, witnessCoverage)
         const label = ENTRY_ROW_CHIP_LABEL[chip]
         const propertyKey = entryRowChipPropertyKey(chip)
         // Hover for the meaning, click for the full check (UX §8 rule 2).
         return (
-          <HoverChip census={`entry_chip:${chip}`} key={chip} label={chipTooltip(chip, mark)}>
+          <HoverChip census={`entry_chip:${chip}`} key={chip} label={chipTooltip(chip, mark, witnessCoverage)}>
             <span
               aria-label={`${label}: jump to that check`}
               className="ui-control-ghost inline-flex cursor-pointer items-center gap-1 font-mono text-xs"

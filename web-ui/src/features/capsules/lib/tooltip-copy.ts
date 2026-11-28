@@ -158,13 +158,24 @@ export const ENTRY_CHIP_RESULT_TOOLTIPS = {
   registered: {
     '✓': 'A witness you don’t run holds a checkpoint covering this record. The witness’s receipt isn’t checked on this page.',
     '✗': 'The node reports that no witness holds a checkpoint covering this record.',
-    '–': 'No witness you don’t run holds a checkpoint covering this record. Not checked here.'
+    '–': 'No witness you don’t run holds a checkpoint covering this record.'
   },
   theirs: {
     '✓': 'Confirmed: their own signed record, from the node that served you, names the same request, answer and model weights as yours.',
     '✗': 'Their signed record disagrees with yours, or doesn’t match its own id. The state on the right says more.',
     '–': 'No confirmed record from them yet; the state on the right says why.'
   }
+} as const
+
+/** The witnessed chip's line for one record (Sherlock2's ruling on #411,
+ *  buzz 79e21578, ops c366af25). `time` is the witnessed checkpoint's time,
+ *  already formatted with its zone. */
+export const WITNESS_CHIP_LINE = {
+  covered: (time: string) =>
+    `Held by a witness you don’t run: a checkpoint from ${time} includes this record, by this node’s count. This page hasn’t checked with the witness itself.`,
+  newer: (time: string) =>
+    `Not yet: this record is newer than the last checkpoint a witness you don’t run holds (${time}).`,
+  none: 'Not yet: no witness you don’t run holds a checkpoint from this node.'
 } as const
 
 /** The LOCAL badge's (i): a served exchange with no other side recorded. */

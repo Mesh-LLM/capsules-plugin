@@ -66,6 +66,16 @@ describe('entryRowChipMark -- reads the SAME check results as the checks panel (
     expect(panel.find((r) => r.key === 'producer_signature')?.yours?.state).toBe('PASS')
   })
 
+  it('#411: the witnessed chip reads ◐ for a record a witnessed checkpoint covers, by the node\'s count; a check still wins', () => {
+    const at = '2026-11-28T02:00:00Z'
+    const panel = buildChecksRows(rowWithProperties(null), NOT_RUN)
+    expect(entryRowChipMark(panel, 'registered', null, { kind: 'covered', at })).toBe('◐')
+    expect(entryRowChipMark(panel, 'registered', null, { kind: 'newer', at })).toBe('–')
+    expect(entryRowChipMark(panel, 'registered', null, { kind: 'none' })).toBe('–')
+    const failed = buildChecksRows(rowWithProperties({ external_registration: { state: 'FAIL' } }), NOT_RUN)
+    expect(entryRowChipMark(failed, 'registered', null, { kind: 'covered', at })).toBe('✗')
+  })
+
   it('the theirs chip follows the ONE gate: CLOSED -> ✓, CONTRADICTED -> ✗, OPEN -> –', () => {
     const row = rowWithProperties(null)
     expect(marks(row, RECOMPUTED_OK, 'closed')).toBe('✓ ✓ – – ✓')

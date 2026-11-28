@@ -3,6 +3,7 @@
 // summary of five named properties -- distinct from the `▸ checks` panel's
 // own five-state detail (`assurance-tone.ts`'s CHIP_GLYPH/CHIP_TONE), which
 // this strip links into rather than duplicates.
+import type { WitnessCoverage } from '@/features/capsules/lib/integrity-view'
 import type { ChecksRow } from '@/features/capsules/lib/security-checks-view'
 
 export type EntryRowChipKey = 'content' | 'sig' | 'inclusion' | 'registered' | 'theirs'
@@ -49,14 +50,18 @@ export function entryRowChipPropertyKey(chip: EntryRowChipKey): string {
  *  figure the checks panel's "a checkpoint covers this record" reads): with
  *  it, an otherwise unchecked checkpoint chip reads `◐` (covered), never the
  *  dash that also means "not covered". */
+/** `witnessCoverage` does the same for the witnessed chip (#411): a record
+ *  the latest witnessed checkpoint covers, by the node's count, reads `◐`. */
 export function entryRowChipMark(
   checks: readonly ChecksRow[],
   chip: EntryRowChipKey,
-  checkpointCovered: boolean | null = null
+  checkpointCovered: boolean | null = null,
+  witnessCoverage: WitnessCoverage | null = null
 ): EntryRowChipMark {
   const state = checks.find((row) => row.key === CHIP_PROPERTY_KEY[chip])?.yours?.state
   if (state === 'PASS') return '✓'
   if (state === 'FAIL') return '✗'
   if (chip === 'inclusion' && checkpointCovered === true) return '◐'
+  if (chip === 'registered' && witnessCoverage?.kind === 'covered') return '◐'
   return '–'
 }

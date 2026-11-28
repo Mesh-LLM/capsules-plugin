@@ -24,6 +24,7 @@ import {
   SettlementStrip
 } from '@/features/capsules/components/SettlementRow'
 import { buildChecksRows } from '@/features/capsules/lib/security-checks-view'
+import type { WitnessCoverage } from '@/features/capsules/lib/integrity-view'
 import { theirContentText, yourContentFixedText } from '@/features/capsules/lib/exchange-content-state'
 import { isServedForPay, type ExchangeLedgerRow } from '@/features/capsules/lib/exchange-ledger'
 import {
@@ -244,6 +245,9 @@ export type ExchangeStreamRowProps = {
   /** Whether the latest checkpoint covers this row's own record (look
    *  finding 2, `checkpointCoverageByRecord`); `null` = not reported. */
   checkpointCovered?: boolean | null
+  /** #411: where this row's record stands with a witness this node doesn't
+   *  run (`witnessCoverageByRecord`); `null` = not known. */
+  witnessCoverage?: WitnessCoverage | null
   /** p2 item 3: this node's owner link (`ownerLinked`, the same derivation
    *  Integrity's step 2 reads); `null` = not known. */
   ownerLinked?: boolean | null
@@ -285,6 +289,7 @@ export function ExchangeStreamRow({
   localRecord = null,
   nodePubKeyPem = null,
   checkpointCovered = null,
+  witnessCoverage = null,
   ownerLinked = null,
   onToggleContent,
   onToggleChecks,
@@ -405,6 +410,7 @@ export function ExchangeStreamRow({
   const checksRows = buildChecksRows(row.raw, identity, theirsRecompute, {
     gateKind: state.kind,
     checkpointCovered,
+    witnessCoverage,
     ownerLinked
   })
   // Your own copy failed "words match" or "signed". Whatever
@@ -424,7 +430,7 @@ export function ExchangeStreamRow({
       content: entryRowChipMark(checksRows, 'content'),
       sig: entryRowChipMark(checksRows, 'sig'),
       inclusion: entryRowChipMark(checksRows, 'inclusion', checkpointCovered),
-      registered: entryRowChipMark(checksRows, 'registered')
+      registered: entryRowChipMark(checksRows, 'registered', null, witnessCoverage)
     },
     refusedAtTheDoor: row.raw.theirs.evidence_outcome === 'claims_refused',
     askPeer: askPeer ? otherSideName : null
@@ -746,6 +752,7 @@ export function ExchangeStreamRow({
             checkpointCovered={checkpointCovered}
             checks={checksRows}
             onChipActivate={handleChipActivate}
+            witnessCoverage={witnessCoverage}
             witnessOff={witnessOff}
           />
         ) : null}
