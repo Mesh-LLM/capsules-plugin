@@ -321,6 +321,21 @@ pub(crate) fn record_minted_key(
     std::fs::rename(&tmp, &path)
 }
 
+/// The node key under `keys_dir`, minted on first use: every place that
+/// loads or mints it goes through here, so a key minted by this build
+/// always gets its `/1` revision record ([`record_minted_key`]) and a key
+/// already on disk never does (ISH §6.1 item 9).
+pub(crate) fn load_or_create_key(
+    keys_dir: &std::path::Path,
+) -> anyhow::Result<crate::producer::keys::KeyPair> {
+    let minting = !keys_dir.join("node-key.pem").exists();
+    let keys = crate::producer::keys::load_or_create(keys_dir)?;
+    if minting {
+        record_minted_key(keys_dir, &keys.signing_key)?;
+    }
+    Ok(keys)
+}
+
 /// Whether the node whose ledger is `ledger_dir` serves Service History
 /// under `key`: its record (`<data dir>/keys/ish-revision`, beside
 /// `<data dir>/ledger`) names `key` and `/1`. A missing, unreadable or
