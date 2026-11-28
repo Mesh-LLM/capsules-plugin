@@ -251,7 +251,13 @@ export function settlementEntryViews(
       sourceKey: known ? source : null,
       sourceLabel: known ? labels[source] : (source ?? 'source not recorded'),
       sourceTooltip: known ? tooltips[source] : 'Who stated this value was not recorded.',
-      amount: typeof entry.amount_msat === 'number' ? `recorded ${entry.amount_msat} msat` : null,
+      // A `delivered` record is a token watermark: the host requires an
+      // `amount_msat` on every phase, and this one's is a placeholder, not an
+      // amount anyone recorded (`settlement_channel.rs` ties it to `tokens`).
+      amount:
+        entry.phase !== 'delivered' && typeof entry.amount_msat === 'number'
+          ? `recorded ${entry.amount_msat} msat`
+          : null,
       paymentHash: entry.payment_hash,
       referenceNote:
         entry.payment_hash === null && entry.phase.endsWith('_settlement_observed')
