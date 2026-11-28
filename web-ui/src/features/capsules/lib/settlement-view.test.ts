@@ -257,6 +257,14 @@ describe('the paid-exchange view: what was charged, who paid, and outcomes the h
     expect(settlementEntryViews([{ ...settled_entry(), fee_msat: 2 }])[0].walletNote).toBe('2 msat to route it')
     expect(delivered.walletNote).toBe('42 tokens')
     expect(delivered.phase).toBe('Delivered')
+    // #409: a delivered watermark's placeholder 0 is not an amount.
+    expect(delivered.amount).toBeNull()
+    expect(plain.amount).toBe('recorded 120 msat')
+    // Any other phase's recorded 0 is still said.
+    const [zero] = settlementEntryViews([
+      { capsule_id: 'd', timestamp: null, phase: 'final_accounted', source: 'payer_asserted', segment: null, payment_hash: null, amount_msat: 0 }
+    ])
+    expect(zero.amount).toBe('recorded 0 msat')
     // On the provider's own book, the provider is "you".
     expect(plain.sourceLabel).toBe('you stated')
     expect(settled.sourceLabel).toBe('your wallet reported')
