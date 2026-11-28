@@ -2,6 +2,7 @@ use std::path::Path;
 
 use ed25519_dalek::SigningKey;
 use evidence_request::jcs;
+use evidence_request::registry::Reason;
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
@@ -71,8 +72,8 @@ fn the_definition_carries_the_standard_frame_and_nothing_else() {
             "subjects",
         ]
     );
-    assert_eq!(d["profile"], json!("inference-service-history/0"));
-    assert_eq!(d["name"], json!("service_history/1"));
+    assert_eq!(d["profile"], json!("inference-service-history/1"));
+    assert_eq!(d["name"], json!("service_history/3"));
     assert_eq!(d["kind"], json!("projection"));
     assert_eq!(d["level"], json!("standard"));
     assert_eq!(d["embeds"], json!(["history_card/1"]));
@@ -328,6 +329,7 @@ fn node() -> tempfile::TempDir {
     write_jsonl(&dir.path().join("capsules.jsonl"), &ledger());
     let lines: Vec<Value> = checkpoints().iter().map(CorpusCheckpoint::line).collect();
     write_jsonl(&dir.path().join("checkpoints.jsonl"), &lines);
+    record_for_test(dir.path(), &key());
     dir
 }
 
@@ -360,8 +362,8 @@ fn ask_sharing(dir: &Path, request: &Value, share_standard_history: bool) -> Out
 }
 
 fn history_request(pin: &str) -> Value {
-    json!({"subject": {"full_history": null}, "coverage": {"expected_pin": pin},
-           "derivation": DEFINITION_DIGEST})
+    json!({"profile": "evidence-interop/1", "subject": {"full_history": null},
+           "coverage": {"expected_pin": pin}, "derivation": DEFINITION_DIGEST})
 }
 
 fn answered(outcome: Outcome) -> Value {
@@ -441,24 +443,39 @@ fn a_history_at_a_boundary_is_answered_and_checks() {
     }
 }
 
-/// A History asked under `evidence-interop/1` is answered under /1 (ISH
-/// "Interop profile revision", IP §3.3): the same artifact, an envelope
-/// naming /1, and a requester's check of it passes.
+/// `inference-service-history/1` is served under `evidence-interop/1` only
+/// (ISH, Interop profile revision): asked under /1 it is answered under /1
+/// and a requester's check of it passes; asked under `evidence-interop/0`,
+/// or with no `profile` (which asks for /0, IP §3.3), it is
+/// `policy_declined`, for both of this node's definitions.
 #[test]
-fn a_history_asked_under_v1_is_answered_under_v1() {
+fn a_history_is_answered_under_v1_only() {
     let dir = node();
     let anchor = checkpoints()[3].anchor();
-    let v0 = answered(ask(dir.path(), &history_request(&anchor)));
-    let mut request = history_request(&anchor);
-    request["profile"] = json!("evidence-interop/1");
+    let request = history_request(&anchor);
     let v1 = answered(ask(dir.path(), &request));
     assert_eq!(v1["profile"], json!("evidence-interop/1"));
-    assert_eq!(v0["profile"], json!("evidence-interop/0"));
-    assert_eq!(artifact_of(&v1), artifact_of(&v0));
     let v = verified(&request, &v1);
     assert_eq!(v["state"], json!("artifact"), "{v}");
-    // An answer under the other identifier is not the answer asked for.
-    assert_ne!(verified(&request, &v0)["state"], json!("artifact"));
+    for derivation in [DEFINITION_DIGEST, DEFINITION_DIGEST_VERDICTS] {
+        let mut v0 = history_request(&anchor);
+        v0["derivation"] = json!(derivation);
+        v0["profile"] = json!("evidence-interop/0");
+        let mut bare = v0.clone();
+        bare.as_object_mut().unwrap().remove("profile");
+        for asked in [v0, bare] {
+            assert!(
+                matches!(
+                    ask(dir.path(), &asked),
+                    Outcome::Refused {
+                        reason: Reason::PolicyDeclined,
+                        ..
+                    }
+                ),
+                "{asked}"
+            );
+        }
+    }
 }
 
 /// The embedded card is byte for byte the direct `history_card/1` artifact
@@ -737,7 +754,11 @@ fn resigned(
     use evidence_request::envelope::{self, Anchor, Binding, EnvelopeParts};
     let bytes = serde_json::to_vec(request).unwrap();
     let req = evidence_request::request::parse_json(&bytes).unwrap();
-    let env = envelope::sign(
+    let profile = request["profile"]
+        .as_str()
+        .unwrap_or(evidence_request::envelope::PROFILE);
+    let env = envelope::sign_with_profile(
+        profile,
         &bytes,
         EnvelopeParts {
             subject: req.subject,
@@ -812,6 +833,7 @@ fn node_cut(extra: usize, cuts: &[(usize, &str)]) -> tempfile::TempDir {
         .map(CorpusCheckpoint::line)
         .collect();
     write_jsonl(&dir.path().join("checkpoints.jsonl"), &lines);
+    record_for_test(dir.path(), &key());
     dir
 }
 
@@ -856,7 +878,7 @@ fn the_history_page_is_given_the_form_the_policy_shares() {
     assert_eq!(off["form"], "history_card/2");
     assert_eq!(off["outcome"], "answered");
     let on = page_given(dir.path(), true);
-    assert_eq!(on["form"], "service_history/1");
+    assert_eq!(on["form"], "service_history/3");
     assert_eq!(on["outcome"], "answered");
     assert_eq!(reply_of(&on)["responder"], on["node_key_id"]);
 }
@@ -892,7 +914,7 @@ fn the_service_history_is_pinned_to_the_latest_boundary_not_the_head() {
     )[3]
     .anchor();
     let page = page_given(dir.path(), true);
-    assert_eq!(page["form"], "service_history/1");
+    assert_eq!(page["form"], "service_history/3");
     assert_eq!(page["outcome"], "answered");
     assert_eq!(reply_of(&page)["anchor"]["digest"], boundary);
 }
@@ -987,33 +1009,34 @@ fn node_with_verdicts() -> (tempfile::TempDir, Vec<CorpusCheckpoint>) {
     );
     let lines: Vec<Value> = cps.iter().map(CorpusCheckpoint::line).collect();
     write_jsonl(&dir.path().join("checkpoints.jsonl"), &lines);
+    record_for_test(dir.path(), &key());
     (dir, cps)
 }
 
 #[test]
 fn the_second_definition_is_the_file_and_names_the_verdict_member() {
     assert_eq!(
-        digest_of_document(DEFINITION_DOCUMENT_2),
-        DEFINITION_DIGEST_2
+        digest_of_document(DEFINITION_DOCUMENT_VERDICTS),
+        DEFINITION_DIGEST_VERDICTS
     );
-    assert_ne!(DEFINITION_DIGEST, DEFINITION_DIGEST_2);
-    let d: Value = serde_json::from_str(DEFINITION_DOCUMENT_2).unwrap();
-    assert_eq!(d["name"], json!("service_history/2"));
+    assert_ne!(DEFINITION_DIGEST, DEFINITION_DIGEST_VERDICTS);
+    let d: Value = serde_json::from_str(DEFINITION_DOCUMENT_VERDICTS).unwrap();
+    assert_eq!(d["name"], json!("service_history/4"));
     assert_eq!(d["period_policy"], definition()["period_policy"]);
-    assert!(Definition::active_2().has_verdict_counts());
+    assert!(Definition::active_verdicts().has_verdict_counts());
     assert!(!Definition::active().has_verdict_counts());
-    assert_eq!(definition_digest_2(), DEFINITION_DIGEST_2);
+    assert_eq!(definition_digest_verdicts(), DEFINITION_DIGEST_VERDICTS);
 }
 
 #[test]
 fn the_verdicts_the_node_holds_are_counted_by_period_and_check() {
     let (dir, cps) = node_with_verdicts();
     let anchor = cps[3].anchor();
-    let request = json!({"subject": {"full_history": null}, "coverage": {"expected_pin": anchor},
-                         "derivation": DEFINITION_DIGEST_2});
+    let request = json!({"profile": "evidence-interop/1", "subject": {"full_history": null},
+                         "coverage": {"expected_pin": anchor}, "derivation": DEFINITION_DIGEST_VERDICTS});
     let wire = answered(ask(dir.path(), &request));
     let art = artifact_of(&wire);
-    assert_eq!(art["derivation"], json!(DEFINITION_DIGEST_2));
+    assert_eq!(art["derivation"], json!(DEFINITION_DIGEST_VERDICTS));
     assert_eq!(
         art["declared"],
         json!(["history_card", "period_counts", "verdict_counts"])
@@ -1060,12 +1083,8 @@ fn the_verdicts_the_node_holds_are_counted_by_period_and_check() {
     assert!(lines.contains(
         &"2026-01-12T00:00:00Z to 2026-01-19T00:00:00Z: referee verdicts contradicted, all models: 5 (self_reported, held by this node, signed by the referee)"
     ), "{lines:?}");
-    // /1 is still answered, with no verdict member.
-    let one = answered(ask(
-        dir.path(),
-        &json!({"subject": {"full_history": null}, "coverage": {"expected_pin": cps[3].anchor()},
-                "derivation": DEFINITION_DIGEST}),
-    ));
+    // /3 is still answered, with no verdict member.
+    let one = answered(ask(dir.path(), &history_request(&cps[3].anchor())));
     assert_eq!(
         artifact_of(&one)["declared"],
         json!(["history_card", "period_counts"])
@@ -1169,8 +1188,8 @@ fn verdict_counts_and_the_ask_by_digest_follow_share_standard_history() {
     use crate::verdict_held::request_for;
     let (dir, cps) = node_with_verdicts();
     let anchor = cps[3].anchor();
-    let counts = json!({"subject": {"full_history": null}, "coverage": {"expected_pin": anchor},
-                        "derivation": DEFINITION_DIGEST_2});
+    let counts = json!({"profile": "evidence-interop/1", "subject": {"full_history": null},
+                        "coverage": {"expected_pin": anchor}, "derivation": DEFINITION_DIGEST_VERDICTS});
     for request in [counts, request_for(&verdict_id(0), &anchor)] {
         match ask_sharing(dir.path(), &request, false) {
             Outcome::Refused { .. } => {}
@@ -1231,4 +1250,212 @@ fn an_entry_repeated_does_not_count_as_two_records_held() {
             || v.to_string().contains("repeats a record"),
         "{v}"
     );
+}
+
+// ---------------------------------------------------------------------
+// Which key serves a Service History (ISH §6.1 item 9)
+// ---------------------------------------------------------------------
+
+/// What a request for `derivation` under `profile` gets from the node at
+/// `dir`, whose key may or may not have a revision record.
+fn refusal_for(dir: &Path, derivation: &str, profile: Option<&str>) -> Option<Reason> {
+    let mut request = history_request(&checkpoints()[3].anchor());
+    request["derivation"] = json!(derivation);
+    match profile {
+        Some(p) => request["profile"] = json!(p),
+        None => {
+            request.as_object_mut().unwrap().remove("profile");
+        }
+    }
+    match ask(dir, &request) {
+        Outcome::Refused { reason, .. } => Some(reason),
+        Outcome::Answered { .. } => None,
+        other => panic!("{other:?}"),
+    }
+}
+
+/// A key with no revision record, which every key an earlier release minted
+/// is, serves no Service History: all four definitions, `/0` included, are
+/// `derivation_unsupported` under either profile, and the page holds the
+/// card. A key with a record serves `/3` and `/4` and never the `/0` ones.
+#[test]
+fn only_a_key_recorded_for_revision_1_serves_and_never_the_legacy_definitions() {
+    let with = node();
+    let without = node();
+    std::fs::remove_file(without.path().join(KEY_REVISION_FILE)).unwrap();
+    let all = [
+        DEFINITION_DIGEST,
+        DEFINITION_DIGEST_VERDICTS,
+        LEGACY_DIGEST_1,
+        LEGACY_DIGEST_2,
+    ];
+    for derivation in all {
+        for profile in [Some("evidence-interop/1"), Some("evidence-interop/0"), None] {
+            assert_eq!(
+                refusal_for(without.path(), derivation, profile),
+                Some(Reason::DerivationUnsupported),
+                "{derivation} {profile:?}"
+            );
+        }
+    }
+    for derivation in [LEGACY_DIGEST_1, LEGACY_DIGEST_2] {
+        for profile in [Some("evidence-interop/1"), Some("evidence-interop/0"), None] {
+            assert_eq!(
+                refusal_for(with.path(), derivation, profile),
+                Some(Reason::DerivationUnsupported),
+                "{derivation} {profile:?}"
+            );
+        }
+    }
+    assert_eq!(
+        refusal_for(with.path(), DEFINITION_DIGEST, Some("evidence-interop/1")),
+        None
+    );
+    assert_eq!(page_given(without.path(), true)["form"], "history_card/2");
+    assert_eq!(page_given(with.path(), true)["form"], "service_history/3");
+}
+
+/// The record is honoured only for the key it names and the revision `/1`:
+/// another key's record (a `/0` key restored beside a `/1` key's record), a
+/// record naming `/0`, and a malformed one all serve nothing.
+#[test]
+fn a_record_for_another_key_or_revision_serves_nothing() {
+    let dir = node();
+    let path = dir.path().join(KEY_REVISION_FILE);
+    assert!(key_serves(dir.path(), &key()));
+    let other = SigningKey::from_bytes(&[0x42; 32]);
+    assert!(!key_serves(dir.path(), &other));
+    for text in [
+        json!({"key_id": crate::commitment::key_id(&key()), "profile": "inference-service-history/0"})
+            .to_string(),
+        json!({"key_id": crate::commitment::key_id(&other), "profile": "inference-service-history/1"})
+            .to_string(),
+        "not json".to_string(),
+        String::new(),
+    ] {
+        std::fs::write(&path, &text).unwrap();
+        assert!(!key_serves(dir.path(), &key()), "{text}");
+        assert_eq!(
+            refusal_for(dir.path(), DEFINITION_DIGEST, Some("evidence-interop/1")),
+            Some(Reason::DerivationUnsupported),
+            "{text}"
+        );
+    }
+}
+
+/// A node started for the first time mints its key and records it as `/1`
+/// beside it (`<data dir>/keys/ish-revision`), lists `/3` and `/4` in its
+/// commitment's answers, and keeps the same record when it starts again. A
+/// node whose key is already on disk and has no record (an earlier
+/// release's) is given none, so it lists neither.
+#[test]
+fn a_key_minted_here_is_recorded_once_and_an_older_key_never_is() {
+    use crate::capsule_emit::CapsuleState;
+    let lists = |capsules: &CapsuleState| {
+        crate::commitment::with_responder(capsules, NOW, Some(RESPONDER_NODE), |_, policy| {
+            let derivations = policy.derivations();
+            assert_eq!(
+                derivations.contains(&DEFINITION_DIGEST),
+                derivations.contains(&DEFINITION_DIGEST_VERDICTS)
+            );
+            assert!(!derivations.contains(&LEGACY_DIGEST_1));
+            assert!(!derivations.contains(&LEGACY_DIGEST_2));
+            derivations.contains(&DEFINITION_DIGEST)
+        })
+    };
+    let fresh = tempfile::tempdir().unwrap();
+    let record = fresh.path().join("keys").join(KEY_REVISION_FILE);
+    let written = {
+        let capsules = CapsuleState::open(fresh.path(), "node-under-test").unwrap();
+        let written = std::fs::read_to_string(&record).unwrap();
+        let value: Value = serde_json::from_str(&written).unwrap();
+        assert_eq!(
+            value,
+            json!({"key_id": crate::commitment::key_id(capsules.signing_key()),
+                   "profile": "inference-service-history/1"})
+        );
+        assert!(key_serves(capsules.ledger_dir(), capsules.signing_key()));
+        assert!(lists(&capsules));
+        written
+    };
+    {
+        let capsules = CapsuleState::open(fresh.path(), "node-under-test").unwrap();
+        assert_eq!(std::fs::read_to_string(&record).unwrap(), written);
+        assert!(lists(&capsules));
+    }
+    // The same key on disk with its record gone: never recorded again.
+    std::fs::remove_file(&record).unwrap();
+    let capsules = CapsuleState::open(fresh.path(), "node-under-test").unwrap();
+    assert!(!record.exists());
+    assert!(!key_serves(capsules.ledger_dir(), capsules.signing_key()));
+    assert!(!lists(&capsules));
+}
+
+/// A requester checks a History under the revision its definition names
+/// (ISH, Revisions): `/3` and `/4` only in an `evidence-interop/1` envelope
+/// (ISH, Interop profile revision), however correctly signed an
+/// `evidence-interop/0` one is, explicit or by an absent `profile`.
+#[test]
+fn a_revision_1_history_in_an_interop_0_envelope_is_not_evidence() {
+    let (art, _, anchor) = checked_parts();
+    let (vdir, cps) = node_with_verdicts();
+    let mut verdicts = history_request(&cps[3].anchor());
+    verdicts["derivation"] = json!(DEFINITION_DIGEST_VERDICTS);
+    let verdict_art = artifact_of(&answered(ask(vdir.path(), &verdicts)));
+    for (request, art) in [(history_request(&anchor), &art), (verdicts, &verdict_art)] {
+        // Under /1, as served, it checks.
+        let v = verified(&request, &resigned(&request, art, Vec::new()));
+        assert_eq!(v["state"], json!("artifact"), "{v}");
+        let mut v0 = request.clone();
+        v0["profile"] = json!("evidence-interop/0");
+        let mut bare = request.clone();
+        bare.as_object_mut().unwrap().remove("profile");
+        for asked in [v0, bare] {
+            let v = verified(&asked, &resigned(&asked, art, Vec::new()));
+            assert_eq!(v["state"], json!("not_evidence"), "{asked}: {v}");
+        }
+    }
+}
+
+/// A peer on an earlier release still serves `service_history/1` under
+/// `inference-service-history/0`, and this node still checks it through the
+/// requester's path, under `/0`'s rules: a total beside two models of 4
+/// withheld under the floor is published there, and the same table under
+/// `/3` fails `period_floor` (ISH §6.2 item 5, which `/0` does not have).
+#[test]
+fn a_legacy_history_from_an_older_peer_still_checks_under_its_own_rules() {
+    let (art, _, anchor) = checked_parts();
+    let mut legacy = art.clone();
+    legacy["derivation"] = json!(LEGACY_DIGEST_1);
+    let mut request = history_request(&anchor);
+    request["derivation"] = json!(LEGACY_DIGEST_1);
+    request.as_object_mut().unwrap().remove("profile");
+    let v = verified(&request, &resigned(&request, &legacy, Vec::new()));
+    assert_eq!(v["state"], json!("artifact"), "{v}");
+
+    // Week 1 as 4 and 4 with the total of 8 published.
+    let pinning = json!([
+        cell(Some("a"), Err("below_floor")),
+        cell(Some("b"), Err("below_floor")),
+        cell(None, Ok(8)),
+    ]);
+    periods(&mut legacy)[1]["cells"] = pinning.clone();
+    let v = verified(&request, &resigned(&request, &legacy, Vec::new()));
+    assert_eq!(v["state"], json!("artifact"), "/0 publishes it: {v}");
+    let mut current = art.clone();
+    periods(&mut current)[1]["cells"] = pinning;
+    let request = history_request(&anchor);
+    let v = verified(&request, &resigned(&request, &current, Vec::new()));
+    assert_eq!(v["state"], json!("not_evidence"), "/1 withholds it: {v}");
+
+    // `service_history/2` too: the verdict member under `/0`.
+    let (vdir, cps) = node_with_verdicts();
+    let mut verdicts = history_request(&cps[3].anchor());
+    verdicts["derivation"] = json!(DEFINITION_DIGEST_VERDICTS);
+    let mut legacy_2 = artifact_of(&answered(ask(vdir.path(), &verdicts)));
+    legacy_2["derivation"] = json!(LEGACY_DIGEST_2);
+    verdicts["derivation"] = json!(LEGACY_DIGEST_2);
+    verdicts["profile"] = json!("evidence-interop/0");
+    let v = verified(&verdicts, &resigned(&verdicts, &legacy_2, Vec::new()));
+    assert_eq!(v["state"], json!("artifact"), "{v}");
 }

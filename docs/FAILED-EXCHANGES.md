@@ -60,7 +60,7 @@ side is not capped.
 
 - **The Evidence tab** labels a failed record `failed` (`label_role`, row tag `FAILED`), never
   `served` or `requested`, and counts it on neither side.
-- **Service History** (`service_history/1`) counts served exchanges: a failed record is not one. The
+- **Service History** (`service_history/3`) counts served exchanges: a failed record is not one. The
   definition document is unchanged, so its digest is too; the exclusion is in how the node reads its
   records (`evidence_log::leaf_facts`), which is the only place the counts read records.
 - **Provider receipts** root at the record of an exchange the node served: a failed record is not

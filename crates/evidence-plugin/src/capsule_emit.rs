@@ -16,7 +16,7 @@ use crate::producer::capsule::{
 };
 use crate::producer::cose::{build_signed_statement, SignedStatementInput};
 use crate::producer::jcs;
-use crate::producer::keys::{self, KeyPair};
+use crate::producer::keys::KeyPair;
 use crate::producer::ledger::{Ledger, LedgerEntry};
 use crate::producer::sequence::SequenceCounterStore;
 use crate::producer::timestamp::utc_now_minute;
@@ -590,7 +590,7 @@ impl CapsuleState {
             )?)
         };
         crate::ledger_format::check_and_stamp(&ledger_dir)?;
-        let keys = keys::load_or_create(&data_dir.join("keys"))?;
+        let keys = crate::service_history::load_or_create_key(&data_dir.join("keys"))?;
         let node_keys = crate::chain_store::node_signing_keys(&data_dir.join("keys"));
         let (stores, (ledger, report)) = match crate::chain_store::stays_flat(&ledger_dir)? {
             // A flat history the stores cannot hold whole stays flat, as

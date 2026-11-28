@@ -95,7 +95,7 @@
 //! exchange's end time.
 //!
 //! **Standard History** is every other answer that carries no record bodies:
-//! `service_history/1` and any other derivation but `exchange_corroboration/1`,
+//! `service_history/3` and any other derivation but `exchange_corroboration/1`,
 //! which has a setting of its own. It shows what this node serves, so with
 //! `share_standard_history` off (the default) it goes only to a requester
 //! that has proven it is a node some record of this one names as the other
@@ -667,8 +667,23 @@ fn answer_from(
     // anchor: any other subject or coverage is `policy_declined`, the same
     // for every requester, before anything is resolved (ISH §6.1 item 5).
     let definition = crate::service_history::definition_for(req.derivation.as_ref());
-    if definition.is_some_and(|d| d.declines_request(&req.subject, &req.coverage)) {
-        return Err(Reason::PolicyDeclined);
+    if let Some(def) = definition {
+        // Only `inference-service-history/1`, and only under a key minted
+        // for it: never `/0` beside or before `/1` under one key (ISH §6.1
+        // item 9, `service_history`).
+        if !def.is_revision_1()
+            || !crate::service_history::key_serves(responder.ledger_dir, responder.signing_key)
+        {
+            return Err(Reason::DerivationUnsupported);
+        }
+        // `/1` is served under `evidence-interop/1` only (ISH, Interop
+        // profile revision).
+        if !asks_v1(request_bytes) {
+            return Err(Reason::PolicyDeclined);
+        }
+        if def.declines_request(&req.subject, &req.coverage) {
+            return Err(Reason::PolicyDeclined);
+        }
     }
     // 7. Resolve.
     let anchor = match resolve::resolve(req, view) {
@@ -1433,6 +1448,7 @@ pub(crate) mod tests {
             .map(|cp| cp.line())
             .collect();
         write_jsonl(&dir.path().join("checkpoints.jsonl"), &cps);
+        crate::service_history::record_for_test(dir.path(), &key());
         dir
     }
 
@@ -2119,7 +2135,8 @@ pub(crate) mod tests {
         vec![
             json!({"subject": {"checkpoints": null}, "coverage": coverage}),
             json!({"subject": {"full_history": null}, "coverage": coverage, "derivation": "history_card/1"}),
-            json!({"subject": {"full_history": null}, "coverage": {"expected_pin": cps[0].anchor()},
+            json!({"profile": "evidence-interop/1", "subject": {"full_history": null},
+                   "coverage": {"expected_pin": cps[0].anchor()},
                    "derivation": crate::service_history::definition_digest()}),
         ]
     }
@@ -2290,11 +2307,11 @@ pub(crate) mod tests {
     fn withheld_requests() -> Vec<Value> {
         let mut unknown = served_summary_request();
         unknown["derivation"] = json!("unregistered_fold/1");
-        vec![
-            standard_history_requests()[2].clone(),
-            served_summary_request(),
-            unknown,
-        ]
+        // Service History under `evidence-interop/0`, as these refusals
+        // were written for: the gate refuses it before the profile is.
+        let mut history = standard_history_requests()[2].clone();
+        history.as_object_mut().unwrap().remove("profile");
+        vec![history, served_summary_request(), unknown]
     }
 
     /// The refusal of exactly these bytes, now: nothing else goes into it.
@@ -2305,7 +2322,7 @@ pub(crate) mod tests {
         serde_json::to_vec(&wire).unwrap()
     }
 
-    /// PRD T7, the default half (R-8): `service_history/1` or any other
+    /// PRD T7, the default half (R-8): `service_history/3` or any other
     /// derivation but `history_card/1`, asked by anyone who has not proven
     /// it is a counterparty, is refused `policy_declined`, signed, and the
     /// refusal is
@@ -3539,8 +3556,8 @@ pub(crate) mod tests {
         assert_eq!(line["replay"], json!("unchecked"));
         assert_eq!(
             refused(&ask(&held, true, None)),
-            Some(Reason::NotAuthorized),
-            "a replay the pool holds"
+            Some(Reason::RequestUnauthenticated),
+            "a replay the pool holds, under evidence-interop/1"
         );
         assert_eq!(
             refused(&ask(&bound, false, None)),
@@ -3724,7 +3741,9 @@ pub(crate) mod tests {
     fn a_failed_request_is_never_answered_as_unsigned() {
         let ledger = corpus_ledger();
         let dir = node(&ledger);
-        // Where an unsigned request is answered: the Service History, shared.
+        // Where an unsigned request is answered: the Service History, shared,
+        // asked under `evidence-interop/1`, whose token for a request that
+        // fails its signature is `request_unauthenticated` (IP v1 §6.3).
         let request = standard_history_requests()[2].clone();
         let stranger = SigningKey::from_bytes(&[0x77; 32]);
         for key in [asker_key("node-z"), stranger] {
@@ -3768,17 +3787,17 @@ pub(crate) mod tests {
                 (
                     "deadline outside the window",
                     resign("deadline", json!("2026-09-29T00:05:01Z")),
-                    Reason::NotAuthorized,
+                    Reason::RequestUnauthenticated,
                 ),
                 (
                     "bad signature",
                     with("nonce", json!("not-the-signed-one")),
-                    Reason::NotAuthorized,
+                    Reason::RequestUnauthenticated,
                 ),
                 (
                     "audience mismatch",
                     serde_json::to_vec(&to_x).unwrap(),
-                    Reason::NotAuthorized,
+                    Reason::RequestUnauthenticated,
                 ),
             ];
             for (what, bytes, reason) in cases {
@@ -3797,7 +3816,7 @@ pub(crate) mod tests {
             ));
             assert_eq!(
                 refused(&ask_cached(dir.path(), &bytes, "peers", true, &replay)),
-                Some(Reason::NotAuthorized),
+                Some(Reason::RequestUnauthenticated),
                 "replay"
             );
         }

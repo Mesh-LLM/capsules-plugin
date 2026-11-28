@@ -124,7 +124,7 @@ export function servedHistoryFrom(raw: unknown): ServedHistory {
   return {
     replyText: body.reply,
     outcome: body.outcome,
-    form: body.form === 'service_history/1' ? 'service_history' : 'history_card',
+    form: body.form === 'service_history/3' ? 'service_history' : 'history_card',
     nodeKeyId: body.node_key_id,
     sharing: { standard_history, history_segments, record_at_completion, adjudications, exchange_corroboration }
   }

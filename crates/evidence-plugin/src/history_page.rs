@@ -13,9 +13,10 @@
 //! With `share_standard_history` on, a stranger may also be given the Service
 //! History, so the page carries that instead: the same request the card gets,
 //! plus the derivation of the Service History pinned to the latest checkpoint
-//! at a period boundary. The page says which form it holds. A node with the
-//! switch on but no boundary checkpoint yet gives the card, and says so in
-//! `form`.
+//! at a period boundary, asked under `evidence-interop/1`. The page says
+//! which form it holds. A node with the switch on but no boundary checkpoint
+//! yet, or whose key serves no Service History (`service_history`, ISH §6.1
+//! item 9), gives the card, and says so in `form`.
 //!
 //! The route answers `{form, outcome, reply, node_key_id, sharing}`. `reply` is the
 //! reply's wire bytes as text, unchanged, which the page embeds as it got
@@ -37,7 +38,7 @@ pub const FORM_HISTORY_CARD: &str = "history_card/2";
 
 /// The form it carries when `share_standard_history` is on: the Service
 /// History, which embeds the card byte for byte.
-pub const FORM_SERVICE_HISTORY: &str = "service_history/1";
+pub const FORM_SERVICE_HISTORY: &str = "service_history/3";
 
 /// This node's answer to a stranger asking for its history card.
 pub fn served(capsules: &CapsuleState, node_id: Option<&str>) -> Result<Value, String> {
@@ -74,10 +75,15 @@ pub(crate) fn serve(
     responder: &evidence_answer::Responder<'_>,
     policy: &crate::commitment::Policy,
 ) -> Result<Value, String> {
-    if responder.share_standard_history {
+    // Only under a key that serves Service History (ISH §6.1 item 9,
+    // `service_history`), and under `evidence-interop/1`, the only profile
+    // `inference-service-history/1` is served under.
+    if responder.share_standard_history
+        && crate::service_history::key_serves(responder.ledger_dir, responder.signing_key)
+    {
         if let Some(pin) = latest_boundary_anchor(responder) {
             let request = serde_json::to_vec(&json!({
-                "profile": evidence_request::envelope::PROFILE,
+                "profile": evidence_request::envelope::PROFILE_V1,
                 "subject": {"full_history": null},
                 "coverage": {"expected_pin": pin},
                 "derivation": crate::service_history::definition_digest(),

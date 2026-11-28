@@ -2022,7 +2022,7 @@ async fn main() -> anyhow::Result<()> {
     // The log id is node-unique by default (the node's signing key id), and a
     // new history the owner asked for last run starts HERE, before the
     // ledger or the checkpoint cadence opens (see `owner_maintenance`).
-    let node_key_id = producer::keys::load_or_create(&data_dir.join("keys"))?.key_id();
+    let node_key_id = service_history::load_or_create_key(&data_dir.join("keys"))?.key_id();
     let log_id = owner_maintenance::resolve_log_id(
         &data_dir,
         PLUGIN_ID,

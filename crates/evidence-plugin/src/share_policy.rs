@@ -43,7 +43,7 @@ pub const DEFAULT_WITNESS_URL: &str = "https://witness.agentactioncapsule.org";
 /// from the first checkpoint instead of trusting the first answer.
 pub const DEFAULT_WITNESS_KEY: &str =
     "39bb654c9dc0afe1c0edef0deffaa69099b8518836c9ba26e0491535840f96b5";
-/// The rest of Standard Service History (`service_history/1` and other
+/// The rest of Standard Service History (`service_history/3` and other
 /// derivations) to a requester that is not this node's counterparty.
 /// Checkpoints and `history_card/1` are stranger-safe and not gated by it.
 pub const STANDARD_HISTORY_KEY: &str = "share_standard_history";

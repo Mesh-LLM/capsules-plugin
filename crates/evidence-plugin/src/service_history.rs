@@ -1,17 +1,39 @@
-//! The Service History (`service_history/1`, PRD-SERVICE-EVIDENCE §2, M2): a
+//! The Service History (`service_history/3`, PRD-SERVICE-EVIDENCE §2, M2): a
 //! Standard History under agent-action-capsule's inference-service history
 //! profile (`spec/inference-service-history-profile-v0.md`, cited as ISH, at
-//! f8c946ed): the `history_card/1` artifact embedded unchanged, and this
-//! node's served exchanges counted per closed week.
+//! e1286e01), revision `inference-service-history/1`: the `history_card/1`
+//! artifact embedded unchanged, and this node's served exchanges counted per
+//! closed week.
 //!
 //! **The derivation.** Unregistered, and named on the wire by the digest of
-//! its definition document (`derivations/service-history-1.json`,
-//! [`DEFINITION_DIGEST`]), which carries ISH §4.1's frame: `profile`,
-//! `level` `standard`, the Standard `coverage_declaration` and the
-//! `period_policy` Steven ruled on 2026-10-22 (evidencebook#46): weeks from
-//! Monday 2026-01-05 00:00 UTC, a floor of 5 per cell, complementary
-//! suppression. The token `service_history/1` is the document's `name`,
-//! never a request's `derivation`.
+//! its definition document (`derivations/service-history-3.json`,
+//! [`DEFINITION_DIGEST`]), which carries ISH §4.1's frame: `profile`
+//! `inference-service-history/1`, `level` `standard`, the Standard
+//! `coverage_declaration` and the `period_policy` Steven ruled on 2026-10-22
+//! (evidencebook#46): weeks from Monday 2026-01-05 00:00 UTC, a floor of 5
+//! per cell, complementary suppression. The token `service_history/3` is the
+//! document's `name`, never a request's `derivation`. `service_history/4`
+//! ([`DEFINITION_DOCUMENT_VERDICTS`]) adds the verdict counts member.
+//!
+//! **Revision `/1` only, and only under a key minted for it** (ISH §6.1 item
+//! 9; Steven's ruling on action-state-group/agent-action-capsule#616: "ship
+//! as `inference-service-history/1` and freeze `/0`"). `/1` withholds a
+//! total that pins two or more models withheld under the floor (ISH §6.2
+//! item 5), which `/0` publishes, so no key serves both, and no key that
+//! served `/0` serves `/1`. Every key an earlier release minted listed the
+//! `/0` definitions (`service_history/1` and `/2`) in its commitment, so this
+//! node serves a Service History only under a key whose revision record
+//! (`keys/ish-revision`, [`record_minted_key`]) names that key and `/1`: written
+//! once, when `CapsuleState::open` mints the key. Any other key serves none,
+//! `/0` included: a key with no record (an earlier release's, or one whose
+//! record was lost) or with another key's record refuses all four
+//! definitions `derivation_unsupported` and lists none, so a lost or stale
+//! record fails closed. A node gets a Service History again only under a new
+//! key. `/1` is served under `evidence-interop/1` only (ISH, Interop profile
+//! revision): an `evidence-interop/0` request for it is `policy_declined`.
+//! As a requester this node still checks the `/0` definitions
+//! ([`LEGACY_DOCUMENT_1`], [`LEGACY_DOCUMENT_2`]), which peers on earlier
+//! releases serve.
 //!
 //! **Never beside `standard_history/1`.** A node that serves this profile's
 //! Standard Histories serves no `standard_history/1` card under its key
@@ -87,16 +109,35 @@ pub use ish::Cell;
 pub use ish::{Counts, Cut};
 
 /// The definition document, as published beside this crate: the Standard
-/// definition this node serves, and the one the digests below are of.
-pub const DEFINITION_DOCUMENT: &str = include_str!("../../../derivations/service-history-1.json");
+/// definition this node serves (`service_history/3`), and the one the
+/// digests below are of.
+pub const DEFINITION_DOCUMENT: &str = include_str!("../../../derivations/service-history-3.json");
 
-/// `service_history/2`: the same frame, periods and floor as `/1`, with the
+/// `service_history/4`: the same frame, periods and floor as `/3`, with the
 /// verdict counts member (ISH §4.3, §5.3; Mesh-LLM/capsules-plugin#289).
-pub const DEFINITION_DOCUMENT_2: &str = include_str!("../../../derivations/service-history-2.json");
+pub const DEFINITION_DOCUMENT_VERDICTS: &str =
+    include_str!("../../../derivations/service-history-4.json");
 
-/// SHA-256 over the RFC 8785 bytes of [`DEFINITION_DOCUMENT_2`].
+/// `service_history/1`, `inference-service-history/0`: frozen, served by
+/// earlier releases, and only checked here.
+pub const LEGACY_DOCUMENT_1: &str = include_str!("../../../derivations/service-history-1.json");
+
+/// `service_history/2`, `/1` with verdict counts under
+/// `inference-service-history/0`: frozen, and only checked here.
+pub const LEGACY_DOCUMENT_2: &str = include_str!("../../../derivations/service-history-2.json");
+
+/// SHA-256 over the RFC 8785 bytes of [`DEFINITION_DOCUMENT_VERDICTS`].
 #[cfg(test)]
-pub const DEFINITION_DIGEST_2: &str =
+pub const DEFINITION_DIGEST_VERDICTS: &str =
+    "33321827c0e8678cc16cd41f54e9e6bcb0f9d9dcd71e4d4019c39ecbdf6a3d3b";
+
+/// SHA-256 over the RFC 8785 bytes of [`LEGACY_DOCUMENT_1`] and
+/// [`LEGACY_DOCUMENT_2`]: what earlier releases served and listed.
+#[cfg(test)]
+pub const LEGACY_DIGEST_1: &str =
+    "cbc96d800ad206791db7e0793b80a2720c1908468ba99692b739aa8e74aab2d8";
+#[cfg(test)]
+pub const LEGACY_DIGEST_2: &str =
     "0f6cee6c5c2f57e7682137e4b40a9dcfad0f8db5a69d5bebaf99995936ea96f2";
 
 /// The token of the Standard History card this node never serves beside a
@@ -109,7 +150,7 @@ pub const STANDARD_HISTORY_TOKEN: &str = "standard_history/1";
 /// here for a test to hold [`Definition::active`] to.
 #[cfg(test)]
 pub const DEFINITION_DIGEST: &str =
-    "cbc96d800ad206791db7e0793b80a2720c1908468ba99692b739aa8e74aab2d8";
+    "1021d0c12dbea1c1ff288edc30d4f05197c64e7615796f41d17ade7467ea5780";
 
 /// SHA-256 over the RFC 8785 bytes of the definition's `period_policy`.
 #[cfg(test)]
@@ -169,12 +210,31 @@ impl Definition {
         ACTIVE.get_or_init(|| load(DEFINITION_DOCUMENT))
     }
 
-    /// `service_history/2`, the definition that also carries verdict counts:
-    /// [`DEFINITION_DOCUMENT_2`] under the same test-only policy override as
-    /// [`Definition::active`].
-    pub(crate) fn active_2() -> &'static Definition {
+    /// `service_history/4`, the definition that also carries verdict counts:
+    /// [`DEFINITION_DOCUMENT_VERDICTS`] under the same test-only policy
+    /// override as [`Definition::active`].
+    pub(crate) fn active_verdicts() -> &'static Definition {
         static ACTIVE: std::sync::OnceLock<Definition> = std::sync::OnceLock::new();
-        ACTIVE.get_or_init(|| load(DEFINITION_DOCUMENT_2))
+        ACTIVE.get_or_init(|| load(DEFINITION_DOCUMENT_VERDICTS))
+    }
+
+    /// `service_history/1` ([`LEGACY_DOCUMENT_1`]), checked, never served.
+    fn legacy_1() -> &'static Definition {
+        static LEGACY: std::sync::OnceLock<Definition> = std::sync::OnceLock::new();
+        LEGACY.get_or_init(|| load(LEGACY_DOCUMENT_1))
+    }
+
+    /// `service_history/2` ([`LEGACY_DOCUMENT_2`]), checked, never served.
+    fn legacy_2() -> &'static Definition {
+        static LEGACY: std::sync::OnceLock<Definition> = std::sync::OnceLock::new();
+        LEGACY.get_or_init(|| load(LEGACY_DOCUMENT_2))
+    }
+
+    /// Whether this node serves this definition under a key whose revision
+    /// record names `/1`: only an `inference-service-history/1` one (ISH
+    /// §6.1 item 9).
+    pub(crate) fn is_revision_1(&self) -> bool {
+        self.0.profile() == ish::PROFILE_1
     }
 
     /// Whether this definition carries the verdict counts member.
@@ -201,34 +261,114 @@ fn load(text: &str) -> Definition {
     Definition::from_document(&document).expect("the definition file conforms")
 }
 
-/// The definition a request's derivation names: `service_history/1` or
-/// `/2`, by the digest of its definition document.
+/// The definition a derivation names, by the digest of its definition
+/// document: `service_history/3` or `/4`, which this node serves, or `/1` or
+/// `/2`, which it only checks. Whether a key serves it is
+/// [`key_serves`].
 pub(crate) fn definition_for(derivation: Option<&Derivation>) -> Option<&'static Definition> {
-    match derivation {
-        Some(Derivation::Digest(d)) if d == Definition::active().digest() => {
-            Some(Definition::active())
-        }
-        Some(Derivation::Digest(d)) if d == Definition::active_2().digest() => {
-            Some(Definition::active_2())
-        }
-        _ => None,
-    }
+    let Some(Derivation::Digest(d)) = derivation else {
+        return None;
+    };
+    [
+        Definition::active(),
+        Definition::active_verdicts(),
+        Definition::legacy_1(),
+        Definition::legacy_2(),
+    ]
+    .into_iter()
+    .find(|def| def.digest() == d)
 }
 
-/// The digest that names this node's Service History derivation.
+/// The digest that names this node's Service History derivation
+/// (`service_history/3`).
 pub fn definition_digest() -> &'static str {
     Definition::active().digest()
 }
 
-/// The digest that names `service_history/2`.
-pub fn definition_digest_2() -> &'static str {
-    Definition::active_2().digest()
+/// The digest that names `service_history/4`.
+pub fn definition_digest_verdicts() -> &'static str {
+    Definition::active_verdicts().digest()
 }
 
-/// Whether `derivation` names a Service History this node serves: `/1` or
-/// `/2`.
+/// Whether `derivation` names a Service History definition this node knows:
+/// `/3` or `/4`, or the `/0` ones it checks.
 pub fn is_derivation(derivation: Option<&Derivation>) -> bool {
     definition_for(derivation).is_some()
+}
+
+/// The file beside the node key that records the profile revision the key
+/// serves Service History under (ISH §6.1 item 9).
+pub const KEY_REVISION_FILE: &str = "ish-revision";
+
+/// Record that the key `key`, just minted in `keys_dir`, serves `/1`: the
+/// key's revision record, `{"key_id", "profile"}`, `key_id` the key's
+/// [`crate::commitment::key_id`]. It is honoured only for that key, so a
+/// record left beside another key serves nothing.
+/// Written to a temporary file and renamed, so a reader never sees half
+/// a record; a start that dies before the rename leaves the key with no
+/// record, which serves no Service History.
+pub(crate) fn record_minted_key(
+    keys_dir: &std::path::Path,
+    key: &ed25519_dalek::SigningKey,
+) -> std::io::Result<()> {
+    let record = serde_json::json!({
+        "key_id": crate::commitment::key_id(key),
+        "profile": ish::PROFILE_1,
+    });
+    let path = keys_dir.join(KEY_REVISION_FILE);
+    let tmp = keys_dir.join(format!("{KEY_REVISION_FILE}.tmp"));
+    std::fs::write(&tmp, format!("{record}\n"))?;
+    std::fs::rename(&tmp, &path)
+}
+
+/// The node key under `keys_dir`, minted on first use: every place that
+/// loads or mints it goes through here, so a key minted by this build
+/// always gets its `/1` revision record ([`record_minted_key`]) and a key
+/// already on disk never does (ISH §6.1 item 9).
+pub(crate) fn load_or_create_key(
+    keys_dir: &std::path::Path,
+) -> anyhow::Result<crate::producer::keys::KeyPair> {
+    let minting = !keys_dir.join("node-key.pem").exists();
+    let keys = crate::producer::keys::load_or_create(keys_dir)?;
+    if minting {
+        record_minted_key(keys_dir, &keys.signing_key)?;
+    }
+    Ok(keys)
+}
+
+/// Whether the node whose ledger is `ledger_dir` serves Service History
+/// under `key`: its record (`<data dir>/keys/ish-revision`, beside
+/// `<data dir>/ledger`) names `key` and `/1`. A missing, unreadable or
+/// malformed record, or one naming another key or revision, is `false`.
+pub(crate) fn key_serves(ledger_dir: &std::path::Path, key: &ed25519_dalek::SigningKey) -> bool {
+    let names_key = |path: std::path::PathBuf| {
+        let Ok(text) = std::fs::read_to_string(path) else {
+            return false;
+        };
+        let Ok(record) = serde_json::from_str::<Value>(&text) else {
+            return false;
+        };
+        record.get("key_id").and_then(Value::as_str)
+            == Some(crate::commitment::key_id(key).as_str())
+            && record.get("profile").and_then(Value::as_str) == Some(ish::PROFILE_1)
+    };
+    // A test's ledger is a bare temporary directory with no data directory
+    // around it, so a test node keeps its record in the ledger itself
+    // ([`record_for_test`]).
+    #[cfg(test)]
+    if names_key(ledger_dir.join(KEY_REVISION_FILE)) {
+        return true;
+    }
+    ledger_dir
+        .parent()
+        .is_some_and(|data_dir| names_key(data_dir.join("keys").join(KEY_REVISION_FILE)))
+}
+
+/// Give the test node whose ledger is `ledger_dir` the revision record of
+/// `key`, as a key minted by this build has.
+#[cfg(test)]
+pub(crate) fn record_for_test(ledger_dir: &std::path::Path, key: &ed25519_dalek::SigningKey) {
+    record_minted_key(ledger_dir, key).expect("the test ledger is writable");
 }
 
 #[cfg(test)]
@@ -486,3 +626,6 @@ mod tests;
 
 #[cfg(test)]
 mod vector_tests;
+
+#[cfg(test)]
+mod vector_tests_v1;

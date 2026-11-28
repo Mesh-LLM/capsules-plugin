@@ -40,9 +40,9 @@ dependencies = [
 
 [[package]]
 name = "agent-action-capsule"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d035f7072db63f7541ee548650337134f66145959ed8903bb6b17ffbb9c0e2e"
+checksum = "679b921bf619e3425b8c823aa80077bdc2f6409fffa734142aa6fe47b2f8439a"
 dependencies = [
  "base64 0.22.1",
  "checkpointed-local-log",
@@ -734,7 +734,7 @@ dependencies = [
 name = "evidence-plugin"
 version = "0.1.25"
 dependencies = [
- "agent-action-capsule 0.14.0",
+ "agent-action-capsule 0.15.0",
  "anyhow",
  "axum",
  "base64 0.22.1",

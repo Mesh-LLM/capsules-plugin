@@ -57,7 +57,7 @@ describe.skipIf(!dir)('the History page from a live node’s history-page reply,
 
   it('verifies the card inside a Service History under the node’s own key', async () => {
     const body = served('provider')
-    expect(body).toMatchObject({ form: 'service_history/1', outcome: 'answered' })
+    expect(body).toMatchObject({ form: 'service_history/3', outcome: 'answered' })
     const { text, form } = await saveAndOpen(body)
     expect(form).toBe('service_history')
     expect(text).toContain('Service History: exchanges served in each closed week')

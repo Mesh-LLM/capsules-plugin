@@ -139,7 +139,7 @@ fn the_answers_lists_are_pinned_and_follow_the_settings() {
             "history_card/2",
             crate::exchange_corroboration::DEFINITION_DIGEST,
             crate::service_history::DEFINITION_DIGEST,
-            crate::service_history::DEFINITION_DIGEST_2,
+            crate::service_history::DEFINITION_DIGEST_VERDICTS,
             crate::verdict_held::DEFINITION_DIGEST,
             "checkpoint_range",
         ]
@@ -167,8 +167,24 @@ fn the_answers_lists_are_pinned_and_follow_the_settings() {
         signed.commitment["answers"]["subjects"],
         json!(["checkpoints", "checkpoint_range", "full_history"])
     );
+    // A key that serves no Service History (ISH §6.1 item 9) lists neither
+    // of its definitions; one that does lists every derivation.
+    let ish = [
+        crate::service_history::DEFINITION_DIGEST,
+        crate::service_history::DEFINITION_DIGEST_VERDICTS,
+    ];
+    let without: Vec<&str> = DERIVATIONS
+        .iter()
+        .copied()
+        .filter(|d| !ish.contains(d))
+        .collect();
+    assert_eq!(signed.commitment["answers"]["derivations"], json!(without));
+    let serving = Policy {
+        service_history: true,
+        ..off
+    };
     assert_eq!(
-        signed.commitment["answers"]["derivations"],
+        built(&serving).commitment["answers"]["derivations"],
         json!(*DERIVATIONS)
     );
 }
@@ -701,7 +717,7 @@ fn a_refusal_names_the_digest_of_the_policy_it_was_refused_under() {
         evidence_answer::decline_busy(&bytes, &responder),
     ] {
         let Outcome::Refused { wire, .. } = outcome else {
-            panic!("a stranger is refused service_history/1 by default");
+            panic!("a stranger is refused service_history/3 by default");
         };
         assert_eq!(wire["policy_digest"], digest);
         // The member is beside the signed ones: the refusal still checks.
