@@ -25,6 +25,7 @@
 // into every saved page (`saved-pages.ts`), so it imports only the cll
 // browser build and the DOM-free `cose.ts` (to read a checkpoint's key), and uses no DOM.
 import { checkAnchorWitnessed, checkpointDigest, type AnchorWitnessPolicy } from '@action-state-group/agent-action-capsule/witness'
+import { formatUtcTimestamp } from '@/features/capsules/lib/local-time'
 import { claimsKeysOutOfOrder, coseSign1KeyId, verifyCoseSign1 } from '@/features/capsules/lib/cose'
 import { checkpointMetadata, checkpointRejectionField, leafCount, verifyCheckpoint, verifyConsistency } from '@cll-browser'
 
@@ -354,7 +355,7 @@ async function witnessReport(reply: Record<string, unknown>, link: Link, readerW
         status: 'pass',
         by: report.witness ?? 'unnamed',
         at: new Date(report.witnessed_time * 1000).toISOString(),
-        detail: `A witness you accept (${report.witness ?? 'unnamed'}) holds this checkpoint, registered at ${new Date(report.witnessed_time * 1000).toISOString()}.`
+        detail: `A witness you accept (${report.witness ?? 'unnamed'}) holds this checkpoint, registered at ${formatUtcTimestamp(new Date(report.witnessed_time * 1000).toISOString())}.`
       }
     case 'FAIL':
       return { status: 'fail', detail: 'No witness receipt for this checkpoint verifies under a key you supplied.' }

@@ -6,6 +6,7 @@
 // day's count, not a page fragment's, the same "never a page-scoped number
 // presented as the full range" discipline `fullRangeLabel` already applies.
 import type { ExchangeLedgerRow } from '@/features/capsules/lib/exchange-ledger'
+import { localDayKey } from '@/features/capsules/lib/local-time'
 
 export type DayTally = {
   label: string
@@ -13,15 +14,19 @@ export type DayTally = {
   confirmedCount: number
 }
 
-/** Calendar-day bucket key, UTC, from the row's own timestamp -- never the
- *  viewer's local timezone (would make the same row land in a different
- *  day's header depending on who's looking). `null`/unparseable timestamps
- *  bucket together under 'unknown' rather than each becoming a false lone
- *  "day". */
-export function dayKeyForRow(row: Pick<ExchangeLedgerRow, 'timestamp'>): string {
-  return row.timestamp ? row.timestamp.slice(0, 10) : 'unknown'
+/** Calendar-day bucket key from the row's own timestamp, in the viewer's
+ *  time zone: the same zone every row time on the page names (Sherlock2's
+ *  ruling on #408), so a row never sits under another day's header.
+ *  `null`/unparseable timestamps bucket together under 'unknown' rather
+ *  than each becoming a false lone "day". `timeZone` is for tests. */
+export function dayKeyForRow(row: Pick<ExchangeLedgerRow, 'timestamp'>, timeZone?: string): string {
+  if (!row.timestamp) return 'unknown'
+  const date = new Date(row.timestamp)
+  return Number.isNaN(date.getTime()) ? 'unknown' : localDayKey(date, timeZone)
 }
 
+/** The header's day, from its key: the key is already the local calendar
+ *  day, so it is read back as that date, never shifted again. */
 function dayLabelFor(dayKey: string): string {
   if (dayKey === 'unknown') return 'Date unavailable'
   const parsed = new Date(`${dayKey}T00:00:00Z`)
@@ -36,10 +41,10 @@ function dayLabelFor(dayKey: string): string {
  *  (`deriveRightCellState(row).kind === 'closed'`, already resolved onto
  *  `row.rightCellState` by the time a row reaches this stream) -- never a
  *  second, drifting definition of "confirmed". */
-export function dayTalliesByKey(rows: readonly ExchangeLedgerRow[]): Map<string, DayTally> {
+export function dayTalliesByKey(rows: readonly ExchangeLedgerRow[], timeZone?: string): Map<string, DayTally> {
   const tallies = new Map<string, DayTally>()
   for (const row of rows) {
-    const key = dayKeyForRow(row)
+    const key = dayKeyForRow(row, timeZone)
     const confirmed = row.rightCellState.kind === 'closed' ? 1 : 0
     const existing = tallies.get(key)
     if (existing) {
@@ -56,11 +61,11 @@ export function dayTalliesByKey(rows: readonly ExchangeLedgerRow[]): Map<string,
  *  them) where a new day header belongs -- the first row, plus every row
  *  whose day differs from the row immediately before it. Rows must already
  *  be time-ordered (`sortStreamByTime`); this function doesn't re-sort. */
-export function dayHeaderIndices(rows: readonly ExchangeLedgerRow[]): ReadonlySet<number> {
+export function dayHeaderIndices(rows: readonly ExchangeLedgerRow[], timeZone?: string): ReadonlySet<number> {
   const indices = new Set<number>()
   let previousKey: string | null = null
   rows.forEach((row, index) => {
-    const key = dayKeyForRow(row)
+    const key = dayKeyForRow(row, timeZone)
     if (key !== previousKey) {
       indices.add(index)
       previousKey = key

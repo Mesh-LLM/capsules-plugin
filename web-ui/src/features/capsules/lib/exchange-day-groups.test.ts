@@ -27,9 +27,17 @@ function row(overrides: Partial<ExchangeLedgerRow> = {}): ExchangeLedgerRow {
 }
 
 describe('dayKeyForRow', () => {
-  it('buckets by the UTC calendar day, ignoring time-of-day', () => {
-    expect(dayKeyForRow(row({ timestamp: '2026-09-23T00:00:01Z' }))).toBe('2026-09-23')
-    expect(dayKeyForRow(row({ timestamp: '2026-09-23T23:59:59Z' }))).toBe('2026-09-23')
+  it('buckets by the calendar day in the given zone, ignoring time-of-day', () => {
+    expect(dayKeyForRow(row({ timestamp: '2026-09-23T00:00:01Z' }), 'UTC')).toBe('2026-09-23')
+    expect(dayKeyForRow(row({ timestamp: '2026-09-23T23:59:59Z' }), 'UTC')).toBe('2026-09-23')
+  })
+
+  it('#408: a row at 8:21 PM Chicago sits under Chicago\'s day, not the next UTC day', () => {
+    expect(dayKeyForRow(row({ timestamp: '2026-11-28T02:21:22Z' }), 'America/Chicago')).toBe('2026-11-27')
+  })
+
+  it('an unparseable timestamp buckets under "unknown"', () => {
+    expect(dayKeyForRow(row({ timestamp: 'garbage' }))).toBe('unknown')
   })
 
   it('a null timestamp buckets under a stable "unknown" key, never a lone false day', () => {
@@ -52,7 +60,7 @@ describe('dayTalliesByKey', () => {
         rightCellState: { kind: 'contradicted', date: null }
       })
     ]
-    const tallies = dayTalliesByKey(rows)
+    const tallies = dayTalliesByKey(rows, 'UTC')
     expect(tallies.get('2026-09-23')).toEqual({ label: 'Wednesday 23 Sep', count: 2, confirmedCount: 1 })
     expect(tallies.get('2026-09-22')).toEqual({ label: 'Tuesday 22 Sep', count: 1, confirmedCount: 0 })
   })
@@ -66,7 +74,20 @@ describe('dayHeaderIndices', () => {
       row({ exchangeKey: 'e3', timestamp: '2026-09-22T09:00:00Z' }),
       row({ exchangeKey: 'e4', timestamp: '2026-09-22T08:00:00Z' })
     ]
-    expect([...dayHeaderIndices(rows)]).toEqual([0, 2])
+    expect([...dayHeaderIndices(rows, 'UTC')]).toEqual([0, 2])
+  })
+
+  it('#408: the header and its tally follow the local day, so 8:21 PM and 9 AM Chicago share one header', () => {
+    const rows = [
+      row({ exchangeKey: 'e1', timestamp: '2026-11-28T02:21:22Z' }),
+      row({ exchangeKey: 'e2', timestamp: '2026-11-27T15:00:00Z' })
+    ]
+    expect([...dayHeaderIndices(rows, 'America/Chicago')]).toEqual([0])
+    expect(dayTalliesByKey(rows, 'America/Chicago').get('2026-11-27')).toEqual({
+      label: 'Friday 27 Nov',
+      count: 2,
+      confirmedCount: 0
+    })
   })
 
   it('an empty row set marks nothing', () => {

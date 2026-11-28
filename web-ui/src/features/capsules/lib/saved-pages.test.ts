@@ -313,6 +313,8 @@ describe('the receipt page, opened offline', () => {
   it('checks the embedded receipt itself, draws the provider\'s receipt with the viewer\'s module and hands back the JSON byte for byte (#398)', async () => {
     const { html, fileName } = receiptPage({ kind: 'bundle', bundleText: provider }, 'ex-1', SAVED)
     expect(fileName).toBe('mesh-receipt-ex-1-20261029T180000.html')
+    // A saved page's time stays UTC, with the zone said (#408).
+    expect(html).toContain('Saved Oct 29, 2026, 18:00 UTC.')
     expect(Buffer.from(embedded(html)).equals(Buffer.from(provider, 'utf8'))).toBe(true)
 
     const { dom, requested, text } = await open(html)

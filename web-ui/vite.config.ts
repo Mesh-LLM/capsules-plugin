@@ -61,6 +61,10 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // The page shows the viewer's own zone (#408); tests run in UTC so a
+    // date-only expectation reads the same on every machine. A test of the
+    // local-zone behavior passes its zone explicitly (local-time.test.ts).
+    env: { TZ: 'UTC' },
     maxWorkers: 2,
     globals: true,
     setupFiles: ['./src/lib/test/setup.ts', './src/plugin-host/test-host-setup.ts'],

@@ -365,6 +365,8 @@ describe('the witness receipts check', () => {
     expect(v.verified).toBe(true)
     expect(witnessCheck(v).status).toBe('pass')
     expect(witnessCheck(v).detail).toContain('the witness')
+    // A saved page's time stays UTC, with the zone said (#408).
+    expect(witnessCheck(v).detail).toMatch(/registered at [A-Z][a-z]{2} \d{1,2}, \d{4}, \d{2}:\d{2} UTC\.$/)
   })
 
   it('does not run the check with no reader keys, and never passes it', async () => {
