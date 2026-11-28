@@ -557,6 +557,16 @@ describe('rightCellDetail — Item 4: the fuller story behind each state, moved 
     expect(text).toContain('same request, answer and model weights')
   })
 
+  it('#388/#412: on a SERVED row the CLOSED (i) says the node you served signed it with its announced key, never "sent"', () => {
+    expect(rightCellDetail(stateOf('closed'), 'SERVED')).toContain('names you as the node that served it')
+    expect(rightCellDetail(stateOf('closed'), 'SERVED')).toContain('signed its own record of this exchange with the key it announced')
+    expect(rightCellDetail(stateOf('closed'), 'SERVED')).not.toMatch(/\bsent\b/)
+    expect(rightCellDetail(stateOf('closed'), 'SERVED')).not.toContain('served you')
+    expect(rightCellDetail(stateOf('open_not_held'), 'SERVED')).toContain('doesn’t name you as the node that served it')
+    expect(rightCellDetail(stateOf('closed'), 'ASKED')).toContain('from the node that served you')
+    expect(rightCellDetail(stateOf('contradicted'), 'SERVED')).toBe(rightCellDetail(stateOf('contradicted')))
+  })
+
   it('CONTRADICTED names every cause the gate contradicts on', () => {
     const text = rightCellDetail(stateOf('contradicted'))
     for (const cause of ['the request', 'the answer', 'the model', 'who served it', 'doesn’t match its own id']) {

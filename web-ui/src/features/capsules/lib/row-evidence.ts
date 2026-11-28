@@ -53,6 +53,7 @@ import {
   deriveRightCellState,
   fullTimeInstant,
   isVerifiedRecord,
+  servedOtherProviderReason,
   paneOutcomeState,
   pushedHalfRecompute,
   recordVerdict,
@@ -100,8 +101,26 @@ const NO_VERDICT_WHY: Record<Exclude<RecordVerdict, { kind: 'closed' } | { kind:
   other_exchange: 'it doesn’t name your request and answer'
 }
 
+/** The same reasons on a SERVED row, where this node served them: the check
+ *  compares the server each record names, so that is what it says (#388).
+ *  When a record names no server, it says only that theirs doesn't name you
+ *  (the words of the ruled not-held line). */
+const NO_VERDICT_WHY_SERVED: typeof NO_VERDICT_WHY = {
+  ...NO_VERDICT_WHY,
+  other_provider: 'it names another node as the one that served it'
+}
+const SERVED_NO_PROVIDER_NAMED = 'it doesn’t name you as the node that served it'
+/** It names you, but the key the node you served announced doesn't sign it
+ *  (#412), or that node announced none (Sherlock2's words, buzz 60d4b649). */
+const SERVED_NOT_THEIR_KEY = 'it isn’t signed with a key the node you served announced, so who made it is not checked'
+
 /** What the latest ask returned, in a few words, for the line under the row. */
-function attemptText(outcome: AskOutcome, verdict: RecordVerdict | null): string | null {
+function attemptText(
+  outcome: AskOutcome,
+  verdict: RecordVerdict | null,
+  served: boolean,
+  ours: CapsuleRecord | null
+): string | null {
   switch (outcome.kind) {
     case 'asking':
       return null
@@ -119,7 +138,17 @@ function attemptText(outcome: AskOutcome, verdict: RecordVerdict | null): string
     case 'record': {
       if (!verdict || verdict.kind === 'no_verdict') {
         if (!isVerifiedRecord(outcome.evidence)) return `their record didn’t check out (${recordProblems(outcome.evidence)})`
-        const why = verdict?.kind === 'no_verdict' ? NO_VERDICT_WHY[verdict.why] : NO_VERDICT_WHY.other_exchange
+        const reasons = served ? NO_VERDICT_WHY_SERVED : NO_VERDICT_WHY
+        const why =
+          verdict?.kind !== 'no_verdict'
+            ? reasons.other_exchange
+            : served && verdict.why === 'other_provider'
+              ? {
+                  another_server: NO_VERDICT_WHY_SERVED.other_provider,
+                  no_server: SERVED_NO_PROVIDER_NAMED,
+                  not_their_key: SERVED_NOT_THEIR_KEY
+                }[servedOtherProviderReason(ours, outcome.evidence.peerRecord)]
+              : reasons[verdict.why]
         return `their record checks out but doesn’t confirm this exchange: ${why}`
       }
       if (verdict.kind === 'closed') return 'their record matches yours'
@@ -218,12 +247,12 @@ export function judgeRow(
           ? { verified: true, text: `${ALTERED.charAt(0).toUpperCase()}${ALTERED.slice(1)}.` }
           : askReplyNote(shownAsk)
       if (latest !== shownAsk) {
-        const text = attemptText(latest, latestVerdict)
+        const text = attemptText(latest, latestVerdict, row.role_tag === 'SERVED', ours)
         if (text) retryNote = `${asked} ${formatExchangeTimestamp(latest.at)}: ${text}.`
       }
     } else {
       const showsVerified = state.kind === 'closed' || state.kind === 'contradicted' || state.kind === 'open_refused' || state.kind === 'open_absent'
-      const text = attemptText(latest, latestVerdict)
+      const text = attemptText(latest, latestVerdict, row.role_tag === 'SERVED', ours)
       if (text && showsVerified) {
         retryNote = `${asked} ${formatExchangeTimestamp(latest.at)}: ${text}.`
       } else if (text) {

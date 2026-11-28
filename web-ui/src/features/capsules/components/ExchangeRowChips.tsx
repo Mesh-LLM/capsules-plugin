@@ -19,14 +19,21 @@ import {
 import type { EntryRowChipKey, EntryRowChipMark } from '@/features/capsules/lib/entry-row-chips'
 import type { ChecksRow } from '@/features/capsules/lib/security-checks-view'
 import { HoverChip } from '@/features/capsules/components/HoverChip'
-import { ENTRY_CHIP_RESULT_TOOLTIPS } from '@/features/capsules/lib/tooltip-copy'
+import { ENTRY_CHIP_RESULT_TOOLTIPS, THEIRS_CONFIRMED_SERVED } from '@/features/capsules/lib/tooltip-copy'
 import { witnessCoverageLine, type WitnessCoverage } from '@/features/capsules/lib/integrity-view'
 
 /** The hover for one chip's result. The checkpoint chip has a `◐`, and the
  *  witnessed chip reads the record's witness coverage when it is known
- *  (#411), unless a check already decided it. */
-function chipTooltip(chip: EntryRowChipKey, mark: EntryRowChipMark, witnessCoverage: WitnessCoverage | null): string {
+ *  (#411), unless a check already decided it. On a SERVED row a confirmed
+ *  record is the served node's, signed with the key it announced (#388). */
+function chipTooltip(
+  chip: EntryRowChipKey,
+  mark: EntryRowChipMark,
+  witnessCoverage: WitnessCoverage | null,
+  served: boolean
+): string {
   if (chip === 'registered' && witnessCoverage && (mark === '–' || mark === '◐')) return witnessCoverageLine(witnessCoverage)
+  if (served && chip === 'theirs' && mark === '✓') return THEIRS_CONFIRMED_SERVED
   const byMark: Partial<Record<EntryRowChipMark, string>> = ENTRY_CHIP_RESULT_TOOLTIPS[chip]
   return byMark[mark] ?? ENTRY_CHIP_RESULT_TOOLTIPS[chip]['–']
 }
@@ -42,6 +49,7 @@ export function ExchangeRowChips({
   checks,
   checkpointCovered = null,
   witnessCoverage = null,
+  served = false,
   witnessOff = false,
   onChipActivate
 }: {
@@ -53,6 +61,8 @@ export function ExchangeRowChips({
   /** Where this record stands with a witness this node doesn't run (#411);
    *  `null` = not known. */
   witnessCoverage?: WitnessCoverage | null
+  /** This node served the row's exchange (`SERVED`). */
+  served?: boolean
   /** No witness is set on this node (`checkpointRegistration`'s `off`): the
    *  "witnessed" chip would only ever read `–`, so it isn't shown. */
   witnessOff?: boolean
@@ -68,7 +78,7 @@ export function ExchangeRowChips({
         const propertyKey = entryRowChipPropertyKey(chip)
         // Hover for the meaning, click for the full check (UX §8 rule 2).
         return (
-          <HoverChip census={`entry_chip:${chip}`} key={chip} label={chipTooltip(chip, mark, witnessCoverage)}>
+          <HoverChip census={`entry_chip:${chip}`} key={chip} label={chipTooltip(chip, mark, witnessCoverage, served)}>
             <span
               aria-label={`${label}: jump to that check`}
               className="ui-control-ghost inline-flex cursor-pointer items-center gap-1 font-mono text-xs"

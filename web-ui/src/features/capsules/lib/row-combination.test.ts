@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RightCellStateKind } from '@/features/capsules/lib/exchange-row-state'
-import { rowCombinationText, WITNESS_HOLDS_IT, type RowCombinationInput } from '@/features/capsules/lib/row-combination'
+import { OWN_RECORD_MISSING, ownRecordMissing, rowCombinationText, WITNESS_HOLDS_IT, type RowCombinationInput } from '@/features/capsules/lib/row-combination'
 
 const ALL_OK = { content: '✓', sig: '✓', inclusion: '✓', registered: '–' } as const
 
@@ -13,6 +13,32 @@ describe('rowCombinationText -- what the badge and the chips say together', () =
     expect(rowCombinationText(input({}))).toMatch(/^Both records agree and check out/)
     expect(rowCombinationText(input({ marks: { ...ALL_OK, inclusion: '–' } }))).toMatch(/next one will cover it/)
     expect(rowCombinationText(input({ marks: { ...ALL_OK, registered: '✓' } }))).toContain(WITNESS_HOLDS_IT.trim())
+  })
+
+  it('#388: a confirmed SERVED row says the other record names you as its server, never "the node that served you"', () => {
+    const served = rowCombinationText(input({ roleTag: 'SERVED' }))
+    expect(served).toContain('the node you served signed its own record with the key it announced, and it names you as the node that served it')
+    expect(served).not.toContain('served you')
+    expect(rowCombinationText(input({}))).toContain('from the node that served you')
+  })
+
+  it('#388: a record counts as missing only when the records were fetched after its exchange', () => {
+    const fetchedAt = Date.parse('2026-11-28T03:00:00Z')
+    const missing = (timestamp: string | null, held = false, at: number | null = fetchedAt) =>
+      ownRecordMissing({ capsuleId: 'c1', timestamp, held: () => held, ledgerFetchedAt: at })
+    expect(missing('2026-11-28T02:58:00Z')).toBe(true)
+    // Served in the gap between the two fetches: not missing yet.
+    expect(missing('2026-11-28T02:59:30Z')).toBe(false)
+    expect(missing('2026-11-28T03:00:00Z')).toBe(false)
+    expect(missing('2026-11-28T02:58:00Z', true)).toBe(false)
+    expect(missing('2026-11-28T02:58:00Z', false, null)).toBe(false)
+    expect(missing(null)).toBe(false)
+  })
+
+  it('#388: a record missing from the loaded records says why and what to do; still loading says "yet"', () => {
+    const unloaded = { ...ALL_OK, content: '–', sig: '–' } as const
+    expect(rowCombinationText(input({ marks: unloaded }))).toMatch(/isn’t loaded on this page yet/)
+    expect(rowCombinationText(input({ marks: unloaded, ownRecordMissing: true }))).toBe(OWN_RECORD_MISSING)
   })
 
   it('a failed check on your own copy wins over any badge (A15)', () => {

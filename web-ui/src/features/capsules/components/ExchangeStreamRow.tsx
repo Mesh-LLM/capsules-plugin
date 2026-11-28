@@ -241,6 +241,9 @@ export type ExchangeStreamRowProps = {
    *  for the security view. `null` when the record hasn't been fetched
    *  (never a stand-in for a trusted result). */
   localRecord?: CapsuleRecord | null
+  /** The node's records have loaded and this row's record isn't among
+   *  them (#388): the row says so instead of "not loaded yet". */
+  ownRecordMissing?: boolean
   nodePubKeyPem?: string | null
   /** Whether the latest checkpoint covers this row's own record (look
    *  finding 2, `checkpointCoverageByRecord`); `null` = not reported. */
@@ -287,6 +290,7 @@ export function ExchangeStreamRow({
   checksExpanded = false,
   contentExpanded = false,
   localRecord = null,
+  ownRecordMissing = false,
   nodePubKeyPem = null,
   checkpointCovered = null,
   witnessCoverage = null,
@@ -426,6 +430,7 @@ export function ExchangeStreamRow({
     roleTag: row.roleTag,
     servedForPay,
     yoursHeld: row.raw.mine.state !== 'absent',
+    ownRecordMissing,
     marks: {
       content: entryRowChipMark(checksRows, 'content'),
       sig: entryRowChipMark(checksRows, 'sig'),
@@ -602,7 +607,7 @@ export function ExchangeStreamRow({
                       ? LOCAL_ONLY_TOOLTIP
                       : servedForPay && gatedByCounterparty
                         ? SERVED_FOR_PAY_NO_PAYER_TOOLTIP
-                        : rightCellDetail(state)
+                        : rightCellDetail(state, row.roleTag)
                   }
                   side="left"
                 />
@@ -694,6 +699,7 @@ export function ExchangeStreamRow({
         <AgreementStrip
           agreement={row.raw.agreement}
           paid={Boolean(row.raw.settlement || row.raw.provider_settlement)}
+          servedForPay={servedForPay}
         />
         <ReceiptPanel row={row.raw} />
         {/* v3 §2's row footer: two independent
@@ -753,6 +759,7 @@ export function ExchangeStreamRow({
             checks={checksRows}
             onChipActivate={handleChipActivate}
             witnessCoverage={witnessCoverage}
+            served={row.roleTag === 'SERVED'}
             witnessOff={witnessOff}
           />
         ) : null}

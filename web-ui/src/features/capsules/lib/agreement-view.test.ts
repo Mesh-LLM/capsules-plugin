@@ -31,6 +31,20 @@ describe('agreementView', () => {
     expect(view?.finding?.label).toBe('accepted before the exchange')
   })
 
+  it('#388: a row served for pay draws no cap pill, neither the cap result nor the spend; other pills stay', () => {
+    const provider: AgreementCoverage = { ...covered, side: 'provider', coverage: 'cap_not_evaluable', spend: { ...covered.spend!, lower_bound: true, observed_msat: 0 } }
+    const view = agreementView(provider, true, true)
+    expect(view?.label).toBeNull()
+    expect(view?.spend).toBeNull()
+    expect(view?.side).toBe('as the provider')
+    expect(view?.count).toBe('exchange 2 of 5')
+    expect(agreementView({ ...provider, coverage: 'over_cap' }, true, true)?.label).toBeNull()
+    // A coverage that isn't about the cap is still said.
+    expect(agreementView({ ...provider, coverage: 'outside_window' }, true, true)?.label).toBe('not covered: outside window')
+    // On the payer's own row the cap pills stay.
+    expect(agreementView(provider, true, false)).toMatchObject({ label: 'cap not evaluable', spend: 'at least 0 msat of a 3,000 msat cap' })
+  })
+
   it('says a lower bound is a lower bound', () => {
     const view = agreementView(
       { ...covered, coverage: 'cap_not_evaluable', spend: { ...covered.spend!, lower_bound: true } },

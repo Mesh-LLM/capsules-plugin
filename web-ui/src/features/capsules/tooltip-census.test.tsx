@@ -177,6 +177,22 @@ const PANE_C: PaneCListJson = {
         entries: [],
         final_accounted_msat: null,
         provider_book: 'not_available'
+      },
+      // The spend cap is the payer's, so its pill is on the payer's row
+      // (a row served for pay draws none, #388).
+      agreement: {
+        side: 'requester',
+        coverage: 'covered',
+        acceptance_digest: 'a'.repeat(64),
+        count: { position: 2, max_exchanges: 5 },
+        spend: {
+          observed_msat: 995,
+          lower_bound: false,
+          spend_cap_msat: 3000,
+          basis: 'agent_origin_assertion',
+          observed_by: 'payer_observed'
+        },
+        finding: 'accepted_before_action'
       }
     }),
     row('exch-served-paid', {

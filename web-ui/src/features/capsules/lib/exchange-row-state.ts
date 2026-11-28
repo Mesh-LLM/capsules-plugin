@@ -10,7 +10,7 @@ import type { CapsuleRecord } from '@/features/capsules/api/types'
 import { isDigestShaped } from '@/features/capsules/lib/canonical'
 import { formatExchangeTimestamp } from '@/features/capsules/lib/local-time'
 import { producerSignatureVerifies } from '@/features/capsules/lib/producer-signature'
-import { CLOSED_CELL_TOOLTIPS, ROW_STATE_TOOLTIPS } from '@/features/capsules/lib/tooltip-copy'
+import { CLOSED_CELL_TOOLTIPS, ROW_STATE_TOOLTIPS, ROW_STATE_TOOLTIPS_SERVED } from '@/features/capsules/lib/tooltip-copy'
 import type { PeerRecomputeState } from '@/features/capsules/lib/recompute-identity'
 
 export type RightCellStateKind =
@@ -241,6 +241,31 @@ function fromServedRequester(
 ): boolean {
   if (!peerRecord || !served.requesterKeyId) return false
   return providerMatches(localRecord, peerRecord) && producerSignatureVerifies(peerRecord, served.requesterKeyId)
+}
+
+/** Both records name a server and they name different ones: the case
+ *  `providerMatches` fails on that a row can call "names another node". It
+ *  also fails when either record names none, or says `unknown` (the
+ *  default for a missing identity), which is not that (#388). */
+export function namesAnotherProvider(
+  localRecord: CapsuleRecord | null | undefined,
+  peerRecord: Record<string, unknown> | null
+): boolean {
+  const ours = recordString(localRecord, SERVED_BY_PATH)
+  const theirs = recordString(peerRecord, SERVED_BY_PATH)
+  return !!ours && ours !== 'unknown' && !!theirs && theirs !== 'unknown' && ours !== theirs
+}
+
+/** Why a record of theirs on a SERVED row is not from the node this node
+ *  served (`other_provider`), in the terms the row can state (#388, #412):
+ *  it names another server, it names none, or it names this node but isn't
+ *  signed with the key the requesting node announced (or none was). */
+export function servedOtherProviderReason(
+  localRecord: CapsuleRecord | null | undefined,
+  peerRecord: Record<string, unknown> | null
+): 'another_server' | 'no_server' | 'not_their_key' {
+  if (namesAnotherProvider(localRecord, peerRecord)) return 'another_server'
+  return providerMatches(localRecord, peerRecord) ? 'not_their_key' : 'no_server'
 }
 
 /** The counterparty half the pane correlated from OUR citing record, as the
@@ -521,7 +546,10 @@ export function rightCellText(state: RightCellState): string {
  *  backs it (or honestly, what is missing), never a score. The CLOSED and
  *  not-held cases are the ones Item 4 calls out; the rest carry the same
  *  discipline so every state's (i) has an honest sentence. */
-export function rightCellDetail(state: RightCellState): string {
+export function rightCellDetail(state: RightCellState, roleTag?: string): string {
+  if (roleTag === 'SERVED' && (state.kind === 'closed' || state.kind === 'open_not_held')) {
+    return ROW_STATE_TOOLTIPS_SERVED[state.kind]
+  }
   return ROW_STATE_TOOLTIPS[state.kind]
 }
 
